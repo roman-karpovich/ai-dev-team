@@ -55,7 +55,7 @@ Call Codex via MCP. **Preserve threadId across rounds** for conversation continu
 - **prompt**: Include your full position and ask Codex to critique it
 - **developer-instructions**: Use the content from `/Users/th13f/.claude/skills/investigate/references/codex-debate-profile.md`:
   "You are participating in an adversarial technical debate. Your role is CRITIC and CHALLENGER. Find flaws, challenge assumptions, propose alternatives, identify missed risks. Be specific. Acknowledge good points. Structure response as: AGREEMENTS, CHALLENGES, ALTERNATIVES, RISKS, QUESTIONS."
-- **model**: "gpt-5.4"
+- **model**: omit — uses default from `~/.codex/config.toml`
 - **sandbox**: "read-only"
 - **cwd**: current working directory (if codebase_context)
 - **config**: `{"reasoning": {"effort": "xhigh"}}`

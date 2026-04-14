@@ -113,10 +113,19 @@ git pull
 ## Codex MCP setup
 
 ```bash
-claude mcp add codex -s user -- codex -m gpt-5.4 -c model_reasoning_effort="xhigh" mcp-server
+claude mcp add codex -s user -- codex mcp-server
 ```
 
 This registers Codex as a user-level MCP server (available in all projects). Requires the `codex` CLI to be installed and authenticated.
+
+Model and reasoning effort are read from `~/.codex/config.toml` — no version is hardcoded here. To upgrade to a newer model, update your Codex config once and all agents pick it up automatically.
+
+**Make sure your `~/.codex/config.toml` specifies the model you want**, for example:
+```toml
+model = "gpt-5.4"
+model_reasoning_effort = "xhigh"
+```
+This file is user-managed and not part of this repo — you control which version is active.
 
 Once configured, test with:
 ```

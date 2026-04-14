@@ -64,7 +64,7 @@ Read the full spec at: <spec_path>
 ## Codex Call Parameters
 
 ```
-model: gpt-5.4  (fallback: gpt-5.2-codex)
+model: omit — uses default from ~/.codex/config.toml
 config: {"reasoning": {"effort": "xhigh"}}
 cwd: <project_path>
 sandbox: danger-full-access  (needs to run tests)
