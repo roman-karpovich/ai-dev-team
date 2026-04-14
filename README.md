@@ -1,41 +1,16 @@
 # AI Dev Team for Claude Code
 
-A set of Claude Code agents and skills that implement a structured, KB-centric development workflow. Specs, audit findings, and research live in a Knowledge Base (Obsidian vault). Code lives in source repos. Context never gets lost between sessions.
+Structured AI development workflow for Claude Code. Specs, audit findings, and research live in a Knowledge Base (Obsidian vault). Code lives in source repos. Context never gets lost between sessions.
 
-**Read first:** [docs/AI_Dev_Team_Overview.md](docs/AI_Dev_Team_Overview.md) (Russian)
-
----
-
-## What's included
-
-### Agents (`agents/`)
-
-| Agent | Model | Role |
-|-------|-------|------|
-| `librarian` | Sonnet | KB management — search, create documents, update indexes |
-| `developer-codex` | Sonnet + GPT-5.4 | **Default developer.** Delegates to Codex via MCP |
-| `developer-senior` | Opus | Complex tasks: ambiguous scope, cross-cutting, Soroban/contracts |
-| `developer-middle` | Sonnet | Clear-scope tasks following existing patterns |
-| `verifier` | Haiku | Runs test suite. Never writes code |
-| `cross-auditor` | Opus + GPT-5.4 | Parallel Claude + Codex audit, consolidates findings |
-| `investigator` | Opus + GPT-5.4 | Adversarial debate rounds for architecture decisions |
-
-### Skills (`skills/`)
-
-| Skill | Command | What it does |
-|-------|---------|--------------|
-| `feature` | `/feature new <desc>` | Full feature lifecycle: research → spec → implement → verify → hand-off |
-| `cross-audit` | `/cross-audit <scope>` | Background dual-model audit, saves findings to KB |
-| `investigate` | `/investigate <question>` | Background Claude vs Codex debate, returns convergence report |
-| `audit` | `/audit <scope>` | Single-model iterative audit (legacy, use cross-audit instead) |
+**Full overview:** [docs/AI_Dev_Team_Overview.md](docs/AI_Dev_Team_Overview.md)
 
 ---
 
 ## Requirements
 
 - **Claude Code** ≥ 2.1.32
-- **Codex MCP** (`mcp__codex__codex`) configured in `~/.claude/settings.json` — required for `cross-audit`, `investigate`, and `developer-codex`
-- **Obsidian** (optional) — KB works with any Markdown editor
+- **Codex CLI** with `mcp-server` support — required for `cross-audit`, `investigate`, and `developer-codex`
+- A Knowledge Base directory (any Markdown folder; Obsidian recommended)
 
 ---
 
@@ -47,23 +22,73 @@ cd ai-dev-team
 ./install.sh
 ```
 
-The script:
-- Copies agents to `~/.claude/agents/`
-- Copies skills to `~/.claude/skills/`
-- Adds `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` to `~/.claude/settings.json`
-- Warns if Codex MCP is not configured
+The script copies agents and skills to `~/.claude/`, enables agent teams in `~/.claude/settings.json`, and registers the Codex MCP server if the `codex` CLI is available.
 
 Restart Claude Code after install.
+
+### Codex MCP (manual)
+
+If `install.sh` couldn't register Codex automatically:
+
+```bash
+claude mcp add codex -s user -- codex mcp-server
+```
+
+Model and reasoning effort come from `~/.codex/config.toml` — nothing is hardcoded in agents. Set the model you want there:
+
+```toml
+model = "gpt-5.4"
+model_reasoning_effort = "xhigh"
+```
+
+To upgrade to a newer Codex model: update `config.toml` once, all agents pick it up.
+
+---
+
+## What's included
+
+### Agents (`agents/`)
+
+| Agent | Model | Role |
+|-------|-------|------|
+| `librarian` | Sonnet | KB management — search, create documents, update MOC indexes |
+| `developer-codex` | Sonnet + Codex | **Default developer.** Delegates to Codex via MCP. Saves Claude tokens. |
+| `developer-senior` | Opus | Complex tasks: ambiguous scope, new abstractions, Soroban/contracts, security-sensitive code |
+| `developer-middle` | Sonnet | Clear-scope tasks following existing patterns: endpoints, tests, functions by example |
+| `verifier` | Haiku | Runs test suite and build checks. Never writes source code. |
+| `cross-auditor` | Opus + Codex | Parallel Claude + Codex audit. Consolidates findings into KB. |
+| `investigator` | Opus + Codex | Adversarial multi-round debate for architecture decisions. |
+
+**Choosing a developer:**
+```
+Codex           ← default; spec has explicit file paths and clear requirements
+developer-middle ← Codex overhead not worth it (small in-session edit)
+developer-senior ← wide codebase exploration needed, or genuinely ambiguous scope
+```
+
+### Skills (`skills/`)
+
+| Skill | Command | What it does |
+|-------|---------|--------------|
+| `feature` | `/feature new <desc>` | Full feature lifecycle: research → spec → implement → verify → hand-off |
+| `feature` | `/feature continue <spec-path>` | Resume from last checkpoint in an existing spec |
+| `feature` | `/feature status` | Show all in-progress specs across all projects |
+| `cross-audit` | `/cross-audit <scope>` | Background dual-model audit (Claude + Codex), findings saved to KB |
+| `cross-audit` | `/cross-audit <findings-path>` | Re-audit iteration: verify fixes, look for new issues |
+| `investigate` | `/investigate <question>` | Background Claude vs Codex debate, returns convergence report |
+| `audit` | `/audit <scope>` | Single-model iterative audit (use `cross-audit` instead) |
 
 ---
 
 ## KB setup
 
-Each project needs a Knowledge Base directory. The skills discover it automatically:
+Skills discover the KB automatically:
 
-1. Check Claude memory for a known KB path for this project
+1. Check Claude memory for a known KB path for the current project
 2. Search for a sibling directory with "knowledge" in the name (e.g. `../project-knowledge/`)
-3. Prompt you to confirm or provide a path
+3. Confirm with you before using
+
+After confirmation the path is saved to memory — not asked again.
 
 KB structure per project:
 
@@ -71,64 +96,67 @@ KB structure per project:
 <kb-root>/
 └── repos/
     └── <project>/
-        ├── design/       ← feature specs (YAML frontmatter)
-        ├── security/     ← audit findings + workdocs
+        ├── design/       ← feature specs (YAML frontmatter + checklist)
+        ├── security/     ← audit findings (accumulates) + workdocs (per iteration)
         ├── research/     ← investigations, models, exploratory work
-        └── postmortems/  ← incident postmortems
+        └── postmortems/  ← completed incident reviews
 ```
 
 ---
 
-## Typical workflow
+## Feature workflow
 
 ```
-/feature new add rate limiting to the API
-  → spec written to KB, you approve
-  → Codex implements on feature branch
-  → verifier runs tests
-  → you push and PR
+Phase 1 — Planning
+  Lead writes spec → saves to KB → you approve
+  ── mandatory checkpoint ──
 
-/cross-audit src/api/ --mode security
-  → Claude + Codex audit in parallel (background)
-  → findings saved to KB
-  → you decide: fix / accept / defer per finding
+Phase 2 — Implementation
+  Developer (Codex by default) reads spec → feature branch → implements per checklist
+  Small logical commits, no Co-authored-by
 
-/investigate should we use optimistic locking or queues for this?
-  → Claude vs Codex debate (background)
-  → convergence report with recommendation
+Phase 3 — Verification
+  Verifier runs tests → PASS continues, FAIL goes back to developer
+
+Phase 4 — Audit (background, parallel)
+  cross-auditor logic + cross-auditor security (Claude + Codex each)
+  4 independent perspectives → findings saved to KB
+  ── mandatory checkpoint: fix / accept / defer per finding ──
+
+Phase 5 — Fix
+  Developer applies selected fixes
+
+Phase 6 — Re-audit (diff only)
+  Verifies fixes, checks for new issues
+
+Phase 7 — Hand-off
+  Lead presents commit list → git push + gh pr create on confirmation
 ```
+
+---
+
+## Audit modes
+
+`/cross-audit` supports two independent flags:
+
+- `--mode logic|security|full` — what to look for (default: `full`)
+- `--diff` — scope to files changed since base branch (combine with any mode)
+
+```bash
+/cross-audit src/         --mode security        # full security audit
+/cross-audit src/         --mode logic --diff    # logic audit of recent changes only
+/cross-audit findings.md                         # re-audit iteration
+```
+
+Confidence levels:
+- **HIGH** — both Claude and Codex found it → fix
+- **REVIEW** — only one found it → verify manually, possible false positive
 
 ---
 
 ## Updating
 
 ```bash
-cd ~/dev/private/ai-dev-team
-git pull
-./install.sh
+cd ~/path/to/ai-dev-team
+git pull && ./install.sh
 ```
-
----
-
-## Codex MCP setup
-
-```bash
-claude mcp add codex -s user -- codex mcp-server
-```
-
-This registers Codex as a user-level MCP server (available in all projects). Requires the `codex` CLI to be installed and authenticated.
-
-Model and reasoning effort are read from `~/.codex/config.toml` — no version is hardcoded here. To upgrade to a newer model, update your Codex config once and all agents pick it up automatically.
-
-**Make sure your `~/.codex/config.toml` specifies the model you want**, for example:
-```toml
-model = "gpt-5.4"
-model_reasoning_effort = "xhigh"
-```
-This file is user-managed and not part of this repo — you control which version is active.
-
-Once configured, test with:
-```
-/investigate is 2+2=4?
-```
-You should see a background debate launch.
