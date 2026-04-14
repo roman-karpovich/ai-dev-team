@@ -112,7 +112,11 @@ git pull
 
 ## Codex MCP setup
 
-Add to `~/.claude/settings.json` under `mcpServers`. The exact configuration depends on your Codex access method. Contact your OpenAI admin or see the [Claude Code MCP docs](https://docs.anthropic.com/claude-code/mcp).
+```bash
+claude mcp add codex -s user -- codex -m gpt-5.4 -c model_reasoning_effort="xhigh" mcp-server
+```
+
+This registers Codex as a user-level MCP server (available in all projects). Requires the `codex` CLI to be installed and authenticated.
 
 Once configured, test with:
 ```

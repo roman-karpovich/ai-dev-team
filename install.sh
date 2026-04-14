@@ -91,15 +91,20 @@ PYEOF
   ok "  CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 added to $SETTINGS"
 fi
 
-# ── Codex MCP check ────────────────────────────────────────────────────────────
+# ── Codex MCP ─────────────────────────────────────────────────────────────────
 echo ""
 if python3 -c "import json,sys; d=json.load(open('$SETTINGS')); sys.exit(0 if any('codex' in k.lower() for k in d.get('mcpServers',{}).keys()) else 1)" 2>/dev/null; then
-  ok "  Codex MCP found in settings"
+  ok "  Codex MCP already registered"
 else
-  warn "  Codex MCP not detected in $SETTINGS"
-  echo "    Cross-audit and investigate skills require mcp__codex__codex."
-  echo "    Add the Codex MCP server to ~/.claude/settings.json under 'mcpServers'."
-  echo "    See: https://docs.anthropic.com/claude-code/mcp"
+  if command -v codex &>/dev/null; then
+    echo "  Registering Codex MCP server..."
+    claude mcp add codex -s user -- codex -m gpt-5.4 -c model_reasoning_effort="xhigh" mcp-server
+    ok "  Codex MCP registered"
+  else
+    warn "  codex CLI not found — skipping MCP registration"
+    echo "    Install codex, then run:"
+    echo "    claude mcp add codex -s user -- codex -m gpt-5.4 -c model_reasoning_effort=\"xhigh\" mcp-server"
+  fi
 fi
 
 # ── Done ───────────────────────────────────────────────────────────────────────
