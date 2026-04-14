@@ -88,7 +88,7 @@ Only statuses may be updated on existing entries; finding content is append-only
 Use `mcp__codex__codex` with:
 - **prompt**: build from the template below
 - **sandbox**: "read-only"
-- **model**: "gpt-5.4" (if model-not-found, retry with "gpt-5.2-codex")
+- **model**: omit — uses default from `~/.codex/config.toml`
 - **config**: `{"reasoning": {"effort": "xhigh"}}`
 - **cwd**: working_directory (Codex can read files directly — pass file paths in prompt, not content)
 - **developer-instructions**: "You are an independent code auditor. Be adversarial. Focus on [mode focus areas]. Every finding must have a concrete file:line reference and a specific fix suggestion. [Severity ladder for mode — see above]. Report CRITICAL and HIGH only."
