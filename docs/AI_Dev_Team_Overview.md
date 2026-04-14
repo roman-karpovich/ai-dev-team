@@ -1,178 +1,165 @@
----
-title: AI Dev Team — Обзор и принципы работы
-tags: [ai, dev-team, workflow, knowledge-base]
-created: 2026-04-14
-updated: 2026-04-14
----
+# AI Dev Team — Overview and Principles
 
-# AI Dev Team
+## Why this exists
 
-## Зачем это нужно
+AI-assisted development without structure degrades quickly: context is lost between sessions, one model misses bugs another would catch, and it's unclear what's been done or why decisions were made.
 
-Разработка с AI-агентами без структуры быстро деградирует: контекст теряется между сессиями, одна модель пропускает баги которые видит другая, непонятно что уже сделано и почему приняты те или иные решения.
+The AI dev team solves three problems:
 
-AI dev team решает три проблемы:
-
-1. **Потеря контекста** — весь контекст живёт в Knowledge Base (Obsidian vault), а не в голове агента. Новая сессия — читаешь KB и продолжаешь с того же места.
-2. **Слепые пятна одной модели** — аудит всегда двумя независимыми моделями параллельно (Claude + Codex). Находят разные проблемы, вместе выявляют ложные срабатывания.
-3. **Размытая ответственность** — каждая роль делает одно конкретное дело, не пересекается с другими.
+1. **Context loss** — all context lives in the Knowledge Base (KB), not in the agent's memory. New session: read the KB and pick up exactly where you left off.
+2. **Single-model blind spots** — audits always run two independent models in parallel (Claude + Codex). They find different problems and together surface false positives.
+3. **Diffuse responsibility** — each role does one concrete thing and doesn't overlap with others.
 
 ---
 
-## Роли команды
+## Team roles
 
-| Роль | Модель | Что делает |
-|------|--------|-----------|
-| **Lead** | сессия пользователя | Оркестрирует команду, принимает решения, общается с разработчиком |
-| **Librarian** | Claude Sonnet | Управляет KB: поиск по запросу, создание документов с правильным форматом, обновление MOC-индексов |
-| **Explorer** | Claude Haiku | Исследует кодовую базу, возвращает структурированное summary (не raw файлы) |
-| **Architect** | Claude Opus | Проектирует решение, пишет спеку в KB |
-| **Developer Senior** | Claude Opus | Сложные задачи: новые абстракции, Soroban/contract, неопределённый scope, security-sensitive |
-| **Developer Middle** | Claude Sonnet | Чёткий scope по существующим паттернам: новый endpoint, тесты, функция по образцу |
-| **Developer Codex** | GPT-5.4 xhigh | **По умолчанию.** Экономит Claude-токены (корп подписка). Качество сопоставимо с Senior при чётком spec. Ограничение: получает контекст через промпт, не live filesystem |
-| **Auditor** | Claude Opus + Codex | Параллельный review: два режима × два вендора = 4 независимых взгляда |
-| **Verifier** | Claude Haiku | Запускает тесты, проверяет регрессии. Не пишет код |
+| Role | Model | Responsibility |
+|------|-------|----------------|
+| **Lead** | user's session | Orchestrates the team, makes decisions, communicates with the developer |
+| **Librarian** | Claude Sonnet | Manages the KB: search on request, create documents with correct format, update MOC indexes |
+| **Developer Senior** | Claude Opus | Complex tasks: new abstractions, Soroban/contracts, ambiguous scope, security-sensitive code |
+| **Developer Middle** | Claude Sonnet | Clear scope following existing patterns: new endpoint, tests, function by example |
+| **Developer Codex** | GPT-5.4 xhigh | **Default.** Saves Claude tokens (corporate subscription). Quality comparable to Senior given a clear spec. Reads files directly by path. |
+| **Auditor** | Claude Opus + Codex | Parallel review: two modes × two vendors = 4 independent perspectives |
+| **Verifier** | Claude Haiku | Runs tests, checks for regressions. Never writes code. |
 
-### Выбор разработчика
+### Choosing a developer
 
 ```
-Codex           ← по умолчанию, spec явный и файлы указаны явно
-Developer Middle ← Codex overhead не оправдан (мелкая правка в сессии)
-Developer Senior ← нужен широкий explore кодобазы или ambiguous scope
+Codex           ← default; spec is explicit and file paths are listed
+Developer Middle ← Codex overhead not worth it (small in-session edit)
+Developer Senior ← wide codebase exploration needed, or ambiguous scope
 ```
 
-Чем детальнее Architect написал spec с путями к файлам — тем лучше Codex справится на уровне Senior.
+The more detailed the spec (with explicit file paths), the closer Codex performs to Senior quality.
 
-### Принцип разделения KB-доступа
+### KB access division
 
-- **Только Librarian создаёт новые KB-документы** и обновляет MOC-индексы
-- Другие агенты **читают KB напрямую** по известным путям
-- Developer **обновляет чеклист в спеке напрямую** в процессе работы
-- Auditor передаёт findings Librarian-у → тот сохраняет в правильном формате
+- **Only Librarian creates new KB documents** and updates MOC indexes
+- Other agents **read KB directly** via known paths
+- Developer **updates the spec checklist directly** during implementation
+- Auditor writes findings directly to KB (two output files per audit)
 
 ---
 
-## KB-структура проекта
+## KB structure
 
-Следует той же конвенции что aquarius-knowledge: каждый проект в своей папке под `repos/`.
+Each project has its own subfolder under `repos/`.
 
 ```
 KB (Obsidian vault):
 └── repos/
     └── <project>/
         ├── design/
-        │   └── YYYY-MM-DD-<slug>.md              ← спека фичи
+        │   └── YYYY-MM-DD-<slug>.md               ← feature spec
         ├── security/
-        │   ├── YYYY-MM-DD-<slug>-findings.md      ← findings (накапливается между итерациями)
-        │   └── YYYY-MM-DD-<slug>-workdoc-iterN.md ← рабочий лог итерации (новый файл на итерацию)
+        │   ├── YYYY-MM-DD-<slug>-findings.md       ← findings (accumulates across iterations)
+        │   └── YYYY-MM-DD-<slug>-workdoc-iterN.md  ← per-iteration work log (new file each time)
         ├── postmortems/
-        │   └── YYYY-MM-DD-<slug>.md              ← разбор инцидентов
+        │   └── YYYY-MM-DD-<slug>.md               ← incident postmortems
         └── research/
-            └── YYYY-MM-DD-<slug>.md              ← исследования, расследования инцидентов
+            └── YYYY-MM-DD-<slug>.md               ← investigations, models, exploratory work
 ```
 
-**design/spec** — живой документ: Context, Current State, Design, Implementation Checklist, Branch, Verification, Log.
+**design/spec** — living document: Context, Current State, Design, Implementation Checklist, Branch, Verification, Log.
 
-**findings.md** — накапливается между итерациями аудита. Статусы: OPEN / FIXED / ACCEPTED / DEFERRED / INVALID.
+**findings.md** — accumulates across audit iterations. Statuses: `OPEN / FIXED / ACCEPTED / DEFERRED / INVALID`.
 
-**research/** — свободная форма с YAML frontmatter. Подтипы: `incident-investigation`, `math-model`, `competitive-analysis`, `exploration`. Статусы: ACTIVE / CONCLUDED / ARCHIVED. Используется когда: ещё рано писать postmortem (расследуем), нет чёткого спека (математическая модель, анализ конкурента), эксплораторная задача.
+**workdoc-iterN.md** — auditor's working draft for a specific iteration. New file each time — previous iterations preserved for reference but not auto-loaded into context.
 
-**workdoc-iterN.md** — рабочий черновик аудитора за конкретную итерацию. Создаётся новый файл каждый раз — старые доступны для справки, но не грузятся в контекст автоматически.
+**research/** — free-form with YAML frontmatter. Subtypes: `incident-investigation`, `math-model`, `competitive-analysis`, `exploration`. Statuses: `ACTIVE / CONCLUDED / ARCHIVED`. Use when: too early for a postmortem (still investigating), no clear spec yet (mathematical model, competitive analysis), purely exploratory work.
 
 ---
 
-## Workflow: жизненный цикл фичи
+## Workflow: feature lifecycle
 
 ```
-Phase 1 — Планирование
-  [Lead] ищет по KB на тему задачи ───────────────────→ KB context summary
-         читает кодовую базу ───────────────────────→ codebase summary
-         пишет spec draft → сохраняет в KB/repos/<project>/design/
-         при необходимости: [Librarian] обновляет MOC
-  ──── СТОП: разработчик approves спеку ────
+Phase 1 — Planning
+  [Lead] searches KB for relevant context ──────────→ KB context summary
+         reads codebase ──────────────────────────→ codebase summary
+         writes spec draft → saves to KB/repos/<project>/design/
+         if needed: [Librarian] updates MOC
+  ──── STOP: developer approves the spec ────
 
-Phase 2 — Реализация
-  [Developer*] читает spec напрямую → feature branch → реализует по чеклисту
-               обновляет чеклист в spec напрямую → мелкие логические коммиты
+Phase 2 — Implementation
+  [Developer*] reads spec → feature branch → implements per checklist
+               updates checklist directly → small logical commits
 
-  * Codex по умолчанию, Senior/Middle если нужен широкий explore или ambiguous scope
+  * Codex by default; Senior/Middle if wide exploration or ambiguous scope needed
 
-Phase 3 — Верификация
+Phase 3 — Verification
   [Verifier] cargo test / pytest / npm test → pass/fail report
-  FAIL → возврат к Developer; PASS → продолжаем
+  FAIL → back to Developer; PASS → continue
 
-Phase 4 — Аудит (параллельно)
-  [Auditor-logic]    ────────────────  [Auditor-security]
-  (Claude + Codex)                     (Claude + Codex)
-  4 независимых взгляда → сохраняет:
-    KB/repos/<project>/security/<slug>-findings.md       (merge)
-    KB/repos/<project>/security/<slug>-workdoc-iterN.md  (новый файл)
-  ──── СТОП: разработчик решает fix / accept / defer ────
+Phase 4 — Audit (parallel)
+  [Auditor-logic]    ──────────────  [Auditor-security]
+  (Claude + Codex)                   (Claude + Codex)
+  4 independent perspectives → saves to KB:
+    repos/<project>/security/<slug>-findings.md       (merge)
+    repos/<project>/security/<slug>-workdoc-iterN.md  (new file)
+  ──── STOP: developer decides fix / accept / defer per finding ────
 
-Phase 5 — Фикс
-  [Developer*] применяет выбранные исправления → коммиты в ту же ветку
+Phase 5 — Fix
+  [Developer*] applies selected fixes → commits to same branch
 
-Phase 6 — Re-audit (только diff)
-  Повтор Phase 4, findings.md обновляется, создаётся workdoc-iter(N+1).md
+Phase 6 — Re-audit (diff only)
+  Repeat Phase 4; findings.md updated, workdoc-iter(N+1).md created
 
-Phase 7 — Сдача (Hand-off)
-  [Lead] показывает список коммитов → по согласованию: git push + gh pr create
+Phase 7 — Hand-off
+  [Lead] presents commit list → on confirmation: git push + gh pr create
 ```
 
 ---
 
-## Git-конвенции для разработчиков
+## Git conventions for developers
 
-- Работа в **feature-ветке**: `feature/YYYY-MM-DD-<slug>` (или как указано в спеке)
-- База — master, если в спеке не указано другое (уточнять у Lead при неясности)
-- **Мелкие логические коммиты** — один коммит на шаг чеклиста
-- Сообщения коммитов: краткие, imperative mood. Без "Co-authored-by"
-- Push и PR — только Lead
-
----
-
-## Итерации и правки
-
-Поскольку весь контекст в KB, любое изменение — возобновление с нужной точки:
-
-- **Не нравится дизайн** → редактируешь spec в Obsidian → Architect переписывает нужные секции → approve → Developer продолжает
-- **Не нравится конкретный шаг** → Lead: "шаг 3 переделать, нужно X" → Developer спавнится только для этого шага
-- **Новая сессия** → `/feature continue KB/repos/<project>/design/<spec>.md` → агент читает spec, знает статус, продолжает без context recovery
-
-**Два обязательных момента ручного контроля:**
-1. После Phase 1 — approve спеку (код не пишется без одобрения)
-2. После Phase 3 — fix/accept/defer каждый finding
+- Work in a **feature branch**: `feature/YYYY-MM-DD-<slug>` (or as specified in spec)
+- Base branch is `master` unless spec says otherwise (confirm with user if unclear)
+- **Small logical commits** — one commit per checklist step
+- Commit messages: concise, imperative mood. No "Co-authored-by" lines.
+- Push and PR — user (Lead) only
 
 ---
 
-## Dual-model аудит: почему это важно
+## Iteration and changes
 
-Одна модель систематически пропускает определённые классы проблем. Два вендора параллельно:
+Since all context lives in KB, any change is just resuming from the right point:
 
-| Confidence | Условие | Действие |
-|------------|---------|----------|
-| **HIGH** | нашли и Claude, и Codex | точно фиксить |
-| **REVIEW** | нашёл только один | проверить вручную, возможен false positive |
+- **Don't like the design** → edit spec in Obsidian → Lead rewrites the relevant sections → approve → Developer continues
+- **Don't like a specific step** → tell Lead: "rework step 3, need X" → Developer spawns only for that step
+- **New session** → `/feature continue KB/repos/<project>/design/<spec>.md` → agent reads spec, knows status, continues without context recovery
 
-Два режима аудита запускаются как два параллельных teammate-а:
-- `logic` — корректность, edge cases, соглашения, performance
-- `security` — потеря средств, ключи, tx signing, overflow, slippage, MEV
-
-Итого 4 независимых взгляда на каждую фичу.
+**Two mandatory manual checkpoints:**
+1. After Phase 1 — approve the spec (no code is written without approval)
+2. After Phase 4 — fix/accept/defer each finding
 
 ---
 
-## Обнаружение KB
+## Dual-model audit: why it matters
 
-Агенты ищут KB автоматически:
+A single model systematically misses certain classes of problems. Two vendors in parallel:
 
-1. Проверяют memory на наличие пути для текущего проекта
-2. Ищут sibling-директорию с "knowledge" в имени (рядом с проектом)
-3. **Всегда подтверждают у разработчика** перед использованием
-4. Если не найден — спрашивают где создать (Obsidian vault format)
+| Confidence | Condition | Action |
+|------------|-----------|--------|
+| **HIGH** | both Claude and Codex found it | definitely fix |
+| **REVIEW** | only one found it | verify manually — possible false positive |
 
-После подтверждения путь сохраняется в memory — в следующих сессиях не переспрашивает.
+Two audit modes run as two parallel agents:
+- `logic` — correctness, edge cases, conventions, performance
+- `security` — fund loss, key handling, tx signing, overflow, slippage, MEV
+
+4 independent perspectives on every feature.
 
 ---
 
-*Связанные заметки*: [[combine ai agents together]]
+## KB discovery
+
+Agents find the KB automatically:
+
+1. Check memory for a known KB path for the current project
+2. Search for a sibling directory with "knowledge" in the name (next to the project)
+3. **Always confirm with the developer** before using
+4. If not found — ask where to create one (Obsidian vault format)
+
+After confirmation the path is saved to memory — not asked again in future sessions.
