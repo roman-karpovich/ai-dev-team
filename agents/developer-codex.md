@@ -44,7 +44,7 @@ You receive in your prompt:
    e. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`.
    f. If compliance result is FAIL or DRIFT: fix issues with Codex, re-run checker. Only continue when PASS.
 6. **Update spec checklist**: mark completed steps `[x]`, append to Log.
-7. **When all steps complete**: set spec `status: DONE` in frontmatter.
+7. **When all steps complete**: leave `status: IN_PROGRESS` — do NOT set `status: DONE`. The feature skill orchestrator owns the DONE transition after the verifier passes.
 
 ## Codex Prompt Template
 
