@@ -14,68 +14,40 @@ Structured AI development workflow for Claude Code. Specs, audit findings, and r
 
 ## Install
 
-### Option A — Plugin (recommended)
-
-The plugin injects the workflow orientation into every Claude Code session globally — no per-project `CLAUDE.md` needed.
-
 ```bash
 claude plugin marketplace add roman-karpovich/ai-dev-team
 claude plugin install ai-dev-team
 ```
 
-Then run `install.sh` to set up agents, skills, and Codex MCP:
+Two one-time manual steps after install:
 
-```bash
-git clone git@github.com:roman-karpovich/ai-dev-team.git
-cd ai-dev-team
-./install.sh
+**1. Enable agent teams** — add to `~/.claude/settings.json`:
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
 ```
 
-Restart Claude Code after install.
-
-### Option B — CLAUDE.md snippet
-
-If you prefer per-project setup (or plugins aren't available in your Claude Code version):
-
-```bash
-git clone git@github.com:roman-karpovich/ai-dev-team.git
-cd ai-dev-team
-./install.sh
-```
-
-`install.sh` offers to append the workflow snippet to your project's `CLAUDE.md`. You can also add it manually from `docs/claude-md-snippet.md`.
-
-### What install.sh does
-
-- Copies agents and skills to `~/.claude/`
-- Enables agent teams in `~/.claude/settings.json`
-- Registers the Codex MCP server if the `codex` CLI is available
-- Offers to add the workflow snippet to your project's `CLAUDE.md`
-
-Restart Claude Code after install.
-
-### Codex MCP (manual)
-
-If `install.sh` couldn't register Codex automatically:
-
+**2. Register Codex MCP** (required for `cross-audit`, `investigate`, `developer-codex`):
 ```bash
 claude mcp add codex -s user -- codex mcp-server
 ```
 
-Model and reasoning effort come from `~/.codex/config.toml` — nothing is hardcoded in agents:
-
+Model and reasoning effort come from `~/.codex/config.toml`:
 ```toml
 model = "gpt-5.4"
 model_reasoning_effort = "xhigh"
 ```
 
-To upgrade to a newer Codex model: update `config.toml` once, all agents pick it up.
+Restart Claude Code after install.
 
 ---
 
 ## Ambient workflow
 
-Add the snippet from `docs/claude-md-snippet.md` to your project's `CLAUDE.md`. After that, Claude knows when to use which skill automatically — no slash commands required:
+After install, Claude knows when to use which skill automatically — no slash commands required:
 
 | You say... | Claude does |
 |---|---|
@@ -267,6 +239,5 @@ A step is not done until `green_capture` exists and matches `expected_pass_patte
 ## Updating
 
 ```bash
-cd ~/path/to/ai-dev-team
-git pull && ./install.sh
+claude plugin update ai-dev-team
 ```
