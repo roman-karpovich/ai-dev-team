@@ -139,6 +139,7 @@ Spawn `cross-auditor` subagent with:
 - `project`: `<project>`
 - `audit_slug`: `<slug>-spec`
 - `iteration`: 1
+- `working_directory`: `<cwd>` (current working directory — Codex needs this to read files)
 - (omit `kb_path` — spec mode does not write to KB)
 
 In the spawn prompt, include the workdoc path explicitly so the auditor reviews both documents:
@@ -186,9 +187,9 @@ Before starting implementation, ask the user which agent to use:
 > 2. **Senior (Opus)** — only when Codex falls short: highly ambiguous scope, extensive codebase exploration needed, ultra-complex cross-cutting changes
 > 3. **Middle (Sonnet)** — quick in-session fixes where spawning Codex is overkill (trivial one-liner changes, typos, small config edits)
 
-**Rule of thumb**: prefer Codex unless the task requires broad live filesystem exploration or has genuinely ambiguous scope that Architect couldn't fully specify. When in doubt — try Codex first.
+**Rule of thumb**: prefer Codex unless the task requires broad live filesystem exploration or has genuinely ambiguous scope that the feature spec couldn't fully specify. When in doubt — try Codex first.
 
-If the Architect tagged steps in the spec with a developer level, use that. Otherwise default to Codex.
+If the feature spec tagged steps with a developer level, use that. Otherwise default to Codex.
 
 #### Option 1: Senior (developer-senior agent)
 
@@ -295,10 +296,14 @@ On confirmation: `git checkout <base-branch> && git branch -D <branch>`.
 When resuming (`/feature continue` or `/feature <spec-path>`):
 
 1. Run KB discovery (Phase 0)
-2. Read the spec file
-3. Report current state: phase, completed steps, next step, blockers
-4. Ask which agent to use for remaining work
-5. Proceed with the next unchecked step
+2. Read the spec file. Check the `status` field in frontmatter:
+   - `DRAFT` → Spec not yet approved. Present it to the user and ask for approval. Resume from Step 3 (Get approval).
+   - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
+   - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
+   - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use.
+   - `DONE` → All steps complete. If Verify hasn't been run yet, run it now. Otherwise proceed to Hand-off.
+3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
+4. Ask which agent to use for remaining work (only if resuming implementation)
 
 ---
 

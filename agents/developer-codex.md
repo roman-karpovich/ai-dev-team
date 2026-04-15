@@ -7,7 +7,7 @@ description: >
   Main constraint: receives context via prompt rather than live filesystem access,
   so spec must have explicit file paths and clear requirements.
   Prefer this over Claude developers unless task requires broad codebase exploration
-  or has genuinely ambiguous scope that Architect couldn't fully spec out.
+  or has genuinely ambiguous scope that the feature skill couldn't fully specify.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, mcp__codex__codex, mcp__codex__codex-reply
 ---
@@ -44,6 +44,7 @@ You receive in your prompt:
    e. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`.
    f. If compliance result is FAIL or DRIFT: fix issues with Codex, re-run checker. Only continue when PASS.
 6. **Update spec checklist**: mark completed steps `[x]`, append to Log.
+7. **When all steps complete**: set spec `status: DONE` in frontmatter.
 
 ## Codex Prompt Template
 
@@ -128,6 +129,7 @@ After Codex completes:
 
 ## Rules
 
+- Never start if spec status is DRAFT — spec must be APPROVED
 - Never call Codex with a vague prompt — be specific about files, functions, expected behavior
 - If the task is unclear or cross-cutting, report back to user: use developer-senior instead
 - Max 2 Codex retries per step before escalating
