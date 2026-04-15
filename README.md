@@ -14,13 +14,39 @@ Structured AI development workflow for Claude Code. Specs, audit findings, and r
 
 ## Install
 
+### Option A — Plugin (recommended)
+
+The plugin injects the workflow orientation into every Claude Code session globally — no per-project `CLAUDE.md` needed.
+
+```bash
+claude plugin marketplace add roman-karpovich/ai-dev-team
+claude plugin install ai-dev-team
+```
+
+Then run `install.sh` to set up agents, skills, and Codex MCP:
+
 ```bash
 git clone git@github.com:roman-karpovich/ai-dev-team.git
 cd ai-dev-team
 ./install.sh
 ```
 
-The script:
+Restart Claude Code after install.
+
+### Option B — CLAUDE.md snippet
+
+If you prefer per-project setup (or plugins aren't available in your Claude Code version):
+
+```bash
+git clone git@github.com:roman-karpovich/ai-dev-team.git
+cd ai-dev-team
+./install.sh
+```
+
+`install.sh` offers to append the workflow snippet to your project's `CLAUDE.md`. You can also add it manually from `docs/claude-md-snippet.md`.
+
+### What install.sh does
+
 - Copies agents and skills to `~/.claude/`
 - Enables agent teams in `~/.claude/settings.json`
 - Registers the Codex MCP server if the `codex` CLI is available
