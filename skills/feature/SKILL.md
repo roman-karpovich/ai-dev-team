@@ -50,18 +50,16 @@ Read both KB and codebase before writing anything:
 3. Explore source code in the project directory: understand architecture, existing patterns, files that will change
 4. Identify: reusable patterns, files to change, dependencies, risks, what already exists
 
-### Step 2 — Write spec
+### Step 2 — Write spec and initialize execution workdoc
 
-You (the feature skill orchestrator) write the spec directly — you are the author and sole owner of the spec document. Spawn **Librarian** only if you need to update MOC indexes afterward.
+You (the feature skill orchestrator) write both artifacts directly.
 
-Create the spec at `<kb_path>/repos/<project>/design/YYYY-MM-DD-<slug>.md`. Create the directory if it doesn't exist.
-
-Use the template from `references/spec-template.md`. Key sections:
+**Spec**: create at `<kb_path>/repos/<project>/design/YYYY-MM-DD-<slug>.md`. Create the directory if it doesn't exist. Use the template from `references/spec-template.md`. Key sections:
 - **Context** — why this feature exists
 - **Current State** — how the system works today (reference KB pages and source files)
 - **Design** — changes table, data model, API, configuration
 - **Branch** — `feature/YYYY-MM-DD-<slug>` (or specify different base if needed)
-- **Implementation Checklist** — ordered, concrete steps (each is a reviewable unit)
+- **Implementation Checklist** — ordered, concrete steps (each is a reviewable behavioral unit)
 - **Verification** — how to test end-to-end
 - **Log** — append-only decisions and progress
 
@@ -77,40 +75,101 @@ tags: [spec, <project>]
 ---
 ```
 
+**Execution workdoc**: create at `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`. Also create `captures/` directory (it will hold test output files written during implementation).
+
+For each checklist step, write a `planned` block in exec.md:
+```yaml
+## Step N: <step title from checklist>
+
+### Planned
+goal: <one sentence — the observable behavioral change>
+allowed_scope: <glob for files this step may touch, e.g. src/module/**>
+failing_test_cmd: <command to run before implementation — empty if no test>
+expected_failure_pattern: <substring expected in failure output>
+passing_test_cmd: <command to run after implementation>
+expected_pass_pattern: <substring expected in passing output>
+integration_probe_cmd: (optional — command to confirm feature is reachable at runtime)
+expected_probe_signal: (optional)
+
+### Observed
+actual_files_touched: []
+commit_shas: []
+red_capture: captures/step-NN-red.txt
+green_capture: captures/step-NN-green.txt
+probe_capture:
+notes: ""
+```
+
+Leave all `observed` fields empty — the developer fills them during implementation.
+
+Spawn **Librarian** only if you need to update MOC indexes afterward.
+
 ### Step 3 — Get approval
 
 Present a summary and wait for user approval before implementing. Never start implementation without explicit go-ahead. Set spec `status: APPROVED` after approval.
 
-### Step 3.5 — Spec audit
+### Step 3.5 — Spec review (two passes)
 
-After approval, run a cross-audit on the spec document itself before any code is written. This catches design problems when they're cheapest to fix.
+After approval, review the spec and execution workdoc before any code is written.
+
+#### Pass 1: Self-review (orchestrator)
+
+Before calling any agent, check both documents for basic completeness:
+
+- No placeholder text (`{...}`, `TBD`, etc.) in spec or workdoc planned fields
+- Every checklist step has a corresponding entry in exec.md with `planned.goal` and `planned.passing_test_cmd` at minimum
+- `allowed_scope` is set for every step (not empty)
+- No step depends on something defined in a later step
+- `planned.failing_test_cmd` is either set or intentionally empty (not just forgotten — flag if the step's goal implies testable behavior)
+- Spec `Verification` section describes concrete commands, not vague prose
+
+If any check fails: fix the spec/workdoc directly (or ask the user for the missing information) before proceeding to Pass 2.
+
+#### Pass 2: Cross-audit (dual-model)
 
 Spawn `cross-auditor` subagent with:
-- `scope`: `<spec_path>` (the spec file itself, not code)
+- `scope`: `<spec_path>` (the spec file — cross-auditor will also read the execution workdoc)
 - `mode`: `spec`
 - `project`: `<project>`
 - `audit_slug`: `<slug>-spec`
 - `iteration`: 1
 - (omit `kb_path` — spec mode does not write to KB)
 
-The cross-auditor will return findings inline (no KB writes in spec mode).
+In the spawn prompt, include the workdoc path explicitly so the auditor reviews both documents:
+> "Also review the execution workdoc at `<workdoc_path>`. Check planned fields for completeness, coherence with the spec, and sound sequencing."
+
+The cross-auditor returns findings inline (no KB writes in spec mode).
 
 **If CRITICAL or HIGH findings:**
 1. Present findings to user
-2. User updates the spec (in Obsidian, or ask: "fix step N: <what to change>")
-3. Re-run spec audit: spawn `cross-auditor` again with `iteration: 2`
-4. Repeat until no CRITICAL/HIGH remain open
+2. Update spec/workdoc (user edits in Obsidian, or ask Claude to apply the fix)
+3. Re-run Pass 1 self-review, then spawn cross-auditor again with `iteration: 2`
+4. Repeat until no CRITICAL/HIGH remain
 5. Set spec `status: AUDIT_PASSED`
 
 **If no CRITICAL or HIGH findings:**
-> "Spec audit passed — no critical issues found. Ready to proceed with implementation?"
+> "Spec review passed. Ready to proceed with implementation?"
 Set spec `status: AUDIT_PASSED`.
 
-**Skip**: if user says "skip spec audit", "proceed anyway", or similar — skip this step, keep `status: APPROVED`, and continue to implementation.
+**Skip**: user says "skip spec audit" or "proceed anyway" — skip both passes, keep `status: APPROVED`.
 
 ---
 
 ## Implement
+
+### Baseline test
+
+Before spawning any developer, run the **verifier** subagent on the base branch to establish a clean baseline:
+
+```
+project_path: <project_path>
+task: "Run the full test suite on the current branch and report pass/fail. Do not modify any files."
+```
+
+- **All green**: proceed to agent selection.
+- **Any failures**: stop. Report to user: "Baseline is not clean — N test(s) failing before any new code. Resolve these first or they'll be falsely attributed to the new feature."
+
+This step is skipped if the project has no test suite (verifier will report "no tests found").
 
 ### Agent selection
 
@@ -129,6 +188,7 @@ If the Architect tagged steps in the spec with a developer level, use that. Othe
 
 Spawn `developer-senior` subagent with:
 - `spec_path`: path to the spec file
+- `workdoc_path`: `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`
 - `project_path`: path to the source repo
 - `task`: "full spec" or specific steps
 
@@ -136,6 +196,7 @@ Spawn `developer-senior` subagent with:
 
 Spawn `developer-middle` subagent with:
 - `spec_path`: path to the spec file
+- `workdoc_path`: `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`
 - `project_path`: path to the source repo
 - `task`: "full spec" or specific steps
 
@@ -143,6 +204,7 @@ Spawn `developer-middle` subagent with:
 
 Spawn `developer-codex` subagent with:
 - `spec_path`: path to the spec file
+- `workdoc_path`: `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`
 - `project_path`: path to the source repo
 - `task`: steps to implement (works best when spec has explicit file paths and clear requirements)
 

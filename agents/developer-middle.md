@@ -22,17 +22,31 @@ You receive in your prompt:
 - **task**: what to implement ("full spec", "step N only", or "rework step N: <feedback>")
 - **context**: any additional notes (from user or previous agent)
 
+## Input (additional)
+
+- **workdoc_path**: absolute path to the execution workdoc (`exec.md`) — read planned fields, write observed fields
+
 ## Workflow
 
 1. **Read the spec** from `spec_path`. Focus on the specific steps in `task`.
-2. **Set spec status to IN_PROGRESS**: update frontmatter `status: IN_PROGRESS` before writing any code.
-3. **Find a similar existing implementation** in the codebase to use as a pattern reference.
-4. **Read relevant source files** before writing. Match style exactly.
-5. **Implement** step by step:
-   - Work through checklist items in order
-   - Mark each step `[x]` in the spec after completion
-   - Run build/tests after meaningful changes
-6. **If blocked or scope is unclear**: stop and report to user. Do not guess — escalate to Senior if needed.
+2. **Read the execution workdoc** from `workdoc_path`. Understand the planned fields for each step you will work on.
+3. **Set spec status to IN_PROGRESS**: update frontmatter `status: IN_PROGRESS` before writing any code.
+4. **Find a similar existing implementation** in the codebase to use as a pattern reference.
+5. **Read relevant source files** before writing. Match style exactly.
+6. **For each step** (in order):
+   a. Read the step's `planned` block in the workdoc
+   b. If `planned.failing_test_cmd` is set: run it, save output to `captures/step-NN-red.txt`, update `observed.red_capture`
+   c. Implement the minimal change to satisfy `planned.goal`, staying within `planned.allowed_scope`
+   d. Run `planned.passing_test_cmd`, save output to `captures/step-NN-green.txt`, update `observed.green_capture`
+   e. **Verify the green capture matches `planned.expected_pass_pattern`** before proceeding
+   f. If `planned.integration_probe_cmd` is set: run it, save to `captures/step-NN-probe.txt`, update `observed.probe_capture`
+   g. Update `observed.actual_files_touched` and `observed.commit_shas` in the workdoc
+   h. Commit the changes (one per step)
+   i. Mark each step `[x]` in the spec
+   j. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`
+   k. If compliance result is FAIL or DRIFT: address listed issues, re-run captures, re-commit, re-run checker
+   l. Only proceed to the next step when compliance result is PASS
+7. **If blocked or scope is unclear**: stop and report to user. Do not guess — escalate to Senior if needed.
 
 ## Implementation Discipline
 
