@@ -81,6 +81,33 @@ tags: [spec, <project>]
 
 Present a summary and wait for user approval before implementing. Never start implementation without explicit go-ahead. Set spec `status: APPROVED` after approval.
 
+### Step 3.5 — Spec audit
+
+After approval, run a cross-audit on the spec document itself before any code is written. This catches design problems when they're cheapest to fix.
+
+Spawn `cross-auditor` subagent with:
+- `scope`: `<spec_path>` (the spec file itself, not code)
+- `mode`: `spec`
+- `project`: `<project>`
+- `audit_slug`: `<slug>-spec`
+- `iteration`: 1
+- (omit `kb_path` — spec mode does not write to KB)
+
+The cross-auditor will return findings inline (no KB writes in spec mode).
+
+**If CRITICAL or HIGH findings:**
+1. Present findings to user
+2. User updates the spec (in Obsidian, or ask: "fix step N: <what to change>")
+3. Re-run spec audit: spawn `cross-auditor` again with `iteration: 2`
+4. Repeat until no CRITICAL/HIGH remain open
+5. Set spec `status: AUDIT_PASSED`
+
+**If no CRITICAL or HIGH findings:**
+> "Spec audit passed — no critical issues found. Ready to proceed with implementation?"
+Set spec `status: AUDIT_PASSED`.
+
+**Skip**: if user says "skip spec audit", "proceed anyway", or similar — skip this step, keep `status: APPROVED`, and continue to implementation.
+
 ---
 
 ## Implement

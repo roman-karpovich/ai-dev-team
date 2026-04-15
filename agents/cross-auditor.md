@@ -17,7 +17,7 @@ You perform TWO parallel audits (Claude + Codex), then consolidate findings into
 You receive a prompt with:
 - **scope**: files/directories/feature area to audit
 - **project_type**: smart_contract | backend | frontend | data_pipeline
-- **mode**: `logic` | `security` | `full` (default: `full`)
+- **mode**: `logic` | `security` | `full` | `spec` (default: `full`; use `spec` to audit the spec document before implementation)
 - **kb_path**: absolute path to the Knowledge Base root (Obsidian vault)
 - **project**: project name used for KB path construction (e.g. `stellar-arbiter`)
 - **audit_slug**: slug for naming the output documents (e.g. `2026-04-14-mta-refactor`)
@@ -52,6 +52,19 @@ You receive a prompt with:
 ### `full` mode
 Run both `logic` and `security` focus areas in the same pass.
 
+### `spec` mode
+
+Reviews a **feature spec document** (not code) before implementation begins. The audit target is the spec file itself.
+
+- **Completeness**: are all edge cases and failure modes addressed?
+- **Clarity**: each checklist step is atomic and unambiguous — a developer can implement it without guessing
+- **Dependencies**: all files, external services, data structures, config keys explicitly named
+- **Sequencing**: checklist steps in valid dependency order — no step depends on a later step
+- **Correctness**: does the proposed design actually solve the stated problem?
+- **Verification gaps**: will the verification steps actually detect a broken implementation?
+- **Scope**: no hidden cross-cutting concerns, no missing inter-service impacts
+- **Risk**: significant technical risks not mentioned in the spec
+
 ## Severity Ladder (mode-dependent)
 
 Use this for both your own findings and the Codex prompt:
@@ -64,7 +77,11 @@ Use this for both your own findings and the Codex prompt:
 - CRITICAL: wrong output / broken workflow (data integrity failure)
 - HIGH: serious edge case, performance catastrophe, contract violation
 
-Both modes: collect only CRITICAL and HIGH. MEDIUM/LOW are out of scope for this workflow.
+**spec mode:**
+- CRITICAL: spec is unimplementable as written (circular dependency between steps, missing critical file path, contradictory requirements, checklist steps so vague implementation is undefined)
+- HIGH: ambiguous step where a developer will likely guess wrong, missing error/failure path that is definitely needed, significant technical risk not mentioned, verification steps that cannot detect a broken implementation
+
+All modes: collect only CRITICAL and HIGH. MEDIUM/LOW are out of scope for this workflow.
 
 ## Finding ID Format
 
@@ -91,9 +108,9 @@ Use `mcp__codex__codex` with:
 - **model**: omit — uses default from `~/.codex/config.toml`
 - **config**: `{"reasoning": {"effort": "xhigh"}}`
 - **cwd**: working_directory (Codex can read files directly — pass file paths in prompt, not content)
-- **developer-instructions**: "You are an independent code auditor. Be adversarial. Focus on [mode focus areas]. Every finding must have a concrete file:line reference and a specific fix suggestion. [Severity ladder for mode — see above]. Report CRITICAL and HIGH only."
+- **developer-instructions**: for `spec` mode use: "You are an independent spec reviewer. Be adversarial. Focus on spec quality: completeness, clarity, sequencing, correctness, verification coverage. Every finding must reference the specific section/step of the spec and include a concrete suggestion. Report CRITICAL and HIGH only." For code modes use: "You are an independent code auditor. Be adversarial. Focus on [mode focus areas]. Every finding must have a concrete file:line reference and a specific fix suggestion. [Severity ladder for mode — see above]. Report CRITICAL and HIGH only."
 
-Codex prompt template:
+**Code mode** Codex prompt template:
 ```
 AUDIT of [scope] in [project].
 Working directory: [working_directory]
@@ -103,6 +120,17 @@ Files to audit: [list paths — Codex reads them directly]
 Previously fixed (skip these): [previously_fixed list]
 [Severity ladder for mode]. Report CRITICAL/HIGH only.
 For each finding: file:line, description, concrete fix suggestion.
+```
+
+**Spec mode** Codex prompt template:
+```
+SPEC REVIEW of [spec_path] for project [project].
+Working directory: [working_directory]
+Mode: spec
+Read the spec file at: [spec_path]
+Focus areas: completeness, clarity, sequencing, correctness, dependency mapping, verification coverage, scope, risk
+[Severity ladder for spec mode]. Report CRITICAL/HIGH only.
+For each finding: spec section/step reference, description, concrete fix suggestion.
 ```
 
 For **diff mode** (when base_branch is set): scope the audit to changed files only.
@@ -133,7 +161,9 @@ Filter out `previously_fixed` items from both lists before consolidation.
 
 ## Step 4: Write Output Documents
 
-Write TWO documents to the KB. If `kb_path` and `project` are provided:
+**`spec` mode exception**: do NOT write files. Return the consolidated findings as your inline output message to the caller (the feature skill). Format as a readable markdown report with a summary table and details section — the same structure as findings.md, but returned as the agent response, not written to disk. Spec audit findings are transient; once the spec is fixed, the issues are gone.
+
+For all other modes, write TWO documents to the KB. If `kb_path` and `project` are provided:
 - findings: `<kb_path>/repos/<project>/security/<audit_slug>-findings.md`
 - workdoc: `<kb_path>/repos/<project>/security/<audit_slug>-workdoc-iter<N>.md` (N = iteration number)
 

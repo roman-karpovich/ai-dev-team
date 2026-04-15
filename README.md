@@ -67,12 +67,13 @@ What happens:
 1. Claude reads the codebase and searches KB for relevant context
 2. Writes a spec to `<kb>/repos/<project>/design/YYYY-MM-DD-<slug>.md`
 3. **Stops and shows you the spec** — you review and approve (or ask for changes)
-4. After approval: asks which developer to use (Codex by default)
-5. Developer implements on a feature branch, marks checklist steps as it goes
-6. Verifier runs tests
-7. Asks if you want to push and open a PR
+4. **Spec audit** — Claude + Codex review the spec for design problems (missing deps, ambiguous steps, ordering issues). Findings presented inline; you fix the spec or say "proceed anyway"
+5. After audit passes: asks which developer to use (Codex by default)
+6. Developer implements on a feature branch, marks checklist steps as it goes
+7. Verifier runs tests
+8. Asks if you want to push and open a PR
 
-You always see the spec before a single line of code is written.
+You always see the spec before a single line of code is written. The spec audit catches design problems before implementation begins.
 
 ### Resuming in a new session
 
