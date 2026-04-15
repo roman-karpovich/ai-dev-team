@@ -106,7 +106,13 @@ Spawn **Librarian** only if you need to update MOC indexes afterward.
 
 ### Step 3 — Get approval
 
-Present a summary and wait for user approval before implementing. Never start implementation without explicit go-ahead. Set spec `status: APPROVED` after approval.
+Present a summary and wait for user approval before implementing.
+
+<HARD-GATE>
+Do NOT spawn any developer agent, write any code, or take any implementation action until the user has explicitly approved the spec. This applies to every feature regardless of perceived simplicity. "It looks straightforward" is not approval.
+</HARD-GATE>
+
+Set spec `status: APPROVED` after explicit user approval.
 
 ### Step 3.5 — Spec review (two passes)
 
@@ -235,14 +241,52 @@ scope: <list of changed files from spec checklist>
 
 ## Hand-off
 
-After verify passes:
+After verify passes, show the commit list and present exactly these 4 options:
 
-1. Present the commit list: `git log --oneline <base>..<branch>`
-2. Ask user: "Ready to push? I'll run `git push -u origin <branch>` and open a PR draft."
-3. On confirmation:
-   - Push the branch
-   - Offer to create PR: `gh pr create --draft --title "<feature title>" --body "Spec: <spec_path>"`
-4. On decline: leave branch local, remind user the branch is ready.
+```
+git log --oneline <base>..<branch>
+
+Implementation complete. What would you like to do?
+
+1. Merge into <base-branch> locally
+2. Push and open a PR
+3. Keep the branch as-is (I'll handle it later)
+4. Discard this work
+
+Which option?
+```
+
+**Option 1 — Merge locally:**
+```bash
+git checkout <base-branch> && git pull && git merge <branch>
+```
+Run verifier once more on the merged result. If green: `git branch -d <branch>`.
+
+**Option 2 — Push and PR:**
+```bash
+git push -u origin <branch>
+gh pr create --draft --title "<feature title>" --body "$(cat <<'EOF'
+## Summary
+<2-3 bullets>
+
+## Test plan
+<verification steps from spec>
+
+Spec: <spec_path>
+EOF
+)"
+```
+
+**Option 3 — Keep as-is:** Do nothing. Report the branch name.
+
+**Option 4 — Discard:** Confirm first:
+```
+This will permanently delete branch <name> and all commits:
+<commit list>
+
+Type 'discard' to confirm.
+```
+On confirmation: `git checkout <base-branch> && git branch -D <branch>`.
 
 ---
 
