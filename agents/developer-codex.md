@@ -9,7 +9,7 @@ description: >
   Prefer this over Claude developers unless task requires broad codebase exploration
   or has genuinely ambiguous scope that the feature skill couldn't fully specify.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, mcp__codex__codex, mcp__codex__codex-reply
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, mcp__codex__codex, mcp__codex__codex-reply
 ---
 
 # Developer Agent (Codex)

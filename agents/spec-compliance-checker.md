@@ -28,9 +28,17 @@ You receive:
 - Read the execution workdoc at `workdoc_path` — read the `planned` and `observed` fields for the step
 - In `project_path`: run `git log --oneline -5` and `git show --stat HEAD` to see what was actually committed
 
+### 1b. Resolve capture paths
+
+Before reading any capture file: resolve paths relative to `dirname(workdoc_path)`. If `observed.<field>` is an absolute path, use it as-is. If it is relative (e.g. `captures/step-02-green.txt`), join it with the workdoc directory: `<dirname(workdoc_path)>/<observed.<field>>`. Never read relative to `project_path` or cwd.
+
 ### 2. Diff review
 
-Run `git diff HEAD~1 HEAD` (or against the commit SHA in `observed.commit_shas`) in `project_path`.
+Read `observed.commit_shas` from the workdoc — this is an ordered list of all commits for this step (including any fixup commits from FAIL/DRIFT retries).
+
+- If the list has **one entry**: run `git diff <sha>^ <sha>` in `project_path`.
+- If the list has **multiple entries**: run `git diff <first_sha>^ <last_sha>` to review the full range of the step. This ensures fixup commits are included.
+- If `observed.commit_shas` is empty: run `git diff HEAD~1 HEAD` as a fallback, but flag a DRIFT: "observed.commit_shas is empty — diff may be incomplete."
 
 Read the full diff. Check:
 - **Scope compliance**: do the touched files match `planned.allowed_scope`? Flag any file outside scope.

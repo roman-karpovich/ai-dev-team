@@ -108,10 +108,12 @@ When cross-auditor completes:
 When user invokes `/cross-audit <findings-doc-path>`:
 
 1. Read the existing findings doc
-2. Extract previously_fixed items (FIXED + ACCEPTED)
-3. Launch cross-auditor again (`--diff` mode preferred — only audit changes)
+2. Extract two separate lists:
+   - `fixed_ids`: IDs with status `FIXED` — the auditor will verify these and flip to VERIFIED if confirmed
+   - `accepted_ids`: IDs with status `ACCEPTED` or `DEFERRED` — skip re-reporting, preserve their status (do NOT flip to FIXED)
+3. Launch cross-auditor with both lists: `previously_fixed: <fixed_ids>`, `accepted_ids: <accepted_ids>`
 4. Agent verifies fixes and looks for new issues
-5. On completion: findings doc updated, workdoc overwritten, present delta
+5. On completion: findings doc updated, new workdoc-iter<N>.md created, present delta
 
 ### Convergence
 - **COMPLETE** when no CRITICAL or HIGH findings remain OPEN
