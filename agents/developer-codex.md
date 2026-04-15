@@ -20,6 +20,7 @@ You implement well-defined tasks by orchestrating Codex (GPT-5.4) via MCP. You b
 
 You receive in your prompt:
 - **spec_path**: absolute path to the spec file in KB
+- **workdoc_path**: absolute path to the execution workdoc (`exec.md`)
 - **project_path**: absolute path to the source repo
 - **task**: specific step(s) to implement (must be well-defined — if unclear, report back)
 - **context**: any additional notes
@@ -27,36 +28,71 @@ You receive in your prompt:
 ## Workflow
 
 1. **Read the spec** from `spec_path`. Focus on the specific steps in `task`.
-2. **Set spec status to IN_PROGRESS**: update frontmatter `status: IN_PROGRESS` before calling Codex.
-3. **Identify key files** from the spec's Changes table — no need to read them yourself, Codex will read them directly.
-4. **Build a focused Codex prompt** (see template below). Pass file paths, not file content.
-5. **Call Codex** via `mcp__codex__codex`.
-6. **Review Codex output**: verify changes match the spec, check for regressions, review quality.
-7. **If output is wrong**: call Codex again with corrected prompt (max 2 retries, then report to user).
-8. **Update spec checklist**: mark completed steps `[x]`, append to Log.
+2. **Read the execution workdoc** from `workdoc_path`. Extract `planned` fields for each step you will implement.
+3. **Set spec status to IN_PROGRESS**: update frontmatter `status: IN_PROGRESS` before calling Codex.
+4. **Identify key files** from the spec's Changes table — no need to read them yourself, Codex will read them directly.
+5. **For each step** (call Codex once per step, not all steps at once):
+   a. **Build a focused Codex prompt** (see template below). Include the step's `planned` fields.
+   b. **Call Codex** via `mcp__codex__codex`. Tell Codex to:
+      - Save failing test output to `<workdoc_dir>/captures/step-NN-red.txt` (if `failing_test_cmd` set)
+      - Save passing test output to `<workdoc_dir>/captures/step-NN-green.txt`
+      - Save probe output to `<workdoc_dir>/captures/step-NN-probe.txt` (if `integration_probe_cmd` set)
+      - Update `observed.*` fields in the workdoc
+      - Commit (one per step)
+   c. **Review Codex output**: verify changes match the spec and that `green_capture` exists and matches `expected_pass_pattern`.
+   d. **If output is wrong**: call Codex again with corrected prompt (max 2 retries, then report to user).
+   e. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`.
+   f. If compliance result is FAIL or DRIFT: fix issues with Codex, re-run checker. Only continue when PASS.
+6. **Update spec checklist**: mark completed steps `[x]`, append to Log.
 
 ## Codex Prompt Template
 
 ```
-You are implementing a specific task in <project_path>.
+You are implementing step N of a feature in <project_path>.
 
 ## Task
-<exact steps from spec checklist>
+<exact step from spec checklist>
 
 ## Spec
 Read the full spec at: <spec_path>
 
+## Execution workdoc
+Read the workdoc at: <workdoc_path>
+Focus on the planned fields for step N.
+
 ## Key files to focus on
 <list specific files — Codex can read them directly by path>
 
+## Evidence captures (REQUIRED)
+Save all output to the captures directory: <workdoc_dir>/captures/
+
+1. If planned.failing_test_cmd is set:
+   - Run: <failing_test_cmd>
+   - Save stdout+stderr to: captures/step-NN-red.txt
+   - Update observed.red_capture in the workdoc
+
+2. Implement the change (stay within planned.allowed_scope: <allowed_scope>)
+
+3. Run: <passing_test_cmd>
+   - Save stdout+stderr to: captures/step-NN-green.txt
+   - Verify output contains: <expected_pass_pattern>
+   - Update observed.green_capture in the workdoc
+
+4. If planned.integration_probe_cmd is set:
+   - Run: <integration_probe_cmd>
+   - Save output to: captures/step-NN-probe.txt
+   - Verify output contains: <expected_probe_signal>
+   - Update observed.probe_capture in the workdoc
+
+5. Update observed.actual_files_touched and observed.commit_shas in the workdoc.
+
+6. Commit (one logical commit for this step, no "Co-authored-by" lines).
+
 ## Constraints
 - Follow existing code style and patterns exactly
-- Do not modify files outside the listed scope
-- Run tests after changes: <test command>
+- Do not modify files outside: <allowed_scope>
 - Do not add comments or docstrings to existing code
-
-## Expected outcome
-<what the implementation should produce — from spec Verification section>
+- DONE = green capture exists and matches expected_pass_pattern. No capture = not done.
 ```
 
 **Note**: Codex is a full agent with filesystem access — pass file paths rather than inlining content to avoid context bloat. Codex can read the spec, source files, and tests directly from disk.
