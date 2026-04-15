@@ -107,15 +107,58 @@ else
   fi
 fi
 
+# ── CLAUDE.md snippet ─────────────────────────────────────────────────────────
+echo ""
+echo "Project CLAUDE.md setup..."
+
+SNIPPET_FILE="$REPO_DIR/docs/claude-md-snippet.md"
+# Extract just the markdown block between the backtick fences
+SNIPPET=$(awk '/^```markdown$/{found=1; next} found && /^```$/{exit} found{print}' "$SNIPPET_FILE")
+
+PROJECT_CLAUDE_MD="$(pwd)/CLAUDE.md"
+
+if [ -f "$PROJECT_CLAUDE_MD" ]; then
+  if grep -q "ai-dev-team" "$PROJECT_CLAUDE_MD" 2>/dev/null; then
+    ok "  CLAUDE.md already contains ai-dev-team workflow section"
+  else
+    echo ""
+    echo "  Found CLAUDE.md at: $PROJECT_CLAUDE_MD"
+    printf "  Add ai-dev-team workflow section to it? [y/N] "
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      printf '\n\n%s\n' "$SNIPPET" >> "$PROJECT_CLAUDE_MD"
+      ok "  Workflow section appended to CLAUDE.md"
+    else
+      warn "  Skipped. Add manually from: docs/claude-md-snippet.md"
+    fi
+  fi
+else
+  echo ""
+  echo "  No CLAUDE.md found in current directory ($(pwd))"
+  printf "  Create one with the ai-dev-team workflow section? [y/N] "
+  read -r answer
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    printf '%s\n' "$SNIPPET" > "$PROJECT_CLAUDE_MD"
+    ok "  CLAUDE.md created with workflow section"
+  else
+    warn "  Skipped. See docs/claude-md-snippet.md to add manually."
+  fi
+fi
+
 # ── Done ───────────────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 ok "Installation complete. Restart Claude Code to pick up changes."
 echo ""
-echo "Quick start:"
-echo "  /feature new <description>    — spec-driven feature"
-echo "  /cross-audit <scope>          — dual-model audit (Claude + Codex)"
-echo "  /investigate <question>       — adversarial debate"
+echo "Quick start — add to your project's CLAUDE.md (see docs/claude-md-snippet.md)"
+echo "then just describe what you want:"
+echo "  'add retry logic'         → Claude invokes /feature new"
+echo "  'continue'                → Claude invokes /feature continue"
+echo "  'audit the auth module'   → Claude invokes /cross-audit"
+echo "  'should we use X or Y?'  → Claude invokes /investigate"
 echo ""
-echo "Docs: $(dirname "$0")/docs/AI_Dev_Team_Overview.md"
+echo "Or use slash commands directly:"
+echo "  /feature new <description>"
+echo "  /cross-audit <scope>"
+echo "  /investigate <question>"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
