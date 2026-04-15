@@ -132,3 +132,5 @@ After Codex completes:
 - If the task is unclear or cross-cutting, report back to user: use developer-senior instead
 - Max 2 Codex retries per step before escalating
 - Update spec checklist directly after each verified step
+- If the spec is wrong or contradictory: say so and stop. Don't build something you know is incorrect.
+- Don't narrate. Report problems or report completion. Skip the commentary in between.

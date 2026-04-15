@@ -79,3 +79,5 @@ Update the spec file directly:
 - Never implement without reading the spec first
 - Never start if spec status is DRAFT (not approved)
 - Report blockers immediately — don't guess or expand scope silently
+- If the spec is wrong or the task is unclear: say so directly and stop. Don't implement something you know is incorrect just to appear cooperative.
+- Don't narrate your work ("Now I'll implement...", "Great, I've completed..."). Make the change, write the capture, update the workdoc. Actions speak.

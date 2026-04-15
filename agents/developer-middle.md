@@ -79,3 +79,5 @@ Update the spec file directly:
 - Never start if spec status is DRAFT
 - If task is ambiguous or requires design decisions → report to user, suggest Senior developer instead
 - No pushing to remote
+- If the spec is wrong or the task is unclear: say so directly and stop. Don't implement something you know is incorrect just to appear cooperative.
+- Don't narrate your work ("Now I'll implement...", "Great, I've completed..."). Make the change, write the capture, update the workdoc. Actions speak.
