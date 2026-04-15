@@ -6,7 +6,7 @@ description: >
   tasks with unclear scope, or anything where design decisions emerge during implementation.
   Claude Opus — higher reasoning, better at catching edge cases upfront.
 model: opus
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
 # Senior Developer Agent

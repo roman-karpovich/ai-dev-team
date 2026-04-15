@@ -133,26 +133,29 @@ If any check fails: fix the spec/workdoc directly (or ask the user for the missi
 
 #### Pass 2: Cross-audit (dual-model)
 
+Track `spec_audit_iteration` (start at 1, increment on each re-spawn). Track `spec_audit_fixed_ids` (list of finding IDs the user fixed — accumulate across rounds).
+
 Spawn `cross-auditor` subagent with:
-- `scope`: `<spec_path>` (the spec file — cross-auditor will also read the execution workdoc)
+- `scope`: `<spec_path>` (the spec file)
+- `workdoc_path`: `<workdoc_path>` (the execution workdoc)
 - `mode`: `spec`
 - `project`: `<project>`
 - `audit_slug`: `<slug>-spec`
-- `iteration`: 1
-- `working_directory`: `<cwd>` (current working directory — Codex needs this to read files)
+- `iteration`: `<spec_audit_iteration>`
+- `working_directory`: `<cwd>`
+- `previously_fixed`: `<spec_audit_fixed_ids>` (empty list on first pass)
 - (omit `kb_path` — spec mode does not write to KB)
-
-In the spawn prompt, include the workdoc path explicitly so the auditor reviews both documents:
-> "Also review the execution workdoc at `<workdoc_path>`. Check planned fields for completeness, coherence with the spec, and sound sequencing."
 
 The cross-auditor returns findings inline (no KB writes in spec mode).
 
 **If CRITICAL or HIGH findings:**
 1. Present findings to user
 2. Update spec/workdoc (user edits in Obsidian, or ask Claude to apply the fix)
-3. Re-run Pass 1 self-review, then spawn cross-auditor again with `iteration: 2`
-4. Repeat until no CRITICAL/HIGH remain
-5. Set spec `status: AUDIT_PASSED`
+3. Collect IDs of findings the user fixed → append to `spec_audit_fixed_ids`
+4. Increment `spec_audit_iteration`
+5. Re-run Pass 1 self-review, then re-spawn cross-auditor with updated `iteration` and `previously_fixed`
+6. Repeat until no CRITICAL/HIGH remain
+7. Set spec `status: AUDIT_PASSED`
 
 **If no CRITICAL or HIGH findings:**
 > "Spec review passed. Ready to proceed with implementation?"
@@ -166,17 +169,17 @@ Set spec `status: AUDIT_PASSED`.
 
 ### Baseline test
 
-Before spawning any developer, run the **verifier** subagent on the base branch to establish a clean baseline:
+Before spawning any developer, ensure you are on the base branch (`master` or as spec says), then run the **verifier** subagent:
 
 ```
 project_path: <project_path>
-task: "Run the full test suite on the current branch and report pass/fail. Do not modify any files."
 ```
 
-- **All green**: proceed to agent selection.
-- **Any failures**: stop. Report to user: "Baseline is not clean — N test(s) failing before any new code. Resolve these first or they'll be falsely attributed to the new feature."
+- **PASS**: proceed to agent selection.
+- **FAIL**: stop. Report to user: "Baseline is not clean — N test(s) failing before any new code. Resolve these first or they'll be falsely attributed to the new feature."
+- **No test suite detected** (verifier detects no test config): skip this step and note it in the spec Log.
 
-This step is skipped if the project has no test suite (verifier will report "no tests found").
+Note: verifier runs against the current checkout — make sure the base branch is checked out before calling it.
 
 ### Agent selection
 
@@ -191,7 +194,15 @@ Before starting implementation, ask the user which agent to use:
 
 If the feature spec tagged steps with a developer level, use that. Otherwise default to Codex.
 
-#### Option 1: Senior (developer-senior agent)
+#### Option 1: Codex (developer-codex agent)
+
+Spawn `developer-codex` subagent with:
+- `spec_path`: path to the spec file
+- `workdoc_path`: `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`
+- `project_path`: path to the source repo
+- `task`: steps to implement (works best when spec has explicit file paths and clear requirements)
+
+#### Option 2: Senior (developer-senior agent)
 
 Spawn `developer-senior` subagent with:
 - `spec_path`: path to the spec file
@@ -199,21 +210,13 @@ Spawn `developer-senior` subagent with:
 - `project_path`: path to the source repo
 - `task`: "full spec" or specific steps
 
-#### Option 2: Middle (developer-middle agent)
+#### Option 3: Middle (developer-middle agent)
 
 Spawn `developer-middle` subagent with:
 - `spec_path`: path to the spec file
 - `workdoc_path`: `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`
 - `project_path`: path to the source repo
 - `task`: "full spec" or specific steps
-
-#### Option 3: Codex (developer-codex agent)
-
-Spawn `developer-codex` subagent with:
-- `spec_path`: path to the spec file
-- `workdoc_path`: `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`
-- `project_path`: path to the source repo
-- `task`: steps to implement (works best when spec has explicit file paths and clear requirements)
 
 ### Git conventions (both agents)
 

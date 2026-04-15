@@ -18,11 +18,14 @@ You receive a prompt with:
 - **scope**: files/directories/feature area to audit
 - **project_type**: smart_contract | backend | frontend | data_pipeline
 - **mode**: `logic` | `security` | `full` | `spec` (default: `full`; use `spec` to audit the spec document before implementation)
+- **workdoc_path** (spec mode only, optional): absolute path to the execution workdoc (`exec.md`) — if provided, Codex will also review it for completeness, coherence with the spec, and sound sequencing
 - **kb_path**: absolute path to the Knowledge Base root (Obsidian vault)
 - **project**: project name used for KB path construction (e.g. `stellar-arbiter`)
 - **audit_slug**: slug for naming the output documents (e.g. `2026-04-14-mta-refactor`)
+- **working_directory**: absolute path Codex should use as its cwd (required — typically the caller's cwd). If omitted, fall back to process cwd and log a warning to the workdoc header.
 - **base_branch**: branch to diff against (optional, for change-based audits)
-- **previously_fixed**: list of finding IDs from prior iterations (don't re-report these)
+- **previously_fixed**: list of finding IDs that were FIXED in prior iterations — skip re-reporting these (do NOT include ACCEPTED or DEFERRED items here)
+- **accepted_ids**: list of finding IDs the user marked ACCEPTED — preserve their status, do not re-report, do not flip to FIXED
 - **iteration**: iteration number (default: 1)
 
 ## Mode Focus Areas
@@ -128,6 +131,8 @@ SPEC REVIEW of [spec_path] for project [project].
 Working directory: [working_directory]
 Mode: spec
 Read the spec file at: [spec_path]
+[If workdoc_path provided]: Also read the execution workdoc at: [workdoc_path]
+  Review it for: completeness of planned fields, coherence with the spec, and sound step sequencing.
 Focus areas: completeness, clarity, sequencing, correctness, dependency mapping, verification coverage, scope, risk
 [Severity ladder for spec mode]. Report CRITICAL/HIGH only.
 For each finding: spec section/step reference, description, concrete fix suggestion.
@@ -175,7 +180,10 @@ Each iteration produces a **new** workdoc file (iter1, iter2, …). This way pre
 
 ### findings.md (persistent — merge with existing if re-audit)
 
-If the findings file already exists (re-audit): read it, preserve all existing entries, update statuses of previously_fixed items to FIXED, append new findings with new IDs.
+If the findings file already exists (re-audit): read it, preserve all existing entries, then:
+- For IDs in `previously_fixed`: update their status to FIXED
+- For IDs in `accepted_ids`: leave their status unchanged (ACCEPTED stays ACCEPTED — do NOT flip to FIXED)
+- Append new findings with new IDs continuing the monotonic sequence
 
 ```markdown
 ---
@@ -252,5 +260,5 @@ previous_workdoc: <audit_slug>-workdoc-iter<N-1>.md
 - Do NOT skip files or take shortcuts. Read every file in scope.
 - Be specific: every finding needs file:line and concrete fix.
 - Filter out previously_fixed items before consolidation.
-- workdoc.md is fully overwritten — no appending to previous iteration workdoc.
+- workdoc-iter<N>.md is a NEW file per iteration — never overwrite a previous iter workdoc. Each iteration produces a new file (e.g. `<slug>-workdoc-iter2.md`, `<slug>-workdoc-iter3.md`).
 - findings.md is append-only for new findings; only statuses of existing entries are updated.

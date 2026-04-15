@@ -6,7 +6,7 @@ description: >
   config changes, minor refactors with clear scope. Claude Sonnet — faster and cheaper
   when the spec is clear and patterns are established. Not for ambiguous or cross-cutting work.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
 # Middle Developer Agent
