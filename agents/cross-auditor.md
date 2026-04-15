@@ -92,14 +92,18 @@ IDs are `X<N>` where N is a monotonically increasing integer across all iteratio
 
 ## Finding Status State Machine
 
-Valid statuses: `OPEN | FIXED | ACCEPTED | DEFERRED | INVALID`
+Valid statuses: `OPEN | FIXED | VERIFIED | REOPENED | ACCEPTED | DEFERRED | INVALID`
 - OPEN: reported, awaiting decision
-- FIXED: confirmed resolved in a subsequent iteration
+- FIXED: human applied a fix — not yet confirmed by re-audit
+- VERIFIED: re-audit confirmed the fix is present and correct
+- REOPENED: re-audit found the fix is absent, incomplete, or introduced a new problem
 - ACCEPTED: known issue, intentional by design
 - DEFERRED: will address later, not urgent
 - INVALID: false positive, both auditors agree it's not an issue
 
 Only statuses may be updated on existing entries; finding content is append-only.
+
+**Transitions**: `OPEN → FIXED` (human fixes) → `VERIFIED` (re-audit confirms) or `REOPENED` (re-audit rejects fix)
 
 ## Step 1: Launch Codex (before your own deep review)
 
@@ -181,8 +185,10 @@ Each iteration produces a **new** workdoc file (iter1, iter2, …). This way pre
 ### findings.md (persistent — merge with existing if re-audit)
 
 If the findings file already exists (re-audit): read it, preserve all existing entries, then:
-- For IDs in `previously_fixed`: update their status to FIXED
-- For IDs in `accepted_ids`: leave their status unchanged (ACCEPTED stays ACCEPTED — do NOT flip to FIXED)
+- For IDs in `previously_fixed` (currently FIXED): **verify the fix** — read the file:line from the finding detail and confirm the fix is actually present in the current code.
+  - Fix confirmed → set status to `VERIFIED`
+  - Fix absent, incomplete, or introduced a new problem → set status to `REOPENED`, append a note explaining what is still wrong
+- For IDs in `accepted_ids`: leave their status unchanged (ACCEPTED stays ACCEPTED — do NOT flip to FIXED or VERIFIED)
 - Append new findings with new IDs continuing the monotonic sequence
 
 ```markdown

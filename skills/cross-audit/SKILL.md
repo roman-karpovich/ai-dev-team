@@ -112,7 +112,9 @@ When user invokes `/cross-audit <findings-doc-path>`:
    - `fixed_ids`: IDs with status `FIXED` — the auditor will verify these and flip to VERIFIED if confirmed
    - `accepted_ids`: IDs with status `ACCEPTED` or `DEFERRED` — skip re-reporting, preserve their status (do NOT flip to FIXED)
 3. Launch cross-auditor with both lists: `previously_fixed: <fixed_ids>`, `accepted_ids: <accepted_ids>`
-4. Agent verifies fixes and looks for new issues
+4. Agent **verifies each fix** (reads file:line, confirms fix is present) and looks for new issues
+   - Confirmed fixes → VERIFIED
+   - Absent or broken fixes → REOPENED
 5. On completion: findings doc updated, new workdoc-iter<N>.md created, present delta
 
 ### Convergence

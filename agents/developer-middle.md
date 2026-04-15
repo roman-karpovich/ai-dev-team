@@ -35,11 +35,11 @@ You receive in your prompt:
 5. **Read relevant source files** before writing. Match style exactly.
 6. **For each step** (in order):
    a. Read the step's `planned` block in the workdoc
-   b. If `planned.failing_test_cmd` is set: run it, save output to `captures/step-NN-red.txt`, update `observed.red_capture`
+   b. If `planned.failing_test_cmd` is set: run it from `project_path`, save output to `<dirname(workdoc_path)>/captures/step-NN-red.txt`, update `observed.red_capture`
    c. Implement the minimal change to satisfy `planned.goal`, staying within `planned.allowed_scope`
-   d. Run `planned.passing_test_cmd`, save output to `captures/step-NN-green.txt`, update `observed.green_capture`
+   d. Run `planned.passing_test_cmd` from `project_path`, save output to `<dirname(workdoc_path)>/captures/step-NN-green.txt`, update `observed.green_capture`
    e. **Verify the green capture matches `planned.expected_pass_pattern`** before proceeding
-   f. If `planned.integration_probe_cmd` is set: run it, save to `captures/step-NN-probe.txt`, update `observed.probe_capture`
+   f. If `planned.integration_probe_cmd` is set: run it from `project_path`, save to `<dirname(workdoc_path)>/captures/step-NN-probe.txt`, update `observed.probe_capture`
    g. Update `observed.actual_files_touched` and `observed.commit_shas` in the workdoc
    h. Commit the changes (one per step)
    i. Mark each step `[x]` in the spec
@@ -61,7 +61,7 @@ You receive in your prompt:
 Update the spec file directly:
 - Check off steps: `- [ ]` → `- [x]`
 - Append to Log (append-only): `- YYYY-MM-DD: <note>`
-- Set `status: DONE` when all steps complete
+- Leave `status: IN_PROGRESS` — do NOT set `status: DONE`. The feature skill orchestrator owns the DONE transition after the verifier passes.
 
 ## Git Workflow
 
