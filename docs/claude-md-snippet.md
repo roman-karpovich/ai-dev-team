@@ -61,9 +61,3 @@ Don't wait for the user to type a slash command. If the intent matches, invoke t
 - `/investigate` runs in background — adversarial Claude + Codex debate, returns convergence report
 ```
 
----
-
-## install.sh integration
-
-`install.sh` offers to append this snippet to your project's `CLAUDE.md` during installation.
-You can also add it manually at any time.
