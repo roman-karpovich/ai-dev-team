@@ -40,9 +40,9 @@ Recognise these intents and invoke the matching skill automatically — do not w
 |---|---|
 | "add X", "implement Y", "I need feature...", "let'\''s build Z", "create a..." | `/feature new <description>` |
 | "continue", "resume", "where were we?", "pick up from..." | `/feature continue` |
-| "what'\''s in progress?", "what are we working on?", "status" | `/feature status` |
-| "review this", "check for bugs", "audit src/", "is this safe?" | `/cross-audit <scope>` |
-| "should we use X or Y?", "is this the right approach?", "compare these options" | `/investigate <question>` |
+| "what'\''s in progress?", "what are we working on?", "status", "show specs", "what'\''s pending?" | `/feature status` |
+| "review this", "check for bugs", "find bugs", "security check", "code review", "audit src/", "is this safe?" | `/cross-audit <scope>` |
+| "should we use X or Y?", "is this the right approach?", "compare these options", "which is better", "tradeoffs between", "brainstorm" | `/investigate <question>` |
 
 ### Workflow phases (reference)
 
