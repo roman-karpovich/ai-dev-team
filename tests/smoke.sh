@@ -58,6 +58,38 @@ check "plugin.json valid" validate_plugin_json
 check "marketplace.json valid" validate_marketplace_json
 echo
 
+# --- Agent frontmatter ---
+echo "Agent frontmatter:"
+
+validate_agent() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import re, sys, os
+path = sys.argv[1]
+text = open(path).read()
+m = re.match(r'^---\n(.*?)\n---\n', text, re.DOTALL)
+if not m:
+    print(f"{path}: missing YAML frontmatter", file=sys.stderr)
+    sys.exit(1)
+fm = m.group(1)
+for key in ("name", "description", "tools"):
+    if not re.search(rf'^{key}\s*:', fm, re.MULTILINE):
+        print(f"{path}: missing '{key}:' in frontmatter", file=sys.stderr)
+        sys.exit(1)
+name_match = re.search(r'^name\s*:\s*(\S+)', fm, re.MULTILINE)
+expected = os.path.splitext(os.path.basename(path))[0]
+if name_match.group(1) != expected:
+    print(f"{path}: name '{name_match.group(1)}' != filename '{expected}'", file=sys.stderr)
+    sys.exit(1)
+print(f"  {expected}: OK")
+PY
+}
+
+for agent_file in agents/*.md; do
+  check "agent frontmatter: $agent_file" validate_agent "$agent_file"
+done
+echo
+
 
 echo
 echo "Passed: $PASS"
