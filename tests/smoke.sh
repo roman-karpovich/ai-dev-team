@@ -203,6 +203,24 @@ check "post-edit-lint missing file"       check_lint_missing_file
 check "post-edit-lint no shell=True"      check_no_shell_true
 echo
 
+# --- Developer-workflow reference (DRY refactor 2026-04-17) ---
+echo "Developer-workflow reference:"
+
+check_dev_workflow_exists() {
+  test -f skills/feature/references/developer-workflow.md
+}
+
+check_agent_refs_dev_workflow() {
+  local agent="$1"
+  grep -q "developer-workflow.md" "$agent"
+}
+
+check "shared reference exists" check_dev_workflow_exists
+for agent in agents/developer-codex.md agents/developer-senior.md agents/developer-middle.md; do
+  check "agent links shared workflow: $agent" check_agent_refs_dev_workflow "$agent"
+done
+echo
+
 
 echo
 echo "Passed: $PASS"
