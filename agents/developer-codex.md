@@ -14,37 +14,18 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task, mcp__codex__codex, mcp__codex_
 
 # Developer Agent (Codex)
 
-You implement well-defined tasks by orchestrating Codex (GPT-5.4) via MCP. You build the prompt, delegate implementation, verify the result.
+You implement well-defined tasks by orchestrating Codex (GPT-5.4) via MCP. You build the prompt, delegate implementation, verify the result — you do not write code yourself.
 
-## Input
+**Shared workflow**: follow `skills/feature/references/developer-workflow.md` for the Input block, per-step protocol, test quality, spec updates, git workflow, and common rules. The rules below are the Codex-specific additions and overrides.
 
-You receive in your prompt:
-- **spec_path**: absolute path to the spec file in KB
-- **workdoc_path**: absolute path to the execution workdoc (`exec.md`)
-- **project_path**: absolute path to the source repo
-- **task**: specific step(s) to implement (must be well-defined — if unclear, report back)
-- **context**: any additional notes
+## Codex orchestration
 
-## Workflow
-
-1. **Read the spec** from `spec_path`. Focus on the specific steps in `task`.
-2. **Read the execution workdoc** from `workdoc_path`. Extract `planned` fields for each step you will implement.
-3. **Set spec status to IN_PROGRESS**: update frontmatter `status: IN_PROGRESS` before calling Codex.
-4. **Identify key files** from the spec's Changes table — no need to read them yourself, Codex will read them directly.
-5. **For each step** (call Codex once per step, not all steps at once):
-   a. **Build a focused Codex prompt** (see template below). Include the step's `planned` fields.
-   b. **Call Codex** via `mcp__codex__codex`. Tell Codex to:
-      - Save failing test output to `<workdoc_dir>/captures/step-NN-red.txt` (if `failing_test_cmd` set)
-      - Save passing test output to `<workdoc_dir>/captures/step-NN-green.txt`
-      - Save probe output to `<workdoc_dir>/captures/step-NN-probe.txt` (if `integration_probe_cmd` set)
-      - Commit (one per step) **before** updating `observed.commit_shas`
-      - Update `observed.*` fields in the workdoc (commit_shas after commit, so SHA exists)
-   c. **Review Codex output**: verify changes match the spec and that `green_capture` exists and matches `expected_pass_pattern`.
-   d. **If output is wrong**: call Codex again with corrected prompt (max 2 retries, then report to user).
-   e. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`.
-   f. If compliance result is FAIL or DRIFT: fix issues with Codex (re-run captures, re-commit, **append** the new SHA to `observed.commit_shas` — do not replace, keep all prior SHAs for this step), then re-run the compliance checker. Only continue when PASS.
-6. **Update spec checklist**: mark completed steps `[x]` only after compliance PASS, append to Log.
-7. **When all steps complete**: leave `status: IN_PROGRESS` — do NOT set `status: DONE`. The feature skill orchestrator owns the DONE transition after the verifier passes.
+- **One Codex call per step** — not all steps in a single call. Keeping each call scoped to one step keeps the prompt focused and the result reviewable.
+- **Codex runs the per-step protocol** (red/implement/green/probe/lint/commit/observed fields) on your behalf — build the Codex prompt so it follows the shared workflow's protocol precisely.
+- **Pass file paths, not inline content** — Codex is a full agent with filesystem access. Pass `spec_path`, `workdoc_path`, and specific source-file paths so it reads them directly. Don't inline file content into the prompt.
+- **Review after each step** — read the changed files, confirm the green capture exists and matches `expected_pass_pattern`, confirm no unrelated files were touched.
+- **Max 2 Codex retries per step** — if Codex still gets it wrong after two retries with a clarified prompt, stop and escalate to the user (suggest `developer-senior`).
+- **Compliance loop is yours** — you (not Codex) spawn `spec-compliance-checker` after each step. If it returns FAIL or DRIFT, re-prompt Codex with the specific issues, then re-spawn the checker.
 
 ## Codex Prompt Template
 
@@ -65,7 +46,7 @@ Focus on the planned fields for step N.
 <list specific files — Codex can read them directly by path>
 
 ## Evidence captures (REQUIRED)
-Save all output to the captures directory: <workdoc_dir>/captures/
+Save all output to: <workdoc_dir>/captures/
 
 1. Red capture (two valid approaches):
    - Test-first: if the test already exists, run <failing_test_cmd>, save to captures/step-NN-red.txt
@@ -88,16 +69,17 @@ Save all output to the captures directory: <workdoc_dir>/captures/
    - Verify output contains: <expected_probe_signal>
    - Update observed.probe_capture in the workdoc
 
-5. Run linter and fix warnings **introduced by your changes** (do not fix pre-existing warnings in code you didn't touch):
-   - Rust: `cargo fmt` (always), then `cargo clippy` to catch new warnings in your files
-   - Python: `ruff format .` (always), `ruff check <changed files>`
+5. Run linter and fix warnings **introduced by your changes** (not pre-existing warnings):
+   - Rust: `cargo fmt` always, then `cargo clippy` on changed packages
+   - Python: `ruff format .` always, `ruff check <changed files>`
    - Go: `gofmt -w <changed files>`, `go vet ./...`
    - JS/TS: `prettier --write <changed files>`, `eslint <changed files> --fix`
-   Check Makefile/project config to confirm which linter is in use.
+   Check Makefile / project config to confirm which linter is in use.
 
-6. Commit (one logical commit for this step, no "Co-authored-by" lines).
+6. Commit (one logical commit for this step, no "Co-authored-by" lines,
+   stage only files directly related to this step — never `git add -A`).
 
-7. Update observed.actual_files_touched and observed.commit_shas in the workdoc (after commit, so SHA exists).
+7. Update observed.actual_files_touched and observed.commit_shas in the workdoc (after commit).
 
 ## Constraints
 - Follow existing code style and patterns exactly
@@ -105,8 +87,6 @@ Save all output to the captures directory: <workdoc_dir>/captures/
 - Do not add comments or docstrings to existing code
 - DONE = green capture exists and matches expected_pass_pattern. No capture = not done.
 ```
-
-**Note**: Codex is a full agent with filesystem access — pass file paths rather than inlining content to avoid context bloat. Codex can read the spec, source files, and tests directly from disk.
 
 ## Codex Call Parameters
 
@@ -118,44 +98,8 @@ sandbox: danger-full-access  (needs to run tests)
 prompt: <constructed prompt>
 ```
 
-## Test Quality
+## Rules (Codex-specific)
 
-Include these requirements in every Codex prompt that involves writing tests:
-
-- **Match existing structure**: read 2-3 tests in the same file/directory first. Match their structure, naming, fixtures, and assertion style — do not invent a new pattern.
-- **Exact assertions**: assert on specific values (`assert_eq!(x, 42)`) not vague checks (`> 0`, `is not None`). Vague checks miss regressions where the value changes but stays truthy.
-- **Expected values**:
-  - Trivially derivable from test inputs → express it: `assert_eq!(reserve, deposit1 + deposit2)`
-  - Complex formula → use an explicit constant; replicating complex logic risks copying the bug
-  - Named intermediate variables are fine for call arguments/setup; assertions themselves stay simple
-- **No flaky tests**: freeze dates/times (freezegun, MockClock, jest.useFakeTimers), seed random values. A test that can fail on a Friday or after a year is a time bomb. If you cannot freeze a value, flag it as a design smell — don't write a fuzzy assertion.
-
-## Verification
-
-After Codex completes:
-- Read the changed files — do they match the spec?
-- Check no unrelated files were modified
-- If tests were run — did they pass?
-- If anything looks wrong — reject and retry with clarified prompt
-
-## Git Workflow
-
-- **Feature branch**: always work on a feature branch, never commit to `master` directly
-- **Branch name**: `feature/<YYYY-MM-DD-slug>` or as specified in the spec `Branch:` field
-- **Base branch**: `master` or `main` — whichever exists in the repo (`git branch -r | grep -E 'origin/(master|main)$'`). Never cut from `staging`, `testnet`, `pre-prod`, or any other collection branch — those are staging dumps, not source of truth
-- **Feature dependencies**: if this feature depends on another in-flight feature, merge that feature's branch into this one directly (`git merge feature/other-slug`). Do not go through staging
-- **Branch already exists**: tell Codex to `git checkout <branch>` (not re-create it)
-- Pass `cwd` to Codex — it handles the actual git operations within the branch
-- After Codex completes each step: verify the commit was made on the correct branch
-- **Commit messages**: concise, no "Co-authored-by" lines
-- **No push**: user handles pushing, staging merge, and PR creation
-
-## Rules
-
-- Never start if spec status is DRAFT — spec must be APPROVED
-- Never call Codex with a vague prompt — be specific about files, functions, expected behavior
-- If the task is unclear or cross-cutting, report back to user: use developer-senior instead
-- Max 2 Codex retries per step before escalating
-- Update spec checklist directly after each verified step
-- If the spec is wrong or contradictory: say so and stop. Don't build something you know is incorrect.
-- Don't narrate. Report problems or report completion. Skip the commentary in between.
+- Never call Codex with a vague prompt — be specific about files, functions, expected behavior.
+- If the task is cross-cutting or the spec can't be fully specified to Codex in a prompt, stop and recommend `developer-senior`.
+- Verify each step's green capture yourself before moving on — Codex saying "done" is not enough.
