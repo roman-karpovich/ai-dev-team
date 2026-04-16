@@ -1,0 +1,10 @@
+# AI Dev Team Plugin — project configuration
+# Copy/adapt this template to create .ai-dev-team.yml in your project root.
+# Commit .ai-dev-team.yml for team-shared config.
+# Keep .ai-dev-team.local.yml in your .gitignore for personal path overrides.
+
+# Required: absolute path to your team's knowledge base
+kb_path: <set-me>
+
+# Optional: project name override (defaults to basename of repo directory)
+# project: my-project-name
