@@ -37,13 +37,13 @@ You receive in your prompt:
       - Save failing test output to `<workdoc_dir>/captures/step-NN-red.txt` (if `failing_test_cmd` set)
       - Save passing test output to `<workdoc_dir>/captures/step-NN-green.txt`
       - Save probe output to `<workdoc_dir>/captures/step-NN-probe.txt` (if `integration_probe_cmd` set)
-      - Update `observed.*` fields in the workdoc
-      - Commit (one per step)
+      - Commit (one per step) **before** updating `observed.commit_shas`
+      - Update `observed.*` fields in the workdoc (commit_shas after commit, so SHA exists)
    c. **Review Codex output**: verify changes match the spec and that `green_capture` exists and matches `expected_pass_pattern`.
    d. **If output is wrong**: call Codex again with corrected prompt (max 2 retries, then report to user).
    e. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`.
    f. If compliance result is FAIL or DRIFT: fix issues with Codex, re-run checker. Only continue when PASS.
-6. **Update spec checklist**: mark completed steps `[x]`, append to Log.
+6. **Update spec checklist**: mark completed steps `[x]` only after compliance PASS, append to Log.
 7. **When all steps complete**: leave `status: IN_PROGRESS` — do NOT set `status: DONE`. The feature skill orchestrator owns the DONE transition after the verifier passes.
 
 ## Codex Prompt Template
@@ -85,9 +85,9 @@ Save all output to the captures directory: <workdoc_dir>/captures/
    - Verify output contains: <expected_probe_signal>
    - Update observed.probe_capture in the workdoc
 
-5. Update observed.actual_files_touched and observed.commit_shas in the workdoc.
+5. Commit (one logical commit for this step, no "Co-authored-by" lines).
 
-6. Commit (one logical commit for this step, no "Co-authored-by" lines).
+6. Update observed.actual_files_touched and observed.commit_shas in the workdoc (after commit, so SHA exists).
 
 ## Constraints
 - Follow existing code style and patterns exactly

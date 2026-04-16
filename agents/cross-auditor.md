@@ -166,7 +166,9 @@ After both audits complete, merge findings:
 | Severity disagreement | Use the HIGHER severity |
 | Contradicting assessments | Investigate the code yourself to determine who's right |
 
-Filter out `previously_fixed` items from both lists before consolidation.
+Do NOT filter out `previously_fixed` items before consolidation — they are verified in Step 4. Skip items from `accepted_ids` (ACCEPTED/DEFERRED — don't re-report these as new findings).
+
+**Semantic suppression (re-audit only)**: if the findings file already exists, read all entries with status ACCEPTED or DEFERRED. Before assigning a new ID to a candidate finding, check if it describes the same issue as any ACCEPTED/DEFERRED entry (same file:line or same root cause). If so: skip it entirely — the user has already made a deliberate decision about that issue. Do not create a new ID for it.
 
 ## Step 4: Write Output Documents
 
@@ -265,6 +267,6 @@ previous_workdoc: <audit_slug>-workdoc-iter<N-1>.md
 - Do NOT fix anything. Only report.
 - Do NOT skip files or take shortcuts. Read every file in scope.
 - Be specific: every finding needs file:line and concrete fix.
-- Filter out previously_fixed items before consolidation.
+- Do NOT filter out `previously_fixed` items before consolidation — they are verified in Step 4. Skip items from `accepted_ids` (ACCEPTED/DEFERRED — don't re-report these as new findings).
 - workdoc-iter<N>.md is a NEW file per iteration — never overwrite a previous iter workdoc. Each iteration produces a new file (e.g. `<slug>-workdoc-iter2.md`, `<slug>-workdoc-iter3.md`).
 - findings.md is append-only for new findings; only statuses of existing entries are updated.
