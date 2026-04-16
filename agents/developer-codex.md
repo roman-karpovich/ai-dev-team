@@ -92,7 +92,8 @@ Save all output to the captures directory: <workdoc_dir>/captures/
 ## Constraints
 - Follow existing code style and patterns exactly
 - **Before writing any test**: read 2-3 existing tests in the same file or directory and match their structure, naming, fixtures, and assertion style exactly — do not invent a new pattern
-- **Prefer exact assertions**: assert on specific expected values (`assert_eq!(x, 42)`, `assertEqual(result, {...})`) rather than vague checks (`> 0`, `is not None`, `len > 0`). Vague checks only verify something happened — they miss regressions where the value changes but stays truthy. Use fuzzy checks only when the exact value is genuinely non-deterministic
+- **Prefer exact assertions**: assert on specific expected values (`assert_eq!(x, 42)`, `assertEqual(result, {...})`) rather than vague checks (`> 0`, `is not None`, `len > 0`). Vague checks only verify something happened — they miss regressions where the value changes but stays truthy
+- **Fix non-determinism — never accept it**: dates/times must be frozen (freezegun in Python, `MockClock`/`time.Now` mocks in Go, `jest.useFakeTimers` in JS, etc.); random values must be seeded. A test that can fail on a Friday, at midnight, or after a year has passed is not a test — it's a time bomb. If you cannot freeze a value, that is a design smell worth flagging, not a reason to write a fuzzy assertion
 - Do not modify files outside: <allowed_scope>
 - Do not add comments or docstrings to existing code
 - DONE = green capture exists and matches expected_pass_pattern. No capture = not done.
