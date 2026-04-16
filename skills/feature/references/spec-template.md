@@ -5,6 +5,8 @@ type: spec
 status: DRAFT
 branch: feature/YYYY-MM-DD-{slug}
 created: YYYY-MM-DD
+# Optional: populated automatically when /feature new is called with --from-investigation
+# investigation_source: research/YYYY-MM-DD-<topic>.md
 tags: [spec, {project-name}]
 ---
 
@@ -39,6 +41,16 @@ New or modified endpoints, contract interfaces.
 ### 3.5 Configuration
 
 New env vars, settings, or constants.
+
+### 3.6 Risks (from investigation)
+
+Only present when the spec was seeded with `--from-investigation`. Holds the
+`## Risk Register` table from the convergence report. Remove this section if
+no investigation is linked.
+
+| Risk | Source | Severity | Mitigation |
+|------|--------|----------|------------|
+| ...  | ...    | ...      | ...        |
 
 ## 4. Dependencies
 
