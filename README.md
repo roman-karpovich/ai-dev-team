@@ -275,3 +275,15 @@ A step is not done until `green_capture` exists and matches `expected_pass_patte
 ```bash
 claude plugin update ai-dev-team
 ```
+
+---
+
+## Maintainers
+
+Before releasing a new version, run the smoke test locally:
+
+```bash
+bash tests/smoke.sh
+```
+
+It validates manifest integrity, agent frontmatter, skill structure, the SessionStart hook across env variants, post-edit-lint graceful-exit behaviour + shell-injection regression, the shared developer-workflow reference, and internal markdown links. No network, no Claude — just shell + python3.
