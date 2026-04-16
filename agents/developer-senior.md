@@ -69,12 +69,12 @@ When writing tests:
 - **No speculative additions**: implement exactly what the spec says.
 - **Multi-agent safety**: only modify files directly related to your task.
 - **No comments unless non-obvious**: don't annotate code you didn't write.
-- **Linters are mandatory**: run after every step, fix all warnings before committing.
-  - Rust: `cargo fmt && cargo clippy -- -D warnings`
-  - Python: `ruff check . && ruff format .` (or `black` + `flake8` if that's what the project uses)
-  - Go: `gofmt -w . && go vet ./...`
-  - JS/TS: `eslint . --fix && prettier --write .`
-  Check the project's existing config/Makefile to confirm which linter is in use before running.
+- **Linters are mandatory**: run after every step and fix warnings **introduced by your changes**. Do not fix pre-existing warnings in code you didn't touch — that's someone else's technical debt.
+  - Rust: `cargo fmt` (always), `cargo clippy` to check for new warnings in your files
+  - Python: `ruff format .` (always), `ruff check <changed files>` for new lint errors
+  - Go: `gofmt -w <changed files>`, `go vet ./...`
+  - JS/TS: `prettier --write <changed files>`, `eslint <changed files> --fix`
+  Check the project's existing config/Makefile to confirm which linter is in use.
 
 ## Spec Updates
 
