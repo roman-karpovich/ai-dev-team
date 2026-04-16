@@ -354,6 +354,29 @@ check "SKILL.md has /feature discard mode"  check_skill_discard_mode
 check "SKILL.md documents last_agent"       check_skill_last_agent
 echo
 
+# --- Cross-audit severity flag (2026-04-17) ---
+echo "Cross-audit severity:"
+
+check_cross_audit_severity_flag() {
+  grep -q -- "--severity" skills/cross-audit/SKILL.md \
+    || { echo "SKILL.md missing --severity flag"; return 1; }
+  echo "cross-audit SKILL.md documents --severity"
+}
+
+check_cross_auditor_severity_floor() {
+  local n
+  n=$(grep -c "severity_floor" agents/cross-auditor.md)
+  if [ "$n" -lt 2 ]; then
+    echo "cross-auditor agent missing severity_floor (found $n, need >=2)"
+    return 1
+  fi
+  echo "cross-auditor.md threads severity_floor"
+}
+
+check "cross-audit --severity flag"        check_cross_audit_severity_flag
+check "cross-auditor severity_floor param" check_cross_auditor_severity_floor
+echo
+
 
 echo
 echo "Passed: $PASS"

@@ -18,6 +18,7 @@ You receive a prompt with:
 - **scope**: files/directories/feature area to audit
 - **project_type**: smart_contract | backend | frontend | data_pipeline
 - **mode**: `logic` | `security` | `full` | `spec` (default: `full`; use `spec` to audit the spec document before implementation)
+- **severity_floor**: `high` (default) | `medium+` — minimum severity to collect. `high` is the canonical behavior; `medium+` also includes MEDIUM findings. Propagates into Codex prompts and your own audit.
 - **workdoc_path** (spec mode only, optional): absolute path to the execution workdoc (`exec.md`) — if provided, Codex will also review it for completeness, coherence with the spec, and sound sequencing
 - **kb_path**: absolute path to the Knowledge Base root (Obsidian vault)
 - **project**: project name used for KB path construction (e.g. `stellar-arbiter`)
@@ -76,16 +77,23 @@ Use this for both your own findings and the Codex prompt:
 **security / full mode:**
 - CRITICAL: fund/data loss, key exposure, auth bypass
 - HIGH: functional failure under normal use
+- MEDIUM (only if `severity_floor=medium+`): partial failure under edge conditions, DoS vectors without auth bypass, information disclosure without exploit chain
 
 **logic mode:**
 - CRITICAL: wrong output / broken workflow (data integrity failure)
 - HIGH: serious edge case, performance catastrophe, contract violation
+- MEDIUM (only if `severity_floor=medium+`): rare edge-case incorrectness, minor performance issue, maintainability/robustness gap
 
 **spec mode:**
 - CRITICAL: spec is unimplementable as written (circular dependency between steps, missing critical file path, contradictory requirements, checklist steps so vague implementation is undefined)
 - HIGH: ambiguous step where a developer will likely guess wrong, missing error/failure path that is definitely needed, significant technical risk not mentioned, verification steps that cannot detect a broken implementation
+- MEDIUM (only if `severity_floor=medium+`): unclear naming, cosmetic spec issues, redundant steps — nothing that blocks implementation
 
-All modes: collect only CRITICAL and HIGH. MEDIUM/LOW are out of scope for this workflow.
+**Severity floor behavior**: compute `allowed_severities` from `severity_floor`:
+- `high` (default) → `CRITICAL/HIGH`
+- `medium+` → `CRITICAL/HIGH/MEDIUM`
+
+Use `allowed_severities` in the Codex prompt (see templates below) and for your own Claude audit. LOW is never collected.
 
 ## Finding ID Format
 
@@ -119,7 +127,7 @@ Use `mcp__codex__codex` with:
 - **model**: omit — uses default from `~/.codex/config.toml`
 - **config**: `{"reasoning": {"effort": "xhigh"}}`
 - **cwd**: working_directory (Codex can read files directly — pass file paths in prompt, not content)
-- **developer-instructions**: for `spec` mode use: "You are an independent spec reviewer. Be adversarial. Focus on spec quality: completeness, clarity, sequencing, correctness, verification coverage. Every finding must reference the specific section/step of the spec and include a concrete suggestion. Report CRITICAL and HIGH only." For code modes use: "You are an independent code auditor. Be adversarial. Focus on [mode focus areas]. Every finding must have a concrete file:line reference and a specific fix suggestion. [Severity ladder for mode — see above]. Report CRITICAL and HIGH only."
+- **developer-instructions**: for `spec` mode use: "You are an independent spec reviewer. Be adversarial. Focus on spec quality: completeness, clarity, sequencing, correctness, verification coverage. Every finding must reference the specific section/step of the spec and include a concrete suggestion. Report [allowed_severities] only." For code modes use: "You are an independent code auditor. Be adversarial. Focus on [mode focus areas]. Every finding must have a concrete file:line reference and a specific fix suggestion. [Severity ladder for mode — see above]. Report [allowed_severities] only." Substitute `[allowed_severities]` based on `severity_floor` before dispatching.
 
 **Code mode** Codex prompt template:
 ```
@@ -129,7 +137,7 @@ Mode: [logic|security|full]
 Focus: [paste relevant focus areas from mode]
 Files to audit: [list paths — Codex reads them directly]
 Previously fixed (skip these): [previously_fixed list]
-[Severity ladder for mode]. Report CRITICAL/HIGH only.
+[Severity ladder for mode]. Report [allowed_severities] only.
 For each finding: file:line, description, concrete fix suggestion.
 ```
 
@@ -142,7 +150,7 @@ Read the spec file at: [spec_path]
 [If workdoc_path provided]: Also read the execution workdoc at: [workdoc_path]
   Review it for: completeness of planned fields, coherence with the spec, and sound step sequencing.
 Focus areas: completeness, clarity, sequencing, correctness, dependency mapping, verification coverage, scope, risk
-[Severity ladder for spec mode]. Report CRITICAL/HIGH only.
+[Severity ladder for spec mode]. Report [allowed_severities] only.
 For each finding: spec section/step reference, description, concrete fix suggestion.
 ```
 
