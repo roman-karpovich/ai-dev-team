@@ -65,6 +65,7 @@ Check the project's Makefile / config to confirm which linter is in use. If ther
 
 - `observed.actual_files_touched` — list of files changed in this commit
 - `observed.commit_shas` — append the commit SHA (after committing, so the SHA exists). If you rework, **append** the new SHA — do not replace; keep the full history.
+- `observed.commit_message_grep` (optional but recommended) — a regex the compliance checker can use to re-find the step's commits if the SHAs are ever invalidated. Use a stable stem like `"Step N"` or the step's title. If you `git commit --amend` or rebase, the old SHAs become unreachable — keep this field set so the compliance checker's tiered fallback can still diff the correct range.
 
 **j. Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`.
 
