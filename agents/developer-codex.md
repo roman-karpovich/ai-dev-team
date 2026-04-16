@@ -91,6 +91,7 @@ Save all output to the captures directory: <workdoc_dir>/captures/
 
 ## Constraints
 - Follow existing code style and patterns exactly
+- **Before writing any test**: read 2-3 existing tests in the same file or directory and match their structure, naming, fixtures, and assertion style exactly — do not invent a new pattern
 - Do not modify files outside: <allowed_scope>
 - Do not add comments or docstrings to existing code
 - DONE = green capture exists and matches expected_pass_pattern. No capture = not done.
