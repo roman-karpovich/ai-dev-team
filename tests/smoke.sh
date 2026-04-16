@@ -29,7 +29,35 @@ check() {
 echo "Plugin: $PLUGIN_ROOT"
 echo
 
-# (checks will be added here in subsequent steps)
+# --- Manifest integrity ---
+echo "Manifest integrity:"
+
+validate_plugin_json() {
+  python3 -c "
+import json, sys
+with open('.claude-plugin/plugin.json') as f:
+    m = json.load(f)
+for k in ('name', 'version', 'description'):
+    if k not in m:
+        print(f'missing key: {k}', file=sys.stderr)
+        sys.exit(1)
+print('plugin.json valid:', m['name'], m['version'])
+"
+}
+
+validate_marketplace_json() {
+  python3 -c "
+import json
+with open('.claude-plugin/marketplace.json') as f:
+    json.load(f)
+print('marketplace.json valid')
+"
+}
+
+check "plugin.json valid" validate_plugin_json
+check "marketplace.json valid" validate_marketplace_json
+echo
+
 
 echo
 echo "Passed: $PASS"
