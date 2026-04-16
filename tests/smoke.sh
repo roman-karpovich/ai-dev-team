@@ -377,6 +377,41 @@ check "cross-audit --severity flag"        check_cross_audit_severity_flag
 check "cross-auditor severity_floor param" check_cross_auditor_severity_floor
 echo
 
+# --- Config extensions (codex.* + autogen) ---
+echo "Config extensions:"
+
+check_yml_example_codex() {
+  grep -q "codex:" .ai-dev-team.yml.example || { echo "yml.example missing codex: block"; return 1; }
+  echo "yml.example has codex: block"
+}
+
+check_dev_codex_threads_model() {
+  grep -q "codex_model" agents/developer-codex.md \
+    && grep -q "codex_reasoning_effort" agents/developer-codex.md \
+    || { echo "developer-codex missing codex_model/codex_reasoning_effort"; return 1; }
+  echo "developer-codex threads codex.* inputs"
+}
+
+check_cross_auditor_threads_model() {
+  grep -q "codex_model" agents/cross-auditor.md \
+    && grep -q "codex_reasoning_effort" agents/cross-auditor.md \
+    || { echo "cross-auditor missing codex_model/codex_reasoning_effort"; return 1; }
+  echo "cross-auditor threads codex.* inputs"
+}
+
+check_skill_autogen_prompt() {
+  # Feature skill prompts the user to save config after legacy discovery
+  grep -q "Save .*kb_path.*\\.ai-dev-team\\.yml" skills/feature/SKILL.md \
+    || { echo "feature SKILL.md missing autogen prompt"; return 1; }
+  echo "feature SKILL.md has autogen prompt"
+}
+
+check "yml.example has codex: block"        check_yml_example_codex
+check "developer-codex threads codex.*"     check_dev_codex_threads_model
+check "cross-auditor threads codex.*"       check_cross_auditor_threads_model
+check "feature SKILL has autogen prompt"    check_skill_autogen_prompt
+echo
+
 
 echo
 echo "Passed: $PASS"
