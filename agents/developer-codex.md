@@ -91,12 +91,16 @@ Save all output to: <workdoc_dir>/captures/
 ## Codex Call Parameters
 
 ```
-model: omit — uses default from ~/.codex/config.toml
-config: {"reasoning": {"effort": "xhigh"}}
+model: <codex_model if provided, else omit — Codex uses ~/.codex/config.toml default>
+config: {"reasoning": {"effort": <codex_reasoning_effort if provided, else "xhigh">}}
 cwd: <project_path>
 sandbox: danger-full-access  (needs to run tests)
 prompt: <constructed prompt>
 ```
+
+`codex_model` and `codex_reasoning_effort` arrive as optional inputs from the
+feature skill (populated from `.ai-dev-team.yml` or `.ai-dev-team.local.yml`
+under the `codex:` block). Treat absent values as "use the defaults above".
 
 ## Rules (Codex-specific)
 
