@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Stop hook — warn when a feature branch has unfinished work.
+
+Runs on every Stop event. Silent unless:
+  - CWD is inside a git repo
+  - Current branch matches feature/YYYY-MM-DD-*
+  - Working tree dirty OR branch has commits not merged into base
+  - Per-repo debounce (30 min) allows re-warn
+
+Output on match: JSON {"decision": "block", "reason": "..."} — Claude Code
+uses this as a prompt to remind the user on the next turn. Any failure
+falls through to silent exit 0.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+DEBOUNCE_SECONDS = 30 * 60
+FEATURE_BRANCH_RE = re.compile(r"^feature/\d{4}-\d{2}-\d{2}-")
+
+
+def run(cmd: list[str], cwd: str | None = None) -> tuple[int, str]:
+    try:
+        r = subprocess.run(
+            cmd, cwd=cwd, capture_output=True, text=True, timeout=3, check=False
+        )
+        return r.returncode, (r.stdout or "").strip()
+    except Exception:
+        return 1, ""
+
+
+def main() -> int:
+    try:
+        # Consume any stdin payload silently so we don't block
+        if not sys.stdin.isatty():
+            try:
+                sys.stdin.read()
+            except Exception:
+                pass
+
+        cwd = os.getcwd()
+        rc, toplevel = run(["git", "rev-parse", "--show-toplevel"], cwd=cwd)
+        if rc != 0 or not toplevel:
+            return 0
+
+        rc, branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=toplevel)
+        if rc != 0 or not FEATURE_BRANCH_RE.match(branch):
+            return 0
+
+        # Debounce per repo
+        key = hashlib.sha256(toplevel.encode()).hexdigest()[:16]
+        debounce_path = Path(tempfile.gettempdir()) / f"ai-dev-team-stop-{key}"
+        now = time.time()
+        if debounce_path.exists():
+            try:
+                if now - debounce_path.stat().st_mtime < DEBOUNCE_SECONDS:
+                    return 0
+            except Exception:
+                pass
+
+        rc, porcelain = run(["git", "status", "--porcelain"], cwd=toplevel)
+        dirty_count = len([l for l in porcelain.splitlines() if l.strip()]) if rc == 0 else 0
+
+        base = None
+        for candidate in ("master", "main"):
+            rc, _ = run(["git", "rev-parse", "--verify", f"refs/heads/{candidate}"], cwd=toplevel)
+            if rc == 0:
+                base = candidate
+                break
+
+        unmerged = 0
+        if base:
+            rc, out = run(["git", "rev-list", "--count", f"{base}..HEAD"], cwd=toplevel)
+            if rc == 0 and out.isdigit():
+                unmerged = int(out)
+
+        if dirty_count == 0 and unmerged == 0:
+            return 0
+
+        parts = []
+        if dirty_count:
+            parts.append(f"{dirty_count} uncommitted change(s)")
+        if unmerged:
+            parts.append(f"{unmerged} unpushed commit(s)")
+        summary = " and ".join(parts)
+
+        base_label = base or "base"
+        reason = (
+            f"Feature branch `{branch}` has {summary}. "
+            f"If wrapping up, pick a hand-off: merge into {base_label}, push, keep, or discard "
+            f"(`/feature discard`)."
+        )
+
+        try:
+            debounce_path.touch()
+        except Exception:
+            pass
+
+        payload = {"decision": "block", "reason": reason}
+        json.dump(payload, sys.stdout)
+        sys.stdout.write("\n")
+        return 0
+    except Exception:
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
