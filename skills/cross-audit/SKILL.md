@@ -29,6 +29,11 @@ Cross-audit runs Claude (Opus) and Codex (GPT-5.4) as independent auditors, cons
 ```yaml
 kb_path: /absolute/path/to/knowledge-base
 project: my-project-name
+
+# Optional Codex MCP overrides (propagate into cross-auditor)
+codex:
+  model: gpt-5.4          # omit to use ~/.codex/config.toml default
+  reasoning_effort: xhigh  # minimal|low|medium|high|xhigh (default: xhigh)
 ```
 
 5. Read top-level `kb_path` and `project` independently. `per-field resolution: local → shared → memory → sibling → ask, continue on per-file parse error`
@@ -39,6 +44,8 @@ project: my-project-name
    - `kb_path`: check `memory/reference_kb_<project>.md`, then look for a sibling directory containing "knowledge" in its name (`ls ../`), then ask the user
    - `project`: use memory if available, otherwise use the current repo directory name, then ask if ambiguous
 10. If no valid config resolved `kb_path` and a sibling KB is auto-discovered, confirm with the user before using it. After explicit confirmation in the legacy flow, save `kb_path` and `project` to memory (`reference_kb_<project>.md`).
+11. After legacy discovery succeeds, if `.ai-dev-team.yml` does not exist in the repo root, prompt: **"Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]"**. On yes: write a file with the resolved fields (copy-and-substitute from `.ai-dev-team.yml.example` if present). If the file exists but lacks one of these fields, print a one-line warning — never overwrite user config automatically.
+12. Also read `codex.model` and `codex.reasoning_effort`. Pass them into the cross-auditor dispatch as `codex_model` and `codex_reasoning_effort`. If absent, cross-auditor uses its built-in defaults.
 
 **New audit**: generate `audit_slug` = `YYYY-MM-DD-<scope-slug>`.
 **Re-audit**: extract `audit_slug` from the existing findings doc filename — strip the path prefix and `-findings.md` suffix (e.g. `…/2026-04-14-workflow-definitions-findings.md` → `2026-04-14-workflow-definitions`). Do NOT regenerate from the current date; the slug must match the original to write to the same file.
@@ -72,6 +79,8 @@ scope: [derived scope]
 project_type: [detected type]
 mode: [logic|security|full]
 severity_floor: [high|medium+]
+codex_model: [from config, if set]
+codex_reasoning_effort: [from config, if set]
 kb_path: [kb_path]
 project: [project]
 audit_slug: [audit_slug]
