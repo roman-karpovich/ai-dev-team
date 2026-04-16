@@ -24,7 +24,8 @@ Parse `$ARGUMENTS` to determine the mode:
 | `new <description>` or bare non-path description | **New** | Research codebase, write spec, get approval |
 | `continue [spec-path]` | **Continue** | Resume from last checkpoint in spec |
 | bare path to an existing `*.md` file (not prefixed with `new`) | **Continue** | Treat as `continue <spec-path>` |
-| `status` | **Status** | Show all in-progress specs |
+| `status` or `status --all` | **Status** | Show actionable specs (or everything with `--all`) |
+| `discard [spec-path]` | **Discard** | Delete feature branch + set spec DISCARDED (explicit; not tied to hand-off) |
 
 ---
 
@@ -225,6 +226,8 @@ Before starting implementation, ask the user which agent to use:
 
 If the feature spec tagged steps with a developer level, use that. Otherwise default to Codex.
 
+**Remember the choice**: once the user has picked an agent, append to the spec Log: `- YYYY-MM-DD: last_agent=<codex|senior|middle>`. Continue mode reads the most recent `last_agent=` entry from the Log and offers that as the default on resume (the user can still override).
+
 #### Option 1: Codex (developer-codex agent)
 
 Spawn `developer-codex` subagent with:
@@ -311,14 +314,7 @@ Report the branch name. Set spec `status: DONE`.
 
 **Option 3 — Keep as-is:** Do nothing. Report the branch name. Set spec `status: DONE`.
 
-**Option 4 — Discard:** Confirm first:
-```
-This will permanently delete branch <name> and all commits:
-<commit list>
-
-Type 'discard' to confirm.
-```
-On confirmation: `git checkout <base-branch> && git branch -D <branch>`. Set spec `status: DISCARDED`, append to Log: "feature discarded by user".
+**Option 4 — Discard:** delegate to the Discard mode below (same flow as `/feature discard <spec-path>`).
 
 ---
 
@@ -332,10 +328,33 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
    - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
+   - `BLOCKED` → Report the unblock condition from the most recent `BLOCKED — waiting on ...` Log entry and ask the user whether the condition is now satisfied. If yes, revert status to the prior state (IN_PROGRESS or AUDIT_PASSED, whichever the Log indicates) and resume. If no, stop.
    - `DONE` → Feature complete and already preserved. Report completion status and stop.
    - `DISCARDED` → Feature was discarded. Report this and stop.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
-4. Ask which agent to use for remaining work (only if resuming implementation)
+4. Ask which agent to use for remaining work (only if resuming implementation). If the Log contains a `last_agent=...` entry, present it as the default: "Which developer? (default: Codex — last used)".
+
+---
+
+## Discard mode
+
+Explicit discard outside hand-off. Use when the user decides mid-implementation (or on resume) to throw the feature away.
+
+1. Run KB discovery (Phase 0).
+2. Resolve the spec from `spec-path`. If no argument: prompt the user with the list of IN_PROGRESS / AUDIT_PASSED / BLOCKED specs.
+3. Refuse if `status: DONE` — already merged, not something discard can undo. Tell the user to revert the merge commit instead.
+4. Refuse if `status: DISCARDED` — already gone.
+5. Show the commit list and branch name:
+
+```
+git log --oneline <base>..<branch>
+
+This will permanently delete branch <branch> and all commits listed above.
+Type 'discard' to confirm.
+```
+
+6. On confirmation: `git checkout <base-branch> && git branch -D <branch>` (use `-D` — force, since the branch likely isn't merged into base). Set `status: DISCARDED`, append Log: `- YYYY-MM-DD: feature discarded by user`.
+7. On any other answer: abort, leave state untouched.
 
 ---
 
@@ -344,13 +363,16 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
 1. Run KB discovery (Phase 0)
 2. Find all specs: `<kb_path>/repos/*/design/YYYY-MM-DD-*.md`
 3. Read status and checklist from each
-4. Show summary:
+4. Filter: by default, hide `DONE`, `DISCARDED`, and `BLOCKED` (they are not actionable now). If the argument is `status --all`, show every spec regardless of status.
+5. Show summary:
 
 ```
 | Spec | Project | Status | Progress | Branch |
 |------|---------|--------|----------|--------|
 | ... | ... | IN_PROGRESS | 3/7 steps | feature/... |
 ```
+
+To move a spec to `BLOCKED`, append `- YYYY-MM-DD: BLOCKED — waiting on <condition>` to the spec Log and flip `status: BLOCKED`. Continue mode reads the most recent such Log entry and asks whether the condition is satisfied on resume.
 
 ---
 
