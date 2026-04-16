@@ -36,9 +36,23 @@ Before reading any capture file: resolve paths relative to `dirname(workdoc_path
 
 Read `observed.commit_shas` from the workdoc — this is an ordered list of all commits for this step (including any fixup commits from FAIL/DRIFT retries).
 
-- If the list has **one entry**: run `git diff <sha>^ <sha>` in `project_path`.
-- If the list has **multiple entries**: run `git diff <first_sha>^ <last_sha>` to review the full range of the step. This ensures fixup commits are included.
-- If `observed.commit_shas` is empty: run `git diff HEAD~1 HEAD` as a fallback, but flag a DRIFT: "observed.commit_shas is empty — diff may be incomplete."
+**Before diffing, validate each SHA**. For each entry, run `git cat-file -e <sha>^{commit}` in `project_path`. If the command fails, the SHA has been rewritten by `git commit --amend`, rebase, or merge and no longer points at a commit.
+
+- **All SHAs valid, one entry**: run `git diff <sha>^ <sha>` in `project_path`.
+- **All SHAs valid, multiple entries**: run `git diff <first_sha>^ <last_sha>`. This ensures fixup commits are included.
+- **Any SHA invalid** → SHA fallback (see below). Always flag a DRIFT in the final report when fallback was used.
+- **`observed.commit_shas` empty** → SHA fallback (see below).
+
+#### SHA fallback
+
+Try these in order until one yields a non-empty commit range, then run `git diff <first>..<last>`:
+
+1. **Grep by message pattern**: if `observed.commit_message_grep` is set in the workdoc, run `git log --grep="<pattern>" --format=%H <base-branch>..HEAD` in `project_path`. Use the first → last entry as the range. (Base branch is the one the feature branched from — detect via `git merge-base HEAD main` or `… master` and use `<base-sha>..HEAD`.)
+2. **Grep by step number**: if the spec checklist uses `Step N:` convention, grep `git log --grep="Step <N>" --format=%H <base>..HEAD`. Same range logic.
+3. **Scope-scoped log**: if `planned.allowed_scope` is a concrete path list, run `git log --format=%H <base>..HEAD -- <scope-paths>` and take the last N commits, where N = `max(len(observed.commit_shas), 1)`.
+4. **Last resort**: `git diff HEAD~1 HEAD`.
+
+Record which fallback tier fired in the report's "Issues" section: "commit SHAs stale — used tier <1|2|3|4> fallback".
 
 Read the full diff. Check:
 - **Scope compliance**: do the touched files match `planned.allowed_scope`? Flag any file outside scope.
