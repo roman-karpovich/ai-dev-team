@@ -203,6 +203,50 @@ check "post-edit-lint missing file"       check_lint_missing_file
 check "post-edit-lint no shell=True"      check_no_shell_true
 echo
 
+# --- stop-check hook ---
+echo "stop-check hook:"
+
+check_stop_check_exists() {
+  test -x hooks/stop-check || { echo "hooks/stop-check missing or not executable"; return 1; }
+  echo "stop-check exists and executable"
+}
+
+check_stop_check_no_shell_true() {
+  if grep -n "shell=True" hooks/stop-check; then
+    echo "FOUND 'shell=True' in hooks/stop-check — shell-injection regression!"
+    return 1
+  fi
+  echo "stop-check: no shell=True OK"
+}
+
+check_stop_check_silent_outside_repo() {
+  # Run in /tmp (not a git repo). Must exit 0 and emit nothing.
+  local out
+  out=$(cd /tmp && python3 "$PLUGIN_ROOT/hooks/stop-check" < /dev/null 2>&1)
+  if [ -n "$out" ]; then
+    echo "stop-check emitted output outside a repo: $out"
+    return 1
+  fi
+  echo "stop-check silent outside repo"
+}
+
+check_stop_hook_registered() {
+  python3 -c "
+import json
+d = json.load(open('hooks/hooks.json'))
+assert 'Stop' in d['hooks'], 'Stop not registered in hooks.json'
+cmd = d['hooks']['Stop'][0]['hooks'][0]['command']
+assert 'stop-check' in cmd, f'Stop hook command does not reference stop-check: {cmd}'
+print('Stop hook registered OK')
+"
+}
+
+check "stop-check exists"                 check_stop_check_exists
+check "stop-check no shell=True"          check_stop_check_no_shell_true
+check "stop-check silent outside repo"    check_stop_check_silent_outside_repo
+check "Stop hook registered in hooks.json" check_stop_hook_registered
+echo
+
 # --- Developer-workflow reference (DRY refactor 2026-04-17) ---
 echo "Developer-workflow reference:"
 
