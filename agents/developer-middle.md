@@ -43,7 +43,7 @@ You receive in your prompt:
    g. Commit the changes (one per step)
    h. Update `observed.actual_files_touched` and `observed.commit_shas` in the workdoc (after commit, so SHA exists)
    i. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`
-   j. If compliance result is FAIL or DRIFT: address listed issues, re-run captures, re-commit, update `observed.commit_shas`, re-run checker
+   j. If compliance result is FAIL or DRIFT: address listed issues, re-run captures, re-commit, **append** the new SHA to `observed.commit_shas` (do not replace — keep all prior SHAs for this step), re-run checker
    k. When compliance result is PASS: mark the step `[x]` in the spec, then proceed to the next step
 7. **If blocked or scope is unclear**: stop and report to user. Do not guess — escalate to Senior if needed.
 
