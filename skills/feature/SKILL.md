@@ -133,7 +133,7 @@ If any check fails: fix the spec/workdoc directly (or ask the user for the missi
 
 #### Pass 2: Cross-audit (dual-model)
 
-Track `spec_audit_iteration` (start at 1, increment on each re-spawn). Track `spec_audit_fixed_ids` (list of finding IDs the user fixed — accumulate across rounds).
+Track `spec_audit_iteration` (start at 1, increment on each re-spawn). Track `spec_audit_fixed_ids` (list of finding IDs the user fixed — accumulate across rounds). Track `spec_audit_next_id` (integer — the next finding ID to allocate; start at 1, update to `highest_id_in_report + 1` after each round).
 
 Spawn `cross-auditor` subagent with:
 - `scope`: `<spec_path>` (the spec file)
@@ -144,6 +144,7 @@ Spawn `cross-auditor` subagent with:
 - `iteration`: `<spec_audit_iteration>`
 - `working_directory`: `<cwd>`
 - `previously_fixed`: `<spec_audit_fixed_ids>` (empty list on first pass)
+- `next_finding_id`: `<spec_audit_next_id>` (ensures IDs don't collide across rounds when no findings doc exists)
 - (omit `kb_path` — spec mode does not write to KB)
 
 The cross-auditor returns findings inline (no KB writes in spec mode).
@@ -152,7 +153,8 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 1. Present findings to user
 2. Update spec/workdoc (user edits in Obsidian, or ask Claude to apply the fix)
 3. Collect IDs of findings the user fixed → append to `spec_audit_fixed_ids`
-4. Increment `spec_audit_iteration`
+4. Update `spec_audit_next_id` = highest finding ID in this round's report + 1
+5. Increment `spec_audit_iteration`
 5. Re-run Pass 1 self-review, then re-spawn cross-auditor with updated `iteration` and `previously_fixed`
 6. Repeat until no CRITICAL/HIGH remain
 7. Set spec `status: AUDIT_PASSED`

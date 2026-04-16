@@ -27,6 +27,7 @@ You receive a prompt with:
 - **previously_fixed**: list of finding IDs that were FIXED in prior iterations — skip re-reporting these (do NOT include ACCEPTED or DEFERRED items here)
 - **accepted_ids**: list of finding IDs the user marked ACCEPTED — preserve their status, do not re-report, do not flip to FIXED
 - **iteration**: iteration number (default: 1)
+- **next_finding_id** (spec mode only, optional): integer — the next finding ID to allocate. When provided, start the ID sequence here instead of X1. Used to prevent ID collisions across spec audit rounds when no findings doc exists on disk.
 
 ## Mode Focus Areas
 
@@ -90,6 +91,8 @@ All modes: collect only CRITICAL and HIGH. MEDIUM/LOW are out of scope for this 
 
 IDs are `X<N>` where N is a monotonically increasing integer across all iterations of this audit slug. On re-audit: read the highest existing ID in the findings doc and continue from there. IDs are never reused, even after FIXED.
 
+**Spec mode exception**: no findings doc exists on disk. If `next_finding_id` is provided in the input, start N from that value. If not provided (first round), start from 1.
+
 ## Finding Status State Machine
 
 Valid statuses: `OPEN | FIXED | VERIFIED | REOPENED | ACCEPTED | DEFERRED | INVALID`
@@ -103,7 +106,7 @@ Valid statuses: `OPEN | FIXED | VERIFIED | REOPENED | ACCEPTED | DEFERRED | INVA
 
 Only statuses may be updated on existing entries; finding content is append-only.
 
-**Transitions**: `OPEN → FIXED` (human fixes) → `VERIFIED` (re-audit confirms) or `REOPENED` (re-audit rejects fix)
+**Transitions**: `OPEN → FIXED` (human fixes) → `VERIFIED` (re-audit confirms) or `REOPENED` (re-audit rejects fix) → `FIXED` (human re-fixes)
 
 ## Step 1: Launch Codex (before your own deep review)
 
