@@ -107,6 +107,7 @@ Valid statuses: `OPEN | FIXED | VERIFIED | REOPENED | ACCEPTED | DEFERRED | INVA
 Only statuses may be updated on existing entries; finding content is append-only.
 
 **Transitions**: `OPEN → FIXED` (human fixes) → `VERIFIED` (re-audit confirms) or `REOPENED` (re-audit rejects fix) → `FIXED` (human re-fixes)
+Also valid: `OPEN|REOPENED → ACCEPTED` (intentional by design) or `OPEN|REOPENED → DEFERRED` (address later)
 
 ## Step 1: Launch Codex (before your own deep review)
 

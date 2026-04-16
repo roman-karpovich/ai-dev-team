@@ -99,8 +99,8 @@ When cross-auditor completes:
 
 1. Update finding statuses in findings doc **before** writing any code:
    - `fix` targets: OPEN|REOPENED → FIXED
-   - `accept` targets: OPEN → ACCEPTED
-   - `defer` targets: OPEN → DEFERRED
+   - `accept` targets: OPEN|REOPENED → ACCEPTED
+   - `defer` targets: OPEN|REOPENED → DEFERRED
 2. Apply code fixes for the `fix` targets
 3. Run build/tests to verify
 4. Commit changes if user wants (small logical commits, no co-authored-by)
