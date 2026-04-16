@@ -24,11 +24,12 @@ You receive in your prompt:
 ## Workflow
 
 1. **Detect project type** if not provided: check for `Cargo.toml` (rust), `pyproject.toml`/`setup.py` (python), `package.json` (node), `go.mod` (go). Multiple markers → `mixed` (run all applicable suites from the defined set above — Rust, Python, Go, Node/TypeScript). If no marker found → report `NO_TESTS` and stop.
-1a. **If `branch` is provided**: run `git -C <project_path> rev-parse --abbrev-ref HEAD` to save current branch, then `git -C <project_path> checkout <branch>`. After all tests complete, run `git -C <project_path> checkout <original_branch>` to restore.
+1a. **If `branch` is provided**: run `git -C <project_path> rev-parse --abbrev-ref HEAD` to save current branch, then `git -C <project_path> checkout <branch>`. **Always** restore the original branch at the end — step 6 below runs unconditionally, even if earlier steps fail fatally.
 2. **Run build** first — compilation errors before test failures.
 3. **Run full test suite**.
 4. **Run focused tests** if scope is specified.
 5. **Report results** in structured format.
+6. **Restore branch** (unconditional): if `branch` was provided, run `git -C <project_path> checkout <original_branch>` regardless of whether tests passed, failed, or the agent hit an error.
 
 ## Commands by Project Type
 
