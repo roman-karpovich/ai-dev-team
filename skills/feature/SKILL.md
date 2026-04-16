@@ -117,7 +117,22 @@ Set spec `status: APPROVED` after explicit user approval.
 
 ### Step 3.5 — Spec review (two passes)
 
-After approval, review the spec and execution workdoc before any code is written.
+After approval, immediately ask:
+
+```
+Run spec audit before implementation?
+
+1. Yes — recommended if the spec involves external APIs, new business logic, or non-trivial data flows
+2. Skip — for simple config/plumbing changes where you're confident in the spec
+```
+
+If the user chooses **Skip**: set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`, proceed directly to Implement. (Setting AUDIT_PASSED rather than keeping APPROVED ensures continue mode does not re-enter the audit loop on resume.)
+
+If the user chooses **Yes** (or gives no explicit answer): run both passes below.
+
+---
+
+Review the spec and execution workdoc before any code is written.
 
 #### Pass 1: Self-review (orchestrator)
 
@@ -164,7 +179,7 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 > "Spec review passed. Ready to proceed with implementation?"
 Set spec `status: AUDIT_PASSED`.
 
-**Skip**: user says "skip spec audit" or "proceed anyway" — skip both passes, set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`. (Setting AUDIT_PASSED rather than keeping APPROVED ensures continue mode does not re-enter the audit loop on resume.)
+**Mid-flow skip**: if the user says "skip" or "proceed anyway" at any point during the audit — stop, set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`.
 
 ---
 
