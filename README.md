@@ -43,6 +43,39 @@ model_reasoning_effort = "xhigh"
 
 Restart Claude Code after install.
 
+## Project Config File (`.ai-dev-team.yml`)
+
+The plugin reads an optional config file from the root of the project being worked on.
+
+**Precedence:** `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → memory → sibling heuristic → ask
+
+### Plugin-repo dogfood
+
+Plugin developers working on `ai-dev-team` itself use a personal `.ai-dev-team.local.yml` (already in this repo's `.gitignore`). Do not commit `.ai-dev-team.yml` to the plugin repo; each developer has their own KB.
+
+To set your local path, create `.ai-dev-team.local.yml` in the plugin root:
+
+```yaml
+kb_path: /your/personal/kb/path
+```
+
+### Consumer-repo adoption
+
+For projects using this plugin via the marketplace:
+
+**To adopt team-shared config:** create `.ai-dev-team.yml` in your project root and commit it:
+
+```yaml
+kb_path: /absolute/path/to/knowledge-base
+project: my-project-name
+```
+
+Committing `.ai-dev-team.yml` makes the KB path team-shared across all developers.
+
+**To add a local override:** create `.ai-dev-team.local.yml` and add `.ai-dev-team.local.yml` to your project's `.gitignore`. The local file takes priority over the committed `.ai-dev-team.yml`. Without the `.gitignore` entry, your private KB path could accidentally be committed.
+
+An example file is included with the plugin at `.ai-dev-team.yml.example`.
+
 ---
 
 ## Ambient workflow
