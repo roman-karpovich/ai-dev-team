@@ -172,7 +172,7 @@ Set spec `status: AUDIT_PASSED`.
 
 ### Baseline test
 
-Before spawning any developer, ensure you are on the base branch (`master` or as spec says), then run the **verifier** subagent:
+Before spawning any developer, detect the repo default branch (`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'`, fall back to `main`), ensure you are on it (or the branch specified in the spec), then run the **verifier** subagent:
 
 ```
 project_path: <project_path>
@@ -224,7 +224,7 @@ Spawn `developer-middle` subagent with:
 ### Git conventions (both agents)
 
 - Work on feature branch: `feature/YYYY-MM-DD-<slug>` (or as specified in spec `Branch:` field)
-- Confirm base branch with user if different from master or if unclear
+- Confirm base branch with user if different from auto-detected default or if unclear
 - Small logical commits per checklist step
 - No "Co-authored-by" in commit messages
 - No pushing — user handles push and PR
@@ -241,8 +241,9 @@ spec_path: <spec_path>
 scope: <list of changed files from spec checklist>
 ```
 
-- **PASS**: set spec status `DONE`. Proceed to Hand-off.
-- **FAIL**: present failures to user. Spawn the developer again with: `rework: fix these test failures: <verifier report>`. Re-verify after fix.
+- **PASS**: Proceed to Hand-off. Do **not** set `status: DONE` yet — wait until the user selects a preserving option (merge, push, or keep). Setting DONE before that means a discard would leave the spec permanently marked DONE with no surviving branch.
+- **FAIL**: present failures to user. Analyze the verifier report to identify which checklist step(s) are responsible. Spawn the developer with `rework step N: fix test failure: <relevant excerpt>` for each affected step. Re-verify after fix.
+- **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off before proceeding. Log the absence of a project-level test suite.
 
 ---
 
@@ -267,7 +268,9 @@ Which option?
 ```bash
 git checkout <base-branch> && git pull && git merge <branch>
 ```
-Run verifier once more on the merged result. If green: `git branch -d <branch>`.
+Run verifier once more on the merged result. If green: `git branch -d <branch>`. Set spec `status: DONE`.
+
+Set spec `status: DONE` after the PR is created.
 
 **Option 2 — Push and PR:**
 ```bash
@@ -284,7 +287,7 @@ EOF
 )"
 ```
 
-**Option 3 — Keep as-is:** Do nothing. Report the branch name.
+**Option 3 — Keep as-is:** Do nothing. Report the branch name. Set spec `status: DONE`.
 
 **Option 4 — Discard:** Confirm first:
 ```
@@ -293,7 +296,7 @@ This will permanently delete branch <name> and all commits:
 
 Type 'discard' to confirm.
 ```
-On confirmation: `git checkout <base-branch> && git branch -D <branch>`.
+On confirmation: `git checkout <base-branch> && git branch -D <branch>`. Set spec `status: DISCARDED`, append to Log: "feature discarded by user".
 
 ---
 
@@ -308,6 +311,7 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
    - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
    - `DONE` → All steps complete and verified. Proceed to Hand-off.
+   - `DISCARDED` → Feature was discarded. Report this and stop.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
 4. Ask which agent to use for remaining work (only if resuming implementation)
 

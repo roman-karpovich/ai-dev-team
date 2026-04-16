@@ -120,7 +120,7 @@ After Codex completes:
 
 - **Feature branch**: always work on a feature branch, never commit to master/main directly
 - **Branch name**: `feature/<YYYY-MM-DD-slug>` or as specified in the spec `Branch:` field
-- **Base branch**: branch from master by default; confirm with user if spec specifies otherwise or if unclear
+- **Base branch**: detect with `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'` (falls back to `main`). Confirm with user if spec specifies otherwise or if unclear
 - **Branch already exists**: tell Codex to `git checkout <branch>` (not re-create it)
 - Pass `cwd` to Codex — it handles the actual git operations within the branch
 - After Codex completes each step: verify the commit was made on the correct branch
