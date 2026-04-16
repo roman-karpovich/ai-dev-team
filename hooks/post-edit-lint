@@ -12,23 +12,31 @@ def find_project_root(file_path):
     """Walk up from file_path to find project root and detect language."""
     p = Path(file_path).resolve()
     for parent in [p.parent] + list(p.parent.parents):
-        if (parent / 'Cargo.toml').exists():
-            return parent, 'rust'
-        if (parent / 'pyproject.toml').exists() or (parent / 'setup.py').exists():
-            return parent, 'python'
-        if (parent / 'go.mod').exists():
-            return parent, 'go'
-        if (parent / 'package.json').exists():
-            return parent, 'node'
+        if (parent / "Cargo.toml").exists():
+            return parent, "rust"
+        if (parent / "pyproject.toml").exists() or (parent / "setup.py").exists():
+            return parent, "python"
+        if (parent / "go.mod").exists():
+            return parent, "go"
+        if (parent / "package.json").exists():
+            return parent, "node"
     return None, None
 
 
 def run(cmd, cwd, timeout=30):
-    result = subprocess.run(
-        cmd, shell=True, cwd=str(cwd),
-        capture_output=True, text=True, timeout=timeout
-    )
-    return result.returncode, (result.stdout + result.stderr).strip()
+    try:
+        result = subprocess.run(
+            cmd,
+            shell=False,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        return 127, ""
+    return result.returncode, (result.stdout or "").strip()
 
 
 def main():
@@ -37,13 +45,13 @@ def main():
     except Exception:
         sys.exit(0)
 
-    tool_name = data.get('tool_name', '')
-    tool_input = data.get('tool_input', {})
+    tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {})
 
-    if tool_name not in ('Edit', 'Write', 'MultiEdit'):
+    if tool_name not in ("Edit", "Write", "MultiEdit"):
         sys.exit(0)
 
-    file_path = tool_input.get('file_path', '')
+    file_path = tool_input.get("file_path", "")
     if not file_path or not os.path.exists(file_path):
         sys.exit(0)
 
@@ -55,56 +63,61 @@ def main():
     messages = []
 
     try:
-        if lang == 'rust':
+        if lang == "rust":
             # Auto-format in place (silent)
-            run(f'cargo fmt -- "{rel}"', project_root)
+            run(["cargo", "fmt", "--", rel], project_root)
             # Report warnings scoped to changed file
-            rc, out = run('cargo clippy 2>&1', project_root)
+            rc, out = run(["cargo", "clippy"], project_root)
             if out:
-                relevant = [l for l in out.splitlines()
-                            if rel in l or l.strip().startswith('error') or l.strip().startswith('warning')]
+                relevant = [
+                    line
+                    for line in out.splitlines()
+                    if rel in line
+                    or line.strip().startswith("error")
+                    or line.strip().startswith("warning")
+                ]
                 relevant = relevant[:30]
                 if relevant:
-                    messages.append('cargo clippy:\n' + '\n'.join(relevant))
+                    messages.append("cargo clippy:\n" + "\n".join(relevant))
 
-        elif lang == 'python':
+        elif lang == "python":
             # Detect formatter
-            has_ruff = run('ruff --version 2>&1', project_root)[0] == 0
-            has_black = run('black --version 2>&1', project_root)[0] == 0
+            has_ruff = run(["ruff", "--version"], project_root)[0] == 0
+            has_black = run(["black", "--version"], project_root)[0] == 0
 
             if has_ruff:
-                run(f'ruff format "{rel}" 2>&1', project_root)
-                rc, out = run(f'ruff check "{rel}" 2>&1', project_root)
+                run(["ruff", "format", rel], project_root)
+                rc, out = run(["ruff", "check", rel], project_root)
             elif has_black:
-                run(f'black "{rel}" 2>&1', project_root)
-                rc, out = run(f'flake8 "{rel}" 2>&1', project_root)
+                run(["black", rel], project_root)
+                rc, out = run(["flake8", rel], project_root)
             else:
                 sys.exit(0)
 
             if rc != 0 and out:
-                messages.append('Linter:\n' + out[:800])
+                messages.append("Linter:\n" + out[:800])
 
-        elif lang == 'go':
-            run(f'gofmt -w "{rel}"', project_root)
-            rc, out = run('go vet ./... 2>&1', project_root)
+        elif lang == "go":
+            run(["gofmt", "-w", rel], project_root)
+            rc, out = run(["go", "vet", "./..."], project_root)
             if rc != 0 and out:
-                relevant = [l for l in out.splitlines() if rel in l]
+                relevant = [line for line in out.splitlines() if rel in line]
                 if relevant:
-                    messages.append('go vet:\n' + '\n'.join(relevant[:20]))
+                    messages.append("go vet:\n" + "\n".join(relevant[:20]))
 
-        elif lang == 'node':
+        elif lang == "node":
             try:
-                pkg = json.loads((project_root / 'package.json').read_text())
+                pkg = json.loads((project_root / "package.json").read_text())
             except Exception:
                 sys.exit(0)
-            all_deps = {**pkg.get('devDependencies', {}), **pkg.get('dependencies', {})}
+            all_deps = {**pkg.get("devDependencies", {}), **pkg.get("dependencies", {})}
 
-            if 'prettier' in all_deps:
-                run(f'npx prettier --write "{rel}" 2>&1', project_root)
-            if 'eslint' in all_deps:
-                rc, out = run(f'npx eslint "{rel}" 2>&1', project_root)
+            if "prettier" in all_deps:
+                run(["npx", "prettier", "--write", rel], project_root)
+            if "eslint" in all_deps:
+                rc, out = run(["npx", "eslint", rel], project_root)
                 if rc != 0 and out:
-                    messages.append('ESLint:\n' + out[:800])
+                    messages.append("ESLint:\n" + out[:800])
 
     except subprocess.TimeoutExpired:
         sys.exit(0)
@@ -112,11 +125,11 @@ def main():
         sys.exit(0)
 
     if messages:
-        msg = f'Linter ({lang}) — {rel}:\n\n' + '\n\n'.join(messages)
-        print(json.dumps({'systemMessage': msg}))
+        msg = f"Linter ({lang}) — {rel}:\n\n" + "\n\n".join(messages)
+        print(json.dumps({"systemMessage": msg}))
 
     sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
