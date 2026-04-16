@@ -1,7 +1,7 @@
 ---
 name: cross-audit
 description: Iterative cross-audit with Claude + Codex working independently then consolidating findings. Runs in background — does not block the main conversation.
-argument-hint: "<scope description OR path to existing findings doc> [--diff] [--mode logic|security|full]"
+argument-hint: "<scope description OR path to existing findings doc> [--diff] [--mode logic|security|full] [--severity high|medium+]"
 ---
 
 # Cross-Audit: Background Parallel Review
@@ -15,6 +15,7 @@ Cross-audit runs Claude (Opus) and Codex (GPT-5.4) as independent auditors, cons
 **Flags** (orthogonal to each other):
 - `--diff` → scope the audit to files changed since `base_branch` (default: auto-detected repo default, falls back to `main`). Can combine with any mode: e.g. `--diff --mode logic` audits only changed files using logic focus areas.
 - `--mode logic|security|full` → audit mode (default: `full`)
+- `--severity high|medium+` → severity floor (default: `high`). `high` collects only CRITICAL/HIGH (current behavior). `medium+` also includes MEDIUM — useful for small features where serious findings are unlikely but nitpick-level review is still valuable.
 
 ---
 
@@ -53,6 +54,7 @@ project: my-project-name
 From `$ARGUMENTS` derive:
 - **scope**: files/directories/feature area
 - **mode**: `logic` | `security` | `full`
+- **severity_floor**: `high` (default) | `medium+` — from `--severity` flag
 - **base_branch**: for diff mode (default: auto-detected via `git symbolic-ref refs/remotes/origin/HEAD`, falls back to `main`)
 - **previously_fixed**: if re-audit, extract from existing findings doc
 - **project_type**: detect from codebase (smart_contract, backend, frontend, data_pipeline)
@@ -69,6 +71,7 @@ Cross-audit the following scope.
 scope: [derived scope]
 project_type: [detected type]
 mode: [logic|security|full]
+severity_floor: [high|medium+]
 kb_path: [kb_path]
 project: [project]
 audit_slug: [audit_slug]
