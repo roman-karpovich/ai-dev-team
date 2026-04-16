@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """PostToolUse hook: run linter on edited file, report new warnings to Claude."""
 
+import ast
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    tomllib = None
 
 
 def find_project_root(file_path):
@@ -39,6 +45,136 @@ def run(cmd, cwd, timeout=30):
     return result.returncode, (result.stdout or "").strip()
 
 
+def load_cargo_manifest(manifest_path):
+    try:
+        if tomllib is not None:
+            with manifest_path.open("rb") as f:
+                return tomllib.load(f)
+
+        current_section = None
+        pending_key = None
+        pending_value_lines = []
+        manifest = {}
+
+        def store_value(section, key, value):
+            if section not in ("package", "workspace"):
+                return
+
+            parsed = ast.literal_eval(value)
+            if section == "package" and key == "name" and isinstance(parsed, str):
+                manifest.setdefault("package", {})["name"] = parsed
+            elif (
+                section == "workspace"
+                and key == "members"
+                and isinstance(parsed, list)
+            ):
+                members = [member for member in parsed if isinstance(member, str)]
+                manifest.setdefault("workspace", {})["members"] = members
+
+        for raw_line in manifest_path.read_text().splitlines():
+            line = raw_line.split("#", 1)[0].strip()
+            if not line:
+                continue
+
+            if pending_key:
+                pending_value_lines.append(line)
+                if line.endswith("]"):
+                    store_value(
+                        current_section,
+                        pending_key,
+                        " ".join(pending_value_lines),
+                    )
+                    pending_key = None
+                    pending_value_lines = []
+                continue
+
+            if line.startswith("[") and line.endswith("]"):
+                current_section = line[1:-1].strip()
+                continue
+
+            if "=" not in line or not current_section:
+                continue
+
+            key, value = [part.strip() for part in line.split("=", 1)]
+            if (
+                current_section == "workspace"
+                and key == "members"
+                and value.startswith("[")
+                and not value.endswith("]")
+            ):
+                pending_key = key
+                pending_value_lines = [value]
+                continue
+
+            store_value(current_section, key, value)
+
+        return manifest
+    except Exception:
+        return {}
+
+
+def cargo_package_name(manifest):
+    package = manifest.get("package")
+    if not isinstance(package, dict):
+        return None
+
+    name = package.get("name")
+    if isinstance(name, str) and name:
+        return name
+    return None
+
+
+def workspace_member_manifests(workspace_root, manifest):
+    workspace = manifest.get("workspace")
+    if not isinstance(workspace, dict):
+        return []
+
+    members = workspace.get("members")
+    if not isinstance(members, list):
+        return []
+
+    manifests = []
+    for member in members:
+        if not isinstance(member, str):
+            continue
+        for member_dir in sorted(workspace_root.glob(member)):
+            member_manifest = member_dir / "Cargo.toml"
+            if member_manifest.exists():
+                manifests.append(member_manifest)
+    return manifests
+
+
+def cargo_clippy_cmd(file_path):
+    rust_file = Path(file_path).resolve()
+
+    for parent in [rust_file.parent] + list(rust_file.parent.parents):
+        manifest_path = parent / "Cargo.toml"
+        if not manifest_path.exists():
+            continue
+
+        manifest = load_cargo_manifest(manifest_path)
+        package_name = cargo_package_name(manifest)
+        if package_name:
+            return ["cargo", "clippy", "-p", package_name]
+
+        if not isinstance(manifest.get("workspace"), dict):
+            continue
+
+        for member_manifest in workspace_member_manifests(parent, manifest):
+            try:
+                rust_file.relative_to(member_manifest.parent.resolve())
+            except ValueError:
+                continue
+
+            member_name = cargo_package_name(load_cargo_manifest(member_manifest))
+            if member_name:
+                return ["cargo", "clippy", "-p", member_name]
+
+        return None
+
+    return None
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -66,19 +202,21 @@ def main():
         if lang == "rust":
             # Auto-format in place (silent)
             run(["cargo", "fmt", "--", rel], project_root)
-            # Report warnings scoped to changed file
-            rc, out = run(["cargo", "clippy"], project_root)
-            if out:
-                relevant = [
-                    line
-                    for line in out.splitlines()
-                    if rel in line
-                    or line.strip().startswith("error")
-                    or line.strip().startswith("warning")
-                ]
-                relevant = relevant[:30]
-                if relevant:
-                    messages.append("cargo clippy:\n" + "\n".join(relevant))
+            # Scope cargo clippy via -p <pkg>; skip virtual-workspace-root orphans.
+            clippy_cmd = cargo_clippy_cmd(file_path)
+            if clippy_cmd:
+                _, out = run(clippy_cmd, project_root)
+                if out:
+                    relevant = [
+                        line
+                        for line in out.splitlines()
+                        if rel in line
+                        or line.strip().startswith("error")
+                        or line.strip().startswith("warning")
+                    ]
+                    relevant = relevant[:30]
+                    if relevant:
+                        messages.append("cargo clippy:\n" + "\n".join(relevant))
 
         elif lang == "python":
             # Detect formatter
