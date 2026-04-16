@@ -35,8 +35,10 @@ You receive in your prompt:
 5. **Read relevant source files** before writing any code. Understand existing patterns, style, dependencies.
 6. **For each step** (in order):
    a. Read the step's `planned` block in the workdoc
-   b. If `planned.failing_test_cmd` is set: run it from `project_path`, save output to `<dirname(workdoc_path)>/captures/step-NN-red.txt`, update `observed.red_capture`
-   c. Implement the minimal change to satisfy `planned.goal`, staying within `planned.allowed_scope`
+   b. **Red capture** — two valid approaches:
+      - *Test-first*: if `planned.failing_test_cmd` is set and the test already exists, run it before implementing, save output to `captures/step-NN-red.txt`
+      - *Fix-first (retrospective red)*: write the fix and the test together, then `git stash` the fix, run the test to confirm it fails, save output to `captures/step-NN-red.txt`, then `git stash pop`. Use this when writing the test in isolation is impractical. Either way, a red capture is required — it proves the test has real signal.
+   c. Implement (or unstash) the minimal change to satisfy `planned.goal`, staying within `planned.allowed_scope`
    d. Run `planned.passing_test_cmd` from `project_path`, save output to `<dirname(workdoc_path)>/captures/step-NN-green.txt`, update `observed.green_capture`
    e. **Verify the green capture matches `planned.expected_pass_pattern`** before proceeding
    f. If `planned.integration_probe_cmd` is set: run it from `project_path`, save to `<dirname(workdoc_path)>/captures/step-NN-probe.txt`, update `observed.probe_capture`
