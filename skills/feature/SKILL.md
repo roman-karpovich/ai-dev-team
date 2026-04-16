@@ -164,7 +164,7 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 > "Spec review passed. Ready to proceed with implementation?"
 Set spec `status: AUDIT_PASSED`.
 
-**Skip**: user says "skip spec audit" or "proceed anyway" — skip both passes, keep `status: APPROVED`.
+**Skip**: user says "skip spec audit" or "proceed anyway" — skip both passes, set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`. (Setting AUDIT_PASSED rather than keeping APPROVED ensures continue mode does not re-enter the audit loop on resume.)
 
 ---
 
