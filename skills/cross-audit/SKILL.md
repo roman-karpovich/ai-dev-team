@@ -18,16 +18,26 @@ Cross-audit runs Claude (Opus) and Codex (GPT-5.4) as independent auditors, cons
 
 ---
 
-## Phase 0: KB Discovery
+## Phase 0: KB Discovery (all modes)
 
-Before anything else:
+1. Determine `project` and `kb_path` via config before using legacy discovery.
+2. Read `.ai-dev-team.local.yml` first. `.ai-dev-team.local.yml` is the local override file, should be gitignored in the consumer repo, and `.ai-dev-team.local.yml overrides .ai-dev-team.yml`.
+3. Read `.ai-dev-team.yml` second. Compact shared-config fallback anchor: `.ai-dev-team.yml → memory → sibling heuristic → ask`
+4. Supported config shape:
 
-1. **Determine `project` name** first: current repo directory name (or from user).
-2. Check memory for `reference_kb_<project>.md`
-3. If not found: look for a sibling directory containing "knowledge" in its name (`ls ../`)
-4. If found: **confirm with user**: "Обнаружен KB: `<path>`. Использовать его?"
-5. If not found: ask user for KB path or where to create one
-6. After confirmation: save to memory as `reference_kb_<project>.md`
+```yaml
+kb_path: /absolute/path/to/knowledge-base
+project: my-project-name
+```
+
+5. Read top-level `kb_path` and `project` independently. `per-field resolution: local → shared → memory → sibling → ask, continue on per-file parse error`
+6. If either config file is malformed, missing `kb_path`, or points at a non-existent directory: warn once for that file and continue to the next source in the chain. Do not abort the session on parse error.
+7. When config is valid, skip confirmation prompt
+8. When config is valid, do not write to memory
+9. If config does not resolve a field, fall through to legacy discovery:
+   - `kb_path`: check `memory/reference_kb_<project>.md`, then look for a sibling directory containing "knowledge" in its name (`ls ../`), then ask the user
+   - `project`: use memory if available, otherwise use the current repo directory name, then ask if ambiguous
+10. If no valid config resolved `kb_path` and a sibling KB is auto-discovered, confirm with the user before using it. After explicit confirmation in the legacy flow, save `kb_path` and `project` to memory (`reference_kb_<project>.md`).
 
 **New audit**: generate `audit_slug` = `YYYY-MM-DD-<scope-slug>`.
 **Re-audit**: extract `audit_slug` from the existing findings doc filename — strip the path prefix and `-findings.md` suffix (e.g. `…/2026-04-14-workflow-definitions-findings.md` → `2026-04-14-workflow-definitions`). Do NOT regenerate from the current date; the slug must match the original to write to the same file.
