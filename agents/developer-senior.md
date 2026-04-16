@@ -69,6 +69,12 @@ When writing tests:
 - **No speculative additions**: implement exactly what the spec says.
 - **Multi-agent safety**: only modify files directly related to your task.
 - **No comments unless non-obvious**: don't annotate code you didn't write.
+- **Linters are mandatory**: run after every step, fix all warnings before committing.
+  - Rust: `cargo fmt && cargo clippy -- -D warnings`
+  - Python: `ruff check . && ruff format .` (or `black` + `flake8` if that's what the project uses)
+  - Go: `gofmt -w . && go vet ./...`
+  - JS/TS: `eslint . --fix && prettier --write .`
+  Check the project's existing config/Makefile to confirm which linter is in use before running.
 
 ## Spec Updates
 

@@ -88,9 +88,15 @@ Save all output to the captures directory: <workdoc_dir>/captures/
    - Verify output contains: <expected_probe_signal>
    - Update observed.probe_capture in the workdoc
 
-5. Commit (one logical commit for this step, no "Co-authored-by" lines).
+5. Run linter and fix all warnings:
+   - Rust: `cargo fmt && cargo clippy -- -D warnings`
+   - Python: `ruff check . && ruff format .` (or `black`+`flake8` if that's what the project uses — check Makefile/config)
+   - Go: `gofmt -w . && go vet ./...`
+   - JS/TS: `eslint . --fix && prettier --write .`
 
-6. Update observed.actual_files_touched and observed.commit_shas in the workdoc (after commit, so SHA exists).
+6. Commit (one logical commit for this step, no "Co-authored-by" lines).
+
+7. Update observed.actual_files_touched and observed.commit_shas in the workdoc (after commit, so SHA exists).
 
 ## Constraints
 - Follow existing code style and patterns exactly
