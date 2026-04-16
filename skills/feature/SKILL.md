@@ -225,6 +225,8 @@ Before starting implementation, ask the user which agent to use:
 
 If the feature spec tagged steps with a developer level, use that. Otherwise default to Codex.
 
+**Remember the choice**: once the user has picked an agent, append to the spec Log: `- YYYY-MM-DD: last_agent=<codex|senior|middle>`. Continue mode reads the most recent `last_agent=` entry from the Log and offers that as the default on resume (the user can still override).
+
 #### Option 1: Codex (developer-codex agent)
 
 Spawn `developer-codex` subagent with:
@@ -336,7 +338,7 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `DONE` → Feature complete and already preserved. Report completion status and stop.
    - `DISCARDED` → Feature was discarded. Report this and stop.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
-4. Ask which agent to use for remaining work (only if resuming implementation)
+4. Ask which agent to use for remaining work (only if resuming implementation). If the Log contains a `last_agent=...` entry, present it as the default: "Which developer? (default: Codex — last used)".
 
 ---
 
