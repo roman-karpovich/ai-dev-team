@@ -21,8 +21,9 @@ Parse `$ARGUMENTS` to determine the mode:
 
 | Input | Mode | Action |
 |-------|------|--------|
-| `new <description>` or bare description | **New** | Research codebase, write spec, get approval |
+| `new <description>` or bare non-path description | **New** | Research codebase, write spec, get approval |
 | `continue [spec-path]` | **Continue** | Resume from last checkpoint in spec |
+| bare path to an existing `*.md` file (not prefixed with `new`) | **Continue** | Treat as `continue <spec-path>` |
 | `status` | **Status** | Show all in-progress specs |
 
 ---

@@ -23,7 +23,7 @@ You receive in your prompt:
 
 ## Workflow
 
-1. **Detect project type** if not provided: check for `Cargo.toml` (rust), `pyproject.toml`/`setup.py` (python), `package.json` (node), `go.mod` (go). Multiple markers → `mixed` (run all applicable suites). If no marker found → report `NO_TESTS` and stop.
+1. **Detect project type** if not provided: check for `Cargo.toml` (rust), `pyproject.toml`/`setup.py` (python), `package.json` (node), `go.mod` (go). Multiple markers → `mixed` (run all applicable suites from the defined set above — Rust, Python, Go, Node/TypeScript). If no marker found → report `NO_TESTS` and stop.
 1a. **If `branch` is provided**: run `git -C <project_path> rev-parse --abbrev-ref HEAD` to save current branch, then `git -C <project_path> checkout <branch>`. After all tests complete, run `git -C <project_path> checkout <original_branch>` to restore.
 2. **Run build** first — compilation errors before test failures.
 3. **Run full test suite**.
@@ -45,6 +45,14 @@ cargo clippy -- -D warnings 2>&1  # only if explicitly requested
 cd <project_path>
 poetry run python -m py_compile <changed_files>  # syntax check
 poetry run pytest 2>&1
+```
+
+**Go**:
+```bash
+cd <project_path>
+go build ./... 2>&1
+go test ./... 2>&1
+go vet ./... 2>&1  # only if explicitly requested
 ```
 
 **Node/TypeScript**:
