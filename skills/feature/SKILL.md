@@ -332,6 +332,7 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
    - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
+   - `BLOCKED` → Report the unblock condition from the most recent `BLOCKED — waiting on ...` Log entry and ask the user whether the condition is now satisfied. If yes, revert status to the prior state (IN_PROGRESS or AUDIT_PASSED, whichever the Log indicates) and resume. If no, stop.
    - `DONE` → Feature complete and already preserved. Report completion status and stop.
    - `DISCARDED` → Feature was discarded. Report this and stop.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
@@ -344,13 +345,16 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
 1. Run KB discovery (Phase 0)
 2. Find all specs: `<kb_path>/repos/*/design/YYYY-MM-DD-*.md`
 3. Read status and checklist from each
-4. Show summary:
+4. Filter: by default, hide `DONE`, `DISCARDED`, and `BLOCKED` (they are not actionable now). If the argument is `status --all`, show every spec regardless of status.
+5. Show summary:
 
 ```
 | Spec | Project | Status | Progress | Branch |
 |------|---------|--------|----------|--------|
 | ... | ... | IN_PROGRESS | 3/7 steps | feature/... |
 ```
+
+To move a spec to `BLOCKED`, append `- YYYY-MM-DD: BLOCKED — waiting on <condition>` to the spec Log and flip `status: BLOCKED`. Continue mode reads the most recent such Log entry and asks whether the condition is satisfied on resume.
 
 ---
 
