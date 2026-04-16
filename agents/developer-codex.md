@@ -91,10 +91,6 @@ Save all output to the captures directory: <workdoc_dir>/captures/
 
 ## Constraints
 - Follow existing code style and patterns exactly
-- **Before writing any test**: read 2-3 existing tests in the same file or directory and match their structure, naming, fixtures, and assertion style exactly — do not invent a new pattern
-- **Prefer exact assertions**: assert on specific expected values (`assert_eq!(x, 42)`, `assertEqual(result, {...})`) rather than vague checks (`> 0`, `is not None`, `len > 0`). Vague checks only verify something happened — they miss regressions where the value changes but stays truthy
-- **Derive expected values from test inputs, not magic constants**: if the expected value follows trivially from the test setup, express it — `assert_eq!(reserve, deposit1 + deposit2)` rather than `assert_eq!(reserve, 500001000)`. "Trivially" means simple arithmetic on named inputs (`a + b`, `base * 2`, `fee + amount`). If the formula is complex, do not replicate it in the test — use an explicit numeric constant instead (replicating complex logic risks copying the bug). Named intermediate variables in tests are fine for setting up call arguments; assertions themselves should stay simple
-- **Fix non-determinism — never accept it**: dates/times must be frozen (freezegun in Python, `MockClock`/`time.Now` mocks in Go, `jest.useFakeTimers` in JS, etc.); random values must be seeded. A test that can fail on a Friday, at midnight, or after a year has passed is not a test — it's a time bomb. If you cannot freeze a value, that is a design smell worth flagging, not a reason to write a fuzzy assertion
 - Do not modify files outside: <allowed_scope>
 - Do not add comments or docstrings to existing code
 - DONE = green capture exists and matches expected_pass_pattern. No capture = not done.
@@ -111,6 +107,18 @@ cwd: <project_path>
 sandbox: danger-full-access  (needs to run tests)
 prompt: <constructed prompt>
 ```
+
+## Test Quality
+
+Include these requirements in every Codex prompt that involves writing tests:
+
+- **Match existing structure**: read 2-3 tests in the same file/directory first. Match their structure, naming, fixtures, and assertion style — do not invent a new pattern.
+- **Exact assertions**: assert on specific values (`assert_eq!(x, 42)`) not vague checks (`> 0`, `is not None`). Vague checks miss regressions where the value changes but stays truthy.
+- **Expected values**:
+  - Trivially derivable from test inputs → express it: `assert_eq!(reserve, deposit1 + deposit2)`
+  - Complex formula → use an explicit constant; replicating complex logic risks copying the bug
+  - Named intermediate variables are fine for call arguments/setup; assertions themselves stay simple
+- **No flaky tests**: freeze dates/times (freezegun, MockClock, jest.useFakeTimers), seed random values. A test that can fail on a Friday or after a year is a time bomb. If you cannot freeze a value, flag it as a design smell — don't write a fuzzy assertion.
 
 ## Verification
 
