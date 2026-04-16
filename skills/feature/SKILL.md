@@ -176,7 +176,9 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 7. Set spec `status: AUDIT_PASSED`
 
 **If no CRITICAL or HIGH findings:**
-> "Spec review passed. Ready to proceed with implementation?"
+> Spec review passed. The spec is saved to KB — all context is preserved.
+> 💡 Consider running `/compact` before implementation to trim conversation history.
+> Ready to proceed?
 Set spec `status: AUDIT_PASSED`.
 
 **Mid-flow skip**: if the user says "skip" or "proceed anyway" at any point during the audit — stop, set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`.
@@ -257,7 +259,9 @@ spec_path: <spec_path>
 scope: <list of changed files from spec checklist>
 ```
 
-- **PASS**: Proceed to Hand-off. Do **not** set `status: DONE` yet — wait until the user selects a preserving option (merge, push, or keep). Setting DONE before that means a discard would leave the spec permanently marked DONE with no surviving branch.
+- **PASS**: All results are captured in the workdoc.
+  > 💡 Consider running `/compact` before hand-off — implementation context is no longer needed.
+  Proceed to Hand-off. Do **not** set `status: DONE` yet — wait until the user selects a preserving option (merge, push, or keep). Setting DONE before that means a discard would leave the spec permanently marked DONE with no surviving branch.
 - **FAIL**: present failures to user. Analyze the verifier report to identify which checklist step(s) are responsible. Spawn the developer with `rework step N: fix test failure: <relevant excerpt>` for each affected step. Re-verify after fix.
 - **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off before proceeding. Log the absence of a project-level test suite.
 
