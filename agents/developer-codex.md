@@ -67,12 +67,15 @@ Focus on the planned fields for step N.
 ## Evidence captures (REQUIRED)
 Save all output to the captures directory: <workdoc_dir>/captures/
 
-1. If planned.failing_test_cmd is set:
-   - Run: <failing_test_cmd>
-   - Save stdout+stderr to: captures/step-NN-red.txt
-   - Update observed.red_capture in the workdoc
+1. Red capture (two valid approaches):
+   - Test-first: if the test already exists, run <failing_test_cmd>, save to captures/step-NN-red.txt
+   - Fix-first (retrospective red): write the fix and the test together, then `git stash` the fix,
+     run the test to confirm it fails, save output to captures/step-NN-red.txt, then `git stash pop`.
+     Use this when writing the test in isolation is impractical.
+   Either way, a red capture is required — it proves the test has real signal.
+   Update observed.red_capture in the workdoc.
 
-2. Implement the change (stay within planned.allowed_scope: <allowed_scope>)
+2. Implement (or unstash) the change (stay within planned.allowed_scope: <allowed_scope>)
 
 3. Run: <passing_test_cmd>
    - Save stdout+stderr to: captures/step-NN-green.txt
