@@ -43,7 +43,7 @@ Before anything else:
 From `$ARGUMENTS` derive:
 - **scope**: files/directories/feature area
 - **mode**: `logic` | `security` | `full`
-- **base_branch**: for diff mode (default: `master`)
+- **base_branch**: for diff mode (default: auto-detected via `git symbolic-ref refs/remotes/origin/HEAD`, falls back to `main`)
 - **previously_fixed**: if re-audit, extract from existing findings doc
 - **project_type**: detect from codebase (smart_contract, backend, frontend, data_pipeline)
 - **iteration**: 1 for new audit, N+1 for re-audit
