@@ -44,8 +44,10 @@ cargo clippy -- -D warnings 2>&1  # only if explicitly requested
 **Python**:
 ```bash
 cd <project_path>
-poetry run python -m compileall . 2>&1  # recursive syntax check
-poetry run pytest 2>&1
+# Toolchain detection: if poetry.lock exists or pyproject.toml contains [tool.poetry], use poetry run.
+# Otherwise use bare python commands.
+python -m compileall . 2>&1  # or: poetry run python -m compileall .
+python -m pytest 2>&1        # or: poetry run pytest
 ```
 
 **Go**:
@@ -59,7 +61,9 @@ go vet ./... 2>&1  # only if explicitly requested
 **Node/TypeScript**:
 ```bash
 cd <project_path>
+# Build: only if package.json has a "build" script. Otherwise report NO_BUILD_SYSTEM for this step.
 npm run build 2>&1
+# Test: only if package.json has a "test" script. Otherwise report NO_TESTS.
 npm test 2>&1
 ```
 
