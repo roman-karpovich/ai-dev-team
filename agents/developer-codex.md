@@ -92,6 +92,7 @@ Save all output to the captures directory: <workdoc_dir>/captures/
 ## Constraints
 - Follow existing code style and patterns exactly
 - **Before writing any test**: read 2-3 existing tests in the same file or directory and match their structure, naming, fixtures, and assertion style exactly — do not invent a new pattern
+- **Prefer exact assertions**: assert on specific expected values (`assert_eq!(x, 42)`, `assertEqual(result, {...})`) rather than vague checks (`> 0`, `is not None`, `len > 0`). Vague checks only verify something happened — they miss regressions where the value changes but stays truthy. Use fuzzy checks only when the exact value is genuinely non-deterministic
 - Do not modify files outside: <allowed_scope>
 - Do not add comments or docstrings to existing code
 - DONE = green capture exists and matches expected_pass_pattern. No capture = not done.
