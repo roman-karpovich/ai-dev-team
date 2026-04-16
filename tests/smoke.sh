@@ -90,6 +90,38 @@ for agent_file in agents/*.md; do
 done
 echo
 
+# --- Skill structure ---
+echo "Skill structure:"
+
+validate_skill() {
+  local dir="$1"
+  local skill_md="$dir/SKILL.md"
+  python3 - "$skill_md" <<'PY'
+import re, sys, os
+path = sys.argv[1]
+if not os.path.isfile(path):
+    print(f"{path}: SKILL.md missing", file=sys.stderr)
+    sys.exit(1)
+text = open(path).read()
+m = re.match(r'^---\n(.*?)\n---\n', text, re.DOTALL)
+if not m:
+    print(f"{path}: missing YAML frontmatter", file=sys.stderr)
+    sys.exit(1)
+fm = m.group(1)
+for key in ("name", "description"):
+    if not re.search(rf'^{key}\s*:', fm, re.MULTILINE):
+        print(f"{path}: missing '{key}:' in frontmatter", file=sys.stderr)
+        sys.exit(1)
+print(f"  {os.path.basename(os.path.dirname(path))}: SKILL.md OK")
+PY
+}
+
+for skill_dir in skills/*/; do
+  skill_dir="${skill_dir%/}"
+  check "skill: $skill_dir" validate_skill "$skill_dir"
+done
+echo
+
 
 echo
 echo "Passed: $PASS"
