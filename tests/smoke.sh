@@ -433,6 +433,26 @@ check "compliance-checker SHA fallback"     check_compliance_sha_validation
 check "dev-workflow commit_message_grep"    check_dev_workflow_amend_note
 echo
 
+# --- /feature --from-investigation bridge ---
+echo "Feature skill --from-investigation:"
+
+check_feature_from_investigation_flag() {
+  grep -q -- "--from-investigation" skills/feature/SKILL.md \
+    || { echo "SKILL.md missing --from-investigation flag"; return 1; }
+  echo "feature SKILL.md documents --from-investigation"
+}
+
+check_feature_investigation_source_field() {
+  grep -q "investigation_source" skills/feature/SKILL.md \
+    && grep -q "investigation_source" skills/feature/references/spec-template.md \
+    || { echo "investigation_source missing in SKILL.md or spec-template.md"; return 1; }
+  echo "investigation_source documented in skill and template"
+}
+
+check "feature --from-investigation flag"    check_feature_from_investigation_flag
+check "feature investigation_source"         check_feature_investigation_source_field
+echo
+
 
 echo
 echo "Passed: $PASS"

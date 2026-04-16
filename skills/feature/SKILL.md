@@ -22,6 +22,7 @@ Parse `$ARGUMENTS` to determine the mode:
 | Input | Mode | Action |
 |-------|------|--------|
 | `new <description>` or bare non-path description | **New** | Research codebase, write spec, get approval |
+| `new <description> --from-investigation <path>` | **New (seeded)** | Like **New**, but pre-seed the spec from a `/investigate` convergence report |
 | `continue [spec-path]` | **Continue** | Resume from last checkpoint in spec |
 | bare path to an existing `*.md` file (not prefixed with `new`) | **Continue** | Treat as `continue <spec-path>` |
 | `status` or `status --all` | **Status** | Show actionable specs (or everything with `--all`) |
@@ -69,6 +70,31 @@ Read both KB and codebase before writing anything:
 2. Read any relevant KB docs: domain context, related project docs, glossary
 3. Explore source code in the project directory: understand architecture, existing patterns, files that will change
 4. Identify: reusable patterns, files to change, dependencies, risks, what already exists
+
+#### Step 1a — Ingest `--from-investigation` (only if flag present)
+
+When `--from-investigation <path>` is supplied, read the convergence report before the research pass. Resolve `<path>` in this order:
+
+1. Absolute path → use as-is.
+2. Relative to `<kb_path>/repos/<project>/research/`.
+3. Relative to the current working directory.
+
+If none resolves → stop and report: "Investigation file not found: `<path>`. Searched: <list of attempts>. Pass an absolute path or place the report under `research/`."
+
+Parse the file for these H2 sections (tolerate minor heading variations; skip silently if a section is missing):
+
+| Report section | Maps to spec section |
+|---|---|
+| `## Recommended Approach` | **Context** — embed as a blockquote labelled "Recommended approach (from investigation)" |
+| `## Key Agreements` | **Current State** — embed as a blockquote labelled "Validated assumptions" |
+| `## Open Questions` | **Context** — subheading `### Open Questions to resolve during implementation` |
+| `## Risk Register` | **Design** — new subsection `### Risks (from investigation)` appended after the Changes table |
+
+Record provenance:
+- In spec frontmatter: `investigation_source: <path-relative-to-kb_path, or absolute>`.
+- Append to spec Log: `- YYYY-MM-DD: spec seeded from investigation <path>`.
+
+The seed is a starting point, not a replacement for research — still do steps 2–4 above before writing the design.
 
 ### Step 2 — Write spec and initialize execution workdoc
 
