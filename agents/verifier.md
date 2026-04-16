@@ -44,7 +44,7 @@ cargo clippy -- -D warnings 2>&1  # only if explicitly requested
 **Python**:
 ```bash
 cd <project_path>
-poetry run python -m py_compile <changed_files>  # syntax check
+poetry run python -m compileall . 2>&1  # recursive syntax check
 poetry run pytest 2>&1
 ```
 
