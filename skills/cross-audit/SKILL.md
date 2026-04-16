@@ -118,7 +118,7 @@ When user invokes `/cross-audit <findings-doc-path>`:
 5. On completion: findings doc updated, new workdoc-iter<N>.md created, present delta
 
 ### Convergence
-- **COMPLETE** when no CRITICAL or HIGH findings remain OPEN
+- **COMPLETE** when no CRITICAL or HIGH findings remain OPEN or REOPENED
 - Typically 2-4 iterations
 
 ---

@@ -40,12 +40,11 @@ You receive in your prompt:
    d. Run `planned.passing_test_cmd` from `project_path`, save output to `<dirname(workdoc_path)>/captures/step-NN-green.txt`, update `observed.green_capture`
    e. **Verify the green capture matches `planned.expected_pass_pattern`** before proceeding
    f. If `planned.integration_probe_cmd` is set: run it from `project_path`, save to `<dirname(workdoc_path)>/captures/step-NN-probe.txt`, update `observed.probe_capture`
-   g. Update `observed.actual_files_touched` and `observed.commit_shas` in the workdoc
-   h. Commit the changes (one per step)
-   i. Mark each step `[x]` in the spec
-   j. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`
-   k. If compliance result is FAIL or DRIFT: address listed issues, re-run captures, re-commit, re-run checker
-   l. Only proceed to the next step when compliance result is PASS
+   g. Commit the changes (one per step)
+   h. Update `observed.actual_files_touched` and `observed.commit_shas` in the workdoc (after commit, so SHA exists)
+   i. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`
+   j. If compliance result is FAIL or DRIFT: address listed issues, re-run captures, re-commit, update `observed.commit_shas`, re-run checker
+   k. When compliance result is PASS: mark the step `[x]` in the spec, then proceed to the next step
 7. **If blocked or scope is unclear**: stop and report to user. Do not guess — escalate to Senior if needed.
 
 ## Implementation Discipline

@@ -303,8 +303,8 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `DRAFT` → Spec not yet approved. Present it to the user and ask for approval. Resume from Step 3 (Get approval).
    - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
-   - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use.
-   - `DONE` → All steps complete. If Verify hasn't been run yet, run it now. Otherwise proceed to Hand-off.
+   - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
+   - `DONE` → All steps complete and verified. Proceed to Hand-off.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
 4. Ask which agent to use for remaining work (only if resuming implementation)
 
