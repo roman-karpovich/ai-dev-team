@@ -13,7 +13,7 @@ Cross-audit runs Claude (Opus) and Codex (GPT-5.4) as independent auditors, cons
 **Re-audit detection**: if `$ARGUMENTS` matches `*-findings.md` AND the file exists on disk → **re-audit iteration**. If it looks like a path but doesn't exist → error out and ask the user. Otherwise → **new audit**.
 
 **Flags** (orthogonal to each other):
-- `--diff` → scope the audit to files changed since `base_branch` (default: master). Can combine with any mode: e.g. `--diff --mode logic` audits only changed files using logic focus areas.
+- `--diff` → scope the audit to files changed since `base_branch` (default: auto-detected repo default, falls back to `main`). Can combine with any mode: e.g. `--diff --mode logic` audits only changed files using logic focus areas.
 - `--mode logic|security|full` → audit mode (default: `full`)
 
 ---

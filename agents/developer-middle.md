@@ -66,7 +66,7 @@ Update the spec file directly:
 
 - **Feature branch**: never commit to master/main directly
 - **Branch name**: `feature/<YYYY-MM-DD-slug>` or as in spec `Branch:` field
-- **Base branch**: master by default; confirm with user if different
+- **Base branch**: detect with `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'` (falls back to `main`). Confirm with user if different
 - **Branch already exists**: `git checkout <branch>` (don't re-create). If exists on remote only: `git fetch` then checkout tracking.
 - **Small logical commits**: one per checklist step
 - **Commit messages**: concise, imperative mood. No "Co-authored-by" lines.
