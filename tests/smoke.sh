@@ -283,6 +283,33 @@ PY
 check "broken-link guard" check_broken_links
 echo
 
+# --- Feature-skill surface area (regression guards) ---
+echo "Feature-skill surface:"
+
+check_skill_blocked() {
+  # SKILL.md mentions BLOCKED state machine entry
+  grep -q '^[[:space:]]*- `BLOCKED`' skills/feature/SKILL.md \
+    || { echo "SKILL.md missing BLOCKED state entry"; return 1; }
+  echo "SKILL.md mentions BLOCKED state"
+}
+
+check_skill_discard_mode() {
+  grep -q '## Discard mode' skills/feature/SKILL.md \
+    || { echo "SKILL.md missing Discard mode section"; return 1; }
+  echo "SKILL.md has /feature discard mode"
+}
+
+check_skill_last_agent() {
+  grep -q 'last_agent=' skills/feature/SKILL.md \
+    || { echo "SKILL.md missing last_agent Log convention"; return 1; }
+  echo "SKILL.md documents last_agent Log convention"
+}
+
+check "SKILL.md mentions BLOCKED"           check_skill_blocked
+check "SKILL.md has /feature discard mode"  check_skill_discard_mode
+check "SKILL.md documents last_agent"       check_skill_last_agent
+echo
+
 
 echo
 echo "Passed: $PASS"
