@@ -42,7 +42,7 @@ You receive in your prompt:
    c. **Review Codex output**: verify changes match the spec and that `green_capture` exists and matches `expected_pass_pattern`.
    d. **If output is wrong**: call Codex again with corrected prompt (max 2 retries, then report to user).
    e. **Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`.
-   f. If compliance result is FAIL or DRIFT: fix issues with Codex, re-run checker. Only continue when PASS.
+   f. If compliance result is FAIL or DRIFT: fix issues with Codex (re-run captures, re-commit, update `observed.commit_shas` with the new SHA), then re-run the compliance checker. Only continue when PASS.
 6. **Update spec checklist**: mark completed steps `[x]` only after compliance PASS, append to Log.
 7. **When all steps complete**: leave `status: IN_PROGRESS` — do NOT set `status: DONE`. The feature skill orchestrator owns the DONE transition after the verifier passes.
 

@@ -29,7 +29,8 @@ Before anything else:
 5. If not found: ask user for KB path or where to create one
 6. After confirmation: save to memory as `reference_kb_<project>.md`
 
-Generate `audit_slug` = `YYYY-MM-DD-<scope-slug>`.
+**New audit**: generate `audit_slug` = `YYYY-MM-DD-<scope-slug>`.
+**Re-audit**: extract `audit_slug` from the existing findings doc filename — strip the path prefix and `-findings.md` suffix (e.g. `…/2026-04-14-workflow-definitions-findings.md` → `2026-04-14-workflow-definitions`). Do NOT regenerate from the current date; the slug must match the original to write to the same file.
 
 ---
 
@@ -48,7 +49,7 @@ From `$ARGUMENTS` derive:
 - **iteration**: 1 for new audit, N+1 for re-audit
 - **kb_path**: from discovery above
 - **project**: project name
-- **audit_slug**: `YYYY-MM-DD-<scope-slug>`
+- **audit_slug**: `YYYY-MM-DD-<scope-slug>` (new audit) or extracted from the existing findings filename (re-audit — see Phase 0)
 
 ### Step 2: Launch cross-auditor agent in background
 
@@ -96,9 +97,12 @@ When cross-auditor completes:
 
 ## Phase 4: Fix (foreground, interactive)
 
-1. Apply fixes for selected findings
-2. Run build/tests to verify
-3. Update finding statuses in findings doc: OPEN → FIXED
+1. Update finding statuses in findings doc **before** writing any code:
+   - `fix` targets: OPEN|REOPENED → FIXED
+   - `accept` targets: OPEN → ACCEPTED
+   - `defer` targets: OPEN → DEFERRED
+2. Apply code fixes for the `fix` targets
+3. Run build/tests to verify
 4. Commit changes if user wants (small logical commits, no co-authored-by)
 
 ---
@@ -109,7 +113,7 @@ When user invokes `/cross-audit <findings-doc-path>`:
 
 1. Read the existing findings doc
 2. Extract two separate lists:
-   - `fixed_ids`: IDs with status `FIXED` — the auditor will verify these and flip to VERIFIED if confirmed
+   - `fixed_ids`: IDs with status `FIXED` (whether previously OPEN or REOPENED) — the auditor will verify these and flip to VERIFIED if confirmed
    - `accepted_ids`: IDs with status `ACCEPTED` or `DEFERRED` — skip re-reporting, preserve their status (do NOT flip to FIXED)
 3. Launch cross-auditor with both lists: `previously_fixed: <fixed_ids>`, `accepted_ids: <accepted_ids>`
 4. Agent **verifies each fix** (reads file:line, confirms fix is present) and looks for new issues
