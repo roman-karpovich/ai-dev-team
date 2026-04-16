@@ -122,6 +122,58 @@ for skill_dir in skills/*/; do
 done
 echo
 
+# --- SessionStart hook ---
+echo "SessionStart hook:"
+
+# Invoke the hook with a given env-var setup, verify JSON and trigger-map content
+check_session_start() {
+  local env_setup="$1"  # "claude", "cursor", or "default"
+  local out
+  case "$env_setup" in
+    claude)  out=$(env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" bash hooks/session-start 2>&1);;
+    cursor)  out=$(env -i CURSOR_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" bash hooks/session-start 2>&1);;
+    default) out=$(env -i PATH="$PATH" bash hooks/session-start 2>&1);;
+  esac
+  # Must be valid JSON
+  printf '%s' "$out" | python3 -m json.tool >/dev/null || {
+    echo "invalid JSON for $env_setup"
+    printf '%s' "$out" | head -3
+    return 1
+  }
+  # Must contain the skill trigger map signature
+  printf '%s' "$out" | grep -q 'Skill trigger map' || {
+    echo "missing 'Skill trigger map' for $env_setup"
+    return 1
+  }
+  echo "session-start ($env_setup) OK"
+}
+
+# Also verify the correct top-level JSON key is used per env
+check_session_start_key() {
+  local env_setup="$1"
+  local expected_key="$2"
+  local out
+  case "$env_setup" in
+    claude)  out=$(env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" bash hooks/session-start 2>&1);;
+    cursor)  out=$(env -i CURSOR_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" bash hooks/session-start 2>&1);;
+    default) out=$(env -i PATH="$PATH" bash hooks/session-start 2>&1);;
+  esac
+  printf '%s' "$out" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+assert '$expected_key' in d, f'expected top-level key $expected_key, got keys {list(d.keys())}'
+print('$env_setup -> $expected_key OK')
+"
+}
+
+check "session-start (claude) valid+triggers"  check_session_start  claude
+check "session-start (cursor) valid+triggers"  check_session_start  cursor
+check "session-start (default) valid+triggers" check_session_start  default
+check "session-start (claude) key"             check_session_start_key claude  hookSpecificOutput
+check "session-start (cursor) key"             check_session_start_key cursor  additional_context
+check "session-start (default) key"            check_session_start_key default additionalContext
+echo
+
 
 echo
 echo "Passed: $PASS"
