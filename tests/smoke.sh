@@ -221,6 +221,68 @@ for agent in agents/developer-codex.md agents/developer-senior.md agents/develop
 done
 echo
 
+# --- Broken-link guard ---
+echo "Broken-link guard:"
+
+check_broken_links() {
+  python3 - <<'PY'
+import os, re, sys
+
+# Files we scan for references
+SCAN_FILES = []
+for root, dirs, files in os.walk('.'):
+    # Skip known noise dirs
+    if any(part in root.split(os.sep) for part in ('.git', '__pycache__', 'node_modules')):
+        continue
+    for f in files:
+        if f.endswith('.md') and ('agents/' in root or 'skills/' in root or root == '.' or root == './docs'):
+            SCAN_FILES.append(os.path.join(root, f))
+
+# Directories that are valid prefix for internal refs
+PREFIXES = ('skills/', 'agents/', 'hooks/', 'tests/', 'docs/')
+
+# Regexes: markdown [text](path.md) and backticked `path/to/file.md`
+md_link_re   = re.compile(r'\[[^\]]+\]\(([^)]+\.md)\)')
+backtick_re  = re.compile(r'`(' + '|'.join(p + r'[A-Za-z0-9_\-./]+\.md' for p in PREFIXES) + r')`')
+
+errors = []
+for f in SCAN_FILES:
+    try:
+        text = open(f).read()
+    except Exception:
+        continue
+
+    refs = set()
+    for m in md_link_re.finditer(text):
+        ref = m.group(1)
+        # resolve relative to file dir; skip URLs, anchors
+        if ref.startswith(('http://', 'https://', '#')):
+            continue
+        ref_path = os.path.normpath(os.path.join(os.path.dirname(f), ref.split('#')[0]))
+        refs.add(('md-link', f, ref, ref_path))
+
+    for m in backtick_re.finditer(text):
+        ref = m.group(1).split('#')[0]
+        # Resolve relative to plugin root (backticked refs in docs are plugin-root-relative)
+        ref_path = os.path.normpath(ref)
+        refs.add(('backtick', f, ref, ref_path))
+
+    for kind, src, ref, resolved in refs:
+        if not os.path.exists(resolved):
+            errors.append(f"  {src}: broken {kind} '{ref}' (resolved to '{resolved}')")
+
+if errors:
+    print('broken-link check FAILED:')
+    for e in errors:
+        print(e)
+    sys.exit(1)
+print('broken-link check: all references resolve')
+PY
+}
+
+check "broken-link guard" check_broken_links
+echo
+
 
 echo
 echo "Passed: $PASS"
