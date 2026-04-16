@@ -155,11 +155,8 @@ Two audit modes run as two parallel agents:
 
 ## KB discovery
 
-Agents find the KB automatically:
+Agents resolve the KB in this compact order: `.ai-dev-team.yml → memory → sibling heuristic → ask`.
 
-1. Check memory for a known KB path for the current project
-2. Search for a sibling directory with "knowledge" in the name (next to the project)
-3. **Always confirm with the developer** before using
-4. If not found — ask where to create one (Obsidian vault format)
+At the concept level, the project can declare the KB explicitly in a repo-root `.ai-dev-team.yml` file. The key field is `kb_path`, for example: `kb_path: /absolute/path/to/knowledge-base`.
 
-After confirmation the path is saved to memory — not asked again in future sessions.
+Prompt/override details stay in the skill files; this overview only documents the shared discovery chain and config shape.
