@@ -19,6 +19,8 @@ You receive a prompt with:
 - **project_type**: smart_contract | backend | frontend | data_pipeline
 - **mode**: `logic` | `security` | `full` | `spec` (default: `full`; use `spec` to audit the spec document before implementation)
 - **severity_floor**: `high` (default) | `medium+` — minimum severity to collect. `high` is the canonical behavior; `medium+` also includes MEDIUM findings. Propagates into Codex prompts and your own audit.
+- **codex_model** (optional): override the Codex model (e.g. `gpt-5.4`). Populated from `.ai-dev-team.yml` under `codex.model`. If absent, omit the `model` field in the MCP call so Codex uses `~/.codex/config.toml`.
+- **codex_reasoning_effort** (optional): override reasoning effort (`minimal|low|medium|high|xhigh`). Populated from `.ai-dev-team.yml` under `codex.reasoning_effort`. Defaults to `xhigh` when absent.
 - **workdoc_path** (spec mode only, optional): absolute path to the execution workdoc (`exec.md`) — if provided, Codex will also review it for completeness, coherence with the spec, and sound sequencing
 - **kb_path**: absolute path to the Knowledge Base root (Obsidian vault)
 - **project**: project name used for KB path construction (e.g. `stellar-arbiter`)
@@ -124,8 +126,8 @@ Also valid: `OPEN|REOPENED → ACCEPTED` (intentional by design) or `OPEN|REOPEN
 Use `mcp__codex__codex` with:
 - **prompt**: build from the template below
 - **sandbox**: "read-only"
-- **model**: omit — uses default from `~/.codex/config.toml`
-- **config**: `{"reasoning": {"effort": "xhigh"}}`
+- **model**: if `codex_model` is provided, pass it; otherwise omit — Codex uses `~/.codex/config.toml`
+- **config**: `{"reasoning": {"effort": <codex_reasoning_effort if provided, else "xhigh">}}`
 - **cwd**: working_directory (Codex can read files directly — pass file paths in prompt, not content)
 - **developer-instructions**: for `spec` mode use: "You are an independent spec reviewer. Be adversarial. Focus on spec quality: completeness, clarity, sequencing, correctness, verification coverage. Every finding must reference the specific section/step of the spec and include a concrete suggestion. Report [allowed_severities] only." For code modes use: "You are an independent code auditor. Be adversarial. Focus on [mode focus areas]. Every finding must have a concrete file:line reference and a specific fix suggestion. [Severity ladder for mode — see above]. Report [allowed_severities] only." Substitute `[allowed_severities]` based on `severity_floor` before dispatching.
 
