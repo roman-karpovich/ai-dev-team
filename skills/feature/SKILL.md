@@ -301,7 +301,7 @@ Which option?
 ```bash
 git checkout <base-branch> && git pull && git merge <branch>
 ```
-Run verifier once more on the merged result. If green: `git branch -d <branch>`. Set spec `status: DONE`.
+Run verifier once more on the merged result. If green: set spec `status: DONE`. **Do not delete the feature branch** — leave the branch reference in place (useful for reflection and quick rollback).
 
 **Option 2 — Push feature branch:**
 ```bash
