@@ -172,7 +172,7 @@ Set spec `status: AUDIT_PASSED`.
 
 ### Baseline test
 
-Before spawning any developer, detect the repo default branch (`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'`, fall back to `main`), ensure you are on it (or the branch specified in the spec), then run the **verifier** subagent:
+Before spawning any developer, ensure you are on `master` (or the branch specified in the spec `Branch:` field), then run the **verifier** subagent:
 
 ```
 project_path: <project_path>
@@ -221,13 +221,14 @@ Spawn `developer-middle` subagent with:
 - `project_path`: path to the source repo
 - `task`: "full spec" or specific steps
 
-### Git conventions (both agents)
+### Git conventions
 
-- Work on feature branch: `feature/YYYY-MM-DD-<slug>` (or as specified in spec `Branch:` field)
-- Confirm base branch with user if different from auto-detected default or if unclear
+- **Base branch**: always `master`. Never cut from `staging`, `testnet`, `pre-prod`, or similar collection branches — those are staging dumps, not source of truth
+- **Feature branch**: `feature/YYYY-MM-DD-<slug>` (or as specified in spec `Branch:` field)
+- **Feature dependencies**: if this feature depends on another in-flight feature, merge that feature's branch into this one directly. Do not route through staging
 - Small logical commits per checklist step
 - No "Co-authored-by" in commit messages
-- No pushing — user handles push and PR
+- No pushing — user handles pushing, staging merge, and PR
 
 ---
 
@@ -252,40 +253,31 @@ scope: <list of changed files from spec checklist>
 After verify passes, show the commit list and present exactly these 4 options:
 
 ```
-git log --oneline <base>..<branch>
+git log --oneline master..<branch>
 
 Implementation complete. What would you like to do?
 
-1. Merge into <base-branch> locally
-2. Push and open a PR
+1. Merge into master locally
+2. Push feature branch (I'll merge to staging and open a PR myself)
 3. Keep the branch as-is (I'll handle it later)
 4. Discard this work
 
 Which option?
 ```
 
-**Option 1 — Merge locally:**
+> Note: merging into `staging` / `testnet` / `pre-prod` for testing is a separate manual step the user handles. The plugin only merges into `master`.
+
+**Option 1 — Merge into master locally:**
 ```bash
-git checkout <base-branch> && git pull && git merge <branch>
+git checkout master && git pull && git merge <branch>
 ```
 Run verifier once more on the merged result. If green: `git branch -d <branch>`. Set spec `status: DONE`.
 
-Set spec `status: DONE` after the PR is created.
-
-**Option 2 — Push and PR:**
+**Option 2 — Push feature branch:**
 ```bash
 git push -u origin <branch>
-gh pr create --draft --title "<feature title>" --body "$(cat <<'EOF'
-## Summary
-<2-3 bullets>
-
-## Test plan
-<verification steps from spec>
-
-Spec: <spec_path>
-EOF
-)"
 ```
+Report the branch name. Set spec `status: DONE`.
 
 **Option 3 — Keep as-is:** Do nothing. Report the branch name. Set spec `status: DONE`.
 
@@ -296,7 +288,7 @@ This will permanently delete branch <name> and all commits:
 
 Type 'discard' to confirm.
 ```
-On confirmation: `git checkout <base-branch> && git branch -D <branch>`. Set spec `status: DISCARDED`, append to Log: "feature discarded by user".
+On confirmation: `git checkout master && git branch -D <branch>`. Set spec `status: DISCARDED`, append to Log: "feature discarded by user".
 
 ---
 

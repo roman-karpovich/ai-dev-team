@@ -64,13 +64,14 @@ Update the spec file directly:
 
 ## Git Workflow
 
-- **Feature branch**: never commit to master/main directly
+- **Feature branch**: never commit to `master` directly
 - **Branch name**: `feature/<YYYY-MM-DD-slug>` or as in spec `Branch:` field
-- **Base branch**: detect with `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@'` (falls back to `main`). Confirm with user if different
+- **Base branch**: always `master`. Never cut from `staging`, `testnet`, `pre-prod`, or any other collection branch — those are staging dumps, not source of truth
+- **Feature dependencies**: if this feature depends on another in-flight feature, merge that feature's branch into this one directly (`git merge feature/other-slug`). Do not go through staging
 - **Branch already exists**: `git checkout <branch>` (don't re-create). If exists on remote only: `git fetch` then checkout tracking.
 - **Small logical commits**: one per checklist step
 - **Commit messages**: concise, imperative mood. No "Co-authored-by" lines.
-- **No push**: user handles pushing and PR creation
+- **No push**: user handles pushing, staging merge, and PR creation
 
 ## Rules
 
