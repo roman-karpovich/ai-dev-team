@@ -32,7 +32,7 @@ You receive in your prompt:
 2. **Read the execution workdoc** from `workdoc_path`. Understand the planned fields for each step you will work on.
 3. **Set spec status to IN_PROGRESS**: update frontmatter `status: IN_PROGRESS` before writing any code.
 4. **Find a similar existing implementation** in the codebase to use as a pattern reference.
-5. **Read relevant source files** before writing. Match style exactly. If the step involves writing a test: read 2-3 existing tests in the same file or directory first — match their structure, naming, fixtures, and assertion style exactly. Prefer exact assertions over vague ones (`assert_eq!(x, 42)` not `assert!(x > 0)`) — fuzzy checks only when the value is genuinely non-deterministic.
+5. **Read relevant source files** before writing. Match style exactly. If the step involves writing a test: read 2-3 existing tests in the same file or directory first — match their structure, naming, fixtures, and assertion style exactly. Prefer exact assertions over vague ones (`assert_eq!(x, 42)` not `assert!(x > 0)`). Fix non-determinism — freeze dates/times (freezegun, MockClock, jest.useFakeTimers, etc.), seed random values. A test that can break on a Friday or after a year is a time bomb, not a test.
 6. **For each step** (in order):
    a. Read the step's `planned` block in the workdoc
    b. If `planned.failing_test_cmd` is set: run it from `project_path`, save output to `<dirname(workdoc_path)>/captures/step-NN-red.txt`, update `observed.red_capture`
