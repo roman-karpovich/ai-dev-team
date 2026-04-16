@@ -88,11 +88,12 @@ Save all output to the captures directory: <workdoc_dir>/captures/
    - Verify output contains: <expected_probe_signal>
    - Update observed.probe_capture in the workdoc
 
-5. Run linter and fix all warnings:
-   - Rust: `cargo fmt && cargo clippy -- -D warnings`
-   - Python: `ruff check . && ruff format .` (or `black`+`flake8` if that's what the project uses — check Makefile/config)
-   - Go: `gofmt -w . && go vet ./...`
-   - JS/TS: `eslint . --fix && prettier --write .`
+5. Run linter and fix warnings **introduced by your changes** (do not fix pre-existing warnings in code you didn't touch):
+   - Rust: `cargo fmt` (always), then `cargo clippy` to catch new warnings in your files
+   - Python: `ruff format .` (always), `ruff check <changed files>`
+   - Go: `gofmt -w <changed files>`, `go vet ./...`
+   - JS/TS: `prettier --write <changed files>`, `eslint <changed files> --fix`
+   Check Makefile/project config to confirm which linter is in use.
 
 6. Commit (one logical commit for this step, no "Co-authored-by" lines).
 
