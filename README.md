@@ -278,6 +278,46 @@ claude plugin update ai-dev-team
 
 ---
 
+## Troubleshooting
+
+**`/cross-audit` or `/investigate` fails with "mcp not found" / "codex unavailable".**
+Codex MCP isn't registered. Diagnose with `claude mcp list` — `codex` must appear. Fix:
+```bash
+claude mcp add codex -s user -- codex mcp-server
+```
+Restart Claude Code after registering.
+
+**Team-based agents (`cross-auditor`, `investigator`) are silently skipped or "agent not found".**
+The experimental agent-teams flag is missing. Check `~/.claude/settings.json` for:
+```json
+{ "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" } }
+```
+Restart Claude Code after adding.
+
+**No ambient workflow context at the start of a session (no "AI Dev Team" block appears).**
+The SessionStart hook isn't running. Diagnose:
+```bash
+claude plugin list              # ai-dev-team should be enabled
+bash <plugin-root>/hooks/session-start | python3 -m json.tool   # should print JSON with trigger map
+```
+If the hook emits JSON correctly but Claude Code doesn't inject it, re-install the plugin (`claude plugin uninstall ai-dev-team && claude plugin install ai-dev-team`). If the hook errors, report the error in the plugin repo.
+
+**Baseline test fails immediately — the repo uses `develop` / `trunk` / something other than `master` or `main`.**
+The feature skill auto-detects `master` or `main`. For a non-standard base branch, set the `Branch:` field in the spec frontmatter and reference the real base explicitly, e.g.:
+```yaml
+Branch: feature/2026-04-17-my-feature  # cut from develop, not master
+```
+Then check out the non-standard base before running `/feature`. A permanent fix is tracked in BACKLOG.
+
+**`/feature new` fails on `mkdir` — KB root exists but `repos/<project>/` doesn't.**
+The skill creates `<kb>/repos/<project>/design/` on first use, but a stricter filesystem (read-only mount, permission denied) can fail the `mkdir`. Fix manually:
+```bash
+mkdir -p <kb>/repos/<project>/design/workdocs
+```
+Then re-run `/feature new`.
+
+---
+
 ## Maintainers
 
 Before releasing a new version, run the smoke test locally:
