@@ -24,7 +24,8 @@ Parse `$ARGUMENTS` to determine the mode:
 | `new <description>` or bare non-path description | **New** | Research codebase, write spec, get approval |
 | `continue [spec-path]` | **Continue** | Resume from last checkpoint in spec |
 | bare path to an existing `*.md` file (not prefixed with `new`) | **Continue** | Treat as `continue <spec-path>` |
-| `status` | **Status** | Show all in-progress specs |
+| `status` or `status --all` | **Status** | Show actionable specs (or everything with `--all`) |
+| `discard [spec-path]` | **Discard** | Delete feature branch + set spec DISCARDED (explicit; not tied to hand-off) |
 
 ---
 
@@ -313,14 +314,7 @@ Report the branch name. Set spec `status: DONE`.
 
 **Option 3 — Keep as-is:** Do nothing. Report the branch name. Set spec `status: DONE`.
 
-**Option 4 — Discard:** Confirm first:
-```
-This will permanently delete branch <name> and all commits:
-<commit list>
-
-Type 'discard' to confirm.
-```
-On confirmation: `git checkout <base-branch> && git branch -D <branch>`. Set spec `status: DISCARDED`, append to Log: "feature discarded by user".
+**Option 4 — Discard:** delegate to the Discard mode below (same flow as `/feature discard <spec-path>`).
 
 ---
 
@@ -339,6 +333,28 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `DISCARDED` → Feature was discarded. Report this and stop.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
 4. Ask which agent to use for remaining work (only if resuming implementation). If the Log contains a `last_agent=...` entry, present it as the default: "Which developer? (default: Codex — last used)".
+
+---
+
+## Discard mode
+
+Explicit discard outside hand-off. Use when the user decides mid-implementation (or on resume) to throw the feature away.
+
+1. Run KB discovery (Phase 0).
+2. Resolve the spec from `spec-path`. If no argument: prompt the user with the list of IN_PROGRESS / AUDIT_PASSED / BLOCKED specs.
+3. Refuse if `status: DONE` — already merged, not something discard can undo. Tell the user to revert the merge commit instead.
+4. Refuse if `status: DISCARDED` — already gone.
+5. Show the commit list and branch name:
+
+```
+git log --oneline <base>..<branch>
+
+This will permanently delete branch <branch> and all commits listed above.
+Type 'discard' to confirm.
+```
+
+6. On confirmation: `git checkout <base-branch> && git branch -D <branch>` (use `-D` — force, since the branch likely isn't merged into base). Set `status: DISCARDED`, append Log: `- YYYY-MM-DD: feature discarded by user`.
+7. On any other answer: abort, leave state untouched.
 
 ---
 
