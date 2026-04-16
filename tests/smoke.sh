@@ -412,6 +412,27 @@ check "cross-auditor threads codex.*"       check_cross_auditor_threads_model
 check "feature SKILL has autogen prompt"    check_skill_autogen_prompt
 echo
 
+# --- Compliance commit fallback (2026-04-17) ---
+echo "Compliance commit fallback:"
+
+check_compliance_sha_validation() {
+  grep -q "git cat-file" agents/spec-compliance-checker.md \
+    || { echo "compliance-checker missing git cat-file validation"; return 1; }
+  grep -q "commit_message_grep" agents/spec-compliance-checker.md \
+    || { echo "compliance-checker missing commit_message_grep fallback"; return 1; }
+  echo "compliance-checker validates SHAs + grep fallback"
+}
+
+check_dev_workflow_amend_note() {
+  grep -q "commit_message_grep" skills/feature/references/developer-workflow.md \
+    || { echo "dev-workflow missing commit_message_grep note"; return 1; }
+  echo "dev-workflow documents commit_message_grep"
+}
+
+check "compliance-checker SHA fallback"     check_compliance_sha_validation
+check "dev-workflow commit_message_grep"    check_dev_workflow_amend_note
+echo
+
 
 echo
 echo "Passed: $PASS"
