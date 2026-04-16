@@ -207,7 +207,8 @@ developer-senior ← wide codebase exploration needed, or genuinely ambiguous sc
 | `cross-audit` | `/cross-audit <scope> [--mode] [--diff]` | Background dual-model audit, findings saved to KB |
 | `cross-audit` | `/cross-audit <findings-path>` | Re-audit iteration: verify fixes, look for new issues |
 | `investigate` | `/investigate <question>` | Background Claude vs Codex debate, returns convergence report |
-| `audit` | `/audit <scope>` | Single-model iterative audit (use `cross-audit` instead) |
+
+Migration note: `audit` replaced by cross-audit.
 
 ---
 
