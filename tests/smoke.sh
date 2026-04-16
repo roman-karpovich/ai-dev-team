@@ -174,6 +174,35 @@ check "session-start (cursor) key"             check_session_start_key cursor  a
 check "session-start (default) key"            check_session_start_key default additionalContext
 echo
 
+# --- post-edit-lint hook ---
+echo "post-edit-lint hook:"
+
+check_lint_empty_stdin() {
+  echo "" | python3 hooks/post-edit-lint
+}
+
+check_lint_non_edit_tool() {
+  echo '{"tool_name":"Read","tool_input":{}}' | python3 hooks/post-edit-lint
+}
+
+check_lint_missing_file() {
+  echo '{"tool_name":"Edit","tool_input":{"file_path":"/nonexistent/path-'$$'-xyz.rs"}}' | python3 hooks/post-edit-lint
+}
+
+check_no_shell_true() {
+  if grep -n "shell=True" hooks/post-edit-lint; then
+    echo "FOUND 'shell=True' in hooks/post-edit-lint — shell-injection regression!"
+    return 1
+  fi
+  echo "post-edit-lint: no shell=True OK"
+}
+
+check "post-edit-lint empty stdin"        check_lint_empty_stdin
+check "post-edit-lint non-Edit tool"      check_lint_non_edit_tool
+check "post-edit-lint missing file"       check_lint_missing_file
+check "post-edit-lint no shell=True"      check_no_shell_true
+echo
+
 
 echo
 echo "Passed: $PASS"
