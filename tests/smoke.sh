@@ -453,6 +453,46 @@ check "feature --from-investigation flag"    check_feature_from_investigation_fl
 check "feature investigation_source"         check_feature_investigation_source_field
 echo
 
+# --- /research skill ---
+echo "Research skill:"
+
+check_research_skill_exists() {
+  test -f skills/research/SKILL.md \
+    || { echo "skills/research/SKILL.md missing"; return 1; }
+  echo "skills/research/SKILL.md present"
+}
+
+check_research_subtypes() {
+  grep -q "incident-investigation" skills/research/SKILL.md \
+    && grep -q "math-model" skills/research/SKILL.md \
+    && grep -q "competitive-analysis" skills/research/SKILL.md \
+    && grep -q "exploration" skills/research/SKILL.md \
+    || { echo "research SKILL.md missing one of the 4 subtypes"; return 1; }
+  echo "research SKILL.md mentions all 4 subtypes"
+}
+
+check_research_statuses() {
+  grep -q "ACTIVE" skills/research/SKILL.md \
+    && grep -q "CONCLUDED" skills/research/SKILL.md \
+    && grep -q "ARCHIVED" skills/research/SKILL.md \
+    || { echo "research SKILL.md missing ACTIVE/CONCLUDED/ARCHIVED"; return 1; }
+  echo "research SKILL.md mentions all 3 statuses"
+}
+
+check_research_template() {
+  test -f skills/research/references/research-template.md \
+    && grep -q "type: research" skills/research/references/research-template.md \
+    && grep -q "subtype" skills/research/references/research-template.md \
+    || { echo "research-template.md missing or incomplete"; return 1; }
+  echo "research-template.md present with proper frontmatter"
+}
+
+check "research skill present"               check_research_skill_exists
+check "research subtypes documented"         check_research_subtypes
+check "research statuses documented"         check_research_statuses
+check "research template present"            check_research_template
+echo
+
 
 echo
 echo "Passed: $PASS"
