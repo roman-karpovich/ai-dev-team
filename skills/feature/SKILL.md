@@ -172,7 +172,7 @@ Set spec `status: AUDIT_PASSED`.
 
 ### Baseline test
 
-Before spawning any developer, ensure you are on `master` (or the branch specified in the spec `Branch:` field), then run the **verifier** subagent:
+Before spawning any developer, detect the base branch (`git branch -r | grep -E 'origin/(master|main)$'` — prefer `master` if both exist), ensure you are on it (or the branch specified in the spec `Branch:` field), then run the **verifier** subagent:
 
 ```
 project_path: <project_path>
@@ -223,7 +223,7 @@ Spawn `developer-middle` subagent with:
 
 ### Git conventions
 
-- **Base branch**: always `master`. Never cut from `staging`, `testnet`, `pre-prod`, or similar collection branches — those are staging dumps, not source of truth
+- **Base branch**: `master` or `main` — whichever exists in the repo (`git branch -r | grep -E 'origin/(master|main)$'`). Never cut from `staging`, `testnet`, `pre-prod`, or similar collection branches — those are staging dumps, not source of truth
 - **Feature branch**: `feature/YYYY-MM-DD-<slug>` (or as specified in spec `Branch:` field)
 - **Feature dependencies**: if this feature depends on another in-flight feature, merge that feature's branch into this one directly. Do not route through staging
 - Small logical commits per checklist step
@@ -253,11 +253,11 @@ scope: <list of changed files from spec checklist>
 After verify passes, show the commit list and present exactly these 4 options:
 
 ```
-git log --oneline master..<branch>
+git log --oneline <base>..<branch>
 
 Implementation complete. What would you like to do?
 
-1. Merge into master locally
+1. Merge into <base-branch> locally
 2. Push feature branch (I'll merge to staging and open a PR myself)
 3. Keep the branch as-is (I'll handle it later)
 4. Discard this work
@@ -265,11 +265,11 @@ Implementation complete. What would you like to do?
 Which option?
 ```
 
-> Note: merging into `staging` / `testnet` / `pre-prod` for testing is a separate manual step the user handles. The plugin only merges into `master`.
+> Note: merging into `staging` / `testnet` / `pre-prod` for testing is a separate manual step the user handles. The plugin only merges into the base branch (`master` or `main`).
 
-**Option 1 — Merge into master locally:**
+**Option 1 — Merge into base branch locally:**
 ```bash
-git checkout master && git pull && git merge <branch>
+git checkout <base-branch> && git pull && git merge <branch>
 ```
 Run verifier once more on the merged result. If green: `git branch -d <branch>`. Set spec `status: DONE`.
 
@@ -288,7 +288,7 @@ This will permanently delete branch <name> and all commits:
 
 Type 'discard' to confirm.
 ```
-On confirmation: `git checkout master && git branch -D <branch>`. Set spec `status: DISCARDED`, append to Log: "feature discarded by user".
+On confirmation: `git checkout <base-branch> && git branch -D <branch>`. Set spec `status: DISCARDED`, append to Log: "feature discarded by user".
 
 ---
 

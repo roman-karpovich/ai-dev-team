@@ -120,7 +120,7 @@ After Codex completes:
 
 - **Feature branch**: always work on a feature branch, never commit to `master` directly
 - **Branch name**: `feature/<YYYY-MM-DD-slug>` or as specified in the spec `Branch:` field
-- **Base branch**: always `master`. Never cut from `staging`, `testnet`, `pre-prod`, or any other collection branch — those are staging dumps, not source of truth
+- **Base branch**: `master` or `main` — whichever exists in the repo (`git branch -r | grep -E 'origin/(master|main)$'`). Never cut from `staging`, `testnet`, `pre-prod`, or any other collection branch — those are staging dumps, not source of truth
 - **Feature dependencies**: if this feature depends on another in-flight feature, merge that feature's branch into this one directly (`git merge feature/other-slug`). Do not go through staging
 - **Branch already exists**: tell Codex to `git checkout <branch>` (not re-create it)
 - Pass `cwd` to Codex — it handles the actual git operations within the branch
