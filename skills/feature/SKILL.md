@@ -26,6 +26,10 @@ Parse `$ARGUMENTS` to determine the mode:
 | `continue [spec-path]` | **Continue** | Resume from last checkpoint in spec |
 | bare path to an existing `*.md` file (not prefixed with `new`) | **Continue** | Treat as `continue <spec-path>` |
 | `status` or `status --all` | **Status** | Show actionable specs (or everything with `--all`) |
+| `checklist <add\|done\|fail\|start-soak\|list> …` | **Checklist** | Manage post-merge items on a SHIPPED spec |
+| `verify <spec-path>` | **Verify** | Auto-resolve blockers, flip to VERIFIED if every item is done |
+| `extend <description>` | **Extend** | Append a new step to the active spec's Implementation Checklist + workdoc (scope addition) |
+| `new <description> --follows-up <spec-path>` | **New (follow-up)** | Like **New**, but links the new spec to a prior one via `follows_up` |
 | `discard [spec-path]` | **Discard** | Delete feature branch + set spec DISCARDED (explicit; not tied to hand-off) |
 
 ---
@@ -147,6 +151,12 @@ notes: ""
 ```
 
 Leave all `observed` fields empty — the developer fills them during implementation.
+
+**Post-merge checklist seeding.** Before moving to approval, ask the user:
+
+> Any post-merge action items or external dependencies for this feature? (e.g. deploy a contract to mainnet, wait on another team, soak in prod)
+
+If the user names any, populate the `items:` YAML block in spec section `## 8. Post-merge checklist` following the schema in `references/spec-template.md`. If there are none, leave `items: []` — the spec will go straight to `VERIFIED` on hand-off instead of `SHIPPED`. The checklist can be edited later via `/feature checklist`.
 
 Spawn **Librarian** only if you need to update MOC indexes afterward.
 
@@ -333,19 +343,30 @@ Which option?
 
 > Note: merging into `staging` / `testnet` / `pre-prod` for testing is a separate manual step the user handles. The plugin only merges into the base branch (`master` or `main`).
 
+### Post-merge status transition
+
+After any preserving option (1/2/3), set frontmatter `shipped_at: YYYY-MM-DD` (today) and choose the next status based on the spec's post-merge checklist (section 8):
+
+- If `items: []` (empty) → `status: VERIFIED`. The feature is truly done; nothing to observe.
+- If `items` has any entries → `status: SHIPPED`. The feature is merged but post-merge obligations remain. It will appear in `/feature status` under the appropriate group (awaiting action / blocked on others / soaking) until the user runs `/feature verify <spec>` successfully.
+
+`DONE` remains accepted as a legacy synonym of `VERIFIED` when reading older specs, but new transitions must write `VERIFIED`.
+
+---
+
 **Option 1 — Merge into base branch locally:**
 ```bash
 git checkout <base-branch> && git pull && git merge <branch>
 ```
-Run verifier once more on the merged result. If green: set spec `status: DONE`. **Do not delete the feature branch** — leave the branch reference in place (useful for reflection and quick rollback).
+Run verifier once more on the merged result. If green: apply the post-merge status transition above. **Do not delete the feature branch** — leave the branch reference in place (useful for reflection and quick rollback).
 
 **Option 2 — Push feature branch:**
 ```bash
 git push -u origin <branch>
 ```
-Report the branch name. Set spec `status: DONE`.
+Report the branch name. Apply the post-merge status transition above.
 
-**Option 3 — Keep as-is:** Do nothing. Report the branch name. Set spec `status: DONE`.
+**Option 3 — Keep as-is:** Do nothing. Report the branch name. Apply the post-merge status transition above.
 
 **Option 4 — Discard:** delegate to the Discard mode below (same flow as `/feature discard <spec-path>`).
 
@@ -362,7 +383,8 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
    - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
    - `BLOCKED` → Report the unblock condition from the most recent `BLOCKED — waiting on ...` Log entry and ask the user whether the condition is now satisfied. If yes, revert status to the prior state (IN_PROGRESS or AUDIT_PASSED, whichever the Log indicates) and resume. If no, stop.
-   - `DONE` → Feature complete and already preserved. Report completion status and stop.
+   - `SHIPPED` → Feature is merged but post-merge checklist has open items. Run auto-resolve for `depends_on` blockers (see Verify mode), then show the checklist: open items grouped by type with owner and what's pending. Offer the user the obvious next move based on what is open — mark an action done, start a soak, run `/feature verify`, etc. Do not re-enter the implement loop.
+   - `VERIFIED` (or legacy `DONE`) → Feature complete and observed. Report completion status and stop.
    - `DISCARDED` → Feature was discarded. Report this and stop.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
 4. Ask which agent to use for remaining work (only if resuming implementation). If the Log contains a `last_agent=...` entry, present it as the default: "Which developer? (default: Codex — last used)".
@@ -395,17 +417,196 @@ Type 'discard' to confirm.
 
 1. Run KB discovery (Phase 0)
 2. Find all specs: `<kb_path>/repos/*/design/YYYY-MM-DD-*.md`
-3. Read status and checklist from each
-4. Filter: by default, hide `DONE`, `DISCARDED`, and `BLOCKED` (they are not actionable now). If the argument is `status --all`, show every spec regardless of status.
-5. Show summary:
+3. Read status, implementation checklist, and post-merge checklist (section 8) from each
+4. For every `SHIPPED` spec: run the auto-resolve pass (see Verify mode) so blockers pointing at now-verified specs collapse before we render
+5. Filter: by default, hide `VERIFIED` / `DONE`, `DISCARDED`, and `BLOCKED` (they are not actionable now). Always show `SHIPPED`. If the argument is `status --all`, show every spec regardless of status.
+6. Group the visible specs into named sections:
 
 ```
+### Active
 | Spec | Project | Status | Progress | Branch |
 |------|---------|--------|----------|--------|
 | ... | ... | IN_PROGRESS | 3/7 steps | feature/... |
+
+### Shipped — awaiting your action
+(SHIPPED with at least one pending `action` item, or any `failed` item.)
+
+| Spec | Project | Open item | Since |
+|------|---------|-----------|-------|
+| ... | ... | action: Deploy v1.2 to mainnet | 2026-04-17 |
+
+### Shipped — blocked on others
+(SHIPPED where the only pending items are `blocker`s — manual or depends_on still unresolved.)
+
+| Spec | Project | Blocked on |
+|------|---------|------------|
+| ... | ... | frontend-team: UI ships · depends_on: design/2026-04-20-ui.md |
+
+### Shipped — soaking
+(SHIPPED where the only pending items are `soak`s.)
+
+| Spec | Project | Soak | Started | Remaining |
+|------|---------|------|---------|-----------|
+| ... | ... | 7 days stable in prod | 2026-04-18 | 5 days |
 ```
 
-To move a spec to `BLOCKED`, append `- YYYY-MM-DD: BLOCKED — waiting on <condition>` to the spec Log and flip `status: BLOCKED`. Continue mode reads the most recent such Log entry and asks whether the condition is satisfied on resume.
+Omit any section that has no rows. If a SHIPPED spec has mixed pending types, place it in the most-actionable section (action → blocked → soaking, in that priority).
+
+To move a spec to `BLOCKED` during development, append `- YYYY-MM-DD: BLOCKED — waiting on <condition>` to the spec Log and flip `status: BLOCKED`. Continue mode reads the most recent such Log entry and asks whether the condition is satisfied on resume. (Do not confuse this with a `blocker` *item* in the post-merge checklist — those belong to SHIPPED specs that are already merged.)
+
+---
+
+## Checklist mode
+
+Manage the post-merge checklist of a `SHIPPED` spec. All actions mutate the
+YAML block under `## 8. Post-merge checklist` in the spec file. All actions
+also append a single line to the spec Log describing the change.
+
+### `checklist add <spec-path> <type> "<desc>" [options]`
+
+Append a new item. `<type>` ∈ `{action, blocker, soak}`. Allocate the next
+integer `id` (max existing id + 1, or 1). Defaults: `status: pending`,
+`owner: user`, `notes: null`, `resolved_at: null`.
+
+Type-specific options:
+- `action`: none required.
+- `blocker`: `--owner=<team>` (defaults to `user`), `--depends-on=<path>` where
+  path is relative to `<kb_path>/repos/<project>/` (e.g.
+  `design/2026-04-20-ui.md`). If the path escapes the project or is cross-KB,
+  leave `depends_on: null` — the item becomes manual-only.
+- `soak`: `--duration-days=<N>` required; `started_at` stays `null` until
+  `start-soak` is called.
+
+Works even when spec is in `IN_PROGRESS` — items can be anticipated during
+development. Refuses to add items to `VERIFIED` / `DISCARDED` specs.
+
+### `checklist done <spec-path> <n> [--note="..."]`
+
+Set item `n` to `status: done`, `resolved_at: <today>`. Record the optional
+note. Refuses if the item is already `done` / `failed`. Refuses for soak items
+whose `started_at` is still `null` (start the soak first, or the entry is
+pointless).
+
+### `checklist fail <spec-path> <n> --note="..."`
+
+Set item `n` to `status: failed`, `resolved_at: <today>`. The `--note` is
+**required** — the note is the record of what went wrong. A `failed` item
+blocks `/feature verify`; resolve it by (a) flipping back to `done` with a
+justifying note after the underlying issue is handled, or (b) opening a
+follow-up spec via `/feature new` and leaving the item failed while the
+follow-up tracks the remediation.
+
+### `checklist start-soak <spec-path> <n>`
+
+Set `started_at: <today>` on a `soak` item. Refuses if the item is not type
+`soak` or if `started_at` is already set.
+
+### `checklist list [spec-path]`
+
+Render the checklist for a single spec (spec-path given) or for every
+`SHIPPED` spec in the KB (no argument). Group output by project and by item
+status. This is what `/feature status` calls internally for the shipped
+groups.
+
+### Auto-resolve pass
+
+Whenever any checklist command runs, and at the start of `/feature status`
+and `/feature verify`, walk the spec's `blocker` items. For each item with
+`status: pending` and a non-null `depends_on`:
+
+1. Resolve the path to `<kb_path>/repos/<project>/<depends_on>`. If it does
+   not exist: skip (manual-only) and note once.
+2. Read that spec's frontmatter `status`. If `VERIFIED` (or legacy `DONE`):
+   flip this item to `status: done`, `resolved_at: <today>`, append a Log
+   line: `- YYYY-MM-DD: auto-resolved blocker #<id> — depends_on <path> is VERIFIED`.
+3. Otherwise: leave pending.
+
+Auto-resolve never reaches outside the project's own KB — cross-project
+dependencies stay pending until the user flips them manually.
+
+---
+
+## Verify mode
+
+`/feature verify <spec-path>` — attempt to close the post-merge cycle.
+
+1. Read spec frontmatter `status`. Accept only `SHIPPED`; refuse otherwise.
+2. Run the auto-resolve pass (see above) so recent upstream verifications
+   propagate before the check.
+3. Tally items:
+   - All `status: done` → flip spec `status: VERIFIED`, append Log
+     `- YYYY-MM-DD: VERIFIED — all post-merge items closed`. Report success.
+   - Any `failed` → refuse. Report each failed item with its note; tell the
+     user to resolve via `checklist done <n> --note=...` or to open a
+     follow-up spec.
+   - Any `pending` → refuse. Report each pending item with what is
+     outstanding (action description, blocker target, soak remaining days).
+
+Verify does not advance soak timers automatically — if a soak's
+`started_at + duration_days` has passed but the item is still `pending`, it
+is treated as pending. The user runs `checklist done <n>` once they are
+satisfied with the soak result (nothing blew up).
+
+---
+
+## Scope addition mid-flow
+
+When the orchestrator is working inside a spec and the user introduces a new requirement that was not in the approved scope ("also need X", "нужно ещё Y", "забыли добавить Z", "ещё одна доработка", "one more thing", "by the way we should also…"), do **not** silently absorb it. Detect the intent and prompt a single fork.
+
+**Intent phrases** (not exhaustive — the orchestrator should use judgement):
+- "also need / also add / additionally / on top of that / one more thing / by the way / while we're at it / forgot to mention"
+- "нужно ещё / также / кстати / забыли про / ещё одна доработка / дополнительно"
+
+**Decision by context of the active spec:**
+
+1. **Spec is `DRAFT` / `APPROVED` / `AUDIT_PASSED` / `IN_PROGRESS`** — ask exactly:
+
+   > Scope addition detected. Extend the current spec (new step in the Implementation Checklist + matching `planned` block in the exec workdoc; spec stays in its current state) or split into a separate follow-up spec (linked via `follows_up`)?
+
+   - **Extend** → run `/feature extend <description>` on the active spec.
+   - **Split** → run `/feature new <description> --follows-up <active-spec-path>`.
+
+2. **Spec is `SHIPPED`** — ask:
+
+   > The spec is already merged. Options:
+   > (a) post-merge action item (only if this is a manual step, not new code) — adds via `/feature checklist add <spec> action "<desc>"`;
+   > (b) new follow-up spec linked via `follows_up`.
+
+   Do not re-open a SHIPPED spec for new implementation work.
+
+3. **Spec is `VERIFIED` / `DONE`** — ask:
+
+   > The spec is already verified and closed. A new follow-up spec is the only option (linked via `follows_up`). Create it now?
+
+   VERIFIED never silently reverts to SHIPPED. If the extension is genuinely new work, it must become its own spec.
+
+4. **No active spec / scope unclear** — fall through to the normal `/feature new` or `/feature continue` prompts from the trigger map. Do not invent an implicit extension.
+
+Whichever option is chosen, append one Log line to the source spec documenting the decision ("scope extended — added step N: <desc>" / "follow-up spec created at <path>" / "post-merge action item N added: <desc>"). Silent scope creep is forbidden.
+
+---
+
+## Extend mode
+
+`/feature extend <description>` — append a new step to a spec's Implementation Checklist and create the matching workdoc entry.
+
+1. Resolve the target spec. If `$ARGUMENTS` contains a spec-path, use that; otherwise use the spec currently under discussion (ask if ambiguous).
+2. Refuse on `SHIPPED` / `VERIFIED` / `DONE` / `DISCARDED` — follow-up specs and post-merge action items are the right tools there (see *Scope addition mid-flow*).
+3. If the spec is `DRAFT` / `APPROVED`, add the step via a normal spec edit in section `## 5. Implementation Checklist`; skip the workdoc write (no workdoc exists until `AUDIT_PASSED`).
+4. If the spec is `AUDIT_PASSED` / `IN_PROGRESS`:
+   - Append `- [ ] Step N: <description>` to the Implementation Checklist (N = next integer).
+   - Append a matching `## Step N: <title>` block in the workdoc at `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md` with a `planned` block. Prompt the user for any of `goal` / `allowed_scope` / `passing_test_cmd` / `expected_pass_pattern` the description does not make obvious — these must be set before implementation starts. Leave `observed` empty.
+   - Append to spec Log: `- YYYY-MM-DD: scope extended — added step N (<short description>)`.
+5. Do **not** re-run the full audit loop. The existing audit covered the original scope; the new step gets its regular compliance check at implementation time. If the addition is substantial (new external API, new data model, cross-cutting), surface this and recommend `/feature new --follows-up` instead — it is a judgement call, not a hard rule.
+
+### Follow-up specs (`--follows-up`)
+
+`/feature new <description> --follows-up <prior-spec-path>` behaves like normal **New** except:
+
+- Frontmatter is populated with `follows_up: <prior-spec-path>` (relative to `<kb_path>/repos/<project>/`, same convention as `depends_on`).
+- One line is appended to the prior spec's Log: `- YYYY-MM-DD: follow-up spec created at <new-path>`.
+- The new spec's **Context** section opens with a one-paragraph summary of what changed in the prior spec and why this work was split off (the orchestrator drafts it; the user may edit).
+- `/feature status` renders the follow-up chain next to each spec row (`follows: <prior-slug>` / `followed-by: <new-slug>`) so the lineage is visible.
 
 ---
 
@@ -417,3 +618,10 @@ To move a spec to `BLOCKED`, append `- YYYY-MM-DD: BLOCKED — waiting on <condi
 - **One feature per spec.** Don't combine unrelated changes.
 - **Specs in KB, code in source repos.**
 - **Always offer agent choice** before implementation begins.
+- **Merge ≠ done.** A spec with a non-empty post-merge checklist moves to
+  `SHIPPED` on hand-off, not `VERIFIED`. Only `/feature verify` with every
+  checklist item closed can reach `VERIFIED`.
+- **No silent scope creep.** Every mid-flow scope addition must be explicit:
+  a new step in the Implementation Checklist (extend), a post-merge action
+  item (checklist add), or a linked follow-up spec (`--follows-up`). Record
+  the decision in the source spec's Log.

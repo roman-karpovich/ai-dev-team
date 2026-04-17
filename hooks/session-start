@@ -43,6 +43,9 @@ Recognise these intents and invoke the matching skill automatically — do not w
 | "what'\''s in progress?", "what are we working on?", "status", "show specs", "what'\''s pending?" | `/feature status` |
 | "review this", "check for bugs", "find bugs", "security check", "code review", "audit src/", "is this safe?" | `/cross-audit <scope>` |
 | "should we use X or Y?", "is this the right approach?", "compare these options", "which is better", "tradeoffs between", "brainstorm" | `/investigate <question>` |
+| "also need X", "нужно ещё Y", "кстати, забыли про Z", "one more thing", "by the way", "ещё одна доработка" (while inside an active spec) | Prompt: extend current spec (`/feature extend <desc>`) or split into follow-up (`/feature new <desc> --follows-up <spec>`). Never silently absorb. |
+| "фича X стабильна в проде", "закрой чеклист по X", "verify feature X" | `/feature verify <spec>` |
+| "blocker N выполнен", "деплой залит", "action item done", "soak started" | `/feature checklist <done\|start-soak> <spec> <n>` |
 
 ### Audit findings handling
 

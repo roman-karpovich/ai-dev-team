@@ -5,6 +5,12 @@ type: spec
 status: DRAFT
 branch: feature/YYYY-MM-DD-{slug}
 created: YYYY-MM-DD
+# Populated on hand-off (Option 1/2/3). Null while feature is still in development.
+shipped_at: null
+# Optional: set when this spec was split off from another via `/feature new --follows-up`.
+# Points at the prior spec relative to <kb_path>/repos/<project>/, e.g.
+#   follows_up: design/2026-03-10-claim-fees-event.md
+follows_up: null
 # Optional: populated automatically when /feature new is called with --from-investigation
 # investigation_source: research/YYYY-MM-DD-<topic>.md
 tags: [spec, {project-name}]
@@ -107,7 +113,60 @@ notes: ""
 
 **DONE rule**: a step is not done until `green_capture` exists with content matching `expected_pass_pattern`. No capture = not done.
 
-## 8. Log
+## 8. Post-merge checklist
+
+Items that must be resolved **after** the feature is merged before it can be
+considered truly done. Managed by `/feature checklist` — do not hand-edit the
+YAML block unless you know what you are doing.
+
+Three types:
+
+- **`action`** — a manual step the user must perform outside the repo (deploy a
+  contract to mainnet, rotate a key, update an external dashboard, send an
+  announcement).
+- **`blocker`** — a dependency on another team or another spec. If
+  `depends_on` points at a spec in the same project's design/ folder, the
+  skill auto-resolves this item to `done` when that spec reaches `VERIFIED`.
+  Cross-KB / cross-project dependencies are free-text only — resolve manually.
+- **`soak`** — a passive observation period in staging or production. The
+  timer does **not** start at merge; the user runs
+  `/feature checklist start-soak <n>` once the change is actually live.
+
+The spec moves to `SHIPPED` on hand-off if this list is non-empty, and to
+`VERIFIED` via `/feature verify` once every item is `done`. A `failed` item
+blocks verification — either mark it `done` with a justifying note, or open
+a follow-up spec and add a new item describing the remediation.
+
+```yaml
+items: []
+# Example items (delete before saving if the list is empty):
+# - id: 1
+#   type: action
+#   description: Deploy contract v1.2 to Stellar mainnet
+#   owner: user
+#   status: pending       # pending | done | failed
+#   notes: null           # required when status is failed
+#   resolved_at: null     # YYYY-MM-DD, set when status leaves pending
+# - id: 2
+#   type: blocker
+#   description: Frontend ships the new UI
+#   owner: frontend-team
+#   depends_on: design/2026-04-20-concentrated-ui.md  # same-project only; null for cross-KB
+#   status: pending
+#   notes: null
+#   resolved_at: null
+# - id: 3
+#   type: soak
+#   description: 7 days stable in prod
+#   owner: user
+#   duration_days: 7
+#   started_at: null      # YYYY-MM-DD, set by `/feature checklist start-soak`
+#   status: pending
+#   notes: null
+#   resolved_at: null
+```
+
+## 9. Log
 
 Append-only. Record decisions, blockers, and progress.
 
