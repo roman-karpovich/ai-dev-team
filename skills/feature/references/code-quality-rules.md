@@ -85,3 +85,62 @@ locks in the wrong contract.
    intent, not just the green capture.
 
 ---
+
+## R3 — Test strength / signal-to-noise
+
+**Rule**: every test must be capable of failing when the production behaviour it claims to
+verify regresses. A test that cannot name a specific regression it would catch is weak —
+rewrite the assertion or delete the test.
+
+**Why**: Vladimir Khorikov's 4-pillar framework for unit tests (*Unit Testing: Principles,
+Practices, and Patterns*, Manning 2020, chs. 1, 4, 5) evaluates a test on (1) protection
+against regressions, (2) resistance to refactoring, (3) fast feedback, (4) maintainability.
+The failure mode R3 targets is tests that *appear* to score high on pillar (1) — a green
+line and a coverage percentage — while collapsing pillar (2): they break under any internal
+rearrangement without catching real regressions. Weak tests create false confidence (the
+agent reads green CI as "the contract holds") and pure maintenance drag (the test fails
+during unrelated refactors, the team updates the assertion, and the next regression still
+slips through). R3 forces the developer to name *what* the test catches, surfacing
+tautological/shape-only assertions before they accumulate as green-CI ballast.
+
+**How to apply**:
+
+1. Before committing a new or modified test, write a one-sentence description of the
+   regression it catches — a concrete behavioural change in production code that would make
+   the assertion fail. Place it in `observed.notes` for the step.
+2. If you cannot name the regression without restating the assertion itself, the test is
+   weak. Rewrite the assertion to key off an observable behaviour, or delete the test.
+3. Check the assertion against these anti-patterns — any one is a red flag:
+   - **Tautological assertion** — the assertion restates the production code's own
+     expression (e.g. `assert x == fn(x)` where `fn(x)` is `return x`, or asserting the
+     object returned is the same object passed in). Violates pillar (1) because no
+     production change this test is meant to guard can falsify it: the assertion and the
+     code are the same statement.
+   - **Setter-getter round-trip** — `obj.set_x(42); assert obj.get_x() == 42`. Violates
+     pillar (2): the field name is the assertion, so any internal rename or field
+     restructure breaks the test without a behavioural change; and violates pillar (1)
+     because a real regression (e.g. the setter silently dropping a value on some branch)
+     isn't exercised by the single trivial path.
+   - **Mock-call-counter as sole assertion** — `assert mock.call_count == 1` with no
+     assertion on the arguments or the observable effect. Violates pillar (2): the test
+     breaks whenever the call site is refactored (inlined, memoised, batched), regardless
+     of whether behaviour changed; pillar (1) protection is illusory because wrong arguments
+     still satisfy the counter.
+   - **`assertIsNotNone` (or `assert x is not None`) on a never-None return** — the
+     function's type signature already guarantees non-None (no `Optional[...]`, no
+     documented None path). Violates pillar (1): the assertion can only fail if the return
+     type itself changes, which a type checker already flags; it catches no runtime
+     regression.
+   - **Duplicating type-checker or ORM-schema guarantees** — asserting a field exists on a
+     dataclass, that a typed dict has the expected keys, or that an ORM row has the columns
+     the schema defines. Violates pillars (1) and (4): type checkers, schema migrations,
+     and CI lint catch these faster and more reliably; the test adds noise and breaks on
+     harmless schema renames.
+4. Every fresh test must have a one-sentence note in `observed.notes` naming the regression it catches; if you cannot name it, the test is weak — rewrite or delete.
+   This is the behavioural trigger spec-compliance-checker keys off — an empty or vague
+   note ("catches regression if the assertion breaks") does not satisfy R3.
+5. Anti-pattern list is a floor, not a ceiling. When you spot a new weak-test shape in the
+   wild, append it here with a one-line pillar-grounded rationale; do not mutate existing
+   entries.
+
+---
