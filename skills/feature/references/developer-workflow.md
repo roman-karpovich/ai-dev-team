@@ -102,13 +102,45 @@ Update the spec file directly during work:
 
 ## Git Workflow
 
-- **Feature branch** — never commit to `master` / `main` directly. Branch name: `feature/<YYYY-MM-DD-slug>` or whatever the spec `Branch:` field specifies.
+- **Feature branch** — never commit to `master` / `main` directly. Branch name: `feature/<YYYY-MM-DD-slug>` or whatever the spec `branch:` frontmatter field specifies.
 - **Base branch detection** — `master` or `main`, whichever exists: `git branch -r | grep -E 'origin/(master|main)$'`. Prefer `master` if both exist. **Never** cut from `staging`, `testnet`, `pre-prod`, or any other collection branch — those are staging dumps, not the source of truth.
 - **Feature dependencies** — if this feature depends on another in-flight feature, merge that feature's branch into this one directly (`git merge feature/other-slug`). Do not route through staging.
 - **Branch already exists** — `git checkout <branch>` (don't re-create). If it exists on remote only: `git fetch` then checkout tracking.
 - **Small logical commits** — one per checklist step (or coherent sub-task).
 - **Commit messages** — concise, imperative mood. No `Co-authored-by` lines.
 - **No push** — the user handles pushing, staging merge, and PR creation.
+
+### Pre-commit branch assertion (MANDATORY)
+
+Before **every** `git commit`, run `git branch --show-current` and validate:
+
+1. **Never on `main` or `master`.** If HEAD is on either, stop immediately. Do not commit. The main branch is for merges only; direct commits pollute release notes and tag history.
+2. **Spec is authoritative.** If there is an active spec (`status: IN_PROGRESS` or `AUDIT_PASSED` in the KB), the `branch:` field in that spec's frontmatter is the only branch this work commits to. If HEAD does not match, `git checkout <spec.branch>` first — or if the branch is gone, recreate it (`git checkout -b <spec.branch> <base>`). Do not commit "just this once" on a different branch.
+3. **No spec → still no main.** Even for ad-hoc fixes, branch first: `fix/<short-name>`, `chore/<short-name>`, etc. The only exception is explicit user override ("just commit to master" / "just push") — and then the override must be in the same turn, not inferred from an earlier message.
+
+Put this check into muscle memory: it is cheaper to switch branches than to rewrite history.
+
+### Post-merge bug flow
+
+A bug found after a feature was merged to `main` does **not** authorise direct commits on `main`. Classify the situation and branch accordingly:
+
+1. **Spec still IN_PROGRESS, merge was a PR-squash with the feature branch deleted** — this is the common case. Recreate the branch from the current base and continue:
+   ```bash
+   git checkout -b <spec.branch> origin/main   # or origin/master
+   ```
+   The bug-fix is a new step in the same spec. Use `/feature extend` if the fix is a clean add-on to the spec; the orchestrator appends a step and a workdoc planned block.
+
+2. **Spec is SHIPPED** (merged, post-merge checklist open) — the spec is closed to new steps. Open a follow-up spec:
+   ```bash
+   /feature new "<bug description>" --follows-up <path-to-shipped-spec>
+   ```
+   The new spec gets its own branch and its own lifecycle. Do not reopen the SHIPPED spec.
+
+3. **Spec is VERIFIED** — same as (2). A verified spec is frozen; bugs in its scope become follow-up specs.
+
+4. **No spec at all (ad-hoc fix to something unrelated)** — new branch `fix/<short-name>` from `main` / `master`. Never direct-commit on `main`.
+
+The checker enforces this: any commit whose HEAD-at-time-of-commit is `main` / `master`, or whose branch diverges from the active spec's `branch:` field, is an automatic FAIL.
 
 ---
 
