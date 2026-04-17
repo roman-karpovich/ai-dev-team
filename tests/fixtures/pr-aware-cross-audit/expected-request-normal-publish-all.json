@@ -1,0 +1,8 @@
+{
+  "event": "COMMENT",
+  "body": "Cross-audit findings (ai-dev-team). Inline below; findings routed to this body block are either on lines outside the diff or in files where inline commenting is unsupported (pure rename, binary, submodule, parser ambiguity).\n\n### [X3 HIGH] bar.rs pure-rename concern\n\npure rename; routing must send to body bucket\n\nFix: N/A — pure rename has no line to anchor on",
+  "comments": [
+    {"path": "src/foo.rs", "line": 42, "side": "RIGHT", "body": "**[X1 HIGH] foo.rs inline-addressable bug**\n\ndivision by zero possible when amount < 1000\n\nFix: guard with `if bonus == 0 { return base; }`"},
+    {"path": "src/baz.rs", "line": 95, "side": "RIGHT", "body": "**[X2 HIGH] baz.rs rename-with-edits bug**\n\ntimeout doubled without justification\n\nFix: revert timeout to 30 or document reason"}
+  ]
+}

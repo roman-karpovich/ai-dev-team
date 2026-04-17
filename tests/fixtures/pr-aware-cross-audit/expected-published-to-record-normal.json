@@ -1,0 +1,9 @@
+{
+  "pr": "https://github.com/roman-karpovich/ai-dev-team/pull/472",
+  "timestamp": "2026-04-17T14:30:00Z",
+  "finding_ids": ["X1", "X2", "X3"],
+  "review_id": 2847392011,
+  "truncated": false,
+  "head_oid_at_publish": "1a2b3c4d5e6f7890abcdef1234567890abcdef12",
+  "degraded_to_body": false
+}

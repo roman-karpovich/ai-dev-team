@@ -1,0 +1,10 @@
+HTTP/2 403
+server: GitHub.com
+date: Fri, 17 Apr 2026 14:30:00 GMT
+content-type: application/json; charset=utf-8
+x-ratelimit-limit: 5000
+x-ratelimit-remaining: 0
+x-ratelimit-reset: 1745324400
+x-github-media-type: github.v3
+
+{"message":"API rate limit exceeded for user ID 12345.","documentation_url":"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting"}

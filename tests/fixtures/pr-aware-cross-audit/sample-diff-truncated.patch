@@ -1,0 +1,12 @@
+diff --git a/src/foo.rs b/src/foo.rs
+index 1111111..aaaaaaa 100644
+--- a/src/foo.rs
++++ b/src/foo.rs
+@@ -40,6 +40,8 @@ fn compute_fee(amount: u64) -> u64 {
+     let base = amount / 100;
+     let bonus = amount / 1000;
++    let fee = base + bonus;
+     fee
+ }
+
+... (diff truncated — diff too large, exceeds 20 MB cap)

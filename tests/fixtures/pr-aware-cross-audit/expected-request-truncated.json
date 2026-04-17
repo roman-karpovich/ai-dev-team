@@ -1,0 +1,5 @@
+{
+  "event": "COMMENT",
+  "body": "Cross-audit findings (ai-dev-team). Diff was truncated — all findings routed to body.\n\n### [X1 HIGH] foo.rs inline-addressable bug\n\ndivision by zero possible when amount < 1000\n\nFix: guard with `if bonus == 0 { return base; }`\n\n### [X2 HIGH] baz.rs rename-with-edits bug\n\ntimeout doubled without justification\n\nFix: revert timeout to 30 or document reason\n\n### [X3 HIGH] bar.rs pure-rename concern\n\npure rename; routing must send to body bucket\n\nFix: N/A — pure rename has no line to anchor on",
+  "comments": []
+}

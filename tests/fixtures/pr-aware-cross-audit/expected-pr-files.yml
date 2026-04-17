@@ -1,0 +1,31 @@
+pr_files:
+  - filename: src/foo.rs
+    status: modified
+    previous_filename: null
+    patch_present: true
+    is_submodule: false
+  - filename: src/bar.rs
+    status: renamed
+    previous_filename: src/bar_old.rs
+    patch_present: false
+    is_submodule: false
+  - filename: src/baz.rs
+    status: renamed
+    previous_filename: src/baz_old.rs
+    patch_present: true
+    is_submodule: false
+  - filename: assets/logo.png
+    status: modified
+    previous_filename: null
+    patch_present: false
+    is_submodule: false
+  - filename: vendor/submod
+    status: modified
+    previous_filename: null
+    patch_present: false
+    is_submodule: true
+  - filename: src/ambig.rs
+    status: modified
+    previous_filename: null
+    patch_present: true
+    is_submodule: false
