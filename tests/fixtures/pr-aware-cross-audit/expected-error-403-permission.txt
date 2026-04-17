@@ -1,0 +1,2 @@
+error: publish aborted — permission denied (403, X-RateLimit-Remaining absent OR value ≠ 0)
+remediation: Token lacks `pull_requests: write` on roman-karpovich/ai-dev-team — run `gh auth refresh -s repo` or use a token with write scope. No `published_to` record was written.

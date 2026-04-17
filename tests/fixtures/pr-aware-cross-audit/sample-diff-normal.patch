@@ -1,0 +1,45 @@
+diff --git a/src/foo.rs b/src/foo.rs
+index 1111111..aaaaaaa 100644
+--- a/src/foo.rs
++++ b/src/foo.rs
+@@ -40,6 +40,8 @@ fn compute_fee(amount: u64) -> u64 {
+     let base = amount / 100;
+     let bonus = amount / 1000;
++    // X1 — division by zero possible when amount < 1000
++    let fee = base + bonus;
+     fee
+ }
+diff --git a/src/bar_old.rs b/src/bar.rs
+similarity index 100%
+rename from src/bar_old.rs
+rename to src/bar.rs
+diff --git a/src/baz_old.rs b/src/baz.rs
+similarity index 82%
+rename from src/baz_old.rs
+rename to src/baz.rs
+index 3333333..ccccccc 100644
+--- a/src/baz_old.rs
++++ b/src/baz.rs
+@@ -95,7 +95,7 @@ pub fn process() {
+-    let timeout = 30;
++    let timeout = 60;
+ }
+diff --git a/assets/logo.png b/assets/logo.png
+index 4444444..dddddddd 100644
+Binary files a/assets/logo.png and b/assets/logo.png differ
+diff --git a/vendor/submod b/vendor/submod
+index 0000000..eeeeeee 160000
+--- a/vendor/submod
++++ b/vendor/submod
+@@ -1 +1 @@
+-Subproject commit 0000000000000000000000000000000000000000
++Subproject commit eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+diff --git a/src/ambig.rs b/src/ambig.rs
+index 5555555..fffffff 100644
+--- a/src/ambig.rs
++++ b/src/ambig.rs
+@@ malformed hunk header — parser cannot determine new_line positions
+ pub fn ambiguous() {
+-    let x = 1;
++    let x = 2;
+ }

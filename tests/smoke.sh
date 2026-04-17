@@ -531,6 +531,503 @@ check "SKILL.md has §6.2 Quick-check banners (live and deferred)"   check_skill
 check "SKILL.md has §6.2 malformed-block Log template"              check_skill_malformed_block_log_62
 echo
 
+# --- Cross-audit PR mode + publish ---
+echo "Cross-audit PR mode + publish:"
+
+PR_FIX_DIR="tests/fixtures/pr-aware-cross-audit"
+
+# 1. SKILL.md contains PR-mode argument literal `pr <N>`
+check_cross_audit_skill_pr_arg() {
+  grep -q 'pr <N>' skills/cross-audit/SKILL.md \
+    || { echo "cross-audit SKILL.md missing literal 'pr <N>' argument"; return 1; }
+  echo "cross-audit SKILL.md mentions \`pr <N>\`"
+}
+
+# 2. SKILL.md contains `--paginate`
+check_cross_audit_skill_paginate() {
+  grep -q -- '--paginate' skills/cross-audit/SKILL.md \
+    || { echo "cross-audit SKILL.md missing --paginate"; return 1; }
+  echo "cross-audit SKILL.md uses --paginate"
+}
+
+# 3. SKILL.md documents `publish` action keyword in Phase 3
+check_cross_audit_skill_publish_action() {
+  grep -q 'publish <ids>' skills/cross-audit/SKILL.md \
+    || { echo "cross-audit SKILL.md missing 'publish <ids>' action"; return 1; }
+  echo "cross-audit SKILL.md documents 'publish' action"
+}
+
+# 4. SKILL.md references `gh api ... pulls/.../reviews`
+check_cross_audit_skill_gh_api_reviews() {
+  grep -Eq 'gh api.*pulls/.*reviews' skills/cross-audit/SKILL.md \
+    || { echo "cross-audit SKILL.md missing 'gh api ... pulls/.*reviews' endpoint"; return 1; }
+  echo "cross-audit SKILL.md references \`gh api\` for \`pulls/.*reviews\`"
+}
+
+# 5. SKILL.md contains `nameWithOwner` (cwd-repo preflight)
+check_cross_audit_skill_name_with_owner() {
+  grep -q 'nameWithOwner' skills/cross-audit/SKILL.md \
+    || { echo "cross-audit SKILL.md missing nameWithOwner preflight"; return 1; }
+  echo "cross-audit SKILL.md preflights nameWithOwner"
+}
+
+# 6. SKILL.md contains `headRefOid` (preflight capture)
+check_cross_audit_skill_head_ref_oid() {
+  grep -q 'headRefOid' skills/cross-audit/SKILL.md \
+    || { echo "cross-audit SKILL.md missing headRefOid capture"; return 1; }
+  echo "cross-audit SKILL.md captures headRefOid"
+}
+
+# 7. SKILL.md documents standalone `publish <slug>` entry point
+check_cross_audit_skill_standalone_publish() {
+  grep -Eq 'publish <slug>' skills/cross-audit/SKILL.md \
+    || { echo "cross-audit SKILL.md missing standalone 'publish <slug>' entry"; return 1; }
+  echo "cross-audit SKILL.md documents standalone publish <slug>"
+}
+
+# 8. cross-auditor.md — pr_number / pr_changed_files / pr_head_oid literal tokens,
+#    a fenced YAML block in Input/Outputs with all 5 pr_files keys,
+#    and the literal delegation path `hooks/lib/build_pr_files.sh`.
+check_cross_auditor_pr_yaml_block() {
+  python3 - <<'PY'
+import re, sys
+text = open('agents/cross-auditor.md').read()
+for token in ('pr_number', 'pr_changed_files', 'pr_head_oid'):
+    if token not in text:
+        print(f"cross-auditor.md missing literal token '{token}'")
+        sys.exit(1)
+if 'hooks/lib/build_pr_files.sh' not in text:
+    print("cross-auditor.md missing literal delegation path 'hooks/lib/build_pr_files.sh'")
+    sys.exit(1)
+# Find all fenced yaml blocks with all 5 pr_files keys
+keys = ('filename:', 'status:', 'previous_filename:', 'patch_present:', 'is_submodule:')
+blocks = re.findall(r'```ya?ml\n(.*?)\n```', text, re.DOTALL)
+found = False
+for b in blocks:
+    if all(k in b for k in keys):
+        found = True
+        break
+if not found:
+    print("cross-auditor.md: no fenced YAML block contains all 5 pr_files keys "
+          "(filename:/status:/previous_filename:/patch_present:/is_submodule:)")
+    sys.exit(1)
+print("cross-auditor.md input/output YAML block has all 5 pr_files keys + build_pr_files.sh path")
+PY
+}
+
+# 9. cross-auditor.md uses `gh pr checkout`
+check_cross_auditor_gh_pr_checkout() {
+  grep -q 'gh pr checkout' agents/cross-auditor.md \
+    || { echo "cross-auditor.md missing 'gh pr checkout'"; return 1; }
+  echo "cross-auditor.md uses gh pr checkout"
+}
+
+# 10. cross-auditor.md: within 10 lines of `mcp__codex__codex` token, contains `cwd` AND `worktree`.
+check_cross_auditor_codex_cwd_proximity() {
+  python3 - <<'PY'
+import re, sys
+lines = open('agents/cross-auditor.md').read().splitlines()
+ok = False
+for i, line in enumerate(lines):
+    if 'mcp__codex__codex' in line:
+        window = '\n'.join(lines[i:i+11])
+        if 'cwd' in window and 'worktree' in window:
+            ok = True
+            break
+if not ok:
+    print("cross-auditor.md: no 'mcp__codex__codex' occurrence has both 'cwd' and 'worktree' within 10 lines")
+    sys.exit(1)
+print("cross-auditor.md Codex cwd override proximity OK")
+PY
+}
+
+# 11. publish.md exists + contains all required tokens (including verbatim 403 predicate).
+check_publish_md_tokens() {
+  local f='skills/cross-audit/references/publish.md'
+  if [ ! -f "$f" ]; then
+    echo "missing $f"; return 1
+  fi
+  local miss=0
+  for tok in 'gh api' '--republish' 'published_to' 'comments' 'event' 'side' 'truncated' \
+             'OPEN' 'REOPENED' 'head_oid_at_publish' '--force-publish-stale' \
+             '--repo' '--include' 'pr_files' 'degraded_to_body' 'X-RateLimit-Remaining' \
+             'pull_requests: write' 'CROSS_AUDIT_PUBLISH_STUB_RESPONSE' 'absent OR value ≠ 0'; do
+    if ! grep -q -F -- "$tok" "$f"; then
+      echo "publish.md missing token: '$tok'"
+      miss=1
+    fi
+  done
+  [ "$miss" -eq 0 ] || return 1
+  echo "publish.md contains all required tokens"
+}
+
+# 12. hooks/session-start AND docs/claude-md-snippet.md both mention `publish|fix|accept|defer`
+check_hooks_docs_phase3_exemption() {
+  grep -q 'publish|fix|accept|defer' hooks/session-start \
+    || { echo "hooks/session-start missing Phase 3 exemption clause (publish|fix|accept|defer)"; return 1; }
+  grep -q 'publish|fix|accept|defer' docs/claude-md-snippet.md \
+    || { echo "docs/claude-md-snippet.md missing Phase 3 exemption clause (publish|fix|accept|defer)"; return 1; }
+  grep -q 'pass-through' hooks/session-start \
+    || { echo "hooks/session-start missing 'pass-through' exemption wording"; return 1; }
+  grep -q 'pass-through' docs/claude-md-snippet.md \
+    || { echo "docs/claude-md-snippet.md missing 'pass-through' exemption wording"; return 1; }
+  echo "hooks/docs exempt Phase 3 decision keywords"
+}
+
+# 13. README.md contains `cross-audit pr` usage example
+check_readme_cross_audit_pr() {
+  grep -q 'cross-audit pr' README.md \
+    || { echo "README.md missing 'cross-audit pr' usage example"; return 1; }
+  echo "cross-audit README.md documents pr-mode usage"
+}
+
+# 14. First JSON fenced block in publish.md parses + has event/body/comments shape.
+check_publish_md_json_shape() {
+  python3 - <<'PY'
+import json, re, sys
+try:
+    text = open('skills/cross-audit/references/publish.md').read()
+except FileNotFoundError:
+    print("publish.md missing"); sys.exit(1)
+m = re.search(r'```json\n(.*?)\n```', text, re.DOTALL)
+if not m:
+    print("publish.md: no ```json fenced block found"); sys.exit(1)
+try:
+    payload = json.loads(m.group(1))
+except Exception as e:
+    print(f"publish.md: first JSON block does not parse: {e}"); sys.exit(1)
+for k in ('event', 'body', 'comments'):
+    if k not in payload:
+        print(f"publish.md JSON payload missing key: {k}"); sys.exit(1)
+if not isinstance(payload['comments'], list):
+    print("publish.md payload 'comments' is not a list"); sys.exit(1)
+for i, c in enumerate(payload['comments']):
+    for k in ('path', 'line', 'side', 'body'):
+        if k not in c:
+            print(f"publish.md comments[{i}] missing key: {k}"); sys.exit(1)
+print("publish.md JSON payload shape OK")
+PY
+}
+
+# 15. Writer-contract golden: invoke hooks/lib/build_pr_files.sh with the sample JSON
+#     on stdin and --ls-tree-output <path>; diff output against expected-pr-files.yml.
+check_pr_files_writer_contract() {
+  local writer='hooks/lib/build_pr_files.sh'
+  if [ ! -x "$writer" ]; then
+    echo "missing or non-executable: $writer"; return 1
+  fi
+  local fix="$PR_FIX_DIR"
+  local actual
+  actual=$(bash "$writer" --ls-tree-output "$fix/mock-ls-tree-output.txt" < "$fix/sample-pr-changed-files.json")
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "build_pr_files.sh exited $rc"; printf '%s\n' "$actual"; return 1
+  fi
+  local expected
+  expected=$(cat "$fix/expected-pr-files.yml")
+  if [ "$actual" != "$expected" ]; then
+    echo "build_pr_files.sh output differs from $fix/expected-pr-files.yml"
+    diff <(printf '%s' "$expected") <(printf '%s' "$actual") | sed 's/^/    /' | head -40
+    return 1
+  fi
+  echo "cross-auditor.md writer-contract golden diff OK"
+}
+
+# Helper: JSON file must parse and contain all keys in a comma-list
+json_has_keys() {
+  local file="$1"; shift
+  python3 - "$file" "$@" <<'PY'
+import json, sys
+path = sys.argv[1]
+keys = sys.argv[2:]
+try:
+    d = json.load(open(path))
+except Exception as e:
+    print(f"{path}: JSON parse failed: {e}"); sys.exit(1)
+miss = [k for k in keys if k not in d]
+if miss:
+    print(f"{path}: missing keys {miss}"); sys.exit(1)
+print(f"{path}: keys OK")
+PY
+}
+
+# Helper: JSON payload request has event/body/comments shape with every comment having path/line/side/body.
+json_request_shape() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import json, sys
+path = sys.argv[1]
+try:
+    d = json.load(open(path))
+except Exception as e:
+    print(f"{path}: JSON parse failed: {e}"); sys.exit(1)
+for k in ('event', 'body', 'comments'):
+    if k not in d:
+        print(f"{path}: missing top-level key {k}"); sys.exit(1)
+if not isinstance(d['comments'], list):
+    print(f"{path}: comments not a list"); sys.exit(1)
+for i, c in enumerate(d['comments']):
+    for k in ('path', 'line', 'side', 'body'):
+        if k not in c:
+            print(f"{path}: comments[{i}] missing {k}"); sys.exit(1)
+    if c['side'] != 'RIGHT':
+        print(f"{path}: comments[{i}].side != RIGHT"); sys.exit(1)
+print(f"{path}: request shape OK")
+PY
+}
+
+# Helper: YAML-like record JSON has all 7 published_to record keys and expected scalar values.
+# Args: file, expected_truncated (true|false), expected_degraded (true|false)
+record_shape() {
+  local file="$1" exp_trunc="$2" exp_degr="$3"
+  python3 - "$file" "$exp_trunc" "$exp_degr" <<'PY'
+import json, sys
+path, exp_trunc, exp_degr = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    d = json.load(open(path))
+except Exception as e:
+    print(f"{path}: JSON parse failed: {e}"); sys.exit(1)
+keys = ('pr', 'timestamp', 'finding_ids', 'review_id', 'truncated', 'head_oid_at_publish', 'degraded_to_body')
+miss = [k for k in keys if k not in d]
+if miss:
+    print(f"{path}: record missing keys {miss}"); sys.exit(1)
+if str(d['truncated']).lower() != exp_trunc:
+    print(f"{path}: truncated={d['truncated']} expected {exp_trunc}"); sys.exit(1)
+if str(d['degraded_to_body']).lower() != exp_degr:
+    print(f"{path}: degraded_to_body={d['degraded_to_body']} expected {exp_degr}"); sys.exit(1)
+if not isinstance(d['finding_ids'], list) or not d['finding_ids']:
+    print(f"{path}: finding_ids not a non-empty list"); sys.exit(1)
+print(f"{path}: record shape OK (truncated={exp_trunc}, degraded={exp_degr})")
+PY
+}
+
+# Helper: publish.md references both golden fixture paths (req and rec) by basename.
+# Anchors the "actual vs golden" diff contract to the implementation: until publish.md
+# exists and cites the goldens, the routing / failure-matrix assertions fail.
+publish_md_cites() {
+  local f='skills/cross-audit/references/publish.md'
+  if [ ! -f "$f" ]; then
+    echo "publish.md missing — cannot verify golden citation"
+    return 1
+  fi
+  local p
+  for p in "$@"; do
+    local base="$(basename "$p")"
+    if ! grep -q -F "$base" "$f"; then
+      echo "publish.md does not cite golden fixture '$base'"
+      return 1
+    fi
+  done
+  return 0
+}
+
+# 16. Fixture A1 — normal diff, `publish all` default filter (OPEN×2 + REOPENED): X1,X2,X3.
+check_routing_A1_normal_publish_all() {
+  local fix="$PR_FIX_DIR"
+  local req="$fix/expected-request-normal-publish-all.json"
+  local rec="$fix/expected-published-to-record-normal.json"
+  publish_md_cites "$req" "$rec" || return 1
+  json_request_shape "$req" || return 1
+  record_shape "$rec" false false || return 1
+  python3 - "$req" "$rec" <<'PY' || return 1
+import json, sys
+req = json.load(open(sys.argv[1]))
+rec = json.load(open(sys.argv[2]))
+# A1 default filter: OPEN×2 + REOPENED only → finding_ids X1,X2,X3.
+if rec['finding_ids'] != ['X1', 'X2', 'X3']:
+    print(f"A1 record finding_ids={rec['finding_ids']} expected [X1,X2,X3]"); sys.exit(1)
+# Inline comments must cover X1 (src/foo.rs) and X2 (src/baz.rs).
+paths = [c['path'] for c in req['comments']]
+if 'src/foo.rs' not in paths or 'src/baz.rs' not in paths:
+    print(f"A1 request comments paths={paths} missing inline routes for X1/X2"); sys.exit(1)
+# X3 (pure rename) must be in body, not comments.
+if '[X3 HIGH]' not in req['body']:
+    print("A1 request body missing X3 (pure rename → body bucket)"); sys.exit(1)
+print("A1 routing golden OK")
+PY
+  echo "fixture A1 normal publish-all payload + record OK"
+}
+
+# 17. Fixture A2 — normal diff, explicit `publish X1..X8` post-reconfirm: all 8 IDs routed.
+check_routing_A2_normal_explicit_all() {
+  local fix="$PR_FIX_DIR"
+  local req="$fix/expected-request-normal-explicit-all.json"
+  local rec="$fix/expected-published-to-record-normal-explicit-all.json"
+  publish_md_cites "$req" "$rec" || return 1
+  json_request_shape "$req" || return 1
+  record_shape "$rec" false false || return 1
+  python3 - "$req" "$rec" <<'PY' || return 1
+import json, sys
+req = json.load(open(sys.argv[1]))
+rec = json.load(open(sys.argv[2]))
+if rec['finding_ids'] != ['X1', 'X2', 'X3', 'X4', 'X5', 'X6', 'X7', 'X8']:
+    print(f"A2 record finding_ids={rec['finding_ids']} expected [X1..X8]"); sys.exit(1)
+# Only inline-addressable findings (X1 on foo.rs:42, X2 on baz.rs:95) should be in comments.
+paths = sorted(c['path'] for c in req['comments'])
+if paths != ['src/baz.rs', 'src/foo.rs']:
+    print(f"A2 request comments paths={paths} expected [src/baz.rs, src/foo.rs]"); sys.exit(1)
+# Body must contain X3..X8 as separate blocks.
+for xid in ('X3', 'X4', 'X5', 'X6', 'X7', 'X8'):
+    if f'[{xid} ' not in req['body']:
+        print(f"A2 request body missing [{xid} ...] block"); sys.exit(1)
+print("A2 routing golden OK")
+PY
+  echo "fixture A2 normal explicit-all payload + record OK"
+}
+
+# 18. Fixture B — truncated diff, `publish all`: all findings routed to body, comments=[].
+check_routing_B_truncated() {
+  local fix="$PR_FIX_DIR"
+  local req="$fix/expected-request-truncated.json"
+  local rec="$fix/expected-published-to-record-truncated.json"
+  publish_md_cites "$req" "$rec" || return 1
+  json_request_shape "$req" || return 1
+  record_shape "$rec" true false || return 1
+  python3 - "$req" "$rec" <<'PY' || return 1
+import json, sys
+req = json.load(open(sys.argv[1]))
+rec = json.load(open(sys.argv[2]))
+# Truncated: comments must be empty list.
+if req['comments'] != []:
+    print(f"B request comments={req['comments']} expected [] on truncated diff"); sys.exit(1)
+# Default filter: X1,X2,X3 only.
+if rec['finding_ids'] != ['X1', 'X2', 'X3']:
+    print(f"B record finding_ids={rec['finding_ids']} expected [X1,X2,X3]"); sys.exit(1)
+# Body must contain all eligible findings.
+for xid in ('X1', 'X2', 'X3'):
+    if f'[{xid} ' not in req['body']:
+        print(f"B request body missing [{xid} ...] block"); sys.exit(1)
+print("B truncated routing golden OK")
+PY
+  echo "fixture B truncated publish payload + record OK"
+}
+
+# 19. Failure-matrix D1: 422 → body-only retry 2xx. retry-request + degraded-record goldens.
+check_failure_D1_422_retry_2xx() {
+  local fix="$PR_FIX_DIR"
+  local retry="$fix/expected-retry-request-422.json"
+  local rec="$fix/expected-published-to-record-422-degraded.json"
+  # Stub fixtures must exist so the seam can feed them.
+  [ -f "$fix/sample-response-422-include.txt" ] \
+    || { echo "missing stub: sample-response-422-include.txt"; return 1; }
+  [ -f "$fix/sample-response-422-retry-2xx-include.txt" ] \
+    || { echo "missing stub: sample-response-422-retry-2xx-include.txt"; return 1; }
+  publish_md_cites "$fix/sample-response-422-include.txt" \
+                   "$fix/sample-response-422-retry-2xx-include.txt" \
+                   "$retry" "$rec" || return 1
+  json_request_shape "$retry" || return 1
+  record_shape "$rec" false true || return 1
+  python3 - "$retry" "$rec" <<'PY' || return 1
+import json, sys
+retry = json.load(open(sys.argv[1]))
+rec = json.load(open(sys.argv[2]))
+# Body-only retry must have comments: [] and prepended finding blocks.
+if retry['comments'] != []:
+    print(f"D1 retry comments={retry['comments']} expected [] on body-only retry"); sys.exit(1)
+for xid in ('X1', 'X2', 'X3'):
+    if f'[{xid} ' not in retry['body']:
+        print(f"D1 retry body missing [{xid} ...] block"); sys.exit(1)
+# Record: degraded_to_body true, finding_ids covers the degraded IDs.
+if rec['finding_ids'] != ['X1', 'X2', 'X3']:
+    print(f"D1 record finding_ids={rec['finding_ids']} expected [X1,X2,X3]"); sys.exit(1)
+if rec['degraded_to_body'] is not True:
+    print(f"D1 record degraded_to_body={rec['degraded_to_body']} expected True"); sys.exit(1)
+print("D1 failure-matrix golden OK")
+PY
+  echo "fixture D1 422→retry 2xx payload + record OK"
+}
+
+# 20. Failure-matrix D2: 403 rate-limit abort. stderr golden + no record.
+check_failure_D2_403_ratelimit() {
+  local fix="$PR_FIX_DIR"
+  local stub="$fix/sample-response-403-ratelimited-include.txt"
+  local err="$fix/expected-error-403-ratelimited.txt"
+  [ -f "$stub" ] || { echo "missing stub $stub"; return 1; }
+  [ -f "$err" ] || { echo "missing stderr golden $err"; return 1; }
+  publish_md_cites "$stub" "$err" || return 1
+  # Stub must carry X-RateLimit-Remaining: 0 for the rate-limit branch to trigger.
+  grep -qi '^x-ratelimit-remaining: 0$' "$stub" \
+    || { echo "D2 stub $stub missing 'X-RateLimit-Remaining: 0' header"; return 1; }
+  grep -q 'HTTP/2 403' "$stub" \
+    || { echo "D2 stub $stub missing 'HTTP/2 403' status line"; return 1; }
+  grep -q 'rate_limit' "$err" \
+    || { echo "D2 stderr golden $err missing 'rate_limit' token"; return 1; }
+  grep -q 'reset' "$err" \
+    || { echo "D2 stderr golden $err missing 'reset' time mention"; return 1; }
+  grep -q 'No .published_to. record' "$err" \
+    || { echo "D2 stderr golden $err does not assert 'no published_to record'"; return 1; }
+  echo "fixture D2 403 rate-limited error + no record OK"
+}
+
+# 21. Failure-matrix D3: 403 permission-denied abort. stderr golden + no record.
+check_failure_D3_403_permission() {
+  local fix="$PR_FIX_DIR"
+  local stub="$fix/sample-response-403-permission-include.txt"
+  local err="$fix/expected-error-403-permission.txt"
+  [ -f "$stub" ] || { echo "missing stub $stub"; return 1; }
+  [ -f "$err" ] || { echo "missing stderr golden $err"; return 1; }
+  publish_md_cites "$stub" "$err" || return 1
+  grep -q 'HTTP/2 403' "$stub" \
+    || { echo "D3 stub $stub missing 'HTTP/2 403' status line"; return 1; }
+  # Stub must NOT have X-RateLimit-Remaining: 0 — otherwise the rate-limit branch would fire.
+  if grep -qi '^x-ratelimit-remaining: 0$' "$stub"; then
+    echo "D3 stub $stub unexpectedly contains 'X-RateLimit-Remaining: 0' — would trigger rate-limit branch"
+    return 1
+  fi
+  grep -q 'pull_requests: write' "$err" \
+    || { echo "D3 stderr golden $err missing 'pull_requests: write' remediation"; return 1; }
+  grep -q 'No .published_to. record' "$err" \
+    || { echo "D3 stderr golden $err does not assert 'no published_to record'"; return 1; }
+  echo "fixture D3 403 permission-denied error + no record OK"
+}
+
+# 22. Failure-matrix D4: 422 → body-only retry 5xx (retry also fails). stderr cites BOTH.
+check_failure_D4_422_retry_5xx() {
+  local fix="$PR_FIX_DIR"
+  local stub1="$fix/sample-response-422-include.txt"
+  local stub2="$fix/sample-response-5xx-include.txt"
+  local err="$fix/expected-error-422-retry-failed.txt"
+  [ -f "$stub1" ] || { echo "missing stub $stub1"; return 1; }
+  [ -f "$stub2" ] || { echo "missing stub $stub2"; return 1; }
+  [ -f "$err" ] || { echo "missing stderr golden $err"; return 1; }
+  publish_md_cites "$stub1" "$stub2" "$err" || return 1
+  grep -q 'HTTP/2 422' "$stub1" \
+    || { echo "D4 stub1 $stub1 missing 'HTTP/2 422' status line"; return 1; }
+  grep -q 'HTTP/2 5' "$stub2" \
+    || { echo "D4 stub2 $stub2 missing 'HTTP/2 5xx' status line"; return 1; }
+  grep -q '422' "$err" \
+    || { echo "D4 stderr golden $err missing 422 citation"; return 1; }
+  grep -q '500\|5xx' "$err" \
+    || { echo "D4 stderr golden $err missing 5xx retry citation"; return 1; }
+  grep -q 'No .published_to. record' "$err" \
+    || { echo "D4 stderr golden $err does not assert 'no published_to record'"; return 1; }
+  echo "fixture D4 422→retry 5xx error + no record OK"
+}
+
+check "cross-audit SKILL.md mentions \`pr <N>\`"                          check_cross_audit_skill_pr_arg
+check "cross-audit SKILL.md uses --paginate"                              check_cross_audit_skill_paginate
+check "cross-audit SKILL.md documents \`publish\` action"                 check_cross_audit_skill_publish_action
+check "cross-audit SKILL.md references \`gh api\` for \`pulls/.*reviews\`" check_cross_audit_skill_gh_api_reviews
+check "cross-audit SKILL.md preflights nameWithOwner"                     check_cross_audit_skill_name_with_owner
+check "cross-audit SKILL.md captures headRefOid"                          check_cross_audit_skill_head_ref_oid
+check "cross-audit SKILL.md documents standalone publish"                 check_cross_audit_skill_standalone_publish
+check "cross-auditor.md input/output YAML block has all 5 pr_files keys"  check_cross_auditor_pr_yaml_block
+check "cross-auditor.md uses gh pr checkout"                              check_cross_auditor_gh_pr_checkout
+check "cross-auditor.md Codex cwd override proximity"                     check_cross_auditor_codex_cwd_proximity
+check "publish.md contains all required tokens"                           check_publish_md_tokens
+check "hooks/docs exempt Phase 3 decision keywords"                       check_hooks_docs_phase3_exemption
+check "cross-audit README.md documents pr mode"                           check_readme_cross_audit_pr
+check "publish.md JSON payload shape"                                     check_publish_md_json_shape
+check "cross-auditor.md writer-contract golden"                           check_pr_files_writer_contract
+check "fixture A1 normal publish-all payload + record"                    check_routing_A1_normal_publish_all
+check "fixture A2 normal explicit-all payload + record"                   check_routing_A2_normal_explicit_all
+check "fixture B truncated publish payload + record"                      check_routing_B_truncated
+check "fixture D1 422 retry 2xx payload + record"                         check_failure_D1_422_retry_2xx
+check "fixture D2 403 rate-limited error + no record"                     check_failure_D2_403_ratelimit
+check "fixture D3 403 permission-denied error + no record"                check_failure_D3_403_permission
+check "fixture D4 422 retry 5xx error + no record"                        check_failure_D4_422_retry_5xx
+echo
+
 
 echo
 echo "Passed: $PASS"

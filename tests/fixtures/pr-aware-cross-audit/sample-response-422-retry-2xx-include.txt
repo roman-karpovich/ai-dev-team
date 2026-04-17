@@ -1,0 +1,10 @@
+HTTP/2 200
+server: GitHub.com
+date: Fri, 17 Apr 2026 14:30:02 GMT
+content-type: application/json; charset=utf-8
+x-ratelimit-limit: 5000
+x-ratelimit-remaining: 4891
+x-ratelimit-reset: 1745320800
+x-github-media-type: github.v3
+
+{"id":2847392011,"node_id":"PRR_kwDO","user":{"login":"roman-karpovich"},"body":"Cross-audit findings (ai-dev-team). All inline comments degraded to body due to 422.","state":"COMMENTED","html_url":"https://github.com/roman-karpovich/ai-dev-team/pull/472#pullrequestreview-2847392011","pull_request_url":"https://api.github.com/repos/roman-karpovich/ai-dev-team/pulls/472","submitted_at":"2026-04-17T14:30:02Z","commit_id":"1a2b3c4d5e6f7890abcdef1234567890abcdef12"}

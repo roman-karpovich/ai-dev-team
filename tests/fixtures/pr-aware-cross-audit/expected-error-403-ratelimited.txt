@@ -1,0 +1,4 @@
+error: publish aborted — GitHub rate_limit exhausted
+X-RateLimit-Remaining: 0
+reset at: 1745324400 (approx 60 min)
+remediation: wait for rate-limit reset or run `gh api rate_limit` to confirm. No `published_to` record was written.
