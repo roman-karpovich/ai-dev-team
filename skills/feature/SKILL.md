@@ -152,11 +152,27 @@ notes: ""
 
 Leave all `observed` fields empty — the developer fills them during implementation.
 
+**Prerequisites prompt.** Before moving to approval, ask the user:
+
+> Any deploy prerequisites? One-off ops steps that must run after the merge before the feature works (migrations, worker restarts, cache reset). One per line. Empty input = none.
+
+Write the answer into the YAML block in spec section `## 6.2 Deploy & manual verification` as `deploy_prerequisites`. Each non-empty line becomes one YAML-quoted list entry. Empty input maps to `deploy_prerequisites: []`.
+
+**Smoke check.** Then ask the user:
+
+> Fastest manual smoke check — command to run post-deploy to confirm the feature is alive. (Empty = no smoke check configured.)
+
+If the user leaves it empty, write `smoke_check: null` in `## 6.2 Deploy & manual verification` and skip the next question. If the user gives a command, write `smoke_check: {command: <verbatim command, YAML-quoted>, expected: <expected output, YAML-quoted>}` and ask:
+
+> Expected substring in the command output? (Empty = no explicit expectation; success is defined by exit code alone.)
+
+If the user leaves the expected-output prompt empty, write `expected: ""`.
+
 **Post-merge checklist seeding.** Before moving to approval, ask the user:
 
-> Any post-merge action items or external dependencies for this feature? (e.g. deploy a contract to mainnet, wait on another team, soak in prod)
+> Any other post-merge obligations? Cross-team dependencies, blockers on other specs, soak periods. Deploy prereqs from §6.2 will be added automatically on hand-off.
 
-If the user names any, populate the `items:` YAML block in spec section `## 8. Post-merge checklist` following the schema in `references/spec-template.md`. If there are none, leave `items: []` — the spec will go straight to `VERIFIED` on hand-off instead of `SHIPPED`. The checklist can be edited later via `/feature checklist`.
+If the user names any, populate the `items:` YAML block in spec section `## 8. Post-merge checklist` following the schema in `references/spec-template.md`. If there are none, leave `items: []`. The checklist can be edited later via `/feature checklist`.
 
 Spawn **Librarian** only if you need to update MOC indexes afterward.
 
