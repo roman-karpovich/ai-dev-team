@@ -12,10 +12,19 @@ Cross-audit runs Claude (Opus) and Codex (GPT-5.4) as independent auditors, cons
 
 **Re-audit detection**: if `$ARGUMENTS` matches `*-findings.md` AND the file exists on disk → **re-audit iteration**. If it looks like a path but doesn't exist → error out and ask the user. Otherwise → **new audit**.
 
+**PR-mode detection**: if `$ARGUMENTS` starts with `pr <N>`, `pr owner/repo#<N>`, or `pr <url>` → **PR audit**. Skip legacy scope parsing; run Phase 0.5 (below) to resolve `pr_repo` / `pr_url` / `pr_number` and fetch `pr_changed_files`. Three accepted input forms:
+- `pr <N>` (bare number, e.g. `pr 472`) — resolve repo via `gh repo view --json nameWithOwner` in the caller's cwd; if cwd is not a gh-known repo, stop with remediation.
+- `pr owner/repo#<N>` (e.g. `pr roman-karpovich/ai-dev-team#472`) — repo taken from the `owner/repo` prefix.
+- `pr <url>` (e.g. `pr https://github.com/roman-karpovich/ai-dev-team/pull/472`) — repo and number parsed from the URL.
+
+**Standalone publish**: `/cross-audit publish <slug> <ids>` is a second entry point that invokes the `publish` action against an existing findings doc resolved from `<slug>` (e.g. `2026-04-14-webhooks`). Skips Phases 0.5 / 1-2 / 3-fix; jumps straight into publish using the `pr_files` / `pr_head_oid` / `pr_url` persisted in findings frontmatter. See `references/publish.md` for the full recipe. Publish is orthogonal to the status state machine — it does NOT flip OPEN→FIXED.
+
 **Flags** (orthogonal to each other):
 - `--diff` → scope the audit to files changed since `base_branch` (default: auto-detected repo default, falls back to `main`). Can combine with any mode: e.g. `--diff --mode logic` audits only changed files using logic focus areas.
 - `--mode logic|security|full` → audit mode (default: `full`)
 - `--severity high|medium+` → severity floor (default: `high`). `high` collects only CRITICAL/HIGH (current behavior). `medium+` also includes MEDIUM — useful for small features where serious findings are unlikely but nitpick-level review is still valuable.
+- `--force-publish-stale` → (publish only) bypasses the force-push preflight when the current PR `headRefOid` has diverged from the audit-time `pr_head_oid`. Records the stale OID in `head_oid_at_publish` for audit trail. See `references/publish.md`.
+- `--republish <ids>` → (publish only) forces re-posting IDs already present in a `published_to` record for the same PR URL. Adds a new record.
 
 ---
 
@@ -49,6 +58,58 @@ codex:
 
 **New audit**: generate `audit_slug` = `YYYY-MM-DD-<scope-slug>`.
 **Re-audit**: extract `audit_slug` from the existing findings doc filename — strip the path prefix and `-findings.md` suffix (e.g. `…/2026-04-14-workflow-definitions-findings.md` → `2026-04-14-workflow-definitions`). Do NOT regenerate from the current date; the slug must match the original to write to the same file.
+
+---
+
+## Phase 0.5: PR discovery (PR mode only)
+
+Runs only when `$ARGUMENTS` selected the `pr <N>` / `pr owner/repo#<N>` / `pr <url>` form. Produces the five fields (`pr_number`, `pr_repo`, `pr_url`, `pr_head_oid`, `pr_changed_files`) that Phase 1-2 threads into the cross-auditor dispatch. Skipped entirely for non-PR audits — they still use the legacy `<scope>` path.
+
+### Preflights (hard-stop on failure — never silent fallback)
+
+1. **`gh` authentication**: `gh auth status`. Absent or unauthenticated → stop with remediation `gh auth login` / `gh auth refresh -s repo`. Never pretend the audit ran.
+2. **REST rate budget**: `gh api rate_limit -q '.rate.remaining'`. If `remaining < 50`, stop with the output of `gh api rate_limit` (reset time included). Audit + publish together consume ≈3-5 REST calls.
+3. **cwd-repo matches pr_repo**: once `pr_repo` is resolved (see below), run `gh repo view --json nameWithOwner -q '.nameWithOwner'` inside the caller's cwd. If that value ≠ `pr_repo`, stop with remediation "Run `/cross-audit pr <N>` from a clone of `<pr_repo>` (currently in `<cwd_repo>`)". Rationale: the cross-auditor's isolated worktree is derived from caller's cwd; `gh pr checkout` only succeeds when the local repo targets `pr_repo`.
+
+### Resolve pr_number / pr_repo / pr_url / headRefOid
+
+Parse the argument form:
+- `pr <N>`: `pr_number = N`. Run `gh repo view --json nameWithOwner -q '.nameWithOwner'` in cwd → `pr_repo`. If cwd is not a gh-known repo, stop.
+- `pr owner/repo#<N>`: split on `#` → `pr_repo`, `pr_number`.
+- `pr <url>`: parse `https://github.com/<owner>/<repo>/pull/<N>` → `pr_repo`, `pr_number`.
+
+Then fetch PR metadata and capture `headRefOid`:
+
+```
+gh pr view <pr_number> --repo <pr_repo> \
+  --json number,url,baseRefName,headRefName,headRefOid,headRepositoryOwner,headRepository,baseRepository
+```
+
+- Extract `.url` → `pr_url`, `.headRefOid` → `pr_head_oid`. Both are threaded into the cross-auditor input.
+- `headRepositoryOwner` may differ from `baseRepository.owner` (fork PR). The cross-auditor materializes PR content via `gh pr checkout --force` which fetches the fork remote — fork PRs are first-class. Do NOT fall back to local `git diff`.
+
+### Fetch pr_changed_files (authoritative, paginated)
+
+GitHub's `/pulls/{N}/files` endpoint caps at 100 without pagination; `gh pr view --json files` silently truncates at 100. Always use the paginated REST endpoint with an explicit jq projection that preserves `status`, `previous_filename`, and `patch_present` (the raw `patch` text is stripped — `is_submodule` is resolved in the worktree, see `agents/cross-auditor.md`):
+
+```
+gh api "repos/<pr_repo>/pulls/<pr_number>/files" \
+  --paginate \
+  --jq '.[] | {filename, status, previous_filename, patch_present: (.patch != null)}'
+```
+
+Collect the resulting line-delimited JSON objects into the `pr_changed_files` list of objects (not strings). This list is the single source of truth for the audit's "Files to audit" and for publish routing.
+
+### Dispatch into cross-auditor
+
+In addition to the fields documented in Phase 1-2 below, thread:
+- `pr_number: <N>`
+- `pr_repo: <owner/repo>`
+- `pr_url: <url>`
+- `pr_head_oid: <sha>` — headRefOid captured above
+- `pr_changed_files: [ {filename, status, previous_filename, patch_present}, ... ]`
+
+The cross-auditor persists all five into findings frontmatter (plus a `pr_files` list with per-file `is_submodule` resolved inside the worktree). Publish reads those fields back from KB — it never re-runs Phase 0.5 itself.
 
 ---
 
@@ -88,6 +149,13 @@ iteration: [N]
 base_branch: [branch, if diff mode]
 previously_fixed: [list of IDs, if re-audit]
 working_directory: [cwd]
+
+[PR mode only — populated from Phase 0.5:]
+pr_number: [N]
+pr_repo: [owner/repo]
+pr_url: [https://github.com/.../pull/N]
+pr_head_oid: [headRefOid sha]
+pr_changed_files: [ {filename, status, previous_filename, patch_present}, ... ]
 
 [If re-audit: include the current findings doc path for context]
 ```
