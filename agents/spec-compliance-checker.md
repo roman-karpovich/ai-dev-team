@@ -77,7 +77,33 @@ If `planned.integration_probe_cmd` is set:
 
 If `planned.integration_probe_cmd` is empty AND the step's goal involves wiring something into a call path or runtime behavior (not just a unit-testable function), flag this as a recommendation: "Consider adding an integration probe to confirm the feature is reachable at runtime."
 
-### 5. Return verdict
+### 5. Code quality rule checks
+
+Read `skills/feature/references/code-quality-rules.md` before running these checks — rules are append-only and the file is the source of truth.
+
+#### R1 — Dead code kept alive by its own tests
+
+If the step's diff contains **deletions** (files removed, functions removed, call sites removed), look for utilities left behind whose only remaining callers are their own tests:
+
+1. Extract symbols *removed* in the diff — functions/classes/constants whose call sites were deleted. Note which symbols those call sites pointed at (the helpers).
+2. For each helper that is *still defined* in the repo after this step, grep non-test callers: search for the symbol across the repo excluding test paths (`tests/`, `__tests__/`, `*_test.*`, `*_test_*`, `spec/`, `*.spec.*`). Standard glob exclusions: `--glob '!**/tests/**' --glob '!**/*_test.*' --glob '!**/test_*.py' --glob '!**/*.spec.*' --glob '!**/__tests__/**'`.
+3. If a helper has 0 non-test callers and is not part of a documented public API (library `__init__.py` re-export, API handler, CLI command, Soroban contract trait method), flag as **DRIFT — R1**: "Helper `<name>` kept but only referenced by its own tests. Per R1, delete helper and tests together or note the public-API reason in spec Log."
+4. Do not flag symbols that were already orphan before this step — R1 is about *this step's* cleanup hygiene. When in doubt, check `git log -1 --format=%H <helper-file>` to confirm the helper was touched in the commit range.
+
+#### R2 — Fresh-test advisory and core-test intentional-break check
+
+A green capture on fresh tests is consistency evidence, not intent evidence. Core test edits on this branch require spec backing. For every step:
+
+1. Determine the branch base: `git merge-base HEAD main` (fall back to `master`).
+2. Classify test files touched by the diff range: `git diff --name-only <base>..HEAD -- <test-globs>`. Each path in that output is **fresh** (either newly added or modified).
+3. **Modified core tests** — for any fresh path that already existed on `<base>` (i.e. the diff shows modifications, not a new file), inspect the diff of that test file. If the developer changed assertion values / hardcoded constants:
+   - Look for a matching spec Log entry in this step's time window (`- YYYY-MM-DD: core test X updated` or similar) AND confirm the spec's §3 Design calls out a behaviour change consistent with the assertion delta.
+   - If both exist → PASS on this check; note in the report: "Core test `<file>` updated in line with spec §3.X — intentional break."
+   - If either is missing → flag **DRIFT — R2**: "Core test `<file>` assertion changed without a matching spec §3 intent or spec Log entry. Either (a) restore the assertion and fix the code, or (b) add the spec §3 / Log justification."
+4. If `observed.green_capture` asserts pass on a suite that contains newly-added fresh tests, add an **advisory** line to the report: "Fresh tests in green capture: `<list>`. Per R2, these are consistency evidence only — intent must be judged against spec §1/§3/§6." This is informational; it does not change the verdict on its own.
+5. If core tests are failing in `observed.green_capture`, that is always FAIL regardless of fresh-test noise.
+
+### 6. Return verdict
 
 ```markdown
 ## Spec Compliance Report — Step N
@@ -104,6 +130,10 @@ If `planned.integration_probe_cmd` is empty AND the step's goal involves wiring 
 - [severity] <specific issue with file:line or step reference>
 - ...
 
+### Code quality
+- R1 (dead-code cleanup): <clean | DRIFT — list helpers>
+- R2 (fresh tests in green capture): <none | advisory — list test files>
+
 ### Recommendation (if integration probe absent)
 <if applicable>
 ```
@@ -121,5 +151,7 @@ If `planned.integration_probe_cmd` is empty AND the step's goal involves wiring 
 - DONE without a green capture file is always FAIL — no exceptions.
 - A green capture that doesn't match `expected_pass_pattern` is always FAIL.
 - Scope violations are DRIFT (not FAIL) unless they touch security-sensitive or unrelated subsystems.
+- Code quality R1 violations are DRIFT — developer must delete the orphaned helper + its tests, or add a public-API note to the spec Log, before proceeding.
+- Code quality R2 has two modes: (a) new fresh tests in the green capture is advisory only and never the sole reason for DRIFT; (b) a modified core test without spec §3 backing + Log entry is always DRIFT — core assertion changes are load-bearing and must be traceable to the spec's declared behaviour change.
 - Be specific. Every issue must name the file, the deviation, and what was expected.
 - Do not soften findings. A partial implementation is not a "good start" — it's DRIFT.
