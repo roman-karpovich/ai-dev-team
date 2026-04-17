@@ -1,0 +1,39 @@
+name: PR auto-label by title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label by conventional prefix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: ${{ github.event.pull_request.title }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          prefix=$(printf '%s' "$TITLE" | sed -nE 's/^([a-zA-Z]+)(\([^)]+\))?(!)?:.*$/\1/p')
+          if [ -z "$prefix" ]; then
+            echo "No conventional prefix in title ('$TITLE') — nothing to label."
+            exit 0
+          fi
+          case "$prefix" in
+            feat|feature)         label="feature" ;;
+            fix|bug|bugfix)       label="fix" ;;
+            ci|build)             label="ci" ;;
+            docs|doc)             label="documentation" ;;
+            refactor)             label="refactor" ;;
+            test|tests)           label="tests" ;;
+            chore|ops|perf|style) label="chore" ;;
+            *)                    echo "Unknown prefix '$prefix' — skipping."; exit 0 ;;
+          esac
+          echo "Applying label: $label"
+          gh pr edit "$PR" --repo "$REPO" --add-label "$label"
