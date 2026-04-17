@@ -152,11 +152,27 @@ notes: ""
 
 Leave all `observed` fields empty — the developer fills them during implementation.
 
+**Prerequisites prompt.** Before moving to approval, ask the user:
+
+> Any deploy prerequisites? One-off ops steps that must run after the merge before the feature works (migrations, worker restarts, cache reset). One per line. Empty input = none.
+
+Write the answer into the YAML block in spec section `## 6.2 Deploy & manual verification` as `deploy_prerequisites`. Each non-empty line becomes one YAML-quoted list entry. Empty input maps to `deploy_prerequisites: []`.
+
+**Smoke check.** Then ask the user:
+
+> Fastest manual smoke check — command to run post-deploy to confirm the feature is alive. (Empty = no smoke check configured.)
+
+If the user leaves it empty, write `smoke_check: null` in `## 6.2 Deploy & manual verification` and skip the next question. If the user gives a command, write `smoke_check: {command: <verbatim command, YAML-quoted>, expected: <expected output, YAML-quoted>}` and ask:
+
+> Expected substring in the command output? (Empty = no explicit expectation; success is defined by exit code alone.)
+
+If the user leaves the expected-output prompt empty, write `expected: ""`.
+
 **Post-merge checklist seeding.** Before moving to approval, ask the user:
 
-> Any post-merge action items or external dependencies for this feature? (e.g. deploy a contract to mainnet, wait on another team, soak in prod)
+> Any other post-merge obligations? Cross-team dependencies, blockers on other specs, soak periods. Deploy prereqs from §6.2 will be added automatically on hand-off.
 
-If the user names any, populate the `items:` YAML block in spec section `## 8. Post-merge checklist` following the schema in `references/spec-template.md`. If there are none, leave `items: []` — the spec will go straight to `VERIFIED` on hand-off instead of `SHIPPED`. The checklist can be edited later via `/feature checklist`.
+If the user names any, populate the `items:` YAML block in spec section `## 8. Post-merge checklist` following the schema in `references/spec-template.md`. If there are none, leave `items: []`. The checklist can be edited later via `/feature checklist`.
 
 Spawn **Librarian** only if you need to update MOC indexes afterward.
 
@@ -326,7 +342,40 @@ scope: <list of changed files from spec checklist>
 
 ## Hand-off
 
-After verify passes, show the commit list and present exactly these 4 options:
+After verify passes, run a two-phase hand-off seed before showing the
+4-option menu. This is per-item reconciliation: re-read §6.2 on every
+hand-off; only `deploy_prerequisites` participate in seeding. `smoke_check`
+is never seeded into §8.
+
+**Phase 1 — compute delta (before the 4-option menu, in memory only)**
+
+1. Read §6.2 `deploy_prerequisites` via `§6.2 handling`. If the list is
+   empty or §6.2 is absent, stage no §8 items and no seed Log entry.
+2. Build the set of normalized descriptions already present in §8,
+   regardless of item status or `source:` tag. `done`, `failed`, and
+   `pending` all count for dedup.
+3. For each prereq in order, compute its normalized form. If it already
+   exists in the §8 set, skip it. Otherwise allocate the next id as
+   `max(existing §8 id, 0) + 1 + staged_count`, and stage:
+   ```yaml
+   - id: <n>
+     type: action
+     description: <verbatim prereq string>
+     owner: user
+     source: §6.2:deploy_prerequisites
+     status: pending
+     notes: null
+     resolved_at: null
+   ```
+4. Add each newly staged normalized description to the working set so
+   in-batch duplicates are deduped too.
+5. If `N = len(staged_items)` is greater than zero, stage the Log entry
+   `- YYYY-MM-DD: auto-seeded N deploy prerequisites from §6.2 to §8`.
+6. If §6.2 is malformed, emit the warning from `§6.2 handling`, stage no §8
+   items, and instead stage the malformed Log entry
+   `- YYYY-MM-DD: hand-off: §6.2 block malformed — seeding skipped, manual review required`.
+
+After phase 1, show the commit list and present exactly these 4 options:
 
 ```
 git log --oneline <base>..<branch>
@@ -343,12 +392,16 @@ Which option?
 
 > Note: merging into `staging` / `testnet` / `pre-prod` for testing is a separate manual step the user handles. The plugin only merges into the base branch (`master` or `main`).
 
-### Post-merge status transition
+### §3.4a Post-handoff status transition
 
-After any preserving option (1/2/3), set frontmatter `shipped_at: YYYY-MM-DD` (today) and choose the next status based on the spec's post-merge checklist (section 8):
+Phase 2 applies only after a preserving option succeeds. Set frontmatter
+`shipped_at: YYYY-MM-DD` (today), then decide status via `§3.4a`:
 
-- If `items: []` (empty) → `status: VERIFIED`. The feature is truly done; nothing to observe.
-- If `items` has any entries → `status: SHIPPED`. The feature is merged but post-merge obligations remain. It will appear in `/feature status` under the appropriate group (awaiting action / blocked on others / soaking) until the user runs `/feature verify <spec>` successfully.
+- Malformed §6.2 → force `status: SHIPPED`, append the staged malformed Log
+  line, and leave manual review required.
+- Else if post-phase-2 §8 has any `pending` or `failed` item →
+  `status: SHIPPED`.
+- Else → `status: VERIFIED`.
 
 `DONE` remains accepted as a legacy synonym of `VERIFIED` when reading older specs, but new transitions must write `VERIFIED`.
 
@@ -358,17 +411,27 @@ After any preserving option (1/2/3), set frontmatter `shipped_at: YYYY-MM-DD` (t
 ```bash
 git checkout <base-branch> && git pull && git merge <branch>
 ```
-Run verifier once more on the merged result. If green: apply the post-merge status transition above. **Do not delete the feature branch** — leave the branch reference in place (useful for reflection and quick rollback).
+Run verifier once more on the merged result. If green, apply phase 2:
+append staged §8 items, append the staged Log line if any, set `shipped_at`,
+and decide status per `§3.4a`. **Do not delete the feature branch** — leave
+the branch reference in place (useful for reflection and quick rollback).
 
 **Option 2 — Push feature branch:**
 ```bash
 git push -u origin <branch>
 ```
-Report the branch name. Apply the post-merge status transition above.
+Report the branch name. After a clean push, apply phase 2: append staged §8
+items, append the staged Log line if any, set `shipped_at`, and decide
+status per `§3.4a`.
 
-**Option 3 — Keep as-is:** Do nothing. Report the branch name. Apply the post-merge status transition above.
+**Option 3 — Keep as-is:** Do nothing externally. Report the branch name.
+Apply phase 2 unconditionally: append staged §8 items, append the staged Log
+line if any, set `shipped_at`, and decide status per `§3.4a`.
 
-**Option 4 — Discard:** delegate to the Discard mode below (same flow as `/feature discard <spec-path>`).
+**Option 4 — Discard:** discard the in-memory delta and delegate to the
+Discard mode below (same flow as `/feature discard <spec-path>`). Any
+failure path before a preserving option succeeds also discards the staged
+delta with no spec mutation.
 
 ---
 
@@ -383,7 +446,25 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
    - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
    - `BLOCKED` → Report the unblock condition from the most recent `BLOCKED — waiting on ...` Log entry and ask the user whether the condition is now satisfied. If yes, revert status to the prior state (IN_PROGRESS or AUDIT_PASSED, whichever the Log indicates) and resume. If no, stop.
-   - `SHIPPED` → Feature is merged but post-merge checklist has open items. Run auto-resolve for `depends_on` blockers (see Verify mode), then show the checklist: open items grouped by type with owner and what's pending. Offer the user the obvious next move based on what is open — mark an action done, start a soak, run `/feature verify`, etc. Do not re-enter the implement loop.
+   - `SHIPPED` → Feature is merged but post-merge checklist has open items. Run auto-resolve for `depends_on` blockers (see Verify mode), then, before rendering pending items, apply this Quick-check decision tree:
+     1. Parse §6.2 via the parsing contract in `§6.2 handling` and read `smoke_check`. If `smoke_check` is null or missing, skip the banner and render pending items as usual. If §6.2 is malformed, also skip the banner and continue to pending-items render.
+     2. Read §6.2 `deploy_prerequisites` and build the set of unresolved §8 items. Status is `pending` OR `failed`; both mean the operational work is not complete, and only `done` items drop out of the gate. For each prereq, compute its normalized form and compare it against each unresolved §8 item's normalized description, regardless of `source:` tag. If any normalized §6.2 prereq matches any unresolved §8 item's normalized description, render the deferred banner and skip the command:
+
+        ```
+        ⚡ Quick check: complete deploy prerequisites below first.
+        ```
+
+        The status-rule asymmetry with §3.4 is intentional and load-bearing: `failed` is still unresolved because the next action is to fix and retry, and filtering by `source:` alone is wrong because user-added §8 items without that tag still represent unresolved ops work.
+     3. Otherwise render the live banner:
+
+        ```
+        ⚡ Quick check (from spec §6.2):
+            <command>
+            Expected: <expected>
+        ```
+
+        If `smoke_check.expected` is an empty string, omit the `Expected:` line entirely.
+     4. Then show the checklist: open items grouped by type with owner and what's pending. Offer the user the obvious next move based on what is open — mark an action done, start a soak, run `/feature verify`, etc. Do not re-enter the implement loop.
    - `VERIFIED` (or legacy `DONE`) → Feature complete and observed. Report completion status and stop.
    - `DISCARDED` → Feature was discarded. Report this and stop.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
@@ -526,14 +607,79 @@ dependencies stay pending until the user flips them manually.
 
 ---
 
+### §6.2 handling
+
+Use this parsing contract everywhere §6.2 is read (hand-off seeder,
+Continue-mode SHIPPED renderer, Verify mode) so behavior stays identical.
+
+**Pre-parse normalization**
+- Strip a leading UTF-8 BOM if present.
+- Normalize CRLF and bare CR line endings to LF.
+- Match fence info strings case-insensitively; accept `yml` as a synonym for
+  `yaml`.
+- Treat any tab-indented fenced content line as a parse failure; tabs are
+  invalid YAML indentation here.
+- If multiple `## 6.2 Deploy & manual verification` headings exist, the
+  first one wins and later duplicates are ignored.
+
+**Block discovery**
+- Locate `## 6.2 Deploy & manual verification`.
+- Within the region from that heading to the next H2 (or EOF), take the
+  first fenced code block whose info string is `yaml`, `yml`, or empty
+  (case-insensitive). Ignore prose outside the block.
+
+**Keys and types**
+- `deploy_prerequisites` MUST be a YAML sequence of scalar strings. Any other
+  type is invalid.
+- `smoke_check` MUST be null or a mapping with exactly `command` and
+  `expected`, both scalar strings. Any other shape is invalid. These
+  spellings all resolve to null case-insensitively: key absent, empty value,
+  `null`, `Null`, `NULL`, `~`, `empty`, `absent`.
+- Unknown top-level keys are ignored for forward-compat.
+
+**Canonical empty cases**
+- `deploy_prerequisites: []` means the seed pass is a no-op.
+- `smoke_check: null` means the Continue-mode Quick-check banner is
+  suppressed.
+- If §6.2 is entirely missing, treat it as both empty cases above.
+
+**Failure handling**
+- Malformed §6.2 means no fenced block, unparseable YAML, tab-indented
+  content, or invalid typing. Emit:
+  `⚠️ §6.2 block is malformed in <spec-path>; skipping deploy-recommendations actions. Fix the YAML or remove §6.2.`
+- Do not crash and do not mutate §8.
+- Hand-off seeder: force `status: SHIPPED`, and append to Log:
+  `- YYYY-MM-DD: hand-off: §6.2 block malformed — seeding skipped, manual review required`
+- Continue-SHIPPED renderer: suppress the Quick-check banner and continue to
+  pending-items render.
+- Verify mode: before auto-resolve, refuse with
+  `Verification refused: §6.2 block is malformed. Fix the YAML or remove §6.2, then re-run.`
+  Do not run auto-resolve, do not tally, leave status `SHIPPED`, and append
+  no Log entry.
+
+**String normalization**
+- Trim leading and trailing whitespace.
+- Collapse runs of internal whitespace to a single space.
+- Lowercase.
+- Strip a trailing period or semicolon.
+
+Comparison uses the normalized form. Storage keeps the original text.
+
+---
+
 ## Verify mode
 
 `/feature verify <spec-path>` — attempt to close the post-merge cycle.
 
 1. Read spec frontmatter `status`. Accept only `SHIPPED`; refuse otherwise.
-2. Run the auto-resolve pass (see above) so recent upstream verifications
+2. Before auto-resolve, read §6.2 via the parsing contract in `§6.2 handling`.
+   If §6.2 is malformed, emit the warning, refuse verification with
+   `Verification refused: §6.2 block is malformed. Fix the YAML or remove §6.2, then re-run.`
+   Do not run auto-resolve, do not tally items, leave status `SHIPPED`
+   unchanged, append no Log entry, and make no §8 mutation.
+3. Run the auto-resolve pass (see above) so recent upstream verifications
    propagate before the check.
-3. Tally items:
+4. Tally items:
    - All `status: done` → flip spec `status: VERIFIED`, append Log
      `- YYYY-MM-DD: VERIFIED — all post-merge items closed`. Report success.
    - Any `failed` → refuse. Report each failed item with its note; tell the
