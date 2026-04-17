@@ -32,6 +32,20 @@ You receive:
 
 Before reading any capture file: resolve paths relative to `dirname(workdoc_path)`. If `observed.<field>` is an absolute path, use it as-is. If it is relative (e.g. `captures/step-02-green.txt`), join it with the workdoc directory: `<dirname(workdoc_path)>/<observed.<field>>`. Never read relative to `project_path` or cwd.
 
+### 1c. Branch check (load-bearing — FAIL on violation)
+
+Before inspecting the diff, verify the commit landed on the correct branch.
+
+1. Read `branch:` from the spec frontmatter. Call this `spec_branch`.
+2. Identify the branch the commit(s) landed on. Prefer `git -C <project_path> branch --contains <last_sha>` on the last SHA in `observed.commit_shas`. If that yields multiple branches (the commit is on `main` because the feature was already merged), treat the relevant branch as the non-`main`/`master` one — that's where development *should* have happened. If the only containing branch is `main` / `master`, the developer committed there directly.
+3. Apply the rules:
+   - **Commit sits on `main` or `master` only** → **FAIL — branch discipline**: "Step N commit `<sha>` landed directly on `<main|master>`. Per developer-workflow.md Pre-commit branch assertion, commits must never land on `main` / `master`. Revert the commit on main, cherry-pick or recreate on `<spec_branch>`, then re-run compliance."
+   - **`spec_branch` is non-empty AND the commit is not on `spec_branch`** → **FAIL — branch mismatch**: "Step N commit `<sha>` landed on `<actual_branch>`; spec declares `branch: <spec_branch>`. Move the commit to `<spec_branch>` before proceeding."
+   - **`spec_branch` is empty / missing** → note as DRIFT only ("spec frontmatter is missing `branch:` — populate it so future steps can be verified"). Do not fail on this alone if the commit is on a sensible feature branch.
+4. Record the resolved actual branch in the report's "Evidence reviewed" block.
+
+If the commit SHA cannot be resolved at all (fallback tiers all failed), fall back to `git -C <project_path> branch --show-current` and apply the same rules against that value.
+
 ### 2. Diff review
 
 Read `observed.commit_shas` from the workdoc — this is an ordered list of all commits for this step (including any fixup commits from FAIL/DRIFT retries).
@@ -114,6 +128,7 @@ A green capture on fresh tests is consistency evidence, not intent evidence. Cor
 - Spec: <spec_path>
 - Workdoc: <workdoc_path>
 - Commits: <commit_sha(s)>
+- Branch: spec declares `<spec_branch>` / commit is on `<actual_branch>` / <match|MISMATCH>
 - Green capture: <present/missing>
 - Red capture: <present/missing/not-required>
 - Integration probe: <ran/not-required/missing-recommended>
@@ -150,6 +165,7 @@ A green capture on fresh tests is consistency evidence, not intent evidence. Cor
 - You do NOT look at the next step. Review only the step specified.
 - DONE without a green capture file is always FAIL — no exceptions.
 - A green capture that doesn't match `expected_pass_pattern` is always FAIL.
+- Commit landed on `main` / `master`, or on a branch that doesn't match the spec's `branch:` field, is always FAIL — never soften this, never waive. Developer must move the commit to the correct branch first.
 - Scope violations are DRIFT (not FAIL) unless they touch security-sensitive or unrelated subsystems.
 - Code quality R1 violations are DRIFT — developer must delete the orphaned helper + its tests, or add a public-API note to the spec Log, before proceeding.
 - Code quality R2 has two modes: (a) new fresh tests in the green capture is advisory only and never the sole reason for DRIFT; (b) a modified core test without spec §3 backing + Log entry is always DRIFT — core assertion changes are load-bearing and must be traceable to the spec's declared behaviour change.
