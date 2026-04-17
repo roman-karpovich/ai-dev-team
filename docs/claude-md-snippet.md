@@ -40,6 +40,9 @@ Recognise these intents and invoke the matching skill automatically:
 | "what's in progress?", "what are we working on?", "status" | `/feature status` |
 | "review this", "check for bugs", "audit src/", "is this safe?" | `/cross-audit <scope>` |
 | "should we use X or Y?", "is this the right approach?", "compare these options" | `/investigate <question>` |
+| "also need X", "one more thing", "нужно ещё Y" (while inside an active spec) | Prompt: extend (`/feature extend`) or split (`/feature new --follows-up`). No silent absorption. |
+| "feature X is stable in prod", "verify feature X", "закрой чеклист" | `/feature verify <spec>` |
+| "blocker N done", "deployed to mainnet", "soak started" | `/feature checklist <done\|start-soak> <spec> <n>` |
 
 Don't wait for the user to type a slash command. If the intent matches, invoke the skill.
 
