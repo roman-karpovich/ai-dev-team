@@ -8,6 +8,12 @@ argument-hint: "new <title> | continue [path] | status [--all] | conclude [path]
 
 Research notes are free-form exploration documents. Unlike `/feature`, there is no implementation checklist and no audit — just KB-backed notes that persist across sessions. This skill is the driver for creating and managing them; the Librarian handles the actual writes.
 
+User-input prompt presentation in this skill follows the banner
+convention in `docs/user-input-banner-convention.md`. Each real decision
+fork — subtype selection, reopen-concluded-note, overwrite-vs-append
+conclusion, conclusion-text input — carries the `AWAITING YOUR INPUT`
+banner.
+
 ## Modes
 
 Parse `$ARGUMENTS`:
@@ -44,11 +50,17 @@ Identical to `/feature` Phase 0 — re-use the same config chain and legacy fall
 
 Ask the user:
 
-> **Subtype?** (default: `exploration`)
-> 1. `incident-investigation` — facts-first analysis of a production incident before a postmortem
-> 2. `math-model` — formulas, derivations, modeling spreadsheets
-> 3. `competitive-analysis` — market / vendor / protocol comparison
-> 4. `exploration` — open-ended investigation without a clear destination
+---
+## ⏸ AWAITING YOUR INPUT
+
+Pick a research subtype for the new note (default: `exploration` — hit Enter to accept).
+
+1. `incident-investigation` — facts-first analysis of a production incident before a postmortem
+2. `math-model` — formulas, derivations, modeling spreadsheets
+3. `competitive-analysis` — market / vendor / protocol comparison
+4. `exploration` — open-ended investigation without a clear destination
+
+**Which subtype?**
 
 Accept the number or the slug. Default if user just hits enter.
 
@@ -96,7 +108,18 @@ Spawn **Librarian** only if you need to update MOC indexes afterward.
 1. Run Phase 0.
 2. Read the note. Inspect `status`:
    - `ACTIVE` → print the Notes section's tail and ask what to work on.
-   - `CONCLUDED` or `ARCHIVED` → report state and ask: "Reopen? (flips status back to ACTIVE)". On yes, flip and continue.
+   - `CONCLUDED` or `ARCHIVED` → report state and ask the banner below.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+The note is `CONCLUDED` (or `ARCHIVED`). Continuing requires flipping `status` back to `ACTIVE`.
+
+- Yes → flip status to `ACTIVE` and resume.
+- No → stop, leave state untouched.
+
+**Reopen this note?**
+
 3. Never edit existing sections silently — always append new sub-sections with a date header.
 
 ---
@@ -119,8 +142,27 @@ Spawn **Librarian** only if you need to update MOC indexes afterward.
 ## Conclude mode
 
 1. Run Phase 0, read the note.
-2. If already `CONCLUDED`: ask whether to overwrite the conclusion or append another block.
-3. Prompt the user for a brief conclusion / decision / follow-up (multi-line accepted).
+2. If already `CONCLUDED`: ask the banner below.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+This note already has a `## Conclusion` block. Two options:
+
+- `overwrite` → replace the existing conclusion with the new text.
+- `append` → add a fresh dated `## Conclusion (YYYY-MM-DD)` block; the old one stays intact.
+
+**Overwrite or append?**
+
+3. Prompt the user for a brief conclusion / decision / follow-up (multi-line accepted):
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Write the conclusion text. Multi-line is fine. It is appended verbatim under the `## Conclusion (YYYY-MM-DD)` heading; any `- [ ]` lines become entries under a `### Follow-up` subsection.
+
+**What is the conclusion?**
+
 4. Append:
 
 ```markdown

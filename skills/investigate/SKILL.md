@@ -8,6 +8,11 @@ argument-hint: "<topic or question to investigate>"
 
 Structured debate between Claude (Opus) and Codex (GPT-5.4) where they challenge each other's ideas through multiple rounds. **Runs in background** — you can continue working while the debate happens.
 
+User-input prompt presentation in this skill follows the banner
+convention in `docs/user-input-banner-convention.md`. The async-result
+follow-up fork in "When Results Arrive" carries the `AWAITING YOUR INPUT`
+banner.
+
 ## When to use
 
 - Architecture decisions ("should we use X or Y?")
@@ -82,10 +87,18 @@ When the investigator agent completes:
    - **Key agreements** (high confidence conclusions)
    - **Unresolved tensions** (genuine tradeoffs to decide on)
    - **Recommended approach** (synthesized from both perspectives)
-3. Ask if the user wants to:
-   - Investigate specific tensions deeper (launch another round)
-   - Accept the recommendation and proceed
-   - Pivot the investigation to a different angle
+3. Ask the user to pick the next move via the banner below.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Investigation finished — pick the next move.
+
+- `investigate-deeper` — re-open the debate with a narrower angle (e.g. a specific tension, a new constraint, an alternative framing).
+- `accept-and-proceed` — take the current recommendation as the decision and move on.
+- `pivot` — abandon this line and start a new investigation on a different angle.
+
+**Which path?**
 
 ---
 
