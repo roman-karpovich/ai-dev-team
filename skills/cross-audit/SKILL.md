@@ -8,6 +8,10 @@ argument-hint: "<scope description OR path to existing findings doc> [--diff] [-
 
 Cross-audit runs Claude (Opus) and Codex (GPT-5.4) as independent auditors, consolidates their findings into KB documents, then iterates until clean. **Runs in the background** so you can continue working.
 
+User-input prompt presentation in this skill follows the banner
+convention in `docs/user-input-banner-convention.md` — the per-finding
+decision fork in Phase 3 carries the `AWAITING YOUR INPUT` banner.
+
 ## Argument Parsing
 
 **Re-audit detection**: if `$ARGUMENTS` matches `*-findings.md` AND the file exists on disk → **re-audit iteration**. If it looks like a path but doesn't exist → error out and ask the user. Otherwise → **new audit**.
@@ -177,12 +181,20 @@ When cross-auditor completes:
    - Count by severity and confidence
    - HIGH CONFIDENCE findings first (both auditors agreed)
    - REVIEW findings second (one auditor only)
-3. **Stop and wait** for user decision per finding:
-   - `fix X1 X3` — apply fixes
-   - `accept X2` — known issue, intentional
-   - `defer X4` — address later
-   - `fix all` — fix everything
-   - `publish X1 X3` — (PR mode only) post findings as GitHub PR review comments. Creates one `gh api` POST to `/repos/<pr_repo>/pulls/<N>/reviews` that bundles inline + body comments. `publish all` defaults to `OPEN` / `REOPENED` only. Publish is orthogonal to the status state machine — it does NOT flip OPEN→FIXED. See `references/publish.md` for the full recipe (force-push preflight, `pr_files` routing, failure matrix, `published_to` record schema).
+3. **Stop and wait** for user decision per finding — present the banner below.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Cross-audit finished. Decide per finding:
+
+- `fix X1 X3` — apply fixes
+- `accept X2` — known issue, intentional
+- `defer X4` — address later
+- `fix all` — fix everything
+- `publish X1 X3` — (PR mode only) post findings as GitHub PR review comments. Creates one `gh api` POST to `/repos/<pr_repo>/pulls/<N>/reviews` that bundles inline + body comments. `publish all` defaults to `OPEN` / `REOPENED` only. Publish is orthogonal to the status state machine — it does NOT flip OPEN→FIXED. See `references/publish.md` for the full recipe (force-push preflight, `pr_files` routing, failure matrix, `published_to` record schema).
+
+**How should each finding be handled?**
 
 ---
 

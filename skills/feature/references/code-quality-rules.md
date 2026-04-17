@@ -10,6 +10,8 @@ Each rule has three parts:
 - **Why** — the failure mode the rule prevents. Drawn from real sessions.
 - **How to apply** — concrete action during implementation.
 
+User-input prompt presentation is governed by docs/user-input-banner-convention.md — violations block spec-review Pass 1.
+
 ---
 
 ## R1 — Dead code isn't kept alive by its own tests
