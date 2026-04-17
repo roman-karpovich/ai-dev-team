@@ -182,6 +182,7 @@ When cross-auditor completes:
    - `accept X2` — known issue, intentional
    - `defer X4` — address later
    - `fix all` — fix everything
+   - `publish X1 X3` — (PR mode only) post findings as GitHub PR review comments. Creates one `gh api` POST to `/repos/<pr_repo>/pulls/<N>/reviews` that bundles inline + body comments. `publish all` defaults to `OPEN` / `REOPENED` only. Publish is orthogonal to the status state machine — it does NOT flip OPEN→FIXED. See `references/publish.md` for the full recipe (force-push preflight, `pr_files` routing, failure matrix, `published_to` record schema).
 
 ---
 
