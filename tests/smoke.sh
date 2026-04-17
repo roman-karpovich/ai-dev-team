@@ -1028,6 +1028,244 @@ check "fixture D3 403 permission-denied error + no record"                check_
 check "fixture D4 422 retry 5xx error + no record"                        check_failure_D4_422_retry_5xx
 echo
 
+# --- User-input banner convention (2026-04-17) ---
+echo "User-input banner convention:"
+
+# (a) Convention doc exists AND contains all 7 required substrings.
+check_banner_convention_doc_valid() {
+  local f='docs/user-input-banner-convention.md'
+  if [ ! -f "$f" ]; then
+    echo "missing $f"; return 1
+  fi
+  local miss=0
+  local tok
+  for tok in '## ⏸ AWAITING YOUR INPUT' \
+             '## ⏸ APPROVAL REQUIRED' \
+             '## When to apply' \
+             '## When NOT to apply' \
+             '## Positive example' \
+             '## Negative example' \
+             '**Approve to proceed?**'; do
+    if ! grep -qF -- "$tok" "$f"; then
+      echo "convention doc missing substring: '$tok'"
+      miss=1
+    fi
+  done
+  [ "$miss" -eq 0 ] || return 1
+  echo "banner convention doc has all 7 required substrings"
+}
+
+# (b) feature SKILL.md must have exactly 15 AWAITING banner lines.
+check_feature_awaiting_count_15() {
+  local n
+  n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
+  if [ "$n" != "15" ]; then
+    echo "feature AWAITING count=$n expected 15"
+    return 1
+  fi
+  echo "feature AWAITING count=15 OK"
+}
+
+# (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
+check_feature_approval_count_1() {
+  local n
+  n=$(grep -c "^## ⏸ APPROVAL REQUIRED$" skills/feature/SKILL.md)
+  if [ "$n" != "1" ]; then
+    echo "feature APPROVAL count=$n expected 1"
+    return 1
+  fi
+  echo "feature APPROVAL count=1 OK"
+}
+
+# (d) cross-audit SKILL.md must have exactly 1 AWAITING banner line.
+check_cross_audit_awaiting_count_1() {
+  local n
+  n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/cross-audit/SKILL.md)
+  if [ "$n" != "1" ]; then
+    echo "cross-audit AWAITING count=$n expected 1"
+    return 1
+  fi
+  echo "cross-audit AWAITING count=1 OK"
+}
+
+# (e) research SKILL.md must have exactly 4 AWAITING banner lines.
+check_research_awaiting_count_4() {
+  local n
+  n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/research/SKILL.md)
+  if [ "$n" != "4" ]; then
+    echo "research AWAITING count=$n expected 4"
+    return 1
+  fi
+  echo "research AWAITING count=4 OK"
+}
+
+# (f) investigate SKILL.md must have exactly 1 AWAITING banner line.
+check_investigate_awaiting_count_1() {
+  local n
+  n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/investigate/SKILL.md)
+  if [ "$n" != "1" ]; then
+    echo "investigate AWAITING count=$n expected 1"
+    return 1
+  fi
+  echo "investigate AWAITING count=1 OK"
+}
+
+# (g) Literal 'Ready to proceed?' must be ABSENT from feature SKILL.md.
+check_feature_ready_to_proceed_absent() {
+  if grep -qF "Ready to proceed?" skills/feature/SKILL.md; then
+    echo "'Ready to proceed?' still present in feature SKILL.md"
+    return 1
+  fi
+  echo "'Ready to proceed?' absent OK"
+}
+
+# (h) Literal 'Proceed to Hand-off' must be ABSENT from feature SKILL.md.
+check_feature_proceed_to_handoff_absent() {
+  if grep -qF "Proceed to Hand-off" skills/feature/SKILL.md; then
+    echo "'Proceed to Hand-off' still present in feature SKILL.md"
+    return 1
+  fi
+  echo "'Proceed to Hand-off' absent OK"
+}
+
+# (i) Canonical post-audit replacement text must be PRESENT.
+check_feature_post_audit_replacement() {
+  if ! grep -qF "Spec review passed — the spec is saved to KB. Moving to implementation." skills/feature/SKILL.md; then
+    echo "post-audit canonical replacement sentence missing in feature SKILL.md"
+    return 1
+  fi
+  echo "post-audit replacement text present OK"
+}
+
+# (j) Canonical post-verify replacement text must be PRESENT.
+check_feature_post_verify_replacement() {
+  if ! grep -qF "Verify passed. Moving to hand-off." skills/feature/SKILL.md; then
+    echo "post-verify canonical replacement sentence missing in feature SKILL.md"
+    return 1
+  fi
+  echo "post-verify replacement text present OK"
+}
+
+# (k) HARD-GATE trailing bold '**Approve to proceed?**' must be PRESENT in feature SKILL.md.
+check_feature_hard_gate_trailing_bold() {
+  if ! grep -qF "**Approve to proceed?**" skills/feature/SKILL.md; then
+    echo "HARD-GATE trailing bold '**Approve to proceed?**' missing in feature SKILL.md"
+    return 1
+  fi
+  echo "HARD-GATE trailing bold present OK"
+}
+
+# (l) feature SKILL.md — convention-doc pointer within first 60 lines.
+check_feature_intro_points_to_convention() {
+  if ! head -n 60 skills/feature/SKILL.md | grep -qF 'docs/user-input-banner-convention.md'; then
+    echo "feature SKILL.md intro (first 60 lines) missing pointer to docs/user-input-banner-convention.md"
+    return 1
+  fi
+  echo "feature SKILL.md intro points to convention doc OK"
+}
+
+# (m) cross-audit SKILL.md — convention-doc pointer within first 60 lines.
+check_cross_audit_intro_points_to_convention() {
+  if ! head -n 60 skills/cross-audit/SKILL.md | grep -qF 'docs/user-input-banner-convention.md'; then
+    echo "cross-audit SKILL.md intro (first 60 lines) missing pointer to docs/user-input-banner-convention.md"
+    return 1
+  fi
+  echo "cross-audit SKILL.md intro points to convention doc OK"
+}
+
+# (n) research SKILL.md — convention-doc pointer within first 60 lines.
+check_research_intro_points_to_convention() {
+  if ! head -n 60 skills/research/SKILL.md | grep -qF 'docs/user-input-banner-convention.md'; then
+    echo "research SKILL.md intro (first 60 lines) missing pointer to docs/user-input-banner-convention.md"
+    return 1
+  fi
+  echo "research SKILL.md intro points to convention doc OK"
+}
+
+# (o) investigate SKILL.md — convention-doc pointer within first 60 lines.
+check_investigate_intro_points_to_convention() {
+  if ! head -n 60 skills/investigate/SKILL.md | grep -qF 'docs/user-input-banner-convention.md'; then
+    echo "investigate SKILL.md intro (first 60 lines) missing pointer to docs/user-input-banner-convention.md"
+    return 1
+  fi
+  echo "investigate SKILL.md intro points to convention doc OK"
+}
+
+# (p) code-quality-rules.md — exact verbatim cross-reference sentence.
+check_code_quality_rules_exact_rule_text() {
+  if ! grep -qF "User-input prompt presentation is governed by docs/user-input-banner-convention.md — violations block spec-review Pass 1." skills/feature/references/code-quality-rules.md; then
+    echo "code-quality-rules.md missing exact verbatim cross-reference sentence"
+    return 1
+  fi
+  echo "code-quality-rules.md has exact verbatim sentence OK"
+}
+
+# (q) APPROVAL REQUIRED is unique repo-wide (sum across skills/*/SKILL.md equals 1).
+check_approval_required_unique_repo_wide() {
+  local n
+  n=$(grep -h "## ⏸ APPROVAL REQUIRED" skills/*/SKILL.md | wc -l | tr -d ' ')
+  if [ "$n" != "1" ]; then
+    echo "APPROVAL REQUIRED repo-wide count=$n expected 1"
+    return 1
+  fi
+  echo "APPROVAL REQUIRED unique repo-wide OK"
+}
+
+# (r) ruler-prefix count matches total banner count (expected 22 once all steps done).
+check_awaiting_ruler_prefix_count_matches() {
+  local c
+  c=$(awk '
+    BEGIN { c = 0; prev = "" }
+    ($0 == "## ⏸ AWAITING YOUR INPUT" || $0 == "## ⏸ APPROVAL REQUIRED") && prev == "---" { c++ }
+    { prev = $0 }
+    END { print c }
+  ' skills/*/SKILL.md)
+  if [ "$c" != "22" ]; then
+    echo "ruler-prefix count=$c expected 22"
+    return 1
+  fi
+  echo "ruler-prefix count=22 OK"
+}
+
+# (s) each banner has trailing bold question within 15 lines (expected 22 satisfied).
+check_banner_trailing_bold_present_each() {
+  local c
+  c=$(awk '
+    BEGIN { satisfied = 0; inside = 0; countdown = 0 }
+    /^## ⏸ (AWAITING YOUR INPUT|APPROVAL REQUIRED)$/ { inside = 1; countdown = 15; next }
+    inside && /^## / { inside = 0; countdown = 0; next }
+    inside && countdown > 0 && /\*\*[^*]+\?\*\*/ { satisfied++; inside = 0; countdown = 0; next }
+    inside { countdown--; if (countdown <= 0) inside = 0 }
+    END { print satisfied }
+  ' skills/*/SKILL.md)
+  if [ "$c" != "22" ]; then
+    echo "trailing-bold-present-each count=$c expected 22"
+    return 1
+  fi
+  echo "trailing-bold-present-each=22 OK"
+}
+
+check "banner-convention-doc-valid"             check_banner_convention_doc_valid
+check "feature-AWAITING-count-15"               check_feature_awaiting_count_15
+check "feature-APPROVAL-count-1"                check_feature_approval_count_1
+check "cross-audit-AWAITING-count-1"            check_cross_audit_awaiting_count_1
+check "research-AWAITING-count-4"               check_research_awaiting_count_4
+check "investigate-AWAITING-count-1"            check_investigate_awaiting_count_1
+check "feature-Ready-to-proceed-absent"         check_feature_ready_to_proceed_absent
+check "feature-Proceed-to-Handoff-absent"       check_feature_proceed_to_handoff_absent
+check "feature-post-audit-replacement"          check_feature_post_audit_replacement
+check "feature-post-verify-replacement"         check_feature_post_verify_replacement
+check "feature-hard-gate-trailing-bold"         check_feature_hard_gate_trailing_bold
+check "feature-intro-points-to-convention"      check_feature_intro_points_to_convention
+check "cross-audit-intro-points-to-convention"  check_cross_audit_intro_points_to_convention
+check "research-intro-points-to-convention"     check_research_intro_points_to_convention
+check "investigate-intro-points-to-convention"  check_investigate_intro_points_to_convention
+check "code-quality-rules-exact-rule-text"      check_code_quality_rules_exact_rule_text
+check "approval-required-unique-repo-wide"      check_approval_required_unique_repo_wide
+check "awaiting-ruler-prefix-count-matches"     check_awaiting_ruler_prefix_count_matches
+check "banner-trailing-bold-present-each"       check_banner_trailing_bold_present_each
+echo
+
 
 echo
 echo "Passed: $PASS"
