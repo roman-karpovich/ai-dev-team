@@ -1,0 +1,7 @@
+HTTP/2 403
+server: GitHub.com
+date: Fri, 17 Apr 2026 14:30:00 GMT
+content-type: application/json; charset=utf-8
+x-github-media-type: github.v3
+
+{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/pulls/reviews#create-a-review-for-a-pull-request"}

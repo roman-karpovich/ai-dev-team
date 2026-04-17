@@ -166,6 +166,24 @@ Audit flags:
 /cross-audit src/ --mode security --diff  # security audit of recent changes only
 ```
 
+Auditing a pull request (including fork PRs):
+```
+/cross-audit pr 472                       # audit PR #472 in the current repo
+/cross-audit pr owner/repo#472            # audit a PR in a different repo
+```
+
+In PR mode, the skill materializes the PR head (including fork contents) into an
+isolated worktree, classifies changed files, and audits them. After reviewing the
+consolidated findings, you decide per finding ID:
+
+- `publish X1 X3` — post those findings as a GitHub PR review comment
+- `fix H2` — apply the fix locally (same flow as non-PR audits)
+- `accept L4` / `defer M1` — mark as intentional / deferred
+
+`publish <ids>` opens a scoped PR review on the target PR via the GitHub API.
+Rate-limit and permission errors are classified via response headers — see
+`skills/cross-audit/references/publish.md` for the full recipe.
+
 Confidence levels in findings:
 - **HIGH** — both Claude and Codex flagged it → fix
 - **REVIEW** — only one flagged it → verify manually, possible false positive

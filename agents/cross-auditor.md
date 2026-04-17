@@ -31,6 +31,11 @@ You receive a prompt with:
 - **accepted_ids**: list of finding IDs the user marked ACCEPTED — preserve their status, do not re-report, do not flip to FIXED
 - **iteration**: iteration number (default: 1)
 - **next_finding_id** (spec mode only, optional): integer — the next finding ID to allocate. When provided, start the ID sequence here instead of X1. Used to prevent ID collisions across spec audit rounds when no findings doc exists on disk.
+- **pr_number** (optional): integer. When set, this is a **PR audit** — activate the PR-mode steps below (content materialization via `gh pr checkout`, Codex cwd override to the isolated worktree, `pr_files` persistence). Unset → legacy behavior.
+- **pr_repo** (PR mode, required when `pr_number` is set): `<owner>/<repo>` for all `gh` calls. Do NOT assume caller cwd is a clone of this repo.
+- **pr_url** (PR mode, required when `pr_number` is set): canonical `https://github.com/<owner>/<repo>/pull/<N>` URL; persisted verbatim into findings frontmatter.
+- **pr_head_oid** (PR mode, required when `pr_number` is set): `headRefOid` captured by the skill Phase 0.5 before content materialization. Used to detect force-push between preflight and checkout, and persisted into findings frontmatter so the publish action can detect audit-time-vs-publish-time force-push.
+- **pr_changed_files** (PR mode, required when `pr_number` is set): list of objects — `{filename, status, previous_filename, patch_present}` — produced by `gh api /pulls/{N}/files --paginate --jq '.[] | {filename, status, previous_filename, patch_present: (.patch != null)}'`. These are objects (not strings); the raw `patch` text is deliberately stripped by the jq projection (no patch-text fallback for submodule detection; see `pr_files` section below).
 
 ## Mode Focus Areas
 
@@ -119,6 +124,46 @@ Only statuses may be updated on existing entries; finding content is append-only
 **Transitions**: `OPEN → FIXED` (human fixes) → `VERIFIED` (re-audit confirms) or `REOPENED` (re-audit rejects fix) → `FIXED` (human re-fixes)
 Also valid: `OPEN|REOPENED → ACCEPTED` (intentional by design) or `OPEN|REOPENED → DEFERRED` (address later)
 
+## Step 0 (PR mode only): Materialize PR content into the isolated worktree
+
+Runs only when `pr_number` is set. Skip entirely otherwise.
+
+The caller's cwd is **not** a safe source of audit content — it may be on a different branch, have uncommitted work, or (for fork PRs) lack the fork head commits entirely. All PR audit content lives in this agent's isolated worktree.
+
+1. Inside the isolated worktree, before any file read:
+   ```
+   gh pr checkout <pr_number> --force --repo <pr_repo>
+   ```
+   `--force` lets the checkout proceed over local state; `--repo <pr_repo>` makes `gh` fetch the fork remote automatically for fork PRs. The worktree HEAD is now the PR head commit.
+2. Verify the checkout landed on the expected commit:
+   ```
+   test "$(git rev-parse HEAD)" = "<pr_head_oid>"
+   ```
+   If not equal, hard-stop: the PR was force-pushed between Phase 0.5 and this checkout. Surface remediation "PR force-pushed since preflight; re-run `/cross-audit pr <N>` to refresh" and exit non-zero. Do not fall back to the local working copy.
+3. Use `pr_changed_files[*].filename` verbatim as the "Files to audit" list (relative to this worktree). Do NOT call local `git diff`. Do NOT read any file from the caller's cwd in PR mode.
+4. Build the `pr_files` list by resolving `is_submodule` per file inside this worktree. For each `pr_changed_files[]` entry, run `git ls-tree HEAD -- <filename>`:
+   - mode `160000` (gitlink) → `is_submodule: true`
+   - any other mode, or empty output (filename absent from the PR head tree) → `is_submodule: false`
+   There is no patch-text fallback — the `--jq` projection in the skill's Phase 0.5 strips the raw `patch` text (spec X25). Writing is delegated to the pure shell helper `hooks/lib/build_pr_files.sh`, which takes the `pr_changed_files` JSON on stdin and a single `--ls-tree-output <path>` pointing at the concatenated `git ls-tree HEAD -- <f1> <f2> ...` output, and emits the canonical YAML block on stdout. Agent prompt must invoke that exact helper path — tests/smoke.sh exercises the same path as a writer-contract golden diff.
+
+   The helper's expected output shape (canonical key order) is:
+
+   ```yaml
+   pr_files:
+     - filename: src/foo.rs
+       status: modified
+       previous_filename: null
+       patch_present: true
+       is_submodule: false
+     - filename: vendor/submod
+       status: modified
+       previous_filename: null
+       patch_present: false
+       is_submodule: true
+   ```
+
+   Fields, in order: `filename:` / `status:` / `previous_filename:` / `patch_present:` / `is_submodule:`.
+
 ## Step 1: Launch Codex (before your own deep review)
 
 **IMPORTANT**: Launch Codex FIRST so both audits run in parallel.
@@ -128,7 +173,7 @@ Use `mcp__codex__codex` with:
 - **sandbox**: "read-only"
 - **model**: if `codex_model` is provided, pass it; otherwise omit — Codex uses `~/.codex/config.toml`
 - **config**: `{"reasoning": {"effort": <codex_reasoning_effort if provided, else "xhigh">}}`
-- **cwd**: working_directory (Codex can read files directly — pass file paths in prompt, not content)
+- **cwd**: in **PR mode** (`pr_number` set), pass the absolute path of this agent's isolated worktree post-`gh pr checkout` — NOT the inherited `working_directory`. Both Claude and Codex must audit the PR-materialized worktree (not the caller's cwd), otherwise fork-PR content is invisible to Codex. In non-PR mode, pass `working_directory` as before.
 - **developer-instructions**: for `spec` mode use: "You are an independent spec reviewer. Be adversarial. Focus on spec quality: completeness, clarity, sequencing, correctness, verification coverage. Every finding must reference the specific section/step of the spec and include a concrete suggestion. Report [allowed_severities] only." For code modes use: "You are an independent code auditor. Be adversarial. Focus on [mode focus areas]. Every finding must have a concrete file:line reference and a specific fix suggestion. [Severity ladder for mode — see above]. Report [allowed_severities] only." Substitute `[allowed_severities]` based on `severity_floor` before dispatching.
 
 **Code mode** Codex prompt template:
@@ -206,6 +251,8 @@ If the findings file already exists (re-audit): read it, preserve all existing e
   - Fix absent, incomplete, or introduced a new problem → set status to `REOPENED`, append a note explaining what is still wrong
 - For IDs in `accepted_ids`: leave their status unchanged (ACCEPTED stays ACCEPTED — do NOT flip to FIXED or VERIFIED)
 - Append new findings with new IDs continuing the monotonic sequence
+
+**PR mode only**: write `pr_number:` / `pr_repo:` / `pr_url:` / `pr_head_oid:` (all scalars) and the `pr_files:` list into the findings frontmatter on every audit iteration. These fields are the single source of truth for the publish action (`skills/cross-audit/references/publish.md`) and for the standalone `/cross-audit publish <slug> <ids>` entry point — publish runs in caller cwd (not a worktree) and never re-fetches them. `pr_files` is produced by `hooks/lib/build_pr_files.sh` from the `pr_changed_files` input plus in-worktree `git ls-tree HEAD` output. On re-audit, overwrite these fields with the current audit's values (not append) — they describe the PR head at this iteration's audit time.
 
 ```markdown
 ---

@@ -1,0 +1,4 @@
+error: publish failed — 422 on initial POST, body-only retry also failed (5xx)
+initial 422: Validation Failed — pull_request_review_thread.line must be part of the diff
+retry 500: Server Error
+remediation: both the 422 validation error AND the 5xx server error were surfaced. No `published_to` record was written; retry produced no 2xx response.
