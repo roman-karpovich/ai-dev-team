@@ -15,6 +15,12 @@ user-invocable: true
 Spec-driven development using a Knowledge Base (Obsidian vault) as persistent context.
 Specs live in `<kb_root>/repos/<project>/design/` so context survives across sessions.
 
+User-input prompt presentation follows the banner convention in
+`docs/user-input-banner-convention.md`. Every real decision fork in this
+skill uses the generic `AWAITING YOUR INPUT` banner (or the
+`APPROVAL REQUIRED` variant for the HARD GATE); status updates do not
+carry the banner.
+
 ## Modes
 
 Parse `$ARGUMENTS` to determine the mode:
@@ -154,23 +160,43 @@ Leave all `observed` fields empty — the developer fills them during implementa
 
 **Prerequisites prompt.** Before moving to approval, ask the user:
 
-> Any deploy prerequisites? One-off ops steps that must run after the merge before the feature works (migrations, worker restarts, cache reset). One per line. Empty input = none.
+---
+## ⏸ AWAITING YOUR INPUT
+
+Any deploy prerequisites? One-off ops steps that must run after the merge before the feature works (migrations, worker restarts, cache reset). One per line. Empty input = none.
+
+**What are the deploy prerequisites?**
 
 Write the answer into the YAML block in spec section `## 6.2 Deploy & manual verification` as `deploy_prerequisites`. Each non-empty line becomes one YAML-quoted list entry. Empty input maps to `deploy_prerequisites: []`.
 
 **Smoke check.** Then ask the user:
 
-> Fastest manual smoke check — command to run post-deploy to confirm the feature is alive. (Empty = no smoke check configured.)
+---
+## ⏸ AWAITING YOUR INPUT
+
+Fastest manual smoke check — command to run post-deploy to confirm the feature is alive. (Empty = no smoke check configured.)
+
+**What command should the smoke check run?**
 
 If the user leaves it empty, write `smoke_check: null` in `## 6.2 Deploy & manual verification` and skip the next question. If the user gives a command, write `smoke_check: {command: <verbatim command, YAML-quoted>, expected: <expected output, YAML-quoted>}` and ask:
 
-> Expected substring in the command output? (Empty = no explicit expectation; success is defined by exit code alone.)
+---
+## ⏸ AWAITING YOUR INPUT
+
+Expected substring in the command output? (Empty = no explicit expectation; success is defined by exit code alone.)
+
+**What substring should appear in the smoke-check output?**
 
 If the user leaves the expected-output prompt empty, write `expected: ""`.
 
 **Post-merge checklist seeding.** Before moving to approval, ask the user:
 
-> Any other post-merge obligations? Cross-team dependencies, blockers on other specs, soak periods. Deploy prereqs from §6.2 will be added automatically on hand-off.
+---
+## ⏸ AWAITING YOUR INPUT
+
+Any other post-merge obligations? Cross-team dependencies, blockers on other specs, soak periods. Deploy prereqs from §6.2 will be added automatically on hand-off.
+
+**What post-merge obligations should be tracked?**
 
 If the user names any, populate the `items:` YAML block in spec section `## 8. Post-merge checklist` following the schema in `references/spec-template.md`. If there are none, leave `items: []`. The checklist can be edited later via `/feature checklist`.
 
@@ -184,18 +210,31 @@ Present a summary and wait for user approval before implementing.
 Do NOT spawn any developer agent, write any code, or take any implementation action until the user has explicitly approved the spec. This applies to every feature regardless of perceived simplicity. "It looks straightforward" is not approval.
 </HARD-GATE>
 
+---
+## ⏸ APPROVAL REQUIRED
+
+The draft spec is ready for review at `<spec_path>`. No implementation, no developer spawn, no code edits happen before you approve.
+
+- Approve → set `status: APPROVED`, continue to Step 3.5 spec review.
+- Reject → return to drafting with your feedback.
+
+**Approve to proceed?**
+
 Set spec `status: APPROVED` after explicit user approval.
 
 ### Step 3.5 — Spec review (two passes)
 
 After approval, immediately ask:
 
-```
+---
+## ⏸ AWAITING YOUR INPUT
+
 Run spec audit before implementation?
 
 1. Yes — recommended if the spec involves external APIs, new business logic, or non-trivial data flows
 2. Skip — for simple config/plumbing changes where you're confident in the spec
-```
+
+**Run spec audit?**
 
 If the user chooses **Skip**: set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`, proceed directly to Implement. (Setting AUDIT_PASSED rather than keeping APPROVED ensures continue mode does not re-enter the audit loop on resume.)
 
@@ -247,9 +286,9 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 7. Set spec `status: AUDIT_PASSED`
 
 **If no CRITICAL or HIGH findings:**
-> Spec review passed. The spec is saved to KB — all context is preserved.
+> Spec review passed — the spec is saved to KB. Moving to implementation.
 > 💡 Consider running `/compact` before implementation to trim conversation history.
-> Ready to proceed?
+
 Set spec `status: AUDIT_PASSED`.
 
 **Mid-flow skip**: if the user says "skip" or "proceed anyway" at any point during the audit — stop, set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`.
@@ -276,10 +315,16 @@ Note: verifier runs against the current checkout — make sure the base branch i
 
 Before starting implementation, ask the user which agent to use:
 
-> **Which developer should implement this?**
-> 1. **Codex (GPT-5.4 xhigh)** ← default — saves Claude tokens, corporate subscription, use aggressively
-> 2. **Senior (Opus)** — only when Codex falls short: highly ambiguous scope, extensive codebase exploration needed, ultra-complex cross-cutting changes
-> 3. **Middle (Sonnet)** — quick in-session fixes where spawning Codex is overkill (trivial one-liner changes, typos, small config edits)
+---
+## ⏸ AWAITING YOUR INPUT
+
+**Which developer should implement this?**
+
+1. **Codex (GPT-5.4 xhigh)** ← default — saves Claude tokens, corporate subscription, use aggressively
+2. **Senior (Opus)** — only when Codex falls short: highly ambiguous scope, extensive codebase exploration needed, ultra-complex cross-cutting changes
+3. **Middle (Sonnet)** — quick in-session fixes where spawning Codex is overkill (trivial one-liner changes, typos, small config edits)
+
+**Which agent?**
 
 **Rule of thumb**: prefer Codex unless the task requires broad live filesystem exploration or has genuinely ambiguous scope that the feature spec couldn't fully specify. When in doubt — try Codex first.
 
@@ -334,9 +379,16 @@ scope: <list of changed files from spec checklist>
 
 - **PASS**: All results are captured in the workdoc.
   > 💡 Consider running `/compact` before hand-off — implementation context is no longer needed.
-  Proceed to Hand-off. Do **not** set `status: DONE` yet — wait until the user selects a preserving option (merge, push, or keep). Setting DONE before that means a discard would leave the spec permanently marked DONE with no surviving branch.
+  Verify passed. Moving to hand-off. Do **not** set `status: DONE` yet — wait until the user selects a preserving option (merge, push, or keep). Setting DONE before that means a discard would leave the spec permanently marked DONE with no surviving branch.
 - **FAIL**: present failures to user. Analyze the verifier report to identify which checklist step(s) are responsible. Spawn the developer with `rework step N: fix test failure: <relevant excerpt>` for each affected step. Re-verify after fix.
-- **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off before proceeding. Log the absence of a project-level test suite.
+- **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off (see banner below). Log the absence of a project-level test suite.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+No test suite was detected and one or more steps lack green captures. Manual sign-off is required before hand-off.
+
+**Do you confirm implementation is complete?**
 
 ---
 
@@ -379,16 +431,19 @@ After phase 1, show the commit list and present exactly these 4 options:
 
 ```
 git log --oneline <base>..<branch>
+```
+
+---
+## ⏸ AWAITING YOUR INPUT
 
 Implementation complete. What would you like to do?
 
-1. Merge into <base-branch> locally
+1. Merge into `<base-branch>` locally
 2. Push feature branch (I'll merge to staging and open a PR myself)
 3. Keep the branch as-is (I'll handle it later)
 4. Discard this work
 
-Which option?
-```
+**Which option?**
 
 > Note: merging into `staging` / `testnet` / `pre-prod` for testing is a separate manual step the user handles. The plugin only merges into the base branch (`master` or `main`).
 
@@ -445,7 +500,17 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
    - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
-   - `BLOCKED` → Report the unblock condition from the most recent `BLOCKED — waiting on ...` Log entry and ask the user whether the condition is now satisfied. If yes, revert status to the prior state (IN_PROGRESS or AUDIT_PASSED, whichever the Log indicates) and resume. If no, stop.
+   - `BLOCKED` → Report the unblock condition from the most recent `BLOCKED — waiting on ...` Log entry and ask the banner below. If yes, revert status to the prior state (IN_PROGRESS or AUDIT_PASSED, whichever the Log indicates) and resume. If no, stop.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Spec is BLOCKED on `<condition from the most recent Log entry>`.
+
+- Yes → resume work from the prior state.
+- No → stop.
+
+**Is the unblock condition now satisfied?**
    - `SHIPPED` → Feature is merged but post-merge checklist has open items. Run auto-resolve for `depends_on` blockers (see Verify mode), then, before rendering pending items, apply this Quick-check decision tree:
      1. Parse §6.2 via the parsing contract in `§6.2 handling` and read `smoke_check`. If `smoke_check` is null or missing, skip the banner and render pending items as usual. If §6.2 is malformed, also skip the banner and continue to pending-items render.
      2. Read §6.2 `deploy_prerequisites` and build the set of unresolved §8 items. Status is `pending` OR `failed`; both mean the operational work is not complete, and only `done` items drop out of the gate. For each prereq, compute its normalized form and compare it against each unresolved §8 item's normalized description, regardless of `source:` tag. If any normalized §6.2 prereq matches any unresolved §8 item's normalized description, render the deferred banner and skip the command:
@@ -468,7 +533,14 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `VERIFIED` (or legacy `DONE`) → Feature complete and observed. Report completion status and stop.
    - `DISCARDED` → Feature was discarded. Report this and stop.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
-4. Ask which agent to use for remaining work (only if resuming implementation). If the Log contains a `last_agent=...` entry, present it as the default: "Which developer? (default: Codex — last used)".
+4. Ask which agent to use for remaining work (only if resuming implementation). If the Log contains a `last_agent=...` entry, present it as the default in the banner below.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Resuming implementation. Pick the developer for the remaining steps. The most recent `last_agent=<name>` entry in the spec Log is offered as the default — press Enter to accept it, or name a different agent.
+
+**Which developer (default is the `last_agent` from Log)?**
 
 ---
 
@@ -477,17 +549,31 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
 Explicit discard outside hand-off. Use when the user decides mid-implementation (or on resume) to throw the feature away.
 
 1. Run KB discovery (Phase 0).
-2. Resolve the spec from `spec-path`. If no argument: prompt the user with the list of IN_PROGRESS / AUDIT_PASSED / BLOCKED specs.
+2. Resolve the spec from `spec-path`. If no argument, prompt the user with the banner below and a list of IN_PROGRESS / AUDIT_PASSED / BLOCKED specs.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+No spec-path was supplied to `/feature discard`. Pick one of the active specs below to discard, or reply `cancel` to abort.
+
+`<numbered list of IN_PROGRESS / AUDIT_PASSED / BLOCKED specs>`
+
+**Which spec should be discarded?**
+
 3. Refuse if `status: DONE` — already merged, not something discard can undo. Tell the user to revert the merge commit instead.
 4. Refuse if `status: DISCARDED` — already gone.
-5. Show the commit list and branch name:
+5. Show the commit list and branch name, then ask for typed confirmation via the banner below.
 
 ```
 git log --oneline <base>..<branch>
-
-This will permanently delete branch <branch> and all commits listed above.
-Type 'discard' to confirm.
 ```
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+This will permanently delete branch `<branch>` and all commits listed above. There is no undo.
+
+**Type the word `discard` to confirm — any other reply aborts. Confirm?**
 
 6. On confirmation: `git checkout <base-branch> && git branch -D <branch>` (use `-D` — force, since the branch likely isn't merged into base). Set `status: DISCARDED`, append Log: `- YYYY-MM-DD: feature discarded by user`.
 7. On any other answer: abort, leave state untouched.
@@ -705,26 +791,38 @@ When the orchestrator is working inside a spec and the user introduces a new req
 
 **Decision by context of the active spec:**
 
-1. **Spec is `DRAFT` / `APPROVED` / `AUDIT_PASSED` / `IN_PROGRESS`** — ask exactly:
+1. **Spec is `DRAFT` / `APPROVED` / `AUDIT_PASSED` / `IN_PROGRESS`** — ask exactly the banner below.
 
-   > Scope addition detected. Extend the current spec (new step in the Implementation Checklist + matching `planned` block in the exec workdoc; spec stays in its current state) or split into a separate follow-up spec (linked via `follows_up`)?
+---
+## ⏸ AWAITING YOUR INPUT
 
-   - **Extend** → run `/feature extend <description>` on the active spec.
-   - **Split** → run `/feature new <description> --follows-up <active-spec-path>`.
+Scope addition detected. The current spec is still in flight.
 
-2. **Spec is `SHIPPED`** — ask:
+- **Extend** → new step in the Implementation Checklist + matching `planned` block in the exec workdoc; spec stays in its current state. Runs `/feature extend <description>`.
+- **Split** → separate follow-up spec linked via `follows_up`. Runs `/feature new <description> --follows-up <active-spec-path>`.
 
-   > The spec is already merged. Options:
-   > (a) post-merge action item (only if this is a manual step, not new code) — adds via `/feature checklist add <spec> action "<desc>"`;
-   > (b) new follow-up spec linked via `follows_up`.
+**Extend or split?**
 
-   Do not re-open a SHIPPED spec for new implementation work.
+2. **Spec is `SHIPPED`** — ask the banner below.
 
-3. **Spec is `VERIFIED` / `DONE`** — ask:
+---
+## ⏸ AWAITING YOUR INPUT
 
-   > The spec is already verified and closed. A new follow-up spec is the only option (linked via `follows_up`). Create it now?
+The spec is already merged. Do not re-open it for new implementation work. Two options:
 
-   VERIFIED never silently reverts to SHIPPED. If the extension is genuinely new work, it must become its own spec.
+- (a) post-merge action item (only if this is a manual step, not new code) — adds via `/feature checklist add <spec> action "<desc>"`.
+- (b) new follow-up spec linked via `follows_up`.
+
+**Which option — (a) or (b)?**
+
+3. **Spec is `VERIFIED` / `DONE`** — ask the banner below.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+The spec is already verified and closed. A new follow-up spec (linked via `follows_up`) is the only option — VERIFIED never silently reverts to SHIPPED.
+
+**Create the follow-up spec now?**
 
 4. **No active spec / scope unclear** — fall through to the normal `/feature new` or `/feature continue` prompts from the trigger map. Do not invent an implicit extension.
 
