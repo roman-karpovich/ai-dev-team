@@ -112,6 +112,25 @@ Update the spec file directly during work:
 
 ---
 
+## Code Quality Rules
+
+Read `skills/feature/references/code-quality-rules.md` before the first step and re-check it
+whenever a step removes behaviour or rewrites tests. It is append-only; new rules land there.
+
+Short-form summary — the full reasoning and application steps live in the reference:
+
+- **R1 — Dead code isn't kept alive by its own tests.** When a step removes behaviour, also
+  delete any helper whose only remaining callers are its own tests. Tests validating code
+  with no production consumer are dead weight. Report deletions in the spec Log.
+- **R2 — Trust tiers for tests.** Core tests (not on this branch) are evidence. Fresh tests
+  (on this branch, or referenced in workdoc `failing_test_cmd` / `passing_test_cmd`) may
+  encode the same misconception as the code they test. When user feedback contradicts a
+  fresh test, re-read the spec and rewrite the test if its contract was wrong — do not cite
+  fresh green tests as proof the feedback is wrong. Core tests may legitimately break when
+  the spec intentionally modifies existing behaviour (constants, formulas, formats): verify
+  the break matches what §3 says and log the assertion update; otherwise treat a core failure
+  as a regression and fix the code.
+
 ## Common Rules
 
 - **Never start if `status: DRAFT`** — the spec has not been approved.
