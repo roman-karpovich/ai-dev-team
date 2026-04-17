@@ -446,7 +446,25 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
    - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
    - `BLOCKED` → Report the unblock condition from the most recent `BLOCKED — waiting on ...` Log entry and ask the user whether the condition is now satisfied. If yes, revert status to the prior state (IN_PROGRESS or AUDIT_PASSED, whichever the Log indicates) and resume. If no, stop.
-   - `SHIPPED` → Feature is merged but post-merge checklist has open items. Run auto-resolve for `depends_on` blockers (see Verify mode), then show the checklist: open items grouped by type with owner and what's pending. Offer the user the obvious next move based on what is open — mark an action done, start a soak, run `/feature verify`, etc. Do not re-enter the implement loop.
+   - `SHIPPED` → Feature is merged but post-merge checklist has open items. Run auto-resolve for `depends_on` blockers (see Verify mode), then, before rendering pending items, apply this Quick-check decision tree:
+     1. Parse §6.2 via the parsing contract in `§6.2 handling` and read `smoke_check`. If `smoke_check` is null or missing, skip the banner and render pending items as usual. If §6.2 is malformed, also skip the banner and continue to pending-items render.
+     2. Read §6.2 `deploy_prerequisites` and build the set of unresolved §8 items. Status is `pending` OR `failed`; both mean the operational work is not complete, and only `done` items drop out of the gate. For each prereq, compute its normalized form and compare it against each unresolved §8 item's normalized description, regardless of `source:` tag. If any normalized §6.2 prereq matches any unresolved §8 item's normalized description, render the deferred banner and skip the command:
+
+        ```
+        ⚡ Quick check: complete deploy prerequisites below first.
+        ```
+
+        The status-rule asymmetry with §3.4 is intentional and load-bearing: `failed` is still unresolved because the next action is to fix and retry, and filtering by `source:` alone is wrong because user-added §8 items without that tag still represent unresolved ops work.
+     3. Otherwise render the live banner:
+
+        ```
+        ⚡ Quick check (from spec §6.2):
+            <command>
+            Expected: <expected>
+        ```
+
+        If `smoke_check.expected` is an empty string, omit the `Expected:` line entirely.
+     4. Then show the checklist: open items grouped by type with owner and what's pending. Offer the user the obvious next move based on what is open — mark an action done, start a soak, run `/feature verify`, etc. Do not re-enter the implement loop.
    - `VERIFIED` (or legacy `DONE`) → Feature complete and observed. Report completion status and stop.
    - `DISCARDED` → Feature was discarded. Report this and stop.
 3. Report current state: spec name, status, completed steps count, next step, any blockers from the Log section
