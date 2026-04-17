@@ -43,6 +43,12 @@ Recognise these intents and invoke the matching skill automatically:
 
 Don't wait for the user to type a slash command. If the intent matches, invoke the skill.
 
+### Audit findings handling
+
+If the user's request references an audit-findings document (a file under `<kb>/repos/<project>/security/`, or mentions specific finding IDs like "X3", "H1", "fix finding N", "fix audit item N"), do NOT dive into the code directly. First ask whether to formalize as a spec via `/feature new` or fix directly, and wait for the answer. If the user chooses spec, invoke `/feature new` citing the finding; if they choose direct fix, proceed without the flow.
+
+Rationale: the spec-driven flow adds a baseline red test and compliance checks that catch the exact class of bug where a findings doc claims "FIXED" but the code is not. Trivial one-line fixes don't need this overhead, but the user decides — not Claude.
+
 ### Workflow phases (reference)
 
 ```

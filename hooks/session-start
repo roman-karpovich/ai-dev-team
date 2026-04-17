@@ -44,6 +44,12 @@ Recognise these intents and invoke the matching skill automatically — do not w
 | "review this", "check for bugs", "find bugs", "security check", "code review", "audit src/", "is this safe?" | `/cross-audit <scope>` |
 | "should we use X or Y?", "is this the right approach?", "compare these options", "which is better", "tradeoffs between", "brainstorm" | `/investigate <question>` |
 
+### Audit findings handling
+
+If the user'\''s request references an audit-findings document (a file under `<kb>/repos/<project>/security/`, or mentions specific finding IDs like "X3", "H1", "починим N из findings", "fix audit item N"), do NOT dive into the code directly. First ask: "оформить как spec через `/feature new` или чинить напрямую?" — and wait for the answer. If the user chooses spec, invoke `/feature new` citing the finding. If they choose direct fix, proceed without the flow.
+
+Rationale: the spec-driven flow adds a baseline red test and compliance checks that catch the exact class of bug where a findings doc claims "FIXED" but the code is not. Cheap one line fixes do not need this overhead, but the user should decide — not Claude.
+
 ### Workflow phases (reference)
 
 ```
