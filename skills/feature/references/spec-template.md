@@ -72,9 +72,29 @@ For each step, the orchestrator initializes a corresponding `planned` block in t
 - [ ] Step 2: description
 - [ ] ...
 
-## 6. Verification
+## 6.1 Automated verification
 
 How to test the feature end-to-end after all steps are complete.
+
+## 6.2 Deploy & manual verification
+
+Document post-merge deploy prerequisites and the fastest manual smoke check in
+the YAML block below. `deploy_prerequisites` is a list of strings.
+`smoke_check` is either `null` or a mapping with `command` and `expected`.
+
+```yaml
+deploy_prerequisites: []
+# List of one-off ops steps that must run after merge before the feature works.
+# (migrations, worker restarts, cache invalidation, config reload)
+# Each non-empty line becomes one YAML list entry.
+# Empty list means no deploy prerequisites.
+
+smoke_check: null
+# Optional: single fastest command + expected output to verify the feature is alive post-deploy.
+# Set to null if no meaningful quick check exists (e.g. pure internal refactor).
+# command: curl -s https://staging.example.com/api/foo | jq -r .status
+# expected: ok
+```
 
 ## 7. Execution Workdoc
 
