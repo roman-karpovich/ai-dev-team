@@ -493,6 +493,44 @@ check "research statuses documented"         check_research_statuses
 check "research template present"            check_research_template
 echo
 
+# --- Deploy-recommendations §6.2 surface ---
+echo "Deploy-recommendations §6.2 surface:"
+
+check_spec_template_deploy_recommendations_62() {
+  grep -q '^## 6.2 Deploy & manual verification' skills/feature/references/spec-template.md \
+    && grep -q 'deploy_prerequisites:' skills/feature/references/spec-template.md \
+    && grep -q 'smoke_check:' skills/feature/references/spec-template.md
+}
+
+check_skill_deploy_prerequisites_prompt_62() {
+  grep -qi 'deploy prerequisites' skills/feature/SKILL.md
+}
+
+check_skill_handling_subsection_62() {
+  grep -q '§6.2 handling' skills/feature/SKILL.md
+}
+
+check_skill_source_tag_62() {
+  grep -q 'source: §6.2:deploy_prerequisites' skills/feature/SKILL.md
+}
+
+check_skill_quick_check_banners_62() {
+  grep -q 'Quick check (from spec §6.2)' skills/feature/SKILL.md \
+    && grep -q 'complete deploy prerequisites below first' skills/feature/SKILL.md
+}
+
+check_skill_malformed_block_log_62() {
+  grep -q '§6.2 block malformed' skills/feature/SKILL.md
+}
+
+check "spec-template §6.2 heading and keys present"                 check_spec_template_deploy_recommendations_62
+check "SKILL.md has §6.2 deploy prerequisites prompt"               check_skill_deploy_prerequisites_prompt_62
+check "SKILL.md has §6.2 handling subsection"                       check_skill_handling_subsection_62
+check "SKILL.md has §6.2:deploy_prerequisites source tag"           check_skill_source_tag_62
+check "SKILL.md has §6.2 Quick-check banners (live and deferred)"   check_skill_quick_check_banners_62
+check "SKILL.md has §6.2 malformed-block Log template"              check_skill_malformed_block_log_62
+echo
+
 
 echo
 echo "Passed: $PASS"
