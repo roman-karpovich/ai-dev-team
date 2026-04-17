@@ -67,6 +67,8 @@ Check the project's Makefile / config to confirm which linter is in use. If ther
 - `observed.commit_shas` — append the commit SHA (after committing, so the SHA exists). If you rework, **append** the new SHA — do not replace; keep the full history.
 - `observed.commit_message_grep` (optional but recommended) — a regex the compliance checker can use to re-find the step's commits if the SHAs are ever invalidated. Use a stable stem like `"Step N"` or the step's title. If you `git commit --amend` or rebase, the old SHAs become unreachable — keep this field set so the compliance checker's tiered fallback can still diff the correct range.
 
+If the step adds or modifies a fresh test, `observed.notes` must include a one-sentence description of the regression the test catches (see R3).
+
 **j. Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`.
 
 - If the result is **PASS** → proceed to k.
@@ -87,6 +89,8 @@ When writing tests:
   - Complex formula → use an explicit constant; replicating complex logic risks copying the bug.
   - Named intermediate variables for call arguments/setup are fine; assertions themselves stay simple.
 - **No flaky tests**: freeze dates/times (freezegun, MockClock, `jest.useFakeTimers`), seed random values. A test that can fail on a Friday or after a year is a time bomb. If you cannot freeze a value, flag it as a design smell — don't write a fuzzy assertion.
+
+For test strength (whether a test actually catches regressions), see R3 in `code-quality-rules.md`.
 
 ---
 
@@ -162,6 +166,7 @@ Short-form summary — the full reasoning and application steps live in the refe
   the spec intentionally modifies existing behaviour (constants, formulas, formats): verify
   the break matches what §3 says and log the assertion update; otherwise treat a core failure
   as a regression and fix the code.
+- **R3 — Test strength / signal-to-noise.** Every fresh test must name the regression it catches in `observed.notes`; the test strength anti-patterns (tautological, setter-getter round-trip, mock-call-counter, `assertIsNotNone` on never-None, type-checker duplication) are weak — see R3 in `code-quality-rules.md`.
 
 ## Common Rules
 
