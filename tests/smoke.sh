@@ -1969,6 +1969,13 @@ check "cross-auditor.md bans codex.model_fast" \
 echo
 
 # --- Multi-GitHub-account (2026-04-18) ---
+
+# Helper: extract Phase 0.5 section from SKILL.md (between `## Phase 0.5:` and the next `## `).
+extract_phase_0_5() {
+  awk '/^## Phase 0\.5:/{in_s=1} in_s && /^## Phase 1-2:/{exit} in_s{print}' \
+    skills/cross-audit/SKILL.md
+}
+
 echo "Multi-GitHub-account config schema (Step 1):"
 
 # F1 (5 asserts): .ai-dev-team.yml.example has commented github: block with 5 keys on commented lines.
@@ -2002,6 +2009,146 @@ check "SKILL.md F2 Phase 0 github: block" check_skill_phase0_github_block
 
 check "SKILL.md F2 precedence line verbatim" \
   bash -c "grep -qF -- 'precedence: --account flag → URL host match → default_account → ambient gh auth' skills/cross-audit/SKILL.md"
+echo
+
+echo "Multi-GitHub-account Phase 0.5 (Step 2):"
+
+# F3 (6 asserts): each of 5 live Phase 0.5 gh call sites has the env prefix inline, plus preamble sentence.
+#
+# Sites pinned by searching the Phase 0.5 section for the prefix immediately followed by each call.
+check_f3_site_1_rate_limit() {
+  extract_phase_0_5 | grep -qF 'GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh api rate_limit' \
+    || { echo "F3 site 1: rate_limit call missing env prefix"; return 1; }
+  echo "F3 site 1 (rate_limit) prefixed OK"
+}
+check_f3_site_2a_repo_view() {
+  # preflight 3: caller's-cwd verification. Extract the preflight-3 bullet region and look for the prefix there.
+  extract_phase_0_5 | awk '
+    /cwd-repo matches pr_repo/{in_s=1}
+    in_s && /Resolve pr_number/{exit}
+    in_s{print}
+  ' | grep -qF 'GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh repo view --json nameWithOwner' \
+    || { echo "F3 site 2a: preflight-3 (cwd-repo) gh repo view missing env prefix"; return 1; }
+  echo "F3 site 2a (preflight 3 / cwd-repo) prefixed OK"
+}
+check_f3_site_2b_repo_view() {
+  # bare-pr resolver site. Extract the "Resolve pr_number" region and look for the prefix there.
+  extract_phase_0_5 | awk '
+    /Resolve pr_number/{in_s=1}
+    in_s && /Fetch pr_changed_files/{exit}
+    in_s{print}
+  ' | grep -qF 'GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh repo view --json nameWithOwner' \
+    || { echo "F3 site 2b: bare-pr resolver gh repo view missing env prefix"; return 1; }
+  echo "F3 site 2b (bare pr <N> resolver) prefixed OK"
+}
+check_f3_site_3_pr_view() {
+  extract_phase_0_5 | grep -qF 'GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh pr view <pr_number> --repo <pr_repo>' \
+    || { echo "F3 site 3: gh pr view missing env prefix"; return 1; }
+  echo "F3 site 3 (gh pr view) prefixed OK"
+}
+check_f3_site_4_pulls_files() {
+  extract_phase_0_5 | grep -qF 'GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh api "repos/<pr_repo>/pulls/<pr_number>/files"' \
+    || { echo "F3 site 4: gh api /pulls/<N>/files missing env prefix"; return 1; }
+  echo "F3 site 4 (pulls/<N>/files) prefixed OK"
+}
+check_f3_preamble_sentence() {
+  extract_phase_0_5 | tr '\n' ' ' | grep -qF -- 'gh auth status (preflight 1) is the ONLY unprefixed Phase 0.5 call — it probes ambient auth; all five other Phase 0.5 gh calls run under the resolved prefix when a github: account was resolved.' \
+    || { echo "F3 preamble sentence missing verbatim"; return 1; }
+  echo "F3 preamble sentence present verbatim"
+}
+
+check "SKILL.md F3 site 1 rate_limit prefixed" check_f3_site_1_rate_limit
+check "SKILL.md F3 site 2a cwd-repo verification prefixed" check_f3_site_2a_repo_view
+check "SKILL.md F3 site 2b bare-pr resolver prefixed" check_f3_site_2b_repo_view
+check "SKILL.md F3 site 3 gh pr view prefixed" check_f3_site_3_pr_view
+check "SKILL.md F3 site 4 pulls/<N>/files prefixed" check_f3_site_4_pulls_files
+check "SKILL.md F3 preamble sentence verbatim" check_f3_preamble_sentence
+
+# F4 (1 assert): new preflight bullet `token env resolves to non-empty` ordered between `gh auth status` and rate-limit.
+check_f4_token_preflight_ordered() {
+  local sec
+  sec=$(extract_phase_0_5)
+  # Collect line numbers (within section) of the three preflights.
+  local auth_ln token_ln rate_ln
+  auth_ln=$(printf '%s\n' "$sec" | grep -nF 'gh auth status' | head -1 | cut -d: -f1)
+  token_ln=$(printf '%s\n' "$sec" | grep -nF 'token env resolves to non-empty' | head -1 | cut -d: -f1)
+  rate_ln=$(printf '%s\n' "$sec" | grep -nF 'rate_limit' | head -1 | cut -d: -f1)
+  if [ -z "$auth_ln" ] || [ -z "$token_ln" ] || [ -z "$rate_ln" ]; then
+    echo "F4: missing one of (gh auth status / token env resolves to non-empty / rate_limit) in Phase 0.5"
+    return 1
+  fi
+  if [ "$auth_ln" -ge "$token_ln" ] || [ "$token_ln" -ge "$rate_ln" ]; then
+    echo "F4: ordering wrong — auth=$auth_ln token=$token_ln rate=$rate_ln (need auth<token<rate)"
+    return 1
+  fi
+  # Remediation must name a concrete env var (e.g. GH_TOKEN_PERSONAL).
+  printf '%s\n' "$sec" | grep -qE 'GH_TOKEN_[A-Z]+' \
+    || { echo "F4: remediation must name an env var (e.g. GH_TOKEN_PERSONAL)"; return 1; }
+  echo "F4 token-env preflight bullet ordered + named env var OK"
+}
+check "SKILL.md F4 token-env preflight bullet ordered" check_f4_token_preflight_ordered
+
+# F5 (2 asserts): --account <name> flag header + §3.7b matrix with 8 rows (a)-(h) at line-start.
+check_f5_account_flag_header() {
+  # Flags section lists --account <name>.
+  awk '/^\*\*Flags\*\*/{in_s=1} in_s && /^## /{exit} in_s && /^---$/{exit} in_s{print}' \
+    skills/cross-audit/SKILL.md \
+    | grep -qE '^\s*-\s+`--account' \
+    || { echo "F5: Flags section missing --account <name> bullet"; return 1; }
+  echo "F5 --account flag header present in Flags section"
+}
+check_f5_matrix_rows_verbatim() {
+  local sec
+  sec=$(extract_phase_0_5)
+  local c
+  for c in 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h'; do
+    printf '%s\n' "$sec" | grep -qE "^\| \($c\) \|" \
+      || { echo "F5: §3.7b matrix row ($c) missing in Phase 0.5"; return 1; }
+  done
+  echo "F5 §3.7b matrix 8 rows (a)-(h) present in Phase 0.5"
+}
+check "SKILL.md F5 --account flag" check_f5_account_flag_header
+check "SKILL.md F5 §3.7b matrix 8 rows" check_f5_matrix_rows_verbatim
+
+# F6 (1 assert): literal token `accounts[*].host` appears in Phase 0.5 prose.
+check_f6_accounts_host_literal() {
+  extract_phase_0_5 | grep -qF 'accounts[*].host' \
+    || { echo "F6: 'accounts[*].host' literal missing from Phase 0.5"; return 1; }
+  echo "F6 accounts[*].host literal present"
+}
+check "SKILL.md F6 accounts[*].host literal in Phase 0.5" check_f6_accounts_host_literal
+
+# F11 (1 assert): backwards-compat operative sentence verbatim.
+check_f11_backcompat_sentence() {
+  extract_phase_0_5 | tr '\n' ' ' | grep -qF -- 'When .ai-dev-team.local.yml contains no github: block, Phase 0.5 skips account resolution entirely; every gh call runs without the env prefix, preserving current single-account behaviour.' \
+    || { echo "F11: backwards-compat sentence missing verbatim"; return 1; }
+  echo "F11 backwards-compat sentence present verbatim"
+}
+check "SKILL.md F11 backwards-compat sentence" check_f11_backcompat_sentence
+
+# F12 (3 asserts): Phase 1-2 Step 2 dispatch template adds gh_token_env + gh_host + annotation rule.
+extract_step2_dispatch() {
+  awk '/^### Step 2: Launch cross-auditor/{in_s=1} in_s && /^### Step 3:/{exit} in_s{print}' \
+    skills/cross-audit/SKILL.md
+}
+check_f12_gh_token_env() {
+  extract_step2_dispatch | grep -qE '^gh_token_env:' \
+    || { echo "F12: Step 2 dispatch missing 'gh_token_env:' line"; return 1; }
+  echo "F12 gh_token_env: present in dispatch template"
+}
+check_f12_gh_host() {
+  extract_step2_dispatch | grep -qE '^gh_host:' \
+    || { echo "F12: Step 2 dispatch missing 'gh_host:' line"; return 1; }
+  echo "F12 gh_host: present in dispatch template"
+}
+check_f12_annotation_rule() {
+  extract_step2_dispatch | tr '\n' ' ' | grep -qF -- 'When no account resolved, both fields are OMITTED from the dispatch (not present as empty strings). This is mandatory — an empty-string value would leak into the agent as a literal, triggering an I2 violation.' \
+    || { echo "F12: annotation rule missing verbatim"; return 1; }
+  echo "F12 annotation rule present verbatim"
+}
+check "SKILL.md F12 gh_token_env in dispatch" check_f12_gh_token_env
+check "SKILL.md F12 gh_host in dispatch" check_f12_gh_host
+check "SKILL.md F12 annotation rule verbatim" check_f12_annotation_rule
 echo
 
 
