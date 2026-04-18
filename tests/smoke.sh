@@ -1729,6 +1729,142 @@ check "code-quality-rule-r4-present"                      check_code_quality_rul
 check "code-quality-rule-r4-content-complete"             check_code_quality_rule_r4_content_complete
 echo
 
+# --- R5 test-file-location rule (2026-04-18) ---
+echo "R5 test-file-location rule:"
+
+CQR_R5='skills/feature/references/code-quality-rules.md'
+DWF_R5='skills/feature/references/developer-workflow.md'
+R5_HDR='## R5 — Tests live in a dedicated file, not inline in the implementation'
+
+# (1) R5 heading literal present in code-quality-rules.md
+check_r5_rule_heading_present() {
+  grep -qF -- "$R5_HDR" "$CQR_R5" \
+    || { echo "code-quality-rules.md missing '$R5_HDR' heading"; return 1; }
+  echo "R5 heading present in code-quality-rules.md"
+}
+
+# (2) Structure triplet present inside R5 section
+check_r5_structure_triplet_present() {
+  local R5
+  R5=$(extract_md_section "$CQR_R5" "$R5_HDR")
+  printf '%s\n' "$R5" | grep -qF '**Rule**:' || { echo "R5 section missing '**Rule**:' subheading"; return 1; }
+  printf '%s\n' "$R5" | grep -qF '**Why**:' || { echo "R5 section missing '**Why**:' subheading"; return 1; }
+  printf '%s\n' "$R5" | grep -qF '**How to apply**:' || { echo "R5 section missing '**How to apply**:' subheading"; return 1; }
+  echo "R5 structure triplet (Rule/Why/How to apply) present"
+}
+
+# (3) Key anchor tokens present inside R5 section (soroban, repo convention, #[cfg(test)], tests.rs|tests/)
+check_r5_key_tokens_present() {
+  local R5
+  R5=$(extract_md_section "$CQR_R5" "$R5_HDR")
+  printf '%s\n' "$R5" | grep -qiF 'soroban' || { echo "R5 missing 'soroban' anchor token"; return 1; }
+  printf '%s\n' "$R5" | grep -qiF 'repo convention' || { echo "R5 missing 'repo convention' anchor token"; return 1; }
+  printf '%s\n' "$R5" | grep -qF '#[cfg(test)]' || { echo "R5 missing '#[cfg(test)]' anchor token (case-sensitive)"; return 1; }
+  if ! printf '%s\n' "$R5" | grep -qF 'tests.rs' && ! printf '%s\n' "$R5" | grep -qF 'tests/'; then
+    echo "R5 missing dedicated-test-file reference ('tests.rs' or 'tests/')"; return 1
+  fi
+  echo "R5 key tokens (soroban, repo convention, #[cfg(test)], tests.rs|tests/) all present"
+}
+
+# (4) Byte-exact project-rule disclaimer sentence inside R5 section (C5)
+check_r5_project_rule_disclaimer_present() {
+  local R5
+  R5=$(extract_md_section "$CQR_R5" "$R5_HDR")
+  printf '%s\n' "$R5" | grep -qF "This is a project rule, not a Rust idiom — mirror the convention of the target repo before deciding where tests live." \
+    || { echo "R5 missing byte-exact project-rule disclaimer sentence (C5)"; return 1; }
+  echo "R5 project-rule disclaimer sentence present byte-exact"
+}
+
+# Helper: emit the **How to apply**: sub-block of R5 (lines after the marker,
+# up to next bold-label line, '---' separator, or EOF — see §3.6 reference awk).
+r5_how_to_apply_subblock() {
+  extract_md_section "$CQR_R5" "$R5_HDR" | awk '
+    /^\*\*How to apply\*\*:/ { in_block=1; next }
+    in_block && /^\*\*[A-Za-z ]+\*\*:/ { in_block=0 }
+    in_block && /^---$/ { in_block=0 }
+    in_block { print }
+  '
+}
+
+# (5) How-to-apply floor: >=3 numbered items inside the sub-block (C6)
+check_r5_how_to_apply_floor_3() {
+  local sub count
+  sub=$(r5_how_to_apply_subblock)
+  count=$(printf '%s\n' "$sub" | grep -cE '^[0-9]+\. ')
+  [ "$count" -ge 3 ] || { echo "R5 How-to-apply has <3 numbered items ($count)"; return 1; }
+  echo "R5 How-to-apply floor satisfied (>=3 numbered items: $count)"
+}
+
+# (6) Grep-discovery step present in How-to-apply sub-block (C7): line
+# contains '#[cfg(test)]' AND one of grep / rg (case-insensitive, unescaped ERE pipe).
+check_r5_grep_discovery_step_present() {
+  local sub
+  sub=$(r5_how_to_apply_subblock)
+  printf '%s\n' "$sub" | grep -F '#[cfg(test)]' | grep -qiE '\bgrep\b|\brg\b' \
+    || { echo "R5 How-to-apply missing discovery step mentioning '#[cfg(test)]' AND grep/rg"; return 1; }
+  echo "R5 How-to-apply has #[cfg(test)] + grep/rg discovery step"
+}
+
+# (7) Majority wording present inside R5 section (C8)
+check_r5_majority_wording_present() {
+  local R5
+  R5=$(extract_md_section "$CQR_R5" "$R5_HDR")
+  printf '%s\n' "$R5" | grep -qiF 'majority' \
+    || { echo "R5 missing 'majority' wording (C8)"; return 1; }
+  echo "R5 majority wording present"
+}
+
+# (8) Byte-exact mixed-fallback sentence inside R5 section (C9)
+check_r5_mixed_fallback_present() {
+  local R5
+  R5=$(extract_md_section "$CQR_R5" "$R5_HDR")
+  printf '%s\n' "$R5" | grep -qF "If the repo is mixed or has no clear majority, default to a dedicated test file." \
+    || { echo "R5 missing byte-exact mixed-fallback sentence (C9)"; return 1; }
+  echo "R5 mixed-fallback sentence present byte-exact"
+}
+
+# (9) Byte-exact **Rule**: sentence inside R5 section (C10)
+check_r5_rule_sentence_present() {
+  local R5
+  R5=$(extract_md_section "$CQR_R5" "$R5_HDR")
+  printf '%s\n' "$R5" | grep -qF "**Rule**: tests must live in a separate file from the code they cover; mirror the repo's existing test layout, and default to a dedicated test file when no convention exists or the repo is mixed." \
+    || { echo "R5 missing byte-exact **Rule**: sentence (C10)"; return 1; }
+  echo "R5 **Rule**: sentence present byte-exact"
+}
+
+# (10) R5 short-form bullet inside §Code Quality Rules of developer-workflow.md —
+# S1+S2+S3 verified as three independent grep -qF -- checks on the isolated bullet paragraph.
+check_developer_workflow_short_form_r5() {
+  local section para
+  section=$(extract_md_section "$DWF_R5" '## Code Quality Rules')
+  para=$(printf '%s\n' "$section" | awk '
+    /^- \*\*R5 — Tests live in a dedicated file, not inline in the implementation\.\*\*/ { in_p=1; print; next }
+    in_p && /^[[:space:]]*$/ { exit }
+    in_p && /^- \*\*/ { exit }
+    in_p { print }
+  ')
+  [ -n "$para" ] || { echo "developer-workflow.md §Code Quality Rules missing R5 bullet (S1 prefix not found)"; return 1; }
+  printf '%s\n' "$para" | grep -qF -- '- **R5 — Tests live in a dedicated file, not inline in the implementation.**' \
+    || { echo "developer-workflow.md R5 bullet missing byte-exact S1 prefix"; return 1; }
+  printf '%s\n' "$para" | grep -qF -- 'repo convention' \
+    || { echo "developer-workflow.md R5 bullet missing 'repo convention' (S2)"; return 1; }
+  printf '%s\n' "$para" | grep -qF -- 'code-quality-rules.md' \
+    || { echo "developer-workflow.md R5 bullet missing 'code-quality-rules.md' reference (S3)"; return 1; }
+  echo "developer-workflow.md §Code Quality Rules has R5 short-form bullet (S1+S2+S3)"
+}
+
+check "r5-rule-heading-present"                           check_r5_rule_heading_present
+check "r5-structure-triplet-present"                      check_r5_structure_triplet_present
+check "r5-key-tokens-present"                             check_r5_key_tokens_present
+check "r5-project-rule-disclaimer-present"                check_r5_project_rule_disclaimer_present
+check "r5-how-to-apply-floor-3"                           check_r5_how_to_apply_floor_3
+check "r5-grep-discovery-step-present"                    check_r5_grep_discovery_step_present
+check "r5-majority-wording-present"                       check_r5_majority_wording_present
+check "r5-mixed-fallback-present"                         check_r5_mixed_fallback_present
+check "r5-rule-sentence-present"                          check_r5_rule_sentence_present
+check "developer-workflow-short-form-r5"                  check_developer_workflow_short_form_r5
+echo
+
 
 echo
 echo "Passed: $PASS"
