@@ -84,6 +84,7 @@ locks in the wrong contract.
    its assertion, it becomes fresh. Reviewers should scrutinise the update against the spec
    intent, not just the green capture.
 
+For test scope (whether the test exercises the user-facing contract or an internal collaborator), see R6 — scope is orthogonal to the core/fresh trust tier and must be evaluated independently.
 ---
 
 ## R3 — Test strength / signal-to-noise
@@ -173,5 +174,40 @@ tautological/shape-only assertions before they accumulate as green-CI ballast.
 3. If the repo is mixed or has no clear majority, default to a dedicated test file. Create `tests.rs` next to the module under test (or extend an existing `tests/` directory) and wire it up with `#[cfg(test)] mod tests;` in the parent module. Note the decision in the spec Log so reviewers can see which convention the branch established.
 4. If the repo convention is explicitly inline (every `#[cfg(test)]` hit lives inside the production file), follow it — R5 is mirror-the-convention, not dedicated-file-always. Consistency with the existing codebase beats aesthetic preference.
 5. Reviewers verify the layout matches the convention they see elsewhere in the repo. A mismatch (inline tests in a dedicated-file repo, or vice versa) is a review block, not a warning — fix it before APPROVED.
+
+---
+
+## R6 — Test scope / core tests exercise the user-facing contract
+
+**Rule**:
+Core tests exercise the user-facing contract (HTTP endpoint, smart-contract method, library's public API, CLI entry point) with real internal collaborators; mocks are placed only at out-of-process dependency boundaries (network, external HTTP, brokers, filesystem used as a production channel).
+
+**Why**:
+R3 introduced Khorikov's 4-pillar framework — (1) protection against regressions, (2) resistance to refactoring, (3) fast feedback, (4) maintainability — and applied it to assertion strength. R6 is the orthogonal axis: at what **scope** the test is applied. A strong assertion bolted onto the wrong scope (e.g. a unit test mocking the production DB and asserting a precise return value through three layers of internal fakes) can still collapse pillar (2) and score illusory pillar (1) — the assertion is tight but the test breaks under any internal rearrangement, and a real regression in the integration of those layers goes uncaught.
+
+R6 picks the Classical (Detroit) school from Khorikov ch. 2 — tests bind to the system's user-facing contract, internal collaborators stay real, and mocks sit at out-of-process dependency boundaries only. London-school tests (mock every collaborator, assert on internal communication) optimise pillar (1) through isolation but structurally defeat pillar (2). Used together, R3 (strong assertion) and R6 (right scope) reach high pillar (1) AND high pillar (2) simultaneously — the sweet spot Khorikov describes in ch. 5.
+
+See Khorikov, *Unit Testing: Principles, Practices, and Patterns* (Manning, 2020), chs. 2, 5, 8, for the Classical-vs-London schools, the 4-pillar trade-off, and the integration-test scope argument this rule adopts.
+
+**How to apply**:
+
+1. Identify the user-facing contract for the system under test per its stack. R6 binds the contract definition to concrete harnesses, not vocabulary:
+   - **HTTP service** — the set of HTTP endpoints, their request/response schemas, and their documented status codes. Testing a view function by direct Python call (bypassing URL routing, middleware, request serialisation) is NOT user-facing; testing the same view through the `Django APIClient` harness (e.g. `APIClient.post(url, data)`) IS.
+   - **Soroban smart contract** — the set of public contract methods invoked through the Soroban `Env` harness (auth, storage layout, events all exercised via the Env-backed client). Testing an internal helper function directly is NOT user-facing; testing `env.invoke_contract("deposit", args)` via the Soroban Env IS.
+   - **EVM smart contract** — the set of public contract methods invoked through a `forge` fork-test (or equivalent `vm.prank` / simulate harness). Testing an internal library function or a `virtual` dispatch target directly is NOT user-facing; testing the public method through `forge` test against a fork of mainnet IS.
+   - **Library** — the set of symbols exposed by the package's `Python package API` (either imported via `__init__.py` or declared in the package's public API section / documented entry points). Testing a `_private_helper` from a `utils` module is NOT user-facing; testing `package.deposit(...)` via the package's own documented entry point IS.
+   - **CLI tool** — the set of commands, their flags, their exit codes, and their stdout/stderr shape. Testing the argparse handler directly is NOT user-facing; testing via `python -m package cmd --flag` (or equivalent `subprocess.run` invocation) IS — though if an in-process argparse entry is exposed as a public function, in-process call via that entry counts too.
+2. Keep internal collaborators real. The DB, the ORM, the message bus client library, the crypto primitives, and any in-process helper functions should run live in the test. Mocks belong only at out-of-process dependency boundaries (network, external HTTP services you do not own, message brokers, filesystems used as production channels). This is Khorikov's Classical-school line (ch. 2): mocking one's own code breaks pillar (2) without improving pillar (1), because a real regression in the integration of those collaborators now slips through unnoticed.
+3. Run the tests in-process whenever the stack supports it — the rule below is load-bearing:
+
+Tests run in-process wherever the stack supports it; a spawned runserver, geth, or external broker purely for testing is a smell — prefer an in-process harness (Django's APIClient, Soroban's Env::default, forge's --fork-url), and keep any spawned-process variant in a small e2e/smoke tier.
+
+4. Check the test against these anti-patterns — any one of them means the test is scoped to the wrong layer and should be re-scoped or deleted:
+   - **Overspecification** — the sole or primary assertion keys off internal communication (e.g. `mock.assert_called_with(...)` with nothing asserted about the observable effect). Violates pillar (2): the test breaks whenever the call site is refactored regardless of behaviour, and pillar (1) protection is illusory because wrong arguments can still satisfy the counter when the mock setup itself drifts.
+   - **Leaking implementation** — the test imports a private module or a service function that is not part of the user-facing contract (e.g. `from package._internal import _helper`). The test is bound to implementation geometry rather than the contract; any internal rearrangement breaks it without catching a real regression.
+   - **Spawned-process smell** — the test spins up a runserver, a geth node, or an external broker when an in-process harness exists. This is slow (pillar 3) and, more importantly, introduces a parallel process whose lifecycle and config drift silently from the production entry point, collapsing pillar (2).
+   - **In-memory substitution** — a real DB is replaced by an in-memory SQLite or a fake ORM "for speed". Khorikov ch. 8 is explicit against this: the in-memory store's behaviour diverges from production on exactly the cases integration tests are supposed to catch (transaction isolation, index usage, constraint propagation), so pillar (1) protection evaporates precisely where it matters.
+   - **Mock-heavy unit masquerading as integration** — a file named `test_integration.py` (or equivalent) where every dependency below the SUT is mocked; there is no real layer under the system under test. The name promises scope coverage the test does not deliver.
+5. When a test would force one of the above, re-scope it: either pull the assertion up to the user-facing contract (APIClient / Env / CLI subprocess / package-API call) with real collaborators below, or drop the test. Do not rescue the wrong scope by tightening the mock graph.
 
 ---
