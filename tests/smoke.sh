@@ -1865,6 +1865,158 @@ check "r5-rule-sentence-present"                          check_r5_rule_sentence
 check "developer-workflow-short-form-r5"                  check_developer_workflow_short_form_r5
 echo
 
+# --- R6 — Test scope / user-facing contract (spec: 2026-04-18) ---
+echo "R6 Test scope / user-facing contract:"
+
+CQR_R6='skills/feature/references/code-quality-rules.md'
+DWF_R6='skills/feature/references/developer-workflow.md'
+R6_HDR='## R6 — Test scope / core tests exercise the user-facing contract'
+
+# Canonical "How to apply" sub-extractor (spec §3.4a). Mirrors R5's
+# r5_how_to_apply_subblock termination rules — same canonical pattern.
+# Stdin: output of extract_md_section (a single rule section).
+# Emits every line AFTER the first "**How to apply**:" marker line, up to
+# the next bold-label line, a '---' rule, or EOF. The marker itself is
+# NOT emitted. If the marker is absent, emits nothing.
+extract_how_to_apply() {
+  awk '
+    !in_s && $0 == "**How to apply**:" { in_s = 1; next }
+    in_s && /^\*\*[A-Za-z ]+\*\*:/ { exit }
+    in_s && /^---$/ { exit }
+    in_s { print }
+  '
+}
+
+# Sibling helper (spec §3.4a, iter-9 X27, strict-adjacency per iter-10 X33):
+# emits the line IMMEDIATELY following "**Rule**:" — strict byte-adjacency,
+# no blank-line tolerance. Emits nothing if the marker is absent, the next
+# line is empty, or there is no next line.
+extract_rule_body_line() {
+  awk '
+    /^\*\*Rule\*\*:/ {
+      if ((getline nxt) > 0 && nxt != "") print nxt
+      exit
+    }
+  '
+}
+
+# F1: R6 heading line is present exactly once (whole-file, count-exact).
+check_r6_rule_heading_present() {
+  local c
+  c=$(grep -cFx "$R6_HDR" "$CQR_R6")
+  [ "$c" = "1" ] || { echo "code-quality-rules.md R6 heading count=$c, expected 1 (F1 count-exact)"; return 1; }
+  echo "R6 heading present byte-exact count=1"
+}
+
+# F2: Inside R6, each of **Rule**:, **Why**:, **How to apply**: appears
+# as a bare marker on its own line exactly once, and they appear in order.
+# iter-11 X34: R6 uses bare-marker form (NOT R1-R5's inline convention);
+# grep -cFx rejects inline `**Rule**: <body>` because it requires byte-exact
+# whole-line equality.
+check_r6_structure_triplet_present() {
+  local R6 c_rule c_why c_how ln_rule ln_why ln_how
+  R6=$(extract_md_section "$CQR_R6" "$R6_HDR")
+  c_rule=$(printf '%s\n' "$R6" | grep -cFx '**Rule**:')
+  c_why=$(printf '%s\n' "$R6" | grep -cFx '**Why**:')
+  c_how=$(printf '%s\n' "$R6" | grep -cFx '**How to apply**:')
+  [ "$c_rule" = "1" ] || { echo "R6 **Rule**: count=$c_rule, expected 1 (bare-marker whole-line; iter-11 X34)"; return 1; }
+  [ "$c_why" = "1" ] || { echo "R6 **Why**: count=$c_why, expected 1 (bare-marker whole-line)"; return 1; }
+  [ "$c_how" = "1" ] || { echo "R6 **How to apply**: count=$c_how, expected 1 (bare-marker whole-line)"; return 1; }
+  ln_rule=$(printf '%s\n' "$R6" | grep -nFx '**Rule**:' | head -1 | cut -d: -f1)
+  ln_why=$(printf '%s\n' "$R6" | grep -nFx '**Why**:' | head -1 | cut -d: -f1)
+  ln_how=$(printf '%s\n' "$R6" | grep -nFx '**How to apply**:' | head -1 | cut -d: -f1)
+  [ "$ln_rule" -lt "$ln_why" ] || { echo "R6 **Rule**: (line $ln_rule) not before **Why**: (line $ln_why)"; return 1; }
+  [ "$ln_why" -lt "$ln_how" ] || { echo "R6 **Why**: (line $ln_why) not before **How to apply**: (line $ln_how)"; return 1; }
+  echo "R6 structure triplet (Rule/Why/How to apply) present count-exact and ordered"
+}
+
+# F3: R6 How-to-apply sub-block enumerates 5 named anti-pattern tokens.
+check_r6_anti_patterns_enumerated() {
+  local sub
+  sub=$(extract_md_section "$CQR_R6" "$R6_HDR" | extract_how_to_apply)
+  printf '%s\n' "$sub" | grep -qiF 'Overspecification' \
+    || { echo "R6 How-to-apply missing 'Overspecification' anti-pattern"; return 1; }
+  printf '%s\n' "$sub" | grep -qiF 'Leaking implementation' \
+    || { echo "R6 How-to-apply missing 'Leaking implementation' anti-pattern"; return 1; }
+  printf '%s\n' "$sub" | grep -qiF 'Spawned-process smell' \
+    || { echo "R6 How-to-apply missing 'Spawned-process smell' anti-pattern"; return 1; }
+  printf '%s\n' "$sub" | grep -qiF 'In-memory substitution' \
+    || { echo "R6 How-to-apply missing 'In-memory substitution' anti-pattern"; return 1; }
+  printf '%s\n' "$sub" | grep -qiF 'Mock-heavy unit masquerading as integration' \
+    || { echo "R6 How-to-apply missing 'Mock-heavy unit masquerading as integration' anti-pattern"; return 1; }
+  echo "R6 How-to-apply has 5 anti-pattern tokens (Overspecification, Leaking implementation, Spawned-process smell, In-memory substitution, Mock-heavy unit masquerading as integration)"
+}
+
+# F4: Three R6 normative literals, each pinned byte-exact AND scoped to
+# its owning sub-block (iter-9 X27; collapsed into one smoke label):
+#   (a) Rule literal — line immediately after **Rule**: (extract_rule_body_line,
+#       strict byte-adjacency per iter-10 X33)
+#   (b) in-process rule — inside **How to apply**: sub-block
+#   (c) Khorikov citation — anywhere inside the R6 sub-section
+check_r6_normative_literals_present() {
+  local R6 R6_HOW rule_line F4A F4B F4C c_b c_c
+  F4A='Core tests exercise the user-facing contract (HTTP endpoint, smart-contract method, library'"'"'s public API, CLI entry point) with real internal collaborators; mocks are placed only at out-of-process dependency boundaries (network, external HTTP, brokers, filesystem used as a production channel).'
+  F4B='Tests run in-process wherever the stack supports it; a spawned runserver, geth, or external broker purely for testing is a smell — prefer an in-process harness (Django'"'"'s APIClient, Soroban'"'"'s Env::default, forge'"'"'s --fork-url), and keep any spawned-process variant in a small e2e/smoke tier.'
+  F4C='See Khorikov, *Unit Testing: Principles, Practices, and Patterns* (Manning, 2020), chs. 2, 5, 8, for the Classical-vs-London schools, the 4-pillar trade-off, and the integration-test scope argument this rule adopts.'
+  R6=$(extract_md_section "$CQR_R6" "$R6_HDR")
+  rule_line=$(printf '%s\n' "$R6" | extract_rule_body_line)
+  [ "$rule_line" = "$F4A" ] \
+    || { echo "R6 F4 (a) Rule literal mismatch (line after **Rule**: does not equal byte-exact expected; iter-11 X34 bare-marker + iter-10 X33 strict-adjacency required)"; return 1; }
+  R6_HOW=$(printf '%s\n' "$R6" | extract_how_to_apply)
+  c_b=$(printf '%s\n' "$R6_HOW" | grep -cFx "$F4B")
+  [ "$c_b" = "1" ] || { echo "R6 F4 (b) in-process rule count in How-to-apply=$c_b, expected 1 (byte-exact whole-line)"; return 1; }
+  c_c=$(printf '%s\n' "$R6" | grep -cFx "$F4C")
+  [ "$c_c" = "1" ] || { echo "R6 F4 (c) Khorikov citation count in R6=$c_c, expected 1 (byte-exact whole-line)"; return 1; }
+  echo "R6 normative literals all present byte-exact (Rule literal, in-process rule, Khorikov citation)"
+}
+
+# F5: R6 How-to-apply sub-block has 5 per-stack anchor tokens.
+# iter-5 X15: 5-to-5 alignment with §3.6 branches.
+# iter-9 X31: Soroban→env.invoke_contract, forge→vm.prank to avoid
+# substring collision with F4 (b)'s "Soroban's Env::default" / "forge's --fork-url".
+check_r6_per_stack_tokens_present() {
+  local sub
+  sub=$(extract_md_section "$CQR_R6" "$R6_HDR" | extract_how_to_apply)
+  printf '%s\n' "$sub" | grep -qiF 'Django APIClient' \
+    || { echo "R6 How-to-apply missing 'Django APIClient' token (HTTP stack)"; return 1; }
+  printf '%s\n' "$sub" | grep -qiF 'env.invoke_contract' \
+    || { echo "R6 How-to-apply missing 'env.invoke_contract' token (Soroban stack)"; return 1; }
+  printf '%s\n' "$sub" | grep -qiF 'vm.prank' \
+    || { echo "R6 How-to-apply missing 'vm.prank' token (EVM stack)"; return 1; }
+  printf '%s\n' "$sub" | grep -qiF 'Python package API' \
+    || { echo "R6 How-to-apply missing 'Python package API' token (library stack)"; return 1; }
+  printf '%s\n' "$sub" | grep -qiF 'python -m' \
+    || { echo "R6 How-to-apply missing 'python -m' token (CLI stack)"; return 1; }
+  echo "R6 How-to-apply has 5 per-stack tokens (Django APIClient, env.invoke_contract, vm.prank, Python package API, python -m)"
+}
+
+# F8: R2 How-to-apply sub-block ends with the R6 forward-pointer sentence.
+# Three collapsed guards (one smoke label per spec §3.4 F8):
+#   (a) grep -cFx <F8> = 1 (byte-exact whole-line, iter-4 X9)
+#   (b) numbered-item count = 5 (iter-2 X5)
+#   (c) F8 is the last non-empty line of the sub-block (iter-5 X12,
+#       supersedes iter-2 X5 ordering guard)
+check_r2_points_to_r6_for_scope() {
+  local sub count_exact count last_nonempty F8
+  F8='For test scope (whether the test exercises the user-facing contract or an internal collaborator), see R6 — scope is orthogonal to the core/fresh trust tier and must be evaluated independently.'
+  sub=$(extract_md_section "$CQR_R6" '## R2 — Trust tiers for tests' | extract_how_to_apply)
+  count_exact=$(printf '%s\n' "$sub" | grep -cFx "$F8")
+  [ "$count_exact" = "1" ] || { echo "R2 F8 count_exact=$count_exact, expected 1 (byte-exact whole-line; iter-4 X9 guard)"; return 1; }
+  count=$(printf '%s\n' "$sub" | grep -cE '^[0-9]+\. ')
+  [ "$count" = "5" ] || { echo "R2 How-to-apply numbered-item count is $count, expected 5 (F8 placement guard)"; return 1; }
+  last_nonempty=$(printf '%s\n' "$sub" | awk 'NF' | tail -1)
+  [ "$last_nonempty" = "$F8" ] || { echo "R2 F8 is not the last non-empty line of How-to-apply (last_nonempty=$last_nonempty); iter-5 X12 guard"; return 1; }
+  echo "R2 points to R6 for scope (F8 byte-exact count=1; last-nonempty-line verified)"
+}
+
+check "r6-rule-heading-present"                           check_r6_rule_heading_present
+check "r6-structure-triplet-present"                      check_r6_structure_triplet_present
+check "r6-anti-patterns-enumerated"                       check_r6_anti_patterns_enumerated
+check "r6-normative-literals-present"                     check_r6_normative_literals_present
+check "r6-per-stack-tokens-present"                       check_r6_per_stack_tokens_present
+check "r2-points-to-r6-for-scope"                         check_r2_points_to_r6_for_scope
+echo
+
 # --- Codex Fast config surface ---
 echo "Codex Fast config surface:"
 
