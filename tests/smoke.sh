@@ -2024,7 +2024,7 @@ check_developer_workflow_short_form_r6() {
   local sub count F6
   F6='- **R6 — Test scope / core tests exercise the user-facing contract.** Prefer tests that drive the system through its public contract (HTTP route, smart-contract method, library API, CLI entry) rather than internal collaborators. See R6 in `code-quality-rules.md`.'
   sub=$(extract_md_section "$DWF_R6" '## Code Quality Rules')
-  count=$(printf '%s\n' "$sub" | grep -cFx "$F6")
+  count=$(printf '%s\n' "$sub" | grep -cFx -- "$F6")
   [ "$count" = "1" ] || { echo "developer-workflow.md §Code Quality Rules F6 byte-exact count=$count, expected 1"; return 1; }
   echo "developer-workflow.md §Code Quality Rules has R6 short-form bullet (byte-exact count=1)"
 }
