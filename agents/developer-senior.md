@@ -7,6 +7,7 @@ description: >
   Claude Opus — higher reasoning, better at catching edge cases upfront.
 when_to_pick: Senior developer for cross-cutting refactors, new abstractions, security-sensitive code, and ambiguous scope requiring design judgment.
 model: opus
+effort: xhigh
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
