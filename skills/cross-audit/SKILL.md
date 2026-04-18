@@ -59,6 +59,24 @@ codex:
 10. If no valid config resolved `kb_path` and a sibling KB is auto-discovered, confirm with the user before using it. After explicit confirmation in the legacy flow, save `kb_path` and `project` to memory (`reference_kb_<project>.md`).
 11. After legacy discovery succeeds, if `.ai-dev-team.yml` does not exist in the repo root, prompt: **"Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]"**. On yes: write a file with the resolved fields (copy-and-substitute from `.ai-dev-team.yml.example` if present). If the file exists but lacks one of these fields, print a one-line warning — never overwrite user config automatically.
 12. Also read `codex.model` and `codex.reasoning_effort`. Pass them into the cross-auditor dispatch as `codex_model` and `codex_reasoning_effort`. If absent, cross-auditor uses its built-in defaults.
+13. Also read the optional `github:` block from `.ai-dev-team.local.yml` (account identities are personal, not team-shared — so this block lives in the local override file, not the team-shared `.ai-dev-team.yml`). Shape:
+
+```yaml
+github:
+  default_account: personal
+  accounts:
+    personal:
+      token_env: GH_TOKEN_PERSONAL
+    corp:
+      token_env: GH_TOKEN_CORP
+      host: github.company.com
+```
+
+The block is optional. When present, it enables multi-account auth routing for PR-mode audits and publish: Phase 0.5 resolves one account per invocation and every subsequent `gh` call in the PR-audit surface is prefixed with `GH_TOKEN="${<token_env>}" GH_HOST="<host>"` so the credential is scoped to that subprocess without mutating global `gh auth` state. Resolution precedence (see Phase 0.5 for the full matrix):
+
+`precedence: --account flag → URL host match → default_account → ambient gh auth`
+
+When the `github:` block is absent, Phase 0.5 skips account resolution entirely and every `gh` call runs bare — existing single-account users are unaffected.
 
 **New audit**: generate `audit_slug` = `YYYY-MM-DD-<scope-slug>`.
 **Re-audit**: extract `audit_slug` from the existing findings doc filename — strip the path prefix and `-findings.md` suffix (e.g. `…/2026-04-14-workflow-definitions-findings.md` → `2026-04-14-workflow-definitions`). Do NOT regenerate from the current date; the slug must match the original to write to the same file.

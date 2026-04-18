@@ -1968,6 +1968,42 @@ check "cross-auditor.md bans codex.model_fast" \
   bash -c "grep -qF -- '- **Never** read \`codex.model_fast\`. Cross-audit always uses \`codex.model\` (normal) or the Codex default; Fast is developer-codex-only.' agents/cross-auditor.md"
 echo
 
+# --- Multi-GitHub-account (2026-04-18) ---
+echo "Multi-GitHub-account config schema (Step 1):"
+
+# F1 (5 asserts): .ai-dev-team.yml.example has commented github: block with 5 keys on commented lines.
+check "yml.example F1 commented 'github:' line" \
+  bash -c "grep -qE '^#[[:space:]]*github:' .ai-dev-team.yml.example"
+check "yml.example F1 commented 'default_account:' line" \
+  bash -c "grep -qE '^#[[:space:]]+default_account:' .ai-dev-team.yml.example"
+check "yml.example F1 commented 'accounts:' line" \
+  bash -c "grep -qE '^#[[:space:]]+accounts:' .ai-dev-team.yml.example"
+check "yml.example F1 commented 'token_env:' line" \
+  bash -c "grep -qE '^#[[:space:]]+token_env:' .ai-dev-team.yml.example"
+check "yml.example F1 commented 'host:' line" \
+  bash -c "grep -qE '^#[[:space:]]+host:' .ai-dev-team.yml.example"
+
+# F2 (2 asserts): SKILL.md Phase 0 documents github: block AND contains the verbatim precedence line.
+check_skill_phase0_github_block() {
+  # Extract Phase 0 section up to next ## heading, then verify it contains `github:` block markers.
+  local sec
+  sec=$(awk '/^## Phase 0: KB Discovery/{in_s=1} in_s && /^## Phase 0\.5:/{exit} in_s{print}' skills/cross-audit/SKILL.md)
+  printf '%s\n' "$sec" | grep -qE '^[[:space:]]*github:' \
+    || { echo "Phase 0 missing github: block entry"; return 1; }
+  printf '%s\n' "$sec" | grep -qE '^[[:space:]]*default_account:' \
+    || { echo "Phase 0 missing default_account: under github: block"; return 1; }
+  printf '%s\n' "$sec" | grep -qE '^[[:space:]]*accounts:' \
+    || { echo "Phase 0 missing accounts: under github: block"; return 1; }
+  printf '%s\n' "$sec" | grep -qE '^[[:space:]]*token_env:' \
+    || { echo "Phase 0 missing token_env: under github: block"; return 1; }
+  echo "SKILL.md Phase 0 github: block documented"
+}
+check "SKILL.md F2 Phase 0 github: block" check_skill_phase0_github_block
+
+check "SKILL.md F2 precedence line verbatim" \
+  bash -c "grep -qF -- 'precedence: --account flag → URL host match → default_account → ambient gh auth' skills/cross-audit/SKILL.md"
+echo
+
 
 echo
 echo "Passed: $PASS"
