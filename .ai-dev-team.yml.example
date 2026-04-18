@@ -16,3 +16,16 @@ kb_path: <set-me>
 #   reasoning_effort: xhigh   # one of minimal|low|medium|high|xhigh (default: xhigh)
 #   model_fast: gpt-5.4-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)
 #   NOTE: when codex.model_fast is set, codex.model must also be set and must differ from codex.model_fast (otherwise cross-auditor would use Fast reasoning).
+
+# Optional: Multi-GitHub-account config — put this block in `.ai-dev-team.local.yml`
+# (NOT the team-shared `.ai-dev-team.yml`). Account identities and token env var
+# names are personal, not team-shared. When this block is absent, `/cross-audit pr`
+# runs every `gh` call under the ambient `gh auth` context (backwards-compat).
+# github:
+#   default_account: personal
+#   accounts:
+#     personal:
+#       token_env: GH_TOKEN_PERSONAL
+#     corp:
+#       token_env: GH_TOKEN_CORP
+#       host: github.company.com
