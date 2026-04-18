@@ -66,7 +66,7 @@ codex:
    - `project`: use memory if available, otherwise use the current repo directory name, then ask if ambiguous
 10. If no valid config resolved `kb_path` and a sibling KB is auto-discovered, confirm with the user before using it. After explicit confirmation in the legacy flow, save `kb_path` and `project` to memory (`reference_kb_<project>.md`).
 11. After legacy discovery succeeds (step 9 or 10 resolved via memory / sibling / ask), if `.ai-dev-team.yml` does not exist in the repo root, prompt: **"Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]"**. On yes: write a file containing the resolved `kb_path` and `project` fields (copy-and-substitute from `.ai-dev-team.yml.example` if present). If the file exists but lacks one of these fields, print a one-line warning with the value to add — never overwrite user config automatically.
-12. Also read `codex.model` and `codex.reasoning_effort` from the same config chain. When the feature skill dispatches to `developer-codex` or spawns `cross-auditor`, pass these through as `codex_model` and `codex_reasoning_effort` input params. If both are absent the agents use their built-in defaults.
+12. Also read `codex.model` and `codex.reasoning_effort` from the same config chain. When the feature skill dispatches to `developer-codex` or spawns `cross-auditor`, pass these through as `codex_model` and `codex_reasoning_effort` input params. If both are absent the agents use their built-in defaults. Also read `codex.model_fast` from the same config chain; it is forwarded as `codex_model` only when the user picks "Codex Fast" from the agent-selection menu. `cross-auditor` never receives `codex.model_fast`.
 
 ---
 

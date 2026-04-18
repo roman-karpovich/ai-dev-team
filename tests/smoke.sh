@@ -1865,6 +1865,22 @@ check "r5-rule-sentence-present"                          check_r5_rule_sentence
 check "developer-workflow-short-form-r5"                  check_developer_workflow_short_form_r5
 echo
 
+# --- Codex Fast config surface ---
+echo "Codex Fast config surface:"
+
+check "codex.model_fast documented in .ai-dev-team.yml.example" \
+  bash -c "grep -qF -- '#   model_fast: gpt-5.4-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)' .ai-dev-team.yml.example"
+
+check "SKILL.md Phase 0 has codex.model_fast byte-exact sentence" \
+  bash -c "grep -qF -- 'Also read \`codex.model_fast\` from the same config chain; it is forwarded as \`codex_model\` only when the user picks \"Codex Fast\" from the agent-selection menu. \`cross-auditor\` never receives \`codex.model_fast\`.' skills/feature/SKILL.md"
+
+check ".ai-dev-team.yml.example documents model_fast precondition" \
+  bash -c "grep -qF -- '#   NOTE: when codex.model_fast is set, codex.model must also be set and must differ from codex.model_fast (otherwise cross-auditor would use Fast reasoning).' .ai-dev-team.yml.example"
+
+check "SKILL.md Phase 0 retains legacy codex.model propagation sentence" \
+  bash -c "grep -qF -- 'Also read \`codex.model\` and \`codex.reasoning_effort\` from the same config chain. When the feature skill dispatches to \`developer-codex\` or spawns \`cross-auditor\`, pass these through as \`codex_model\` and \`codex_reasoning_effort\` input params.' skills/feature/SKILL.md"
+echo
+
 
 echo
 echo "Passed: $PASS"
