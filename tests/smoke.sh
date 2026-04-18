@@ -1881,6 +1881,66 @@ check "SKILL.md Phase 0 retains legacy codex.model propagation sentence" \
   bash -c "grep -qF -- 'Also read \`codex.model\` and \`codex.reasoning_effort\` from the same config chain. When the feature skill dispatches to \`developer-codex\` or spawns \`cross-auditor\`, pass these through as \`codex_model\` and \`codex_reasoning_effort\` input params.' skills/feature/SKILL.md"
 echo
 
+# --- Codex Fast routing ---
+echo "Codex Fast routing:"
+
+assert_codex_fast_section_present() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
+  [ -n "$sec" ] || { echo "## Codex Fast (opt-in) section missing"; return 1; }
+  echo "## Codex Fast (opt-in) section present"
+}
+check "Codex Fast routing section present" assert_codex_fast_section_present
+
+assert_codex_fast_triggers_bulletform() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
+  printf '%s\n' "$sec" | grep -qE '^- \*\*T-CF1\*\*:' || { echo "- **T-CF1**: bullet missing"; return 1; }
+  printf '%s\n' "$sec" | grep -qE '^- \*\*T-CF2\*\*:' || { echo "- **T-CF2**: bullet missing"; return 1; }
+  echo "T-CF1/T-CF2 bullets present in Codex Fast section"
+}
+check "T-CF bullets defined in Codex Fast section" assert_codex_fast_triggers_bulletform
+
+assert_codex_fast_ban_line() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
+  printf '%s\n' "$sec" | grep -qF -- '**Cross-auditor never consumes `codex.model_fast`.** Audit reasoning depth is non-negotiable; Fast is developer-codex-only.' \
+    || { echo "cross-auditor ban line missing from Codex Fast section"; return 1; }
+  echo "cross-auditor ban line present"
+}
+check "cross-auditor ban line in Codex Fast section" assert_codex_fast_ban_line
+
+assert_codex_fast_anti_triggers() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
+  # F8: **Anti-triggers** label followed by at least one '- ' bullet (skip blanks)
+  printf '%s\n' "$sec" | awk '
+    /\*\*Anti-triggers\*\*/ { found=1; next }
+    found && /^[[:space:]]*$/ { next }
+    found { if (/^- /) { ok=1; exit } else { exit } }
+    END { exit(ok?0:1) }
+  ' || { echo "**Anti-triggers** label + bullet missing in Codex Fast section"; return 1; }
+  # F9: all 3 tokens must appear within the section
+  printf '%s\n' "$sec" | grep -qF -- 'security-sensitive' || { echo "token security-sensitive missing"; return 1; }
+  printf '%s\n' "$sec" | grep -qF -- 'cross-cutting'      || { echo "token cross-cutting missing"; return 1; }
+  printf '%s\n' "$sec" | grep -qF -- 'new-abstraction'    || { echo "token new-abstraction missing"; return 1; }
+  echo "Anti-triggers + 3 category tokens present"
+}
+check "Anti-triggers block with 3 tokens in Codex Fast section" assert_codex_fast_anti_triggers
+
+assert_rationale_logging_four_sections() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Rationale logging")
+  printf '%s\n' "$sec" | grep -qF -- '`rationale=` MUST be a trigger ID from one of the four agent sections above (including `Codex Fast`).' \
+    || { echo "## Rationale logging missing updated 'four agent sections' sentence"; return 1; }
+  echo "Rationale logging sentence updated to four agent sections"
+}
+check "Rationale logging mentions four agent sections" assert_rationale_logging_four_sections
+
+check "agent-routing preamble lists T-CF# as valid" \
+  bash -c "grep -qF -- 'Trigger IDs below (\`T-C#\`, \`T-S#\`, \`T-M#\`, \`T-CF#\`) are the only valid \`rationale=\` values in \`last_agent=\` Log entries.' skills/feature/references/agent-routing.md"
+echo
+
 
 echo
 echo "Passed: $PASS"
