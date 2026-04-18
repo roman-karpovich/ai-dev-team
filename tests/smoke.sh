@@ -2151,6 +2151,118 @@ check "SKILL.md F12 gh_host in dispatch" check_f12_gh_host
 check "SKILL.md F12 annotation rule verbatim" check_f12_annotation_rule
 echo
 
+echo "Multi-GitHub-account downstream propagation (Step 3):"
+
+PUBLISH_MD='skills/cross-audit/references/publish.md'
+CROSS_AUDITOR_MD='agents/cross-auditor.md'
+
+# F7 (2 asserts): publish.md §1 preamble — legacy sentence survives byte-exact AND new F7 sentence appended verbatim.
+check "publish.md F7 legacy sentence survives" \
+  bash -c "grep -qF -- 'All gh api calls pass --repo <pr_repo> AND --include' $PUBLISH_MD"
+
+check_f7_new_sentence() {
+  # The sentence is long; use grep -qF on the multi-line-joined content.
+  tr '\n' ' ' < "$PUBLISH_MD" | grep -qF -- 'In multi-account mode all gh calls in this recipe (gh api, gh pr view, and gh pr diff) are additionally prefixed with GH_TOKEN="${<token_env>}" GH_HOST="<host>" resolved from the findings-frontmatter gh_account_context: field — publish reuses the same env pattern as the cross-audit skill.' \
+    || { echo "F7: new multi-account sentence missing verbatim"; return 1; }
+  echo "F7 new sentence present verbatim"
+}
+check "publish.md F7 new multi-account sentence" check_f7_new_sentence
+
+# F8 (3 asserts): publish.md §3 — three live gh calls prefixed.
+check_f8_gh_pr_diff_prefixed() {
+  grep -qF 'GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh pr diff <N> --repo <pr_repo>' "$PUBLISH_MD" \
+    || { echo "F8: gh pr diff missing env prefix"; return 1; }
+  echo "F8 gh pr diff prefixed OK"
+}
+check_f8_force_push_pr_view_prefixed() {
+  grep -qF 'GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh pr view <N> --repo <pr_repo> --json headRefOid -q' "$PUBLISH_MD" \
+    || { echo "F8: force-push gh pr view missing env prefix"; return 1; }
+  echo "F8 force-push gh pr view prefixed OK"
+}
+check_f8_post_gh_api_prefixed() {
+  grep -qF 'GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh api --include --repo <pr_repo>' "$PUBLISH_MD" \
+    || { echo "F8: POST gh api --include missing env prefix"; return 1; }
+  echo "F8 POST gh api --include prefixed OK"
+}
+check "publish.md F8 gh pr diff prefixed" check_f8_gh_pr_diff_prefixed
+check "publish.md F8 force-push gh pr view prefixed" check_f8_force_push_pr_view_prefixed
+check "publish.md F8 POST gh api --include prefixed" check_f8_post_gh_api_prefixed
+
+# F9 (2 asserts): cross-auditor.md ## Input adds gh_token_env + gh_host bullets.
+check "cross-auditor.md F9 gh_token_env input bullet" \
+  bash -c "grep -qE '^- \*\*gh_token_env\*\*' $CROSS_AUDITOR_MD"
+check "cross-auditor.md F9 gh_host input bullet" \
+  bash -c "grep -qE '^- \*\*gh_host\*\*' $CROSS_AUDITOR_MD"
+
+# F10 (3 asserts): Step 0 shows BOTH forms + the verbatim guard sentence.
+check_f10_multi_account_form() {
+  grep -qF 'GH_TOKEN="${<gh_token_env>}" GH_HOST="<gh_host>" gh pr checkout <pr_number> --force --repo <pr_repo>' "$CROSS_AUDITOR_MD" \
+    || { echo "F10: multi-account form missing"; return 1; }
+  echo "F10 multi-account form OK"
+}
+check_f10_single_account_form() {
+  # bare form — must appear on its own line inside a fenced block (not in a prose sentence).
+  # Allow leading whitespace (fenced blocks may be indented under a list item).
+  awk '
+    /^[[:space:]]*```/ { in_fence = !in_fence; next }
+    in_fence {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (line == "gh pr checkout <pr_number> --force --repo <pr_repo>") found=1
+    }
+    END { exit(found?0:1) }
+  ' "$CROSS_AUDITOR_MD" \
+    || { echo "F10: bare single-account 'gh pr checkout <pr_number> --force --repo <pr_repo>' form missing inside a fenced block"; return 1; }
+  echo "F10 single-account form OK (in fenced block)"
+}
+check_f10_guard_sentence() {
+  tr '\n' ' ' < "$CROSS_AUDITOR_MD" | grep -qF -- 'When gh_token_env and gh_host are absent from the agent input, the gh pr checkout command is rendered without the env prefix (bare gh pr checkout <pr_number> --force --repo <pr_repo>) — never as GH_TOKEN="" GH_HOST="" gh pr checkout ....' \
+    || { echo "F10: guard sentence missing verbatim"; return 1; }
+  echo "F10 guard sentence present verbatim"
+}
+check "cross-auditor.md F10 multi-account form" check_f10_multi_account_form
+check "cross-auditor.md F10 single-account form" check_f10_single_account_form
+check "cross-auditor.md F10 guard sentence verbatim" check_f10_guard_sentence
+
+# F14 (3 asserts): gh_account_context: literal + cross-auditor writer sentence + publish reader sentence.
+check "cross-auditor.md F14 gh_account_context: literal" \
+  bash -c "grep -qF 'gh_account_context:' $CROSS_AUDITOR_MD"
+
+check_f14_writer_sentence() {
+  tr '\n' ' ' < "$CROSS_AUDITOR_MD" | grep -qF -- 'PR mode only: write gh_account_context: <resolved_account_name_or_null> into findings frontmatter on every audit iteration. Publish reads this field to re-derive the env prefix on standalone invocations (see skills/cross-audit/references/publish.md §1).' \
+    || { echo "F14: cross-auditor writer sentence missing verbatim"; return 1; }
+  echo "F14 cross-auditor writer sentence present"
+}
+check "cross-auditor.md F14 writer sentence verbatim" check_f14_writer_sentence
+
+check_f14_reader_sentence() {
+  tr '\n' ' ' < "$PUBLISH_MD" | grep -qF -- 'Standalone publish reads gh_account_context: from findings frontmatter to look up the account under github.accounts and re-derive the GH_TOKEN / GH_HOST prefix. When the field is null or absent, publish runs every gh call bare (single-account compat).' \
+    || { echo "F14: publish reader sentence missing verbatim"; return 1; }
+  echo "F14 publish reader sentence present"
+}
+check "publish.md F14 reader sentence verbatim" check_f14_reader_sentence
+
+# F15 (3 asserts): publish.md failure paths — three verbatim sentences.
+check_f15_stale_account_guard() {
+  tr '\n' ' ' < "$PUBLISH_MD" | grep -qF -- 'When gh_account_context: is non-null, standalone publish looks up the account under github.accounts. If the account is missing from config, publish hard-stops with remediation naming the stale name and the currently-configured account keys — never silent fallback to ambient auth.' \
+    || { echo "F15: stale-account guard sentence missing verbatim"; return 1; }
+  echo "F15 stale-account guard present"
+}
+check_f15_token_non_empty() {
+  tr '\n' ' ' < "$PUBLISH_MD" | grep -qF -- 'Standalone publish runs the F4 token-non-empty check against the resolved token_env before any gh call; empty resolution is a hard-stop, never a silent fallback.' \
+    || { echo "F15: token-non-empty sentence missing verbatim"; return 1; }
+  echo "F15 token-non-empty present"
+}
+check_f15_account_publish_scope() {
+  tr '\n' ' ' < "$PUBLISH_MD" | grep -qF -- 'On /cross-audit publish, --account <name> overrides the gh_account_context: frontmatter value (same resolution ladder, same §3.7b hard-stops). When omitted, the frontmatter value is authoritative.' \
+    || { echo "F15: --account publish-mode scope sentence missing verbatim"; return 1; }
+  echo "F15 --account publish scope present"
+}
+check "publish.md F15 stale-account guard" check_f15_stale_account_guard
+check "publish.md F15 token-non-empty check" check_f15_token_non_empty
+check "publish.md F15 --account publish-mode scope" check_f15_account_publish_scope
+echo
+
 
 echo
 echo "Passed: $PASS"
