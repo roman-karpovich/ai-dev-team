@@ -2,6 +2,7 @@
 name: investigator
 description: Runs adversarial debate rounds between Claude and Codex. Returns convergence report with agreements, disagreements, and recommendations. Use when /investigate is invoked.
 model: opus
+effort: xhigh
 background: true
 tools: Read, Grep, Glob, Bash, mcp__codex__codex, mcp__codex__codex-reply
 maxTurns: 80
