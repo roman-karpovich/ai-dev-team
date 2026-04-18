@@ -1865,6 +1865,109 @@ check "r5-rule-sentence-present"                          check_r5_rule_sentence
 check "developer-workflow-short-form-r5"                  check_developer_workflow_short_form_r5
 echo
 
+# --- Codex Fast config surface ---
+echo "Codex Fast config surface:"
+
+check "codex.model_fast documented in .ai-dev-team.yml.example" \
+  bash -c "grep -qF -- '#   model_fast: gpt-5.4-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)' .ai-dev-team.yml.example"
+
+check "SKILL.md Phase 0 has codex.model_fast byte-exact sentence" \
+  bash -c "grep -qF -- 'Also read \`codex.model_fast\` from the same config chain; it is forwarded as \`codex_model\` only when the user picks \"Codex Fast\" from the agent-selection menu. \`cross-auditor\` never receives \`codex.model_fast\`.' skills/feature/SKILL.md"
+
+check ".ai-dev-team.yml.example documents model_fast precondition" \
+  bash -c "grep -qF -- '#   NOTE: when codex.model_fast is set, codex.model must also be set and must differ from codex.model_fast (otherwise cross-auditor would use Fast reasoning).' .ai-dev-team.yml.example"
+
+check "SKILL.md Phase 0 retains legacy codex.model propagation sentence" \
+  bash -c "grep -qF -- 'Also read \`codex.model\` and \`codex.reasoning_effort\` from the same config chain. When the feature skill dispatches to \`developer-codex\` or spawns \`cross-auditor\`, pass these through as \`codex_model\` and \`codex_reasoning_effort\` input params.' skills/feature/SKILL.md"
+echo
+
+# --- Codex Fast routing ---
+echo "Codex Fast routing:"
+
+assert_codex_fast_section_present() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
+  [ -n "$sec" ] || { echo "## Codex Fast (opt-in) section missing"; return 1; }
+  echo "## Codex Fast (opt-in) section present"
+}
+check "Codex Fast routing section present" assert_codex_fast_section_present
+
+assert_codex_fast_triggers_bulletform() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
+  printf '%s\n' "$sec" | grep -qE '^- \*\*T-CF1\*\*:' || { echo "- **T-CF1**: bullet missing"; return 1; }
+  printf '%s\n' "$sec" | grep -qE '^- \*\*T-CF2\*\*:' || { echo "- **T-CF2**: bullet missing"; return 1; }
+  echo "T-CF1/T-CF2 bullets present in Codex Fast section"
+}
+check "T-CF bullets defined in Codex Fast section" assert_codex_fast_triggers_bulletform
+
+assert_codex_fast_ban_line() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
+  printf '%s\n' "$sec" | grep -qF -- '**Cross-auditor never consumes `codex.model_fast`.** Audit reasoning depth is non-negotiable; Fast is developer-codex-only.' \
+    || { echo "cross-auditor ban line missing from Codex Fast section"; return 1; }
+  echo "cross-auditor ban line present"
+}
+check "cross-auditor ban line in Codex Fast section" assert_codex_fast_ban_line
+
+assert_codex_fast_anti_triggers() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
+  # F8: **Anti-triggers** label followed by at least one '- ' bullet (skip blanks)
+  printf '%s\n' "$sec" | awk '
+    /\*\*Anti-triggers\*\*/ { found=1; next }
+    found && /^[[:space:]]*$/ { next }
+    found { if (/^- /) { ok=1; exit } else { exit } }
+    END { exit(ok?0:1) }
+  ' || { echo "**Anti-triggers** label + bullet missing in Codex Fast section"; return 1; }
+  # F9: all 3 tokens must appear within the section
+  printf '%s\n' "$sec" | grep -qF -- 'security-sensitive' || { echo "token security-sensitive missing"; return 1; }
+  printf '%s\n' "$sec" | grep -qF -- 'cross-cutting'      || { echo "token cross-cutting missing"; return 1; }
+  printf '%s\n' "$sec" | grep -qF -- 'new-abstraction'    || { echo "token new-abstraction missing"; return 1; }
+  echo "Anti-triggers + 3 category tokens present"
+}
+check "Anti-triggers block with 3 tokens in Codex Fast section" assert_codex_fast_anti_triggers
+
+assert_rationale_logging_four_sections() {
+  local sec
+  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Rationale logging")
+  printf '%s\n' "$sec" | grep -qF -- '`rationale=` MUST be a trigger ID from one of the four agent sections above (including `Codex Fast`).' \
+    || { echo "## Rationale logging missing updated 'four agent sections' sentence"; return 1; }
+  echo "Rationale logging sentence updated to four agent sections"
+}
+check "Rationale logging mentions four agent sections" assert_rationale_logging_four_sections
+
+check "agent-routing preamble lists T-CF# as valid" \
+  bash -c "grep -qF -- 'Trigger IDs below (\`T-C#\`, \`T-S#\`, \`T-M#\`, \`T-CF#\`) are the only valid \`rationale=\` values in \`last_agent=\` Log entries.' skills/feature/references/agent-routing.md"
+echo
+
+# --- Codex Fast agent-selection menu ---
+echo "Codex Fast agent-selection menu:"
+
+check "SKILL.md agent-selection lists Codex Fast" \
+  bash -c "grep -qF -- '1b. **Codex Fast** — faster/cheaper variant; only shown when \`codex.model_fast\` is configured.' skills/feature/SKILL.md"
+
+assert_skill_option_1b_wiring() {
+  local sec
+  sec=$(extract_md_section skills/feature/SKILL.md '#### Option 1b: Codex Fast (developer-codex agent)')
+  [ -n "$sec" ] || { echo '#### Option 1b: Codex Fast (developer-codex agent) subsection missing'; return 1; }
+  printf '%s\n' "$sec" | grep -qF -- '- `codex_model`: the value of `codex.model_fast` from config (not `codex.model`)' \
+    || { echo 'Option 1b missing dispatch-wiring line (codex_model ← codex.model_fast)'; return 1; }
+  echo 'Option 1b subsection wires codex.model_fast → codex_model'
+}
+check "SKILL.md Option 1b subsection wires codex.model_fast" assert_skill_option_1b_wiring
+
+check "SKILL.md renders Option 1b conditionally on codex.model_fast" \
+  bash -c "grep -qF -- 'Render option 1b and the \"#### Option 1b: Codex Fast (developer-codex agent)\" subsection only when \`codex.model_fast\` resolved in Phase 0; when it is unset, omit both entirely (the menu reverts to three options).' skills/feature/SKILL.md"
+echo
+
+# --- Codex Fast cross-auditor ban ---
+echo "Codex Fast cross-auditor ban:"
+
+check "cross-auditor.md bans codex.model_fast" \
+  bash -c "grep -qF -- '- **Never** read \`codex.model_fast\`. Cross-audit always uses \`codex.model\` (normal) or the Codex default; Fast is developer-codex-only.' agents/cross-auditor.md"
+echo
+
 
 echo
 echo "Passed: $PASS"

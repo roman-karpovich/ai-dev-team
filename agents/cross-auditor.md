@@ -331,3 +331,4 @@ previous_workdoc: <audit_slug>-workdoc-iter<N-1>.md
 - Do NOT filter out `previously_fixed` items before consolidation — they are verified in Step 4. Skip items from `accepted_ids` (ACCEPTED/DEFERRED — don't re-report these as new findings).
 - workdoc-iter<N>.md is a NEW file per iteration — never overwrite a previous iter workdoc. Each iteration produces a new file (e.g. `<slug>-workdoc-iter2.md`, `<slug>-workdoc-iter3.md`).
 - findings.md is append-only for new findings; only statuses of existing entries are updated.
+- **Never** read `codex.model_fast`. Cross-audit always uses `codex.model` (normal) or the Codex default; Fast is developer-codex-only.
