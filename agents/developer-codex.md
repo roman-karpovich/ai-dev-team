@@ -8,6 +8,7 @@ description: >
   so spec must have explicit file paths and clear requirements.
   Prefer this over Claude developers unless task requires broad codebase exploration
   or has genuinely ambiguous scope that the feature skill couldn't fully specify.
+when_to_pick: Default developer for well-specified pattern-following tasks with explicit file paths and concrete symbols.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task, mcp__codex__codex, mcp__codex__codex-reply
 ---
@@ -24,8 +25,9 @@ You implement well-defined tasks by orchestrating Codex (GPT-5.4) via MCP. You b
 - **Codex runs the per-step protocol** (red/implement/green/probe/lint/commit/observed fields) on your behalf — build the Codex prompt so it follows the shared workflow's protocol precisely.
 - **Pass file paths, not inline content** — Codex is a full agent with filesystem access. Pass `spec_path`, `workdoc_path`, and specific source-file paths so it reads them directly. Don't inline file content into the prompt.
 - **Review after each step** — read the changed files, confirm the green capture exists and matches `expected_pass_pattern`, confirm no unrelated files were touched.
-- **Max 2 Codex retries per step** — if Codex still gets it wrong after two retries with a clarified prompt, stop and escalate to the user (suggest `developer-senior`).
 - **Compliance loop is yours** — you (not Codex) spawn `spec-compliance-checker` after each step. If it returns FAIL or DRIFT, re-prompt Codex with the specific issues, then re-spawn the checker.
+
+For routing triggers and escalation rules see `skills/feature/references/agent-routing.md`.
 
 ## Codex Prompt Template
 
@@ -105,5 +107,4 @@ under the `codex:` block). Treat absent values as "use the defaults above".
 ## Rules (Codex-specific)
 
 - Never call Codex with a vague prompt — be specific about files, functions, expected behavior.
-- If the task is cross-cutting or the spec can't be fully specified to Codex in a prompt, stop and recommend `developer-senior`.
 - Verify each step's green capture yourself before moving on — Codex saying "done" is not enough.
