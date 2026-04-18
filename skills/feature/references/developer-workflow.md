@@ -167,6 +167,7 @@ Short-form summary — the full reasoning and application steps live in the refe
   the break matches what §3 says and log the assertion update; otherwise treat a core failure
   as a regression and fix the code.
 - **R3 — Test strength / signal-to-noise.** Every fresh test must name the regression it catches in `observed.notes`; the test strength anti-patterns (tautological, setter-getter round-trip, mock-call-counter, `assertIsNotNone` on never-None, type-checker duplication) are weak — see R3 in `code-quality-rules.md`.
+- **R5 — Tests live in a dedicated file, not inline in the implementation.** Before writing the first test in a module, grep the target repo for `#[cfg(test)]` and follow the majority repo convention; default to a dedicated `tests.rs` / `tests/` file when no convention exists or the repo is mixed. Full reasoning and the discovery-command step live in R5 of `code-quality-rules.md`.
 
 ## Common Rules
 
