@@ -159,3 +159,19 @@ tautological/shape-only assertions before they accumulate as green-CI ballast.
 4. Reviewers verify `change_type` and the branch name agree in spec-review Pass 1. A mismatch is a review block, not a warning — fix it before APPROVED.
 
 ---
+
+## R5 — Tests live in a dedicated file, not inline in the implementation
+
+**Rule**: tests must live in a separate file from the code they cover; mirror the repo's existing test layout, and default to a dedicated test file when no convention exists or the repo is mixed.
+
+**Why**: inline `#[cfg(test)] mod tests { … }` blocks at the bottom of a production `.rs` file are standard Rust — the language itself condones them — but at the scale of a multi-contract Soroban workspace (or any crate that accumulates dozens of tests per module) they bloat the implementation file, dilute `git blame` for real production edits, and hurt review by mixing assertion noise with contract logic. The cited incident is concrete: `AquaToken/soroban-amm` feature `feature/2026-04-17-plane-l2-wordbitmap` shipped with inline tests and was then cleaned up by PR #159, which re-extracted the tests into a sibling file — a round-trip that should not have been needed. Agents writing new code tend to append tests next to the symbol they just wrote because it is physically closest; without an explicit rule they will keep doing so even in repos whose existing modules all use `tests.rs`. R5 makes the expectation explicit and pins the decision to the target repo's existing convention rather than any individual agent's preference. This is a project rule, not a Rust idiom — mirror the convention of the target repo before deciding where tests live.
+
+**How to apply**:
+
+1. Before writing the first test in a module, discover the repo's existing test layout. Run `grep -R "#[cfg(test)]" src/` (or the `rg` equivalent `rg -F '#[cfg(test)]' src/`) and classify each hit: is the `#[cfg(test)]` block inside the production `.rs` file it tests (inline), or inside a sibling `tests.rs` / `foo_tests.rs` / `tests/` module (dedicated)? The pattern with the majority of hits is the repo convention — follow it.
+2. If the repo convention is dedicated test files (the common soroban-amm case), create or extend a sibling `tests.rs` (or the existing `tests/` module) and put the new tests there. Do not append a new `#[cfg(test)] mod tests { … }` block to the production file just because it is closer; that creates a mixed-layout repo which forces future agents to re-run step 1.
+3. If the repo is mixed or has no clear majority, default to a dedicated test file. Create `tests.rs` next to the module under test (or extend an existing `tests/` directory) and wire it up with `#[cfg(test)] mod tests;` in the parent module. Note the decision in the spec Log so reviewers can see which convention the branch established.
+4. If the repo convention is explicitly inline (every `#[cfg(test)]` hit lives inside the production file), follow it — R5 is mirror-the-convention, not dedicated-file-always. Consistency with the existing codebase beats aesthetic preference.
+5. Reviewers verify the layout matches the convention they see elsewhere in the repo. A mismatch (inline tests in a dedicated-file repo, or vice versa) is a review block, not a warning — fix it before APPROVED.
+
+---
