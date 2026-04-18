@@ -106,9 +106,9 @@ Update the spec file directly during work:
 
 ## Git Workflow
 
-- **Feature branch** — never commit to `master` / `main` directly. Branch name: `feature/<YYYY-MM-DD-slug>` or whatever the spec `branch:` frontmatter field specifies.
+- **Feature branch** — never commit to `master` / `main` directly. Branch name: `<type>/<YYYY-MM-DD-slug>` where `<type>` is the resolved `change_type` (e.g. `feat/2026-04-18-my-slug`), or whatever the spec `branch:` frontmatter field specifies.
 - **Base branch detection** — `master` or `main`, whichever exists: `git branch -r | grep -E 'origin/(master|main)$'`. Prefer `master` if both exist. **Never** cut from `staging`, `testnet`, `pre-prod`, or any other collection branch — those are staging dumps, not the source of truth.
-- **Feature dependencies** — if this feature depends on another in-flight feature, merge that feature's branch into this one directly (`git merge feature/other-slug`). Do not route through staging.
+- **Feature dependencies** — if this feature depends on another in-flight feature, merge that feature's branch into this one directly (`git merge <type>/other-slug`, e.g. `git merge feat/2026-04-15-other-slug`). Do not route through staging.
 - **Branch already exists** — `git checkout <branch>` (don't re-create). If it exists on remote only: `git fetch` then checkout tracking.
 - **Small logical commits** — one per checklist step (or coherent sub-task).
 - **Commit messages** — concise, imperative mood. No `Co-authored-by` lines.

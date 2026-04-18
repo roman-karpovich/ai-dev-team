@@ -323,7 +323,7 @@ If the hook emits JSON correctly but Claude Code doesn't inject it, re-install t
 **Baseline test fails immediately — the repo uses `develop` / `trunk` / something other than `master` or `main`.**
 The feature skill auto-detects `master` or `main`. For a non-standard base branch, set the `Branch:` field in the spec frontmatter and reference the real base explicitly, e.g.:
 ```yaml
-Branch: feature/2026-04-17-my-feature  # cut from develop, not master
+Branch: feat/2026-04-17-my-feature  # cut from develop, not master — `feat/` here is one of the seven conventional prefixes (`feat / fix / refactor / ci / docs / test / chore`) and depends on the spec's `change_type`
 ```
 Then check out the non-standard base before running `/feature`. A permanent fix is tracked in BACKLOG.
 

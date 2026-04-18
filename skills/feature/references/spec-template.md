@@ -3,7 +3,8 @@ title: {Feature Title}
 project: {project-name}
 type: spec
 status: DRAFT
-branch: feature/YYYY-MM-DD-{slug}
+branch: {change_type}/YYYY-MM-DD-{slug}
+change_type: {change_type}
 created: YYYY-MM-DD
 # Populated on hand-off (Option 1/2/3). Null while feature is still in development.
 shipped_at: null
