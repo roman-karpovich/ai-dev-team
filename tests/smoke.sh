@@ -1961,6 +1961,13 @@ check "SKILL.md renders Option 1b conditionally on codex.model_fast" \
   bash -c "grep -qF -- 'Render option 1b and the \"#### Option 1b: Codex Fast (developer-codex agent)\" subsection only when \`codex.model_fast\` resolved in Phase 0; when it is unset, omit both entirely (the menu reverts to three options).' skills/feature/SKILL.md"
 echo
 
+# --- Codex Fast cross-auditor ban ---
+echo "Codex Fast cross-auditor ban:"
+
+check "cross-auditor.md bans codex.model_fast" \
+  bash -c "grep -qF -- '- **Never** read \`codex.model_fast\`. Cross-audit always uses \`codex.model\` (normal) or the Codex default; Fast is developer-codex-only.' agents/cross-auditor.md"
+echo
+
 
 echo
 echo "Passed: $PASS"
