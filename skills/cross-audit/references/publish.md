@@ -10,7 +10,8 @@ Publish is orthogonal to the status state machine — it does NOT flip OPEN→FI
 
 - **cwd**: publish runs in the caller's cwd. The cross-auditor's isolated worktree is typically gone by publish time — do NOT assume it exists, and do NOT `git ls-tree` or otherwise read the worktree. Caller cwd is not assumed to be a clone of `pr_repo`.
 - **KB reads only**: all routing metadata (`pr_files`, `pr_head_oid`, `pr_url`, `pr_repo`) comes from the findings doc frontmatter resolved from `audit_slug`. Publish reads findings content + `pr_files` from KB; that is the single source of truth.
-- **All `gh api` calls pass `--repo <pr_repo>` AND `--include`**: `--repo` decouples the call from cwd; `--include` captures the HTTP status line + response headers so the failure matrix (below) can deterministically branch on status + `X-RateLimit-Remaining`. A plain `gh api` without `--include` cannot distinguish the rate-limit and permission-denied 403 cases.
+- **All gh api calls pass --repo <pr_repo> AND --include**: `--repo` decouples the call from cwd; `--include` captures the HTTP status line + response headers so the failure matrix (below) can deterministically branch on status + `X-RateLimit-Remaining`. A plain `gh api` without `--include` cannot distinguish the rate-limit and permission-denied 403 cases.
+- **Multi-account env prefix**: In multi-account mode all gh calls in this recipe (gh api, gh pr view, and gh pr diff) are additionally prefixed with GH_TOKEN="${<token_env>}" GH_HOST="<host>" resolved from the findings-frontmatter gh_account_context: field — publish reuses the same env pattern as the cross-audit skill. Standalone publish reads gh_account_context: from findings frontmatter to look up the account under github.accounts and re-derive the GH_TOKEN / GH_HOST prefix. When the field is null or absent, publish runs every gh call bare (single-account compat). When gh_account_context: is non-null, standalone publish looks up the account under github.accounts. If the account is missing from config, publish hard-stops with remediation naming the stale name and the currently-configured account keys — never silent fallback to ambient auth. Standalone publish runs the F4 token-non-empty check against the resolved token_env before any gh call; empty resolution is a hard-stop, never a silent fallback. On /cross-audit publish, --account <name> overrides the gh_account_context: frontmatter value (same resolution ladder, same §3.7b hard-stops). When omitted, the frontmatter value is authoritative.
 - **Response parser**: `--include` output is `HTTP/<ver> <code>\n<header lines>\n\n<json body>`. Parse:
   - Status code from the status line (`HTTP/2 200` / `HTTP/2 422` / `HTTP/2 403` / etc.).
   - Headers via case-insensitive name match. For `X-RateLimit-Remaining`: `awk 'tolower($1)=="x-ratelimit-remaining:"{print $2}'`.
@@ -20,7 +21,7 @@ Publish is orthogonal to the status state machine — it does NOT flip OPEN→FI
   2. Standalone: `/cross-audit publish <slug> <ids>` against an existing findings doc. Same recipe; resolve findings via `<slug>`.
 - **Force-push preflight**: before POSTing the review:
   ```
-  current_head=$(gh pr view <N> --repo <pr_repo> --json headRefOid -q '.headRefOid')
+  current_head=$(GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh pr view <N> --repo <pr_repo> --json headRefOid -q '.headRefOid')
   ```
   Compare against findings frontmatter `pr_head_oid`. If different, hard-stop with remediation "PR force-pushed since audit; re-run `/cross-audit pr <N>` to refresh." Bypass: `--force-publish-stale` records the stale OID into `head_oid_at_publish` in the `published_to` record (audit trail), lets the publish proceed.
 - **Response-injection seam** (for tests): env var `CROSS_AUDIT_PUBLISH_STUB_RESPONSE=<path1>[:<path2>[:<path3>...]]` — colon-separated ordered list of stubbed `--include` output files. On the N-th would-be POST inside a single publish invocation, read the N-th path as the response instead of issuing a real network call; the `--include` parser runs against the file contents verbatim. Running out of paths (publish makes more POSTs than stubs supplied) aborts with a test-config error before touching the network. Extra paths are ignored. The seam supports multi-POST sequences (e.g. 422 → body-only retry 2xx) so the failure-matrix scenarios are exercisable without GitHub credentials or live network.
@@ -32,7 +33,7 @@ Publish is orthogonal to the status state machine — it does NOT flip OPEN→FI
 The entire publish is one POST to `/repos/<owner>/<repo>/pulls/<N>/reviews`:
 
 ```
-gh api --include --repo <pr_repo> \
+GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh api --include --repo <pr_repo> \
   "repos/<pr_repo>/pulls/<N>/reviews" \
   --method POST --input -
 ```
@@ -58,7 +59,13 @@ Every `comments[]` entry has exactly four keys: `path`, `line`, `side` (always `
 
 ### (1) Hunk-header classifier
 
-Parse `gh pr diff <N> --repo <pr_repo>` output. For each `@@ -a,b +c,d @@` hunk header on a file F, the set of addressable new-side lines is `{c, c+1, ..., c+d-1}` intersected with the `+` and context lines in the hunk. Collect across the whole diff into `addressable_lines[(path, new_line)]`. If a finding's `file:line` is in the set → inline comment. Otherwise → body bucket.
+Parse the output of:
+
+```
+GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh pr diff <N> --repo <pr_repo>
+```
+
+For each `@@ -a,b +c,d @@` hunk header on a file F, the set of addressable new-side lines is `{c, c+1, ..., c+d-1}` intersected with the `+` and context lines in the hunk. Collect across the whole diff into `addressable_lines[(path, new_line)]`. If a finding's `file:line` is in the set → inline comment. Otherwise → body bucket.
 
 ### (2) File-metadata routing (from frontmatter `pr_files`)
 
