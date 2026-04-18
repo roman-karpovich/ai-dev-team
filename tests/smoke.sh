@@ -1495,6 +1495,240 @@ check "matrix-escalation-per-agent-tuples"               check_matrix_escalation
 check "skill-resume-flow-uses-canonical-rationale"       check_skill_resume_flow_uses_canonical_rationale
 echo
 
+# --- Branch prefix (#15) ---
+echo "Branch prefix (#15):"
+
+SPEC_TEMPLATE='skills/feature/references/spec-template.md'
+SKILL_MD='skills/feature/SKILL.md'
+DEV_WORKFLOW='skills/feature/references/developer-workflow.md'
+OVERVIEW='docs/AI_Dev_Team_Overview.md'
+README_MD='README.md'
+STOP_CHECK='hooks/stop-check'
+CQR_BP='skills/feature/references/code-quality-rules.md'
+
+# (#15-a) spec-template has `branch: {change_type}/YYYY-MM-DD-{slug}` immediately followed by `change_type: {change_type}`
+check_spec_template_has_change_type() {
+  python3 - <<'PY'
+import sys
+path = 'skills/feature/references/spec-template.md'
+lines = open(path).read().split('\n')
+c1 = 'branch: {change_type}/YYYY-MM-DD-{slug}'
+c2 = 'change_type: {change_type}'
+for i, l in enumerate(lines[:-1]):
+    if l == c1 and lines[i+1] == c2:
+        print('spec-template C1+C2 consecutive byte-exact')
+        sys.exit(0)
+print(f'spec-template missing consecutive C1 ({c1!r}) + C2 ({c2!r})')
+sys.exit(1)
+PY
+}
+
+# (#15-b) SKILL.md contains byte-exact C3 prompt-line prefix
+check_skill_change_type_prompt_present() {
+  grep -qF 'Inferred change type: **' "$SKILL_MD" \
+    || { echo "SKILL.md missing byte-exact 'Inferred change type: **' C3 prompt line"; return 1; }
+  echo "SKILL.md has change-type banner prompt"
+}
+
+# (#15-c) SKILL.md inline yaml frontmatter block contains both C4 lines
+check_skill_inline_frontmatter_lists_change_type() {
+  python3 - <<'PY'
+import sys, re
+path = 'skills/feature/SKILL.md'
+text = open(path).read()
+# Find any fenced yaml block containing `title: <feature title>`
+# Accept any fenced ```yaml ... ``` block that looks like the inline frontmatter example.
+blocks = re.findall(r'```yaml\n(.*?)\n```', text, re.DOTALL)
+need1 = 'branch: <type>/YYYY-MM-DD-<slug>'
+need2 = 'change_type: <type>'
+for b in blocks:
+    if 'title:' in b and need1 in b and need2 in b:
+        print('SKILL.md inline yaml example lists branch + change_type byte-exact')
+        sys.exit(0)
+print(f'SKILL.md inline yaml example missing C4 lines ({need1!r}, {need2!r})')
+sys.exit(1)
+PY
+}
+
+# (#15-d) No hard-coded dated `feature/` prefix survives (with §3.7 # legacy exception)
+check_skill_no_hardcoded_feature_prefix() {
+  python3 - <<'PY'
+import re, sys
+pat = re.compile(r'feature/<?(YYYY|\d{4})-(MM|\d{2})-(DD|\d{2})-')
+files = [
+  'skills/feature/SKILL.md',
+  'skills/feature/references/spec-template.md',
+  'skills/feature/references/developer-workflow.md',
+  'docs/AI_Dev_Team_Overview.md',
+  'README.md',
+]
+leaks = []
+for f in files:
+    try:
+        lines = open(f).read().split('\n')
+    except FileNotFoundError:
+        continue
+    for i, l in enumerate(lines):
+        if not pat.search(l):
+            continue
+        if '# legacy' in l:
+            continue
+        ctx = '\n'.join(lines[max(0,i-2):i])
+        if '# legacy' in ctx:
+            continue
+        leaks.append(f'{f}:{i+1}')
+if leaks:
+    print('LEAK: ' + ','.join(leaks))
+    sys.exit(1)
+print('no hard-coded dated feature/ prefix survives')
+PY
+}
+
+# (#15-e) README contains byte-exact concrete `Branch: feat/2026-04-17-my-feature` worked example
+check_readme_has_concrete_feat_example() {
+  grep -qF 'Branch: feat/2026-04-17-my-feature' "$README_MD" \
+    || { echo "README.md missing byte-exact 'Branch: feat/2026-04-17-my-feature' worked example"; return 1; }
+  echo "README.md has concrete feat/ worked example"
+}
+
+# (#15-f) SKILL.md must NOT contain a pipe-table cell of the byte-exact form `| feature/...`
+check_skill_no_non_dated_feature_example() {
+  if grep -qF '| feature/...' "$SKILL_MD"; then
+    echo "SKILL.md still contains non-dated table-cell '| feature/...' example"
+    return 1
+  fi
+  echo "SKILL.md free of non-dated '| feature/...' example"
+}
+
+# (#15-g) developer-workflow.md must NOT contain byte-exact `feature/other-slug`
+check_developer_workflow_no_non_dated_feature_ref() {
+  if grep -qF 'feature/other-slug' "$DEV_WORKFLOW"; then
+    echo "developer-workflow.md still contains 'feature/other-slug' example"
+    return 1
+  fi
+  echo "developer-workflow.md free of 'feature/other-slug' example"
+}
+
+# (#15-h) hooks/stop-check contains byte-exact C5 widened regex source line
+check_stop_check_regex_widened() {
+  grep -qF 're.compile(r"^(feat|fix|refactor|ci|docs|test|chore|feature)/\d{4}-\d{2}-\d{2}-")' "$STOP_CHECK" \
+    || { echo "hooks/stop-check missing byte-exact C5 widened regex"; return 1; }
+  echo "hooks/stop-check regex widened to C5 form"
+}
+
+# (#15-i) stop-check regex matches all eight prefixes (live import)
+check_stop_check_matches_all_eight_prefixes() {
+  python3 - <<'PY'
+import sys
+from importlib.machinery import SourceFileLoader
+import importlib.util as u
+l = SourceFileLoader('sc', 'hooks/stop-check')
+s = u.spec_from_loader('sc', l)
+m = u.module_from_spec(s)
+try:
+    l.exec_module(m)
+except Exception as e:
+    print(f'failed to load hooks/stop-check: {e}')
+    sys.exit(1)
+prefixes = ['feat','fix','refactor','ci','docs','test','chore','feature']
+bad = [p for p in prefixes if not m.FEATURE_BRANCH_RE.match(p + '/2026-04-18-x')]
+if bad:
+    print('MISSING prefix match: ' + ','.join(bad))
+    sys.exit(1)
+print('all 8 prefixes matched by FEATURE_BRANCH_RE')
+PY
+}
+
+# (#15-j) stop-check docstring/header region (first ~15 lines) mentions all 8 prefixes byte-exact
+check_stop_check_docstring_mentions_all_eight_prefixes() {
+  head -n 15 "$STOP_CHECK" | grep -qF 'feat, fix, refactor, ci, docs, test, chore, feature' \
+    || { echo "hooks/stop-check docstring (first 15 lines) missing byte-exact 'feat, fix, refactor, ci, docs, test, chore, feature'"; return 1; }
+  echo "hooks/stop-check docstring mentions all eight prefixes"
+}
+
+# (#15-k) code-quality-rules.md has R4 heading (C6) AND three subheading markers in R4 body
+check_code_quality_rule_r4_present() {
+  grep -qF '## R4 — Branch prefix matches change nature' "$CQR_BP" \
+    || { echo "code-quality-rules.md missing '## R4 — Branch prefix matches change nature' heading (C6)"; return 1; }
+  R4=$(extract_md_section "$CQR_BP" '## R4 — Branch prefix matches change nature')
+  printf '%s\n' "$R4" | grep -qF '**Rule**' || { echo "R4 section missing '**Rule**' subheading"; return 1; }
+  printf '%s\n' "$R4" | grep -qF '**Why**' || { echo "R4 section missing '**Why**' subheading"; return 1; }
+  printf '%s\n' "$R4" | grep -qF '**How to apply**' || { echo "R4 section missing '**How to apply**' subheading"; return 1; }
+  echo "R4 heading + Rule/Why/How-to-apply subheadings present"
+}
+
+# (#15-l) R4 content floor: three canonical substrings + ≥3 numbered items under How-to-apply
+check_code_quality_rule_r4_content_complete() {
+  python3 - <<'PY'
+import re, sys
+path = 'skills/feature/references/code-quality-rules.md'
+text = open(path).read()
+hdr = '## R4 — Branch prefix matches change nature'
+if hdr not in text:
+    print('R4 heading missing')
+    sys.exit(1)
+start = text.index(hdr)
+rest = text[start + len(hdr):]
+m = re.search(r'\n## ', rest)
+body = rest[: m.start()] if m else rest
+
+def subsection(body, marker, next_markers):
+    if marker not in body:
+        return None
+    s = body.index(marker)
+    rest = body[s + len(marker):]
+    # cut at whichever next marker appears first
+    cuts = [rest.index(n) for n in next_markers if n in rest]
+    end = min(cuts) if cuts else len(rest)
+    return rest[:end]
+
+rule_body = subsection(body, '**Rule**', ['**Why**', '**How to apply**'])
+why_body = subsection(body, '**Why**', ['**How to apply**'])
+how_body = subsection(body, '**How to apply**', [])
+
+errs = []
+if rule_body is None:
+    errs.append('missing **Rule** subsection')
+else:
+    need_rule = 'branch prefix MUST equal the resolved `change_type`'
+    if need_rule not in rule_body:
+        errs.append(f'Rule body missing substring: {need_rule!r}')
+if why_body is None:
+    errs.append('missing **Why** subsection')
+else:
+    if 'release-note categorisation' not in why_body:
+        errs.append("Why body missing 'release-note categorisation' substring")
+if how_body is None:
+    errs.append('missing **How to apply** subsection')
+else:
+    if '<change_type>/YYYY-MM-DD-<slug>' not in how_body:
+        errs.append("How-to-apply body missing '<change_type>/YYYY-MM-DD-<slug>' substring")
+    # count numbered bullets: lines matching ^[[:space:]]*[1-9]\.
+    nums = re.findall(r'(?m)^[\t ]*[1-9]\.', how_body)
+    if len(nums) < 3:
+        errs.append(f'How-to-apply has <3 numbered items ({len(nums)})')
+
+if errs:
+    print('; '.join(errs))
+    sys.exit(1)
+print('R4 content floor satisfied (3 canonical substrings + >=3 numbered items)')
+PY
+}
+
+check "spec-template-has-change-type"                     check_spec_template_has_change_type
+check "skill-change-type-prompt-present"                  check_skill_change_type_prompt_present
+check "skill-inline-frontmatter-lists-change-type"        check_skill_inline_frontmatter_lists_change_type
+check "skill-no-hardcoded-feature-prefix"                 check_skill_no_hardcoded_feature_prefix
+check "readme-has-concrete-feat-example"                  check_readme_has_concrete_feat_example
+check "skill-no-non-dated-feature-example"                check_skill_no_non_dated_feature_example
+check "developer-workflow-no-non-dated-feature-ref"       check_developer_workflow_no_non_dated_feature_ref
+check "stop-check-regex-widened"                          check_stop_check_regex_widened
+check "stop-check-matches-all-eight-prefixes"             check_stop_check_matches_all_eight_prefixes
+check "stop-check-docstring-mentions-all-eight-prefixes"  check_stop_check_docstring_mentions_all_eight_prefixes
+check "code-quality-rule-r4-present"                      check_code_quality_rule_r4_present
+check "code-quality-rule-r4-content-complete"             check_code_quality_rule_r4_content_complete
+echo
+
 
 echo
 echo "Passed: $PASS"
