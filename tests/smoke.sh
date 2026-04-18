@@ -1066,11 +1066,11 @@ check_banner_convention_doc_valid() {
 check_feature_awaiting_count_15() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "15" ]; then
-    echo "feature AWAITING count=$n expected 15"
+  if [ "$n" != "16" ]; then
+    echo "feature AWAITING count=$n expected 16"
     return 1
   fi
-  echo "feature AWAITING count=15 OK"
+  echo "feature AWAITING count=16 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1227,11 +1227,11 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ' skills/*/SKILL.md)
-  if [ "$c" != "22" ]; then
-    echo "ruler-prefix count=$c expected 22"
+  if [ "$c" != "23" ]; then
+    echo "ruler-prefix count=$c expected 23"
     return 1
   fi
-  echo "ruler-prefix count=22 OK"
+  echo "ruler-prefix count=23 OK"
 }
 
 # (s) each banner has trailing bold question within 15 lines (expected 22 satisfied).
@@ -1245,11 +1245,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ' skills/*/SKILL.md)
-  if [ "$c" != "22" ]; then
-    echo "trailing-bold-present-each count=$c expected 22"
+  if [ "$c" != "23" ]; then
+    echo "trailing-bold-present-each count=$c expected 23"
     return 1
   fi
-  echo "trailing-bold-present-each=22 OK"
+  echo "trailing-bold-present-each=23 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
