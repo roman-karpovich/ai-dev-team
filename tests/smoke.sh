@@ -357,15 +357,8 @@ check_skill_discard_mode() {
   echo "SKILL.md has /feature discard mode"
 }
 
-check_skill_last_agent() {
-  grep -q 'last_agent=' skills/feature/SKILL.md \
-    || { echo "SKILL.md missing last_agent Log convention"; return 1; }
-  echo "SKILL.md documents last_agent Log convention"
-}
-
 check "SKILL.md mentions BLOCKED"           check_skill_blocked
 check "SKILL.md has /feature discard mode"  check_skill_discard_mode
-check "SKILL.md documents last_agent"       check_skill_last_agent
 echo
 
 # --- Cross-audit severity flag (2026-04-17) ---
@@ -1353,6 +1346,153 @@ check "r3-notes-requirement-present"                      check_r3_notes_require
 check "developer-workflow-short-form-r3"                  check_developer_workflow_short_form_r3
 check "developer-workflow-test-quality-points-to-r3"      check_developer_workflow_test_quality_points_to_r3
 check "developer-workflow-observed-notes-requirement"     check_developer_workflow_observed_notes_requirement
+echo
+
+# --- Agent routing (2026-04-18) ---
+echo "Agent routing (2026-04-18):"
+
+AGENT_ROUTING='skills/feature/references/agent-routing.md'
+
+check_matrix_h2_sections() {
+  # (i.a) All five byte-exact H2 headings present in agent-routing.md.
+  test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
+  local h
+  for h in '## Codex (default)' '## Senior' '## Middle' '## Rationale logging' '## Escalation'; do
+    grep -qF "$h" "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing heading: $h"; return 1; }
+  done
+  echo "agent-routing.md has all 5 H2 sections"
+}
+
+check_matrix_triggers_per_agent() {
+  # (i.b) Each of Codex/Senior/Middle sections has >=2 '- **T-[CSM]#**:' bullets (Senior >=3).
+  test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
+  local sec count
+  sec=$(extract_md_section "$AGENT_ROUTING" '## Codex (default)')
+  count=$(printf '%s\n' "$sec" | grep -cE '^- \*\*T-[CSM][0-9]+\*\*:')
+  [ "$count" -ge 2 ] || { echo "Codex triggers count=$count (need >=2)"; return 1; }
+  sec=$(extract_md_section "$AGENT_ROUTING" '## Senior')
+  count=$(printf '%s\n' "$sec" | grep -cE '^- \*\*T-[CSM][0-9]+\*\*:')
+  [ "$count" -ge 3 ] || { echo "Senior triggers count=$count (need >=3)"; return 1; }
+  sec=$(extract_md_section "$AGENT_ROUTING" '## Middle')
+  count=$(printf '%s\n' "$sec" | grep -cE '^- \*\*T-[CSM][0-9]+\*\*:')
+  [ "$count" -ge 2 ] || { echo "Middle triggers count=$count (need >=2)"; return 1; }
+  echo "agent-routing.md has >=2 triggers per agent (Senior >=3)"
+}
+
+check_matrix_anti_triggers_per_agent() {
+  # (i.c) Each of Codex/Senior/Middle sections has '**Anti-triggers**' line with a following '- ' bullet.
+  test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
+  local a sec
+  for a in '## Codex (default)' '## Senior' '## Middle'; do
+    sec=$(extract_md_section "$AGENT_ROUTING" "$a")
+    printf '%s\n' "$sec" | awk '
+      /\*\*Anti-triggers\*\*/ { found=1; next }
+      found && /^[[:space:]]*$/ { next }
+      found { if (/^- /) { ok=1; exit } else { exit } }
+      END { exit(ok?0:1) }
+    ' || { echo "section '$a' missing **Anti-triggers** with following bullet"; return 1; }
+  done
+  echo "agent-routing.md has anti-triggers per agent"
+}
+
+check_matrix_rationale_log_format() {
+  # (i.d) '## Rationale logging' section contains the byte-exact canonical Log format line.
+  test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
+  local sec
+  sec=$(extract_md_section "$AGENT_ROUTING" '## Rationale logging')
+  printf '%s\n' "$sec" | grep -qF 'last_agent=<codex|senior|middle>; rationale=<T-X#>[; notes=<short>]' \
+    || { echo "## Rationale logging missing canonical Log format line"; return 1; }
+  echo "agent-routing.md Rationale logging has canonical format"
+}
+
+check_skill_agent_selection_pointer() {
+  # (ii) Positive (section-scoped): byte-exact pointer line inside '### Agent selection' extract.
+  #      Negative (file-level): no line begins with '**Rule of thumb**:' anywhere in SKILL.md.
+  local sec
+  sec=$(extract_md_section skills/feature/SKILL.md '### Agent selection')
+  printf '%s\n' "$sec" | grep -qF 'See `skills/feature/references/agent-routing.md` for routing triggers and the canonical Log format.' \
+    || { echo "SKILL.md ### Agent selection missing byte-exact pointer line"; return 1; }
+  if grep -q '^\*\*Rule of thumb\*\*:' skills/feature/SKILL.md; then
+    echo "SKILL.md still contains '**Rule of thumb**:' line (should be removed)"
+    return 1
+  fi
+  echo "SKILL.md ### Agent selection has pointer; Rule of thumb absent"
+}
+
+check_when_to_pick_matches_frontmatter() {
+  # (iii) For each agent, frontmatter `when_to_pick:` scalar matches matrix `**When to pick**: ...` line byte-exact.
+  local agent heading fm matrix sec
+  for agent in codex senior middle; do
+    case "$agent" in
+      codex)  heading='## Codex (default)';;
+      senior) heading='## Senior';;
+      middle) heading='## Middle';;
+    esac
+    fm=$(awk '/^when_to_pick: /{sub(/^when_to_pick: /, ""); print; exit}' "agents/developer-$agent.md")
+    if [ -z "$fm" ]; then
+      echo "agents/developer-$agent.md missing 'when_to_pick:' frontmatter scalar"
+      return 1
+    fi
+    sec=$(extract_md_section "$AGENT_ROUTING" "$heading")
+    matrix=$(printf '%s\n' "$sec" | awk '/^\*\*When to pick\*\*: /{sub(/^\*\*When to pick\*\*: /, ""); print; exit}')
+    if [ -z "$matrix" ]; then
+      echo "$AGENT_ROUTING section '$heading' missing '**When to pick**: ' line"
+      return 1
+    fi
+    if [ "$fm" != "$matrix" ]; then
+      echo "when_to_pick mismatch for $agent:"
+      echo "|$fm| vs |$matrix|"
+      return 1
+    fi
+  done
+  echo "when_to_pick matches matrix for codex/senior/middle"
+}
+
+check_matrix_escalation_per_agent_tuples() {
+  # (iv) '## Escalation' section has ### Codex, ### Middle, ### Senior subsections, each with condition/action/target/outcome tuples.
+  test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
+  local esc sub h k
+  esc=$(extract_md_section "$AGENT_ROUTING" '## Escalation')
+  for h in '### Codex' '### Middle' '### Senior'; do
+    printf '%s\n' "$esc" | grep -qF "$h" || { echo "## Escalation missing subheading: $h"; return 1; }
+  done
+  for h in 'Codex' 'Middle' 'Senior'; do
+    sub=$(printf '%s\n' "$esc" | awk -v hdr="### $h" '
+      !in_s && $0 == hdr { in_s = 1; next }
+      in_s && /^### / { exit }
+      in_s { print }
+    ')
+    for k in 'condition' 'action' 'target' 'outcome'; do
+      printf '%s\n' "$sub" | grep -qE "\\*\\*${k}\\*\\*:" \
+        || { echo "## Escalation ### $h missing **${k}**: line"; return 1; }
+    done
+  done
+  echo "agent-routing.md ## Escalation has per-agent tuples"
+}
+
+check_skill_resume_flow_uses_canonical_rationale() {
+  # (v) Positive: byte-exact canonical literal present in SKILL.md.
+  #     Negative: no bare 'last_agent=<...>' form without 'rationale=' on the same line.
+  grep -qF 'last_agent=<codex|senior|middle>; rationale=<T-X#>' skills/feature/SKILL.md \
+    || { echo "SKILL.md missing canonical last_agent=<codex|senior|middle>; rationale=<T-X#> literal"; return 1; }
+  local bad
+  bad=$(grep -E 'last_agent=<[^>]+>' skills/feature/SKILL.md | grep -v 'rationale=' || true)
+  if [ -n "$bad" ]; then
+    echo "SKILL.md contains bare 'last_agent=<...>' line(s) without 'rationale=':"
+    printf '%s\n' "$bad"
+    return 1
+  fi
+  echo "SKILL.md continue-mode uses canonical rationale form"
+}
+
+check "matrix-h2-sections"                               check_matrix_h2_sections
+check "matrix-triggers-per-agent"                        check_matrix_triggers_per_agent
+check "matrix-anti-triggers-per-agent"                   check_matrix_anti_triggers_per_agent
+check "matrix-rationale-log-format"                      check_matrix_rationale_log_format
+check "skill-agent-selection-pointer"                    check_skill_agent_selection_pointer
+check "when-to-pick-matches-frontmatter"                 check_when_to_pick_matches_frontmatter
+check "matrix-escalation-per-agent-tuples"               check_matrix_escalation_per_agent_tuples
+check "skill-resume-flow-uses-canonical-rationale"       check_skill_resume_flow_uses_canonical_rationale
 echo
 
 

@@ -315,6 +315,8 @@ Note: verifier runs against the current checkout — make sure the base branch i
 
 Before starting implementation, ask the user which agent to use:
 
+See `skills/feature/references/agent-routing.md` for routing triggers and the canonical Log format.
+
 ---
 ## ⏸ AWAITING YOUR INPUT
 
@@ -326,11 +328,9 @@ Before starting implementation, ask the user which agent to use:
 
 **Which agent?**
 
-**Rule of thumb**: prefer Codex unless the task requires broad live filesystem exploration or has genuinely ambiguous scope that the feature spec couldn't fully specify. When in doubt — try Codex first.
-
 If the feature spec tagged steps with a developer level, use that. Otherwise default to Codex.
 
-**Remember the choice**: once the user has picked an agent, append to the spec Log: `- YYYY-MM-DD: last_agent=<codex|senior|middle>`. Continue mode reads the most recent `last_agent=` entry from the Log and offers that as the default on resume (the user can still override).
+**Remember the choice**: once the user has picked an agent, append to the spec Log per the canonical format in `skills/feature/references/agent-routing.md` §Rationale logging. Continue mode reads the most recent `last_agent=` entry from the Log and offers that as the default on resume (the user can still override).
 
 #### Option 1: Codex (developer-codex agent)
 
@@ -538,7 +538,7 @@ Spec is BLOCKED on `<condition from the most recent Log entry>`.
 ---
 ## ⏸ AWAITING YOUR INPUT
 
-Resuming implementation. Pick the developer for the remaining steps. The most recent `last_agent=<name>` entry in the spec Log is offered as the default — press Enter to accept it, or name a different agent.
+Resuming implementation. Pick the developer for the remaining steps. The most recent `last_agent=<codex|senior|middle>; rationale=<T-X#>` entry in the spec Log is offered as the default — press Enter to accept it, or name a different agent.
 
 **Which developer (default is the `last_agent` from Log)?**
 
