@@ -14,3 +14,5 @@ kb_path: <set-me>
 # codex:
 #   model: gpt-5.4            # omit to use ~/.codex/config.toml default
 #   reasoning_effort: xhigh   # one of minimal|low|medium|high|xhigh (default: xhigh)
+#   model_fast: gpt-5.4-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)
+#   NOTE: when codex.model_fast is set, codex.model must also be set and must differ from codex.model_fast (otherwise cross-auditor would use Fast reasoning).

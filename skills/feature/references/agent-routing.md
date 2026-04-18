@@ -2,8 +2,7 @@
 
 One-paragraph preamble: this file is the source of truth for orchestrator
 developer-agent selection during `/feature new` handoff and `/feature continue`
-resume. Trigger IDs below (`T-C#`, `T-S#`, `T-M#`) are the only valid
-`rationale=` values in `last_agent=` Log entries.
+resume. Trigger IDs below (`T-C#`, `T-S#`, `T-M#`, `T-CF#`) are the only valid `rationale=` values in `last_agent=` Log entries.
 
 ## Codex (default)
 
@@ -46,6 +45,21 @@ resume. Trigger IDs below (`T-C#`, `T-S#`, `T-M#`) are the only valid
 - task requires design judgment or new abstractions (prefer Senior)
 - spec is wrong or contradictory (stop, report to user — see §Escalation)
 
+## Codex Fast (opt-in)
+
+**When to pick**: Dispatch variant of `developer-codex` using `codex.model_fast` — pick Fast when the step is well-specified, pattern-following, and low-risk, so reasoning depth can be traded for speed and cost.
+
+**Triggers**:
+- **T-CF1**: spec step is a mechanical content-floor edit or byte-exact doc update with explicit anchors (no design judgment required during implementation)
+- **T-CF2**: pattern-following code change mirroring an existing, already-proven pattern (new endpoint/test/handler cloned verbatim from a sibling), with narrow scope and no cross-module reach
+
+**Anti-triggers** (don't pick Codex Fast if):
+- task is security-sensitive (auth, crypto, secret handling, contract authorization)
+- task is cross-cutting (touches many layers or modules at once)
+- task introduces a new-abstraction (new trait/interface/type the codebase has not seen before)
+
+**Cross-auditor never consumes `codex.model_fast`.** Audit reasoning depth is non-negotiable; Fast is developer-codex-only.
+
 ## Rationale logging
 
 Every time the orchestrator picks a developer agent (new spec or `continue`), append to the spec Log:
@@ -54,7 +68,7 @@ Every time the orchestrator picks a developer agent (new spec or `continue`), ap
 - YYYY-MM-DD: last_agent=<codex|senior|middle>; rationale=<T-X#>[; notes=<short>]
 ```
 
-`rationale=` MUST be a trigger ID from one of the three agent sections above.
+`rationale=` MUST be a trigger ID from one of the four agent sections above (including `Codex Fast`).
 Use `T-S0` when none of Codex's or Middle's triggers matched (the fallback).
 `notes=<short>` is optional and carries a one-phrase human-readable reason
 (e.g. `notes=spec paths explicit but domain unusual`).
