@@ -5,6 +5,7 @@ description: >
   new abstractions, Soroban contract logic, security-sensitive code, large refactors,
   tasks with unclear scope, or anything where design decisions emerge during implementation.
   Claude Opus — higher reasoning, better at catching edge cases upfront.
+when_to_pick: Senior developer for cross-cutting refactors, new abstractions, security-sensitive code, and ambiguous scope requiring design judgment.
 model: opus
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
