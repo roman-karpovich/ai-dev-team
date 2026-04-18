@@ -2015,6 +2015,33 @@ check "r6-anti-patterns-enumerated"                       check_r6_anti_patterns
 check "r6-normative-literals-present"                     check_r6_normative_literals_present
 check "r6-per-stack-tokens-present"                       check_r6_per_stack_tokens_present
 check "r2-points-to-r6-for-scope"                         check_r2_points_to_r6_for_scope
+
+# F6: developer-workflow.md §Code Quality Rules has the R6 short-form
+# bullet exactly once (byte-exact whole-line; iter-5 X14 replaced the
+# prior regex because R6 matched as substring of R60 and only 2 of 6
+# token orderings were covered).
+check_developer_workflow_short_form_r6() {
+  local sub count F6
+  F6='- **R6 — Test scope / core tests exercise the user-facing contract.** Prefer tests that drive the system through its public contract (HTTP route, smart-contract method, library API, CLI entry) rather than internal collaborators. See R6 in `code-quality-rules.md`.'
+  sub=$(extract_md_section "$DWF_R6" '## Code Quality Rules')
+  count=$(printf '%s\n' "$sub" | grep -cFx "$F6")
+  [ "$count" = "1" ] || { echo "developer-workflow.md §Code Quality Rules F6 byte-exact count=$count, expected 1"; return 1; }
+  echo "developer-workflow.md §Code Quality Rules has R6 short-form bullet (byte-exact count=1)"
+}
+
+# F7: developer-workflow.md §Test Quality has the R6 cross-reference
+# sentence exactly once (byte-exact whole-line; iter-4 X10 guard).
+check_developer_workflow_test_quality_points_to_r6() {
+  local sub count F7
+  F7='For test scope (what level the test is applied to — user-facing contract vs internal collaborators), see R6 in `code-quality-rules.md`.'
+  sub=$(extract_md_section "$DWF_R6" '## Test Quality')
+  count=$(printf '%s\n' "$sub" | grep -cFx "$F7")
+  [ "$count" = "1" ] || { echo "developer-workflow.md §Test Quality F7 byte-exact count=$count, expected 1"; return 1; }
+  echo "developer-workflow.md §Test Quality points to R6 for scope (byte-exact count=1)"
+}
+
+check "developer-workflow-short-form-r6"                  check_developer_workflow_short_form_r6
+check "developer-workflow-test-quality-points-to-r6"      check_developer_workflow_test_quality_points_to_r6
 echo
 
 # --- Codex Fast config surface ---
