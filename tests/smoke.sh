@@ -1941,6 +1941,26 @@ check "agent-routing preamble lists T-CF# as valid" \
   bash -c "grep -qF -- 'Trigger IDs below (\`T-C#\`, \`T-S#\`, \`T-M#\`, \`T-CF#\`) are the only valid \`rationale=\` values in \`last_agent=\` Log entries.' skills/feature/references/agent-routing.md"
 echo
 
+# --- Codex Fast agent-selection menu ---
+echo "Codex Fast agent-selection menu:"
+
+check "SKILL.md agent-selection lists Codex Fast" \
+  bash -c "grep -qF -- '1b. **Codex Fast** — faster/cheaper variant; only shown when \`codex.model_fast\` is configured.' skills/feature/SKILL.md"
+
+assert_skill_option_1b_wiring() {
+  local sec
+  sec=$(extract_md_section skills/feature/SKILL.md '#### Option 1b: Codex Fast (developer-codex agent)')
+  [ -n "$sec" ] || { echo '#### Option 1b: Codex Fast (developer-codex agent) subsection missing'; return 1; }
+  printf '%s\n' "$sec" | grep -qF -- '- `codex_model`: the value of `codex.model_fast` from config (not `codex.model`)' \
+    || { echo 'Option 1b missing dispatch-wiring line (codex_model ← codex.model_fast)'; return 1; }
+  echo 'Option 1b subsection wires codex.model_fast → codex_model'
+}
+check "SKILL.md Option 1b subsection wires codex.model_fast" assert_skill_option_1b_wiring
+
+check "SKILL.md renders Option 1b conditionally on codex.model_fast" \
+  bash -c "grep -qF -- 'Render option 1b and the \"#### Option 1b: Codex Fast (developer-codex agent)\" subsection only when \`codex.model_fast\` resolved in Phase 0; when it is unset, omit both entirely (the menu reverts to three options).' skills/feature/SKILL.md"
+echo
+
 
 echo
 echo "Passed: $PASS"

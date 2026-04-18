@@ -348,8 +348,11 @@ See `skills/feature/references/agent-routing.md` for routing triggers and the ca
 **Which developer should implement this?**
 
 1. **Codex (GPT-5.4 xhigh)** ← default — saves Claude tokens, corporate subscription, use aggressively
+1b. **Codex Fast** — faster/cheaper variant; only shown when `codex.model_fast` is configured.
 2. **Senior (Opus)** — only when Codex falls short: highly ambiguous scope, extensive codebase exploration needed, ultra-complex cross-cutting changes
 3. **Middle (Sonnet)** — quick in-session fixes where spawning Codex is overkill (trivial one-liner changes, typos, small config edits)
+
+Render option 1b and the "#### Option 1b: Codex Fast (developer-codex agent)" subsection only when `codex.model_fast` resolved in Phase 0; when it is unset, omit both entirely (the menu reverts to three options).
 
 **Which agent?**
 
@@ -364,6 +367,15 @@ Spawn `developer-codex` subagent with:
 - `workdoc_path`: `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`
 - `project_path`: path to the source repo
 - `task`: steps to implement (works best when spec has explicit file paths and clear requirements)
+
+#### Option 1b: Codex Fast (developer-codex agent)
+
+Spawn `developer-codex` subagent with:
+- `spec_path`: path to the spec file
+- `workdoc_path`: `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`
+- `project_path`: path to the source repo
+- `codex_model`: the value of `codex.model_fast` from config (not `codex.model`)
+- `task`: steps to implement — Fast is for well-specified, pattern-following steps (see `skills/feature/references/agent-routing.md` § `Codex Fast (opt-in)`)
 
 #### Option 2: Senior (developer-senior agent)
 
