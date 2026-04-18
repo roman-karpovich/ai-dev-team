@@ -2,6 +2,7 @@
 name: cross-auditor
 description: Runs parallel Claude + Codex audit and consolidates findings. Use proactively when /cross-audit is invoked, or when spawned as part of the dev team audit phase.
 model: opus
+effort: xhigh
 background: true
 isolation: worktree
 tools: Read, Grep, Glob, Bash, mcp__codex__codex
