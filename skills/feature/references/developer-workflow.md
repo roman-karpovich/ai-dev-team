@@ -91,6 +91,7 @@ When writing tests:
 - **No flaky tests**: freeze dates/times (freezegun, MockClock, `jest.useFakeTimers`), seed random values. A test that can fail on a Friday or after a year is a time bomb. If you cannot freeze a value, flag it as a design smell — don't write a fuzzy assertion.
 
 For test strength (whether a test actually catches regressions), see R3 in `code-quality-rules.md`.
+For test scope (what level the test is applied to — user-facing contract vs internal collaborators), see R6 in `code-quality-rules.md`.
 
 ---
 
@@ -168,6 +169,7 @@ Short-form summary — the full reasoning and application steps live in the refe
   as a regression and fix the code.
 - **R3 — Test strength / signal-to-noise.** Every fresh test must name the regression it catches in `observed.notes`; the test strength anti-patterns (tautological, setter-getter round-trip, mock-call-counter, `assertIsNotNone` on never-None, type-checker duplication) are weak — see R3 in `code-quality-rules.md`.
 - **R5 — Tests live in a dedicated file, not inline in the implementation.** Before writing the first test in a module, grep the target repo for `#[cfg(test)]` and follow the majority repo convention; default to a dedicated `tests.rs` / `tests/` file when no convention exists or the repo is mixed. Full reasoning and the discovery-command step live in R5 of `code-quality-rules.md`.
+- **R6 — Test scope / core tests exercise the user-facing contract.** Prefer tests that drive the system through its public contract (HTTP route, smart-contract method, library API, CLI entry) rather than internal collaborators. See R6 in `code-quality-rules.md`.
 
 ## Common Rules
 
