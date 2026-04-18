@@ -114,7 +114,7 @@ You (the feature skill orchestrator) write both artifacts directly.
 - **Context** — why this feature exists
 - **Current State** — how the system works today (reference KB pages and source files)
 - **Design** — changes table, data model, API, configuration
-- **Branch** — `feature/YYYY-MM-DD-<slug>` (or specify different base if needed)
+- **Branch** — `<type>/YYYY-MM-DD-<slug>` where `<type>` is the resolved `change_type` (see §3.6 R4 and the change-type prompt below — one of `feat / fix / refactor / ci / docs / test / chore`) (or specify different base if needed)
 - **Implementation Checklist** — ordered, concrete steps (each is a reviewable behavioral unit)
 - **Verification** — how to test end-to-end
 - **Log** — append-only decisions and progress
@@ -126,6 +126,8 @@ title: <feature title>
 project: <project>
 type: spec
 status: DRAFT
+branch: <type>/YYYY-MM-DD-<slug>
+change_type: <type>
 created: YYYY-MM-DD
 tags: [spec, <project>]
 ---
@@ -157,6 +159,29 @@ notes: ""
 ```
 
 Leave all `observed` fields empty — the developer fills them during implementation.
+
+**Change-type prompt.** Before the Prerequisites prompt, resolve the spec's `change_type`. Infer from the user's description (case-insensitive, first match wins; evaluate in this order):
+
+1. `fix | bug | hotfix | regression | broken` → `fix`
+2. `refactor | extract | rename | reorganize | restructure` → `refactor`
+3. `docs | documentation | readme` → `docs`
+4. `ci | workflow | github actions | gh actions | pipeline` → `ci`
+5. `test | coverage | smoke | assertion` (when the primary subject is tests) → `test`
+6. `chore | bump | deps` → `chore`
+7. default → `feat`
+
+Then confirm with the user via a banner prompt:
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Inferred change type: **<type>**. Branch will be
+`<type>/YYYY-MM-DD-<slug>`. Override with one of
+`feat / fix / refactor / ci / docs / test / chore`, or accept.
+
+**Change type?**
+
+Empty answer → accept inferred value. Any of the seven literals → use that. Anything else → re-prompt with the same banner and an "invalid value" preamble. Write the resolved value into spec frontmatter as `change_type:` and substitute into the `branch:` field (e.g. `branch: feat/2026-04-18-my-slug`). Append to spec Log: `- YYYY-MM-DD: change_type=<type> (inferred|user-override)`.
 
 **Prerequisites prompt.** Before moving to approval, ask the user:
 
@@ -359,7 +384,7 @@ Spawn `developer-middle` subagent with:
 ### Git conventions
 
 - **Base branch**: `master` or `main` — whichever exists in the repo (`git branch -r | grep -E 'origin/(master|main)$'`). Never cut from `staging`, `testnet`, `pre-prod`, or similar collection branches — those are staging dumps, not source of truth
-- **Feature branch**: `feature/YYYY-MM-DD-<slug>` (or as specified in spec `Branch:` field)
+- **Feature branch**: `<type>/YYYY-MM-DD-<slug>` — `<type>` is the spec's resolved `change_type` (one of `feat / fix / refactor / ci / docs / test / chore`); dated example: `feat/2026-04-17-my-feature` (or as specified in spec `Branch:` field; see R4 in `references/code-quality-rules.md`)
 - **Feature dependencies**: if this feature depends on another in-flight feature, merge that feature's branch into this one directly. Do not route through staging
 - Small logical commits per checklist step
 - No "Co-authored-by" in commit messages
@@ -593,7 +618,7 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 ### Active
 | Spec | Project | Status | Progress | Branch |
 |------|---------|--------|----------|--------|
-| ... | ... | IN_PROGRESS | 3/7 steps | feature/... |
+| ... | ... | IN_PROGRESS | 3/7 steps | <type>/... |
 
 ### Shipped — awaiting your action
 (SHIPPED with at least one pending `action` item, or any `failed` item.)
