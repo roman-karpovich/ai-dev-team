@@ -144,3 +144,18 @@ tautological/shape-only assertions before they accumulate as green-CI ballast.
    entries.
 
 ---
+
+## R4 — Branch prefix matches change nature
+
+**Rule**: the feature-branch prefix MUST equal the resolved `change_type` in the spec frontmatter. Concretely, branch name is `<change_type>/YYYY-MM-DD-<slug>` where `<change_type>` is one of the seven conventional prefixes (`feat / fix / refactor / ci / docs / test / chore`). Legacy `feature/…` is preserved only by the `stop-check` hook's eight-alternative regex for specs pre-dating this rule; it is NOT a valid value for new specs' `change_type`.
+
+**Why**: the repo's PR-auto-label workflow keys off the PR title's Conventional Commits prefix and `.github/release.yml` drives release-note categorisation from those labels. When a pure bug-fix lives on a `feature/…` branch the title-label link still works, but the branch name undermines the category at a glance during review — mis-routing categorisation signals, confusing reviewers, and hurting release-note quality. A real case (soroban-amm, cited in BACKLOG #15) made this concrete: a `fix`-labelled commit on a `feature/…` branch produced correct release-note copy but wrong visual grouping in the PR list. R4 removes the drift at its source by binding the branch prefix to the same `change_type` scalar the spec review already validates.
+
+**How to apply**:
+
+1. During `/feature new`, let the orchestrator infer `change_type` from the description (keyword buckets documented in `skills/feature/SKILL.md` §New/Step 2; default `feat`) and confirm it via the `AWAITING YOUR INPUT` banner. The resolved value goes into spec frontmatter as `change_type:` and is substituted into `branch:` to produce the canonical `<change_type>/YYYY-MM-DD-<slug>` form (e.g. `branch: fix/2026-04-18-my-slug`).
+2. Before every `git commit`, run `git branch --show-current` and validate the current branch name matches `^(feat|fix|refactor|ci|docs|test|chore)/\d{4}-\d{2}-\d{2}-`. If it matches `^feature/` instead, the spec was written under the old convention — stop and either update the spec's `change_type` field (new work) or leave the legacy `feature/` branch alone (in-flight spec pre-dating this rule).
+3. When a spec's scope shifts mid-flight (e.g. what started as a `feat` becomes a pure `fix` after scoping), open the spec, update `change_type:` in frontmatter, rename the branch (`git branch -m <new-prefix>/YYYY-MM-DD-<slug>`), and append a Log entry: `- YYYY-MM-DD: change_type: <old> → <new> (scope change)`. Do NOT silently keep the old branch prefix.
+4. Reviewers verify `change_type` and the branch name agree in spec-review Pass 1. A mismatch is a review block, not a warning — fix it before APPROVED.
+
+---
