@@ -2166,6 +2166,59 @@ check "khorikov-preamble-heading-present"                 check_khorikov_preambl
 check "khorikov-preamble-window-byte-exact"               check_khorikov_preamble_window_byte_exact
 check "khorikov-r1-why-has-khorikov-line"                 check_khorikov_r1_why_has_khorikov_line
 check "khorikov-r2-why-has-khorikov-para"                 check_khorikov_r2_why_has_khorikov_para
+
+# F5a: §Test Quality has the "Match existing structure" pillar-tagged title byte-exact.
+check_khorikov_tq_match_structure_tag() {
+  local tq c
+  tq=$(extract_md_section "$DWF_RETRO" "## Test Quality")
+  c=$(printf '%s\n' "$tq" | grep -cFx -- "$TQ_PILLAR_TAG_MATCH")
+  [ "$c" = "1" ] || { echo "§Test Quality TQ_PILLAR_TAG_MATCH count=$c, expected 1 (F5a byte-exact whole-line)"; return 1; }
+  echo "§Test Quality Match-existing-structure pillar-tag present byte-exact count=1"
+}
+
+# F5b: §Test Quality has the "Exact assertions" pillar-tagged title byte-exact.
+check_khorikov_tq_exact_assertions_tag() {
+  local tq c
+  tq=$(extract_md_section "$DWF_RETRO" "## Test Quality")
+  c=$(printf '%s\n' "$tq" | grep -cFx -- "$TQ_PILLAR_TAG_EXACT")
+  [ "$c" = "1" ] || { echo "§Test Quality TQ_PILLAR_TAG_EXACT count=$c, expected 1 (F5b byte-exact whole-line)"; return 1; }
+  echo "§Test Quality Exact-assertions pillar-tag present byte-exact count=1"
+}
+
+# F5c: §Test Quality has the "Expected values" pillar-tagged title byte-exact.
+check_khorikov_tq_expected_values_tag() {
+  local tq c
+  tq=$(extract_md_section "$DWF_RETRO" "## Test Quality")
+  c=$(printf '%s\n' "$tq" | grep -cFx -- "$TQ_PILLAR_TAG_EXPECTED")
+  [ "$c" = "1" ] || { echo "§Test Quality TQ_PILLAR_TAG_EXPECTED count=$c, expected 1 (F5c byte-exact whole-line)"; return 1; }
+  echo "§Test Quality Expected-values pillar-tag present byte-exact count=1"
+}
+
+# F5d: §Test Quality has the "No flaky tests" pillar-tagged title byte-exact.
+check_khorikov_tq_no_flaky_tests_tag() {
+  local tq c
+  tq=$(extract_md_section "$DWF_RETRO" "## Test Quality")
+  c=$(printf '%s\n' "$tq" | grep -cFx -- "$TQ_PILLAR_TAG_FLAKY")
+  [ "$c" = "1" ] || { echo "§Test Quality TQ_PILLAR_TAG_FLAKY count=$c, expected 1 (F5d byte-exact whole-line)"; return 1; }
+  echo "§Test Quality No-flaky-tests pillar-tag present byte-exact count=1"
+}
+
+# F5e: §Test Quality contains exactly 4 occurrences of the substring '*(pillar',
+# guarding against a pillar tag leaking into a bullet body, sub-bullet, or
+# cross-ref sentence.
+check_khorikov_tq_pillar_tag_count_exact_4() {
+  local tq c
+  tq=$(extract_md_section "$DWF_RETRO" "## Test Quality")
+  c=$(printf '%s\n' "$tq" | grep -cF -- "*(pillar")
+  [ "$c" = "4" ] || { echo "§Test Quality '*(pillar' occurrence count=$c, expected 4 (F5e belt-and-braces)"; return 1; }
+  echo "§Test Quality has exactly 4 pillar tags (count-exact)"
+}
+
+check "khorikov-tq-match-structure-tag"                   check_khorikov_tq_match_structure_tag
+check "khorikov-tq-exact-assertions-tag"                  check_khorikov_tq_exact_assertions_tag
+check "khorikov-tq-expected-values-tag"                   check_khorikov_tq_expected_values_tag
+check "khorikov-tq-no-flaky-tests-tag"                    check_khorikov_tq_no_flaky_tests_tag
+check "khorikov-tq-pillar-tag-count-exact-4"              check_khorikov_tq_pillar_tag_count_exact_4
 echo
 
 # --- Codex Fast config surface ---
