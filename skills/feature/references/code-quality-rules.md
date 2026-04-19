@@ -12,6 +12,17 @@ Each rule has three parts:
 
 User-input prompt presentation is governed by docs/user-input-banner-convention.md — violations block spec-review Pass 1.
 
+## Shared framework — Khorikov's 4 pillars
+
+R1–R6 draw on one framework from Vladimir Khorikov, *Unit Testing: Principles, Practices, and Patterns* (Manning, 2020). Each test scores on four independent axes:
+
+1. **Protection against regressions** — does the test catch real behavioural bugs in production code?
+2. **Resistance to refactoring** — does it stay green across behaviour-preserving internal rearrangements?
+3. **Fast feedback** — does it run quickly enough for the inner dev loop?
+4. **Maintainability** — is it cheap to read and keep?
+
+Pillars (1) and (2) trade off: over-isolated tests score high on (1) but collapse on (2); tests bound to observable contract at the right scope score high on both. The rule set uses this vocabulary everywhere — R1 is the degenerate case of (1), R2 reads accumulated (2) as empirical trust evidence, R3 keys off (1)+(2) at assertion level, R6 keys off (1)+(2) at scope level. Each rule cites the specific Khorikov chapter where relevant.
+
 ---
 
 ## R1 — Dead code isn't kept alive by its own tests
@@ -23,6 +34,8 @@ callers are its own tests. Delete the helper *and* those tests together.
 utility because tests pass. This creates a closed loop where code exists only to satisfy tests
 that exist only to validate that code. The utility's production consumer is gone — both are
 dead weight, and the passing tests create false confidence.
+
+R1 is Khorikov's "no behaviour under test" anti-pattern (*Unit Testing* ch. 7 — Humble Object / identification of what's testable) applied to dead production code: with the production consumer gone, pillar (1) has no regression to protect against, so the tests are cost without signal.
 
 **How to apply**:
 
@@ -54,6 +67,8 @@ dead weight, and the passing tests create false confidence.
 correctness. When the user says "this is wrong", the agent looks at the fresh tests, decides
 the logic must be right, and makes cosmetic changes that still miss the intent. The shitloop
 locks in the wrong contract.
+
+Core > fresh in trust because pillar (2) resistance-to-refactoring is *empirically* confirmed by a core test: it survived prior refactorings without change, so its assertion tracks observable behaviour rather than implementation geometry. A fresh test has no such history — its (2) score is untested, and its green result cannot be read as evidence that the contract is right. (Khorikov's pillar (2) framed as the survival property — see *Unit Testing* ch. 1, 4 — rather than a deliberate design constraint.)
 
 **How to apply**:
 

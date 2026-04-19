@@ -40,6 +40,24 @@ extract_md_section() {
   ' "$1"
 }
 
+extract_why_block() {
+  # Stdin = output of extract_md_section for a given ## Rn — heading.
+  # Emits lines from the first '**Why**:' through the terminator
+  # '**How to apply**:' line (INCLUSIVE). Including the terminator line
+  # is deliberate: it lets a byte compare observe the blank line between
+  # the Why content and the terminator (a missing blank collapses
+  # '<Why>\n\n**How to apply**:' to '<Why>\n**How to apply**:' — the
+  # difference survives command substitution's trailing-newline strip).
+  # For F3/F4 (which use `grep -cFx` to count the Khorikov line), the
+  # presence of the terminator line is harmless — `grep -cFx` ignores it.
+  # Requires Why to precede How-to-apply (true for all current rules R1–R6).
+  awk '
+    /^\*\*Why\*\*:/ { in_why=1 }
+    in_why { print }
+    in_why && /^\*\*How to apply\*\*:/ { exit }
+  '
+}
+
 echo "Plugin: $PLUGIN_ROOT"
 echo
 
@@ -2042,6 +2060,112 @@ check_developer_workflow_test_quality_points_to_r6() {
 
 check "developer-workflow-short-form-r6"                  check_developer_workflow_short_form_r6
 check "developer-workflow-test-quality-points-to-r6"      check_developer_workflow_test_quality_points_to_r6
+echo
+
+# --- Khorikov vocabulary retrofit (spec: 2026-04-18-khorikov-vocab-retrofit) ---
+echo "Khorikov vocabulary retrofit:"
+
+CQR_RETRO='skills/feature/references/code-quality-rules.md'
+DWF_RETRO='skills/feature/references/developer-workflow.md'
+
+PREAMBLE_HDR="## Shared framework — Khorikov's 4 pillars"
+
+# Quoted heredoc (<<'EOF') — suppresses $-expansion and backtick expansion
+# so asterisks, em-dashes, and parentheses land verbatim. Command
+# substitution $(...) strips trailing newlines, so PREAMBLE_BODY ends on
+# the final "... where relevant." line without a trailing newline. That
+# is the byte pattern consumed by the PREAMBLE_WINDOW printf composition
+# below; F2 compares the extracted window directly to PREAMBLE_WINDOW
+# (§5.2 — awk from banner sentence through `## R1 —` heading, byte-equal).
+PREAMBLE_BODY=$(cat <<'EOF'
+R1–R6 draw on one framework from Vladimir Khorikov, *Unit Testing: Principles, Practices, and Patterns* (Manning, 2020). Each test scores on four independent axes:
+
+1. **Protection against regressions** — does the test catch real behavioural bugs in production code?
+2. **Resistance to refactoring** — does it stay green across behaviour-preserving internal rearrangements?
+3. **Fast feedback** — does it run quickly enough for the inner dev loop?
+4. **Maintainability** — is it cheap to read and keep?
+
+Pillars (1) and (2) trade off: over-isolated tests score high on (1) but collapse on (2); tests bound to observable contract at the right scope score high on both. The rule set uses this vocabulary everywhere — R1 is the degenerate case of (1), R2 reads accumulated (2) as empirical trust evidence, R3 keys off (1)+(2) at assertion level, R6 keys off (1)+(2) at scope level. Each rule cites the specific Khorikov chapter where relevant.
+EOF
+)
+
+# Single-line strings — double-quoted so the shell escapes the embedded
+# `"no behaviour under test"` correctly. No trailing newline.
+R1_KHORIKOV_LINE="R1 is Khorikov's \"no behaviour under test\" anti-pattern (*Unit Testing* ch. 7 — Humble Object / identification of what's testable) applied to dead production code: with the production consumer gone, pillar (1) has no regression to protect against, so the tests are cost without signal."
+
+R2_KHORIKOV_PARA="Core > fresh in trust because pillar (2) resistance-to-refactoring is *empirically* confirmed by a core test: it survived prior refactorings without change, so its assertion tracks observable behaviour rather than implementation geometry. A fresh test has no such history — its (2) score is untested, and its green result cannot be read as evidence that the contract is right. (Khorikov's pillar (2) framed as the survival property — see *Unit Testing* ch. 1, 4 — rather than a deliberate design constraint.)"
+
+# Quoting strategy per string:
+#   - MATCH / EXPECTED: single-quoted — no shell metachars, no apostrophes.
+#   - EXACT: single-quoted — contains backticks which are literal inside
+#     single quotes (no command substitution triggered), no apostrophes.
+#   - FLAKY: contains an apostrophe in `don't` AND backticks in
+#     `jest.useFakeTimers` — single quotes cannot contain a literal
+#     apostrophe (there is no `''` escape in bash — adjacent single quotes
+#     concatenate to empty, so `'don''t'` yields `dont`, one byte short).
+#     Use double quotes and escape the backticks as `\`` to suppress command
+#     substitution; the apostrophe passes through unchanged under double
+#     quotes. There are no `$` or `"` or backslashes in this string to
+#     escape further.
+TQ_PILLAR_TAG_MATCH='- **Match existing structure** *(pillar (4) maintainability)*: read 2–3 tests in the same file/directory first. Match their structure, naming, fixtures, and assertion style — do not invent a new pattern.'
+TQ_PILLAR_TAG_EXACT='- **Exact assertions** *(pillar (1) protection against regressions)*: assert on specific values (`assert_eq!(x, 42)`), not vague checks (`> 0`, `is not None`). Vague checks miss regressions where the value changes but stays truthy.'
+TQ_PILLAR_TAG_EXPECTED='- **Expected values** *(pillars (2) resistance to refactoring and (4) maintainability)*:'
+TQ_PILLAR_TAG_FLAKY="- **No flaky tests** *(pillars (3) fast feedback and (4) maintainability)*: freeze dates/times (freezegun, MockClock, \`jest.useFakeTimers\`), seed random values. A test that can fail on a Friday or after a year is a time bomb. If you cannot freeze a value, flag it as a design smell — don't write a fuzzy assertion."
+
+# Composed from HDR + BODY — avoids duplication drift. The 16-line window
+# spans banner → blank → HDR → blank → BODY → blank → `---` → blank → R1 heading.
+PREAMBLE_WINDOW=$(printf '%s\n\n%s\n\n%s\n\n---\n\n%s\n' \
+  "User-input prompt presentation is governed by docs/user-input-banner-convention.md — violations block spec-review Pass 1." \
+  "$PREAMBLE_HDR" \
+  "$PREAMBLE_BODY" \
+  "## R1 — Dead code isn't kept alive by its own tests")
+
+# F1: Shared framework heading present byte-exact count=1.
+check_khorikov_preamble_heading_present() {
+  local c
+  c=$(grep -cFx -- "$PREAMBLE_HDR" "$CQR_RETRO")
+  [ "$c" = "1" ] || { echo "code-quality-rules.md preamble heading count=$c, expected 1 (F1 count-exact)"; return 1; }
+  echo "Khorikov preamble heading present byte-exact count=1"
+}
+
+# F2: Multi-line window from banner sentence through `## R1 —` heading
+# byte-equal to PREAMBLE_WINDOW. Enforces placement between banner and R1,
+# single `---` separator, exact blank-line layout, and body bytes.
+check_khorikov_preamble_window_byte_exact() {
+  local win
+  win=$(awk '
+    /^User-input prompt presentation is governed / { flag=1 }
+    flag { print }
+    flag && /^## R1 — / { exit }
+  ' "$CQR_RETRO")
+  [ "$win" = "$PREAMBLE_WINDOW" ] || { echo "code-quality-rules.md preamble window byte-exact compare failed (F2)"; return 1; }
+  echo "Khorikov preamble window byte-exact (banner → R1 heading)"
+}
+
+# F3: R1 Why block contains R1_KHORIKOV_LINE exactly once.
+check_khorikov_r1_why_has_khorikov_line() {
+  local r1_sec r1_why c
+  r1_sec=$(extract_md_section "$CQR_RETRO" "## R1 — Dead code isn't kept alive by its own tests")
+  r1_why=$(printf '%s\n' "$r1_sec" | extract_why_block)
+  c=$(printf '%s\n' "$r1_why" | grep -cFx -- "$R1_KHORIKOV_LINE")
+  [ "$c" = "1" ] || { echo "R1 Why R1_KHORIKOV_LINE count=$c, expected 1 (F3 byte-exact whole-line in Why scope)"; return 1; }
+  echo "R1 Why has Khorikov line byte-exact count=1"
+}
+
+# F4: R2 Why block contains R2_KHORIKOV_PARA exactly once.
+check_khorikov_r2_why_has_khorikov_para() {
+  local r2_sec r2_why c
+  r2_sec=$(extract_md_section "$CQR_RETRO" "## R2 — Trust tiers for tests")
+  r2_why=$(printf '%s\n' "$r2_sec" | extract_why_block)
+  c=$(printf '%s\n' "$r2_why" | grep -cFx -- "$R2_KHORIKOV_PARA")
+  [ "$c" = "1" ] || { echo "R2 Why R2_KHORIKOV_PARA count=$c, expected 1 (F4 byte-exact whole-line in Why scope)"; return 1; }
+  echo "R2 Why has Khorikov paragraph byte-exact count=1"
+}
+
+check "khorikov-preamble-heading-present"                 check_khorikov_preamble_heading_present
+check "khorikov-preamble-window-byte-exact"               check_khorikov_preamble_window_byte_exact
+check "khorikov-r1-why-has-khorikov-line"                 check_khorikov_r1_why_has_khorikov_line
+check "khorikov-r2-why-has-khorikov-para"                 check_khorikov_r2_why_has_khorikov_para
 echo
 
 # --- Codex Fast config surface ---
