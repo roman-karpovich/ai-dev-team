@@ -82,13 +82,13 @@ If the step adds or modifies a fresh test, `observed.notes` must include a one-s
 
 When writing tests:
 
-- **Match existing structure**: read 2–3 tests in the same file/directory first. Match their structure, naming, fixtures, and assertion style — do not invent a new pattern.
-- **Exact assertions**: assert on specific values (`assert_eq!(x, 42)`), not vague checks (`> 0`, `is not None`). Vague checks miss regressions where the value changes but stays truthy.
-- **Expected values**:
+- **Match existing structure** *(pillar (4) maintainability)*: read 2–3 tests in the same file/directory first. Match their structure, naming, fixtures, and assertion style — do not invent a new pattern.
+- **Exact assertions** *(pillar (1) protection against regressions)*: assert on specific values (`assert_eq!(x, 42)`), not vague checks (`> 0`, `is not None`). Vague checks miss regressions where the value changes but stays truthy.
+- **Expected values** *(pillars (2) resistance to refactoring and (4) maintainability)*:
   - Trivially derivable from test inputs → express it: `assert_eq!(reserve, deposit1 + deposit2)`.
   - Complex formula → use an explicit constant; replicating complex logic risks copying the bug.
   - Named intermediate variables for call arguments/setup are fine; assertions themselves stay simple.
-- **No flaky tests**: freeze dates/times (freezegun, MockClock, `jest.useFakeTimers`), seed random values. A test that can fail on a Friday or after a year is a time bomb. If you cannot freeze a value, flag it as a design smell — don't write a fuzzy assertion.
+- **No flaky tests** *(pillars (3) fast feedback and (4) maintainability)*: freeze dates/times (freezegun, MockClock, `jest.useFakeTimers`), seed random values. A test that can fail on a Friday or after a year is a time bomb. If you cannot freeze a value, flag it as a design smell — don't write a fuzzy assertion.
 
 For test strength (whether a test actually catches regressions), see R3 in `code-quality-rules.md`.
 For test scope (what level the test is applied to — user-facing contract vs internal collaborators), see R6 in `code-quality-rules.md`.
