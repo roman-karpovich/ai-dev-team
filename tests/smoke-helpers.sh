@@ -708,3 +708,82 @@ check_overview_git_references_canonical() {
   fi
   echo "$path §Git conventions for developers has canonical short reference to developer-workflow.md §Git Workflow (master-or-main, no drift, no bullets)"
 }
+
+# --- Trigger-map dedupe (spec 2026-04-20-trigger-map-dedupe) ---
+# Self-contained helpers: each does inline awk/grep extraction, does NOT rely
+# on extract_md_section from the caller. Each accepts $1 = path (real plugin
+# file OR negative fixture). Returns 0 iff the canonical shape is present;
+# non-zero with a diagnostic line otherwise. Bash-3.2 compatible.
+
+check_session_start_trigger_map_complete() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local missing=0 target
+  for target in \
+    '/feature new' \
+    '/feature continue' \
+    '/feature status' \
+    '/cross-audit' \
+    '/investigate' \
+    '/feature extend' \
+    '/feature verify' \
+    '/feature checklist'; do
+    grep -qF "$target" "$path" || { echo "$path missing canonical trigger target '$target'"; missing=1; }
+  done
+  [ "$missing" -eq 0 ] || return 1
+  grep -qF 'Skill trigger map' "$path" \
+    || { echo "$path missing 'Skill trigger map' section signature"; return 1; }
+  echo "$path has all 8 canonical trigger targets + 'Skill trigger map' signature"
+}
+
+check_claude_md_snippet_points_to_hook() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local missing=0 target
+  for target in \
+    '/feature new' \
+    '/feature continue' \
+    '/feature status' \
+    '/cross-audit' \
+    '/investigate' \
+    '/feature extend' \
+    '/feature verify' \
+    '/feature checklist'; do
+    grep -qF "$target" "$path" || { echo "$path missing canonical trigger target '$target'"; missing=1; }
+  done
+  [ "$missing" -eq 0 ] || return 1
+  grep -qF '`hooks/session-start` (injected into every session at runtime)' "$path" \
+    || { echo "$path missing byte-exact source-of-truth pointer '\`hooks/session-start\` (injected into every session at runtime)'"; return 1; }
+  echo "$path has all 8 canonical trigger targets + source-of-truth pointer to hooks/session-start"
+}
+
+check_readme_ambient_workflow_references_sources() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "## Ambient workflow" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## Ambient workflow' section"; return 1; }
+  # Positive — short reference must link to both sources.
+  printf '%s\n' "$section" | grep -qF 'docs/claude-md-snippet.md' \
+    || { echo "$path §Ambient workflow missing link to 'docs/claude-md-snippet.md'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'hooks/session-start' \
+    || { echo "$path §Ambient workflow missing link to 'hooks/session-start'"; return 1; }
+  # Positive — must mention 4 core slash commands.
+  local cmd
+  for cmd in '/feature new' '/feature continue' '/cross-audit' '/investigate'; do
+    printf '%s\n' "$section" | grep -qF "$cmd" \
+      || { echo "$path §Ambient workflow missing core slash command '$cmd'"; return 1; }
+  done
+  # Negative — section must not carry a full trigger table (i.e., must be a
+  # short reference, not a full pasted matrix). Count table data rows starting
+  # with '| "' (user-says examples) or '| \"' — reject if >= 2.
+  local table_rows
+  table_rows=$(printf '%s\n' "$section" | grep -cE '^\| "')
+  [ "$table_rows" -lt 2 ] \
+    || { echo "$path §Ambient workflow still contains a full trigger table ($table_rows table-rows); must be a short reference"; return 1; }
+  echo "$path §Ambient workflow is short reference with links to both sources + 4 core commands (table_rows=$table_rows)"
+}
