@@ -358,7 +358,7 @@ Render option 1b and the "#### Option 1b: Codex Fast (developer-codex agent)" su
 
 **Which agent?**
 
-If the feature spec tagged steps with a developer level, use that. Otherwise default to Codex.
+If the current checklist step in §5 carries a `@codex`, `@senior`, or `@middle` suffix (case-insensitive; the orchestrator lowercases before matching), evaluate the tag against the routing matrix in `skills/feature/references/agent-routing.md`: the tag is honored iff the step's description matches at least one positive trigger for the tagged agent AND no anti-trigger contradicts it. On honored tag, pre-fill that agent as the banner default and log rationale using the **actual matched positive trigger** — one of `T-C1` / `T-C2` / `T-C3` for `@codex`, one of `T-S1` / `T-S2` / `T-S3` / `T-S4` for `@senior` (never `T-S0`, which is reserved for the fallback case where no positive trigger matched), one of `T-M1` / `T-M2` for `@middle` — with `notes=pre-tagged by spec author` appended. Log only after the user confirms the banner pick (rationale-logging fires post-confirmation per the existing Agent-selection flow); if the user overrides the tagged default, log the final pick with its own rationale, not the tag's. On tag-trigger mismatch (tag present but positive-trigger check fails, or an anti-trigger hits), treat as untagged and emit a one-line preamble warning above the banner noting the mismatch. On malformed tag (unknown agent, wrong spacing, or any suffix form other than `@codex`/`@senior`/`@middle`), hard-stop with a banner asking the user to correct the checklist line before continuing — do NOT silently untag. Untagged steps → use the routing matrix triggers as today.
 
 **Remember the choice**: once the user has picked an agent, append to the spec Log per the canonical format in `skills/feature/references/agent-routing.md` §Rationale logging. Continue mode reads the most recent `last_agent=` entry from the Log and offers that as the default on resume (the user can still override).
 
@@ -577,7 +577,7 @@ Spec is BLOCKED on `<condition from the most recent Log entry>`.
 ---
 ## ⏸ AWAITING YOUR INPUT
 
-Resuming implementation. Pick the developer for the remaining steps. The most recent `last_agent=<codex|senior|middle>; rationale=<T-X#>` entry in the spec Log is offered as the default — press Enter to accept it, or name a different agent.
+Resuming implementation. Pick the developer for the remaining steps. The most recent `last_agent=<codex|senior|middle>; rationale=<T-X#>` entry in the spec Log is offered as the default — press Enter to accept it, or name a different agent. (If the first unchecked step carries an `@<agent>` tag in §5 and the tag would be honored by the §3.4 acceptance rule — positive trigger matches AND no anti-trigger contradicts — that tag overrides the spec-level `last_agent=` default for this specific step: Continue mode presents the tagged agent as the banner default, not the Log value. A tag that §3.4 would reject is treated as untagged on resume too: Continue mode falls back to the `last_agent=` Log value and emits the same mismatch warning above the banner. A malformed tag hard-stops on resume just as on fresh implement, per §3.3 malformed-tag handling.)
 
 **Which developer (default is the `last_agent` from Log)?**
 
