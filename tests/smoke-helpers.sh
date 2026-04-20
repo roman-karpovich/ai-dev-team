@@ -412,3 +412,192 @@ check_cross_auditor_pretag_consistency_check() {
     || { echo "$path §\`spec\` mode missing byte-exact closing 'Untagged steps → no check.' sentence"; return 1; }
   echo "$path §\`spec\` mode has Agent pre-tag consistency bullet (label + (a)+(b) + 3 examples + Malformed + Untagged-closing)"
 }
+
+# --- Shared Phase 0 / KB discovery (spec 2026-04-20-shared-phase0) ---
+# Self-contained helpers: each does inline awk/grep extraction, does NOT rely
+# on extract_md_section from the caller. Each accepts $1 = path (real plugin
+# file OR negative fixture). Returns 0 iff the canonical shape is present;
+# non-zero with a diagnostic line otherwise. Bash-3.2 compatible (no
+# `declare -A`).
+
+check_kb_discovery_doc_canonical() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+
+  # Required top-level headings (byte-exact).
+  grep -qF '# KB discovery — Phase 0 shared reference' "$path" \
+    || { echo "$path missing top-level heading '# KB discovery — Phase 0 shared reference'"; return 1; }
+  grep -qF '## Why this exists' "$path" \
+    || { echo "$path missing '## Why this exists' section"; return 1; }
+  grep -qF '## Precedence order' "$path" \
+    || { echo "$path missing '## Precedence order' section"; return 1; }
+  grep -qF '## Algorithm' "$path" \
+    || { echo "$path missing '## Algorithm' section"; return 1; }
+  grep -qF '## Post-discovery yml save prompt' "$path" \
+    || { echo "$path missing '## Post-discovery yml save prompt' section"; return 1; }
+  grep -qF '## Multi-account github: config block' "$path" \
+    || { echo "$path missing '## Multi-account github: config block' section"; return 1; }
+  grep -qF '## Skill extensions — read in addition to the core algorithm' "$path" \
+    || { echo "$path missing '## Skill extensions — read in addition to the core algorithm' section"; return 1; }
+  grep -qF '### feature skill' "$path" \
+    || { echo "$path missing '### feature skill' extensions subsection"; return 1; }
+  grep -qF '### cross-audit skill' "$path" \
+    || { echo "$path missing '### cross-audit skill' extensions subsection"; return 1; }
+  grep -qF '### research skill' "$path" \
+    || { echo "$path missing '### research skill' extensions subsection"; return 1; }
+  grep -qF '## Skills that do NOT use Phase 0' "$path" \
+    || { echo "$path missing '## Skills that do NOT use Phase 0' section"; return 1; }
+
+  # Algorithm section must contain the 9-step ordered list. Extract the
+  # `## Algorithm` section (up to the next `## ` heading) and require
+  # numbered items 1. through 9.
+  local algo_section
+  algo_section=$(awk '
+    !in_s && $0 == "## Algorithm" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  local n
+  for n in 1 2 3 4 5 6 7 8 9; do
+    printf '%s\n' "$algo_section" | grep -qE "^${n}\\. " \
+      || { echo "$path ## Algorithm section missing step '${n}.' in canonical 9-step list"; return 1; }
+  done
+
+  # Post-discovery prompt section must contain the byte-exact prompt text.
+  local prompt_section
+  prompt_section=$(awk '
+    !in_s && $0 == "## Post-discovery yml save prompt" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$prompt_section" | grep -qF 'Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]' \
+    || { echo "$path ## Post-discovery yml save prompt section missing byte-exact 'Save \`kb_path\` and \`project\` to \`.ai-dev-team.yml\` so future sessions skip discovery? [Y/n]' prompt"; return 1; }
+
+  # Multi-account github: config block section must reproduce the YAML keys.
+  local gh_section
+  gh_section=$(awk '
+    !in_s && /^## Multi-account github: config block/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$gh_section" | grep -qE '^[[:space:]]*github:' \
+    || { echo "$path ## Multi-account github: config block section missing 'github:' key"; return 1; }
+  printf '%s\n' "$gh_section" | grep -qE '^[[:space:]]*default_account:' \
+    || { echo "$path ## Multi-account github: config block section missing 'default_account:' key"; return 1; }
+  printf '%s\n' "$gh_section" | grep -qE '^[[:space:]]*accounts:' \
+    || { echo "$path ## Multi-account github: config block section missing 'accounts:' key"; return 1; }
+  printf '%s\n' "$gh_section" | grep -qE '^[[:space:]]*token_env:' \
+    || { echo "$path ## Multi-account github: config block section missing 'token_env:' key"; return 1; }
+
+  echo "$path canonical KB discovery doc (all required headings + 9-step Algorithm + yml prompt + github: keys)"
+}
+
+check_skill_phase0_references_shared_doc() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && /^## Phase 0:/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## Phase 0:' section"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'docs/kb-discovery.md' \
+    || { echo "$path ## Phase 0 section missing pointer to 'docs/kb-discovery.md'"; return 1; }
+  echo "$path Phase 0 references shared docs/kb-discovery.md"
+}
+
+check_skill_phase0_extensions_present() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && /^## Phase 0:/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## Phase 0:' section"; return 1; }
+  # Look for a ### extensions subheading within the Phase 0 section and
+  # require at least one non-blank content line after it.
+  local ext_heading_count
+  ext_heading_count=$(printf '%s\n' "$section" | grep -cE '^### .*[Ee]xtensions')
+  [ "$ext_heading_count" -ge 1 ] \
+    || { echo "$path ## Phase 0 section missing '### …extensions' subheading"; return 1; }
+  local ext_body
+  ext_body=$(printf '%s\n' "$section" | awk '
+    !in_e && /^### .*[Ee]xtensions/ { in_e = 1; next }
+    in_e && /^### / { exit }
+    in_e { print }
+  ')
+  # Require at least one non-empty content line in the extensions body.
+  printf '%s\n' "$ext_body" | grep -qE '[^[:space:]]' \
+    || { echo "$path ## Phase 0 '### …extensions' subsection is empty"; return 1; }
+  echo "$path Phase 0 has non-empty '### …extensions' subsection"
+}
+
+check_skill_phase0_no_inline_algorithm() {
+  # Rejects whenever the 9-step algorithm's canonical sequence of numbered
+  # steps appears in the file, regardless of whether a docs/kb-discovery.md
+  # reference is also present (append-instead-of-replace also rejected).
+  # Heuristic: look for three canonical signposts from the old inline
+  # algorithm; if all three are present in the file, reject.
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local hit1=0 hit2=0 hit3=0
+  grep -qF 'Determine `project` and `kb_path` via config before using legacy discovery.' "$path" && hit1=1
+  grep -qF 'Compact shared-config fallback anchor: `.ai-dev-team.yml → memory → sibling heuristic → ask`' "$path" && hit2=1
+  grep -qF 'per-field resolution: local → shared → memory → sibling → ask, continue on per-file parse error' "$path" && hit3=1
+  if [ "$hit1" = "1" ] && [ "$hit2" = "1" ] && [ "$hit3" = "1" ]; then
+    echo "$path still contains inline 9-step Phase 0 algorithm (3 canonical signposts all present); must reference docs/kb-discovery.md instead"
+    return 1
+  fi
+  echo "$path has no inline 9-step Phase 0 algorithm"
+}
+
+check_investigate_no_phase0() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  if grep -qE '^## Phase 0' "$path"; then
+    echo "$path contains '## Phase 0' heading — investigate must NOT have a Phase 0 section"
+    return 1
+  fi
+  echo "$path correctly has no ## Phase 0 heading"
+}
+
+check_feature_phase0_mentions_codex_keys() {
+  # Helper #6 per spec §3.5 invariant 6 (X6 broadened): the feature Phase 0
+  # extensions section must mention all three codex keys.
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && /^## Phase 0:/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## Phase 0:' section"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'codex.model' \
+    || { echo "$path ## Phase 0 extensions missing substring 'codex.model'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'codex.model_fast' \
+    || { echo "$path ## Phase 0 extensions missing substring 'codex.model_fast'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'codex.reasoning_effort' \
+    || { echo "$path ## Phase 0 extensions missing substring 'codex.reasoning_effort'"; return 1; }
+  echo "$path Phase 0 extensions mention all three codex.* keys"
+}
+
+check_cross_audit_phase0_bans_model_fast() {
+  # Helper #7 per spec §3.5 invariant 7: cross-audit/SKILL.md must contain the
+  # byte-exact ban on codex.model_fast within its Phase 0 section.
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && /^## Phase 0:/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## Phase 0:' section"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Never reads `codex.model_fast`' \
+    || { echo "$path ## Phase 0 section missing byte-exact ban 'Never reads \`codex.model_fast\`'"; return 1; }
+  echo "$path Phase 0 has byte-exact 'Never reads \`codex.model_fast\`' ban"
+}

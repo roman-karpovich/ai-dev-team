@@ -33,51 +33,13 @@ decision fork in Phase 3 carries the `AWAITING YOUR INPUT` banner.
 
 ---
 
-## Phase 0: KB Discovery (all modes)
+## Phase 0: KB Discovery
 
-1. Determine `project` and `kb_path` via config before using legacy discovery.
-2. Read `.ai-dev-team.local.yml` first. `.ai-dev-team.local.yml` is the local override file, should be gitignored in the consumer repo, and `.ai-dev-team.local.yml overrides .ai-dev-team.yml`.
-3. Read `.ai-dev-team.yml` second. Compact shared-config fallback anchor: `.ai-dev-team.yml → memory → sibling heuristic → ask`
-4. Supported config shape:
+KB discovery algorithm (resolving `kb_path` and `project` via `.ai-dev-team.local.yml → .ai-dev-team.yml → memory → sibling → ask`) follows `docs/kb-discovery.md` — single source of truth.
 
-```yaml
-kb_path: /absolute/path/to/knowledge-base
-project: my-project-name
+### Cross-audit extensions
 
-# Optional Codex MCP overrides (propagate into cross-auditor)
-codex:
-  model: gpt-5.4          # omit to use ~/.codex/config.toml default
-  reasoning_effort: xhigh  # minimal|low|medium|high|xhigh (default: xhigh)
-```
-
-5. Read top-level `kb_path` and `project` independently. `per-field resolution: local → shared → memory → sibling → ask, continue on per-file parse error`
-6. If either config file is malformed, missing `kb_path`, or points at a non-existent directory: warn once for that file and continue to the next source in the chain. Do not abort the session on parse error.
-7. When config is valid, skip confirmation prompt
-8. When config is valid, do not write to memory
-9. If config does not resolve a field, fall through to legacy discovery:
-   - `kb_path`: check `memory/reference_kb_<project>.md`, then look for a sibling directory containing "knowledge" in its name (`ls ../`), then ask the user
-   - `project`: use memory if available, otherwise use the current repo directory name, then ask if ambiguous
-10. If no valid config resolved `kb_path` and a sibling KB is auto-discovered, confirm with the user before using it. After explicit confirmation in the legacy flow, save `kb_path` and `project` to memory (`reference_kb_<project>.md`).
-11. After legacy discovery succeeds, if `.ai-dev-team.yml` does not exist in the repo root, prompt: **"Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]"**. On yes: write a file with the resolved fields (copy-and-substitute from `.ai-dev-team.yml.example` if present). If the file exists but lacks one of these fields, print a one-line warning — never overwrite user config automatically.
-12. Also read `codex.model` and `codex.reasoning_effort`. Pass them into the cross-auditor dispatch as `codex_model` and `codex_reasoning_effort`. If absent, cross-auditor uses its built-in defaults.
-13. Also read the optional `github:` block from `.ai-dev-team.local.yml` (account identities are personal, not team-shared — so this block lives in the local override file, not the team-shared `.ai-dev-team.yml`). Shape:
-
-```yaml
-github:
-  default_account: personal
-  accounts:
-    personal:
-      token_env: GH_TOKEN_PERSONAL
-    corp:
-      token_env: GH_TOKEN_CORP
-      host: github.company.com
-```
-
-The block is optional. When present, it enables multi-account auth routing for PR-mode audits and publish: Phase 0.5 resolves one account per invocation and every subsequent `gh` call in the PR-audit surface is prefixed with `GH_TOKEN="${<token_env>}" GH_HOST="<host>"` so the credential is scoped to that subprocess without mutating global `gh auth` state. Resolution precedence (see Phase 0.5 for the full matrix):
-
-`precedence: --account flag → URL host match → default_account → ambient gh auth`
-
-When the `github:` block is absent, Phase 0.5 skips account resolution entirely and every `gh` call runs bare — existing single-account users are unaffected.
+Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch. **Never reads `codex.model_fast`** — audit reasoning depth is non-negotiable, Fast is developer-codex-only. Also reads the optional `github:` block from `.ai-dev-team.local.yml` for multi-account PR auth; see `docs/kb-discovery.md` for the YAML schema and Phase 0.5 below for the full account-resolution ladder.
 
 **New audit**: generate `audit_slug` = `YYYY-MM-DD-<scope-slug>`.
 **Re-audit**: extract `audit_slug` from the existing findings doc filename — strip the path prefix and `-findings.md` suffix (e.g. `…/2026-04-14-workflow-definitions-findings.md` → `2026-04-14-workflow-definitions`). Do NOT regenerate from the current date; the slug must match the original to write to the same file.
