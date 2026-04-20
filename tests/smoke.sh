@@ -2968,6 +2968,31 @@ check "check_smoke_helper_focus_areas_skill_bullet_form_rejected" check_smoke_he
 check "check_smoke_helper_focus_areas_cross_auditor_demoted_rejected" check_smoke_helper_focus_areas_cross_auditor_demoted_rejected
 echo
 
+# --- P3 cleanup bundle (spec 2026-04-20-p3-cleanup-bundle) ---
+echo "P3 cleanup bundle:"
+
+check_smoke_helper_p3_readme_audit_migration_rejected() {
+  if ! check_readme_no_audit_migration_note 'tests/fixtures/p3-cleanup/readme-with-audit-migration-note.md' >/dev/null 2>&1; then
+    echo "check_readme_no_audit_migration_note correctly rejected README fixture with obsolete audit→cross-audit migration note"
+    return 0
+  fi
+  echo "check_readme_no_audit_migration_note wrongly accepted readme-with-audit-migration-note.md"
+  return 1
+}
+
+# Positive invocations — 8 per spec §3.4.
+check "check_spec_template_codex_fast_rationale" check_spec_template_codex_fast_rationale skills/feature/references/spec-template.md
+check "check_agent_routing_codex_fast_rationale" check_agent_routing_codex_fast_rationale skills/feature/references/agent-routing.md
+check "check_trigger_map_investigate_research_clarifier (hook)" check_trigger_map_investigate_research_clarifier hooks/session-start
+check "check_trigger_map_investigate_research_clarifier (snippet)" check_trigger_map_investigate_research_clarifier docs/claude-md-snippet.md
+check "check_research_skill_competitive_analysis_points_to_investigate" check_research_skill_competitive_analysis_points_to_investigate skills/research/SKILL.md
+check "check_branch_frontmatter_ref_lowercase (README)" check_branch_frontmatter_ref_lowercase README.md
+check "check_branch_frontmatter_ref_lowercase (feature/SKILL.md)" check_branch_frontmatter_ref_lowercase skills/feature/SKILL.md
+check "check_readme_no_audit_migration_note" check_readme_no_audit_migration_note README.md
+# Negative invocations — 1 per spec §3.5.
+check "check_smoke_helper_p3_readme_audit_migration_rejected" check_smoke_helper_p3_readme_audit_migration_rejected
+echo
+
 
 echo
 echo "Passed: $PASS"
