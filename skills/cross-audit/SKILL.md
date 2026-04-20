@@ -266,15 +266,4 @@ When user invokes `/cross-audit <findings-doc-path>`:
 
 ## Adaptation by Project Type
 
-### Smart Contracts / DeFi
-- Fund loss, reentrancy, access control, math precision, flash loan safety, MEV resistance
-- Key handling, tx signing, slippage, oracle manipulation
-
-### Backend Services
-- Input validation, injection, auth bypass, race conditions, resource exhaustion
-
-### Frontend
-- XSS, CSRF, injection, state management, API contract mismatches
-
-### Data Pipelines
-- Data loss, idempotency, schema evolution, monitoring blind spots
+Focus areas depend on detected `project_type` and audit mode — see `agents/cross-auditor.md` §Mode Focus Areas for the canonical per-mode list (`logic` / `security` / `full` / `spec`). The SKILL orchestrator selects mode and project_type only; it does not dispatch the focus-areas list itself, so this file deliberately carries no subsections.
