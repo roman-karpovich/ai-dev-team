@@ -481,10 +481,11 @@ check_cross_auditor_threads_model() {
 }
 
 check_skill_autogen_prompt() {
-  # Feature skill prompts the user to save config after legacy discovery
-  grep -q "Save .*kb_path.*\\.ai-dev-team\\.yml" skills/feature/SKILL.md \
-    || { echo "feature SKILL.md missing autogen prompt"; return 1; }
-  echo "feature SKILL.md has autogen prompt"
+  # Feature-skill autogen prompt migrated to shared docs/kb-discovery.md
+  # per spec 2026-04-20-shared-phase0 §3.8(1).
+  grep -q "Save .*kb_path.*\\.ai-dev-team\\.yml" docs/kb-discovery.md \
+    || { echo "docs/kb-discovery.md missing autogen prompt"; return 1; }
+  echo "docs/kb-discovery.md has autogen prompt"
 }
 
 check "yml.example has codex: block"        check_yml_example_codex
@@ -2335,14 +2336,8 @@ echo "Codex Fast config surface:"
 check "codex.model_fast documented in .ai-dev-team.yml.example" \
   bash -c "grep -qF -- '#   model_fast: gpt-5.4-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)' .ai-dev-team.yml.example"
 
-check "SKILL.md Phase 0 has codex.model_fast byte-exact sentence" \
-  bash -c "grep -qF -- 'Also read \`codex.model_fast\` from the same config chain; it is forwarded as \`codex_model\` only when the user picks \"Codex Fast\" from the agent-selection menu. \`cross-auditor\` never receives \`codex.model_fast\`.' skills/feature/SKILL.md"
-
 check ".ai-dev-team.yml.example documents model_fast precondition" \
   bash -c "grep -qF -- '#   NOTE: when codex.model_fast is set, codex.model must also be set and must differ from codex.model_fast (otherwise cross-auditor would use Fast reasoning).' .ai-dev-team.yml.example"
-
-check "SKILL.md Phase 0 retains legacy codex.model propagation sentence" \
-  bash -c "grep -qF -- 'Also read \`codex.model\` and \`codex.reasoning_effort\` from the same config chain. When the feature skill dispatches to \`developer-codex\` or spawns \`cross-auditor\`, pass these through as \`codex_model\` and \`codex_reasoning_effort\` input params.' skills/feature/SKILL.md"
 echo
 
 # --- Codex Fast routing ---
@@ -2454,20 +2449,24 @@ check "yml.example F1 commented 'token_env:' line" \
 check "yml.example F1 commented 'host:' line" \
   bash -c "grep -qE '^#[[:space:]]+host:' .ai-dev-team.yml.example"
 
-# F2 (2 asserts): SKILL.md Phase 0 documents github: block AND contains the verbatim precedence line.
+# F2 (2 asserts): docs/kb-discovery.md documents github: block AND contains the verbatim precedence line.
+# Retargeted from skills/cross-audit/SKILL.md to docs/kb-discovery.md per spec
+# 2026-04-20-shared-phase0 §3.8(4). The YAML schema reproduced byte-exact in
+# the "## Multi-account github: config block" section of the shared doc.
 check_skill_phase0_github_block() {
-  # Extract Phase 0 section up to next ## heading, then verify it contains `github:` block markers.
+  # Extract the github: config block section of docs/kb-discovery.md
+  # (between `## Multi-account github:` and the next `## ` heading).
   local sec
-  sec=$(awk '/^## Phase 0: KB Discovery/{in_s=1} in_s && /^## Phase 0\.5:/{exit} in_s{print}' skills/cross-audit/SKILL.md)
+  sec=$(awk '/^## Multi-account github:/{in_s=1; next} in_s && /^## /{exit} in_s{print}' docs/kb-discovery.md)
   printf '%s\n' "$sec" | grep -qE '^[[:space:]]*github:' \
-    || { echo "Phase 0 missing github: block entry"; return 1; }
+    || { echo "docs/kb-discovery.md missing github: block entry"; return 1; }
   printf '%s\n' "$sec" | grep -qE '^[[:space:]]*default_account:' \
-    || { echo "Phase 0 missing default_account: under github: block"; return 1; }
+    || { echo "docs/kb-discovery.md missing default_account: under github: block"; return 1; }
   printf '%s\n' "$sec" | grep -qE '^[[:space:]]*accounts:' \
-    || { echo "Phase 0 missing accounts: under github: block"; return 1; }
+    || { echo "docs/kb-discovery.md missing accounts: under github: block"; return 1; }
   printf '%s\n' "$sec" | grep -qE '^[[:space:]]*token_env:' \
-    || { echo "Phase 0 missing token_env: under github: block"; return 1; }
-  echo "SKILL.md Phase 0 github: block documented"
+    || { echo "docs/kb-discovery.md missing token_env: under github: block"; return 1; }
+  echo "docs/kb-discovery.md github: block documented"
 }
 check "SKILL.md F2 Phase 0 github: block" check_skill_phase0_github_block
 
@@ -2725,6 +2724,70 @@ check_f15_account_publish_scope() {
 check "publish.md F15 stale-account guard" check_f15_stale_account_guard
 check "publish.md F15 token-non-empty check" check_f15_token_non_empty
 check "publish.md F15 --account publish-mode scope" check_f15_account_publish_scope
+echo
+
+# --- Shared Phase 0 / KB discovery (spec 2026-04-20-shared-phase0) ---
+echo "Shared Phase 0 / KB discovery:"
+
+# Negative wrappers — each asserts the corresponding helper rejects its
+# dedicated fixture from tests/fixtures/shared-phase0/. Pattern mirrors
+# tests/smoke-helpers-check-wiring.sh (spec #1) — three substrings per body:
+# negation `!` + rejection guard diagnostic + success echo.
+check_smoke_helper_phase0_append_rejected() {
+  if ! check_skill_phase0_no_inline_algorithm 'tests/fixtures/shared-phase0/feature-append-instead-of-replace.md' >/dev/null 2>&1; then
+    echo "check_skill_phase0_no_inline_algorithm correctly rejected stale append-instead-of-replace fixture"
+    return 0
+  fi
+  echo "check_skill_phase0_no_inline_algorithm wrongly accepted feature-append-instead-of-replace.md"
+  return 1
+}
+
+check_smoke_helper_phase0_inline_rejected() {
+  if ! check_skill_phase0_no_inline_algorithm 'tests/fixtures/shared-phase0/feature-inline-algorithm.md' >/dev/null 2>&1; then
+    echo "check_skill_phase0_no_inline_algorithm correctly rejected stale inline-algorithm fixture"
+    return 0
+  fi
+  echo "check_skill_phase0_no_inline_algorithm wrongly accepted feature-inline-algorithm.md"
+  return 1
+}
+
+check_smoke_helper_phase0_investigate_rejected() {
+  if ! check_investigate_no_phase0 'tests/fixtures/shared-phase0/investigate-with-phase0.md' >/dev/null 2>&1; then
+    echo "check_investigate_no_phase0 correctly rejected stale investigate-with-phase0 fixture"
+    return 0
+  fi
+  echo "check_investigate_no_phase0 wrongly accepted investigate-with-phase0.md"
+  return 1
+}
+
+check_smoke_helper_phase0_cross_audit_rejected() {
+  if ! check_cross_audit_phase0_bans_model_fast 'tests/fixtures/shared-phase0/cross-audit-no-ban.md' >/dev/null 2>&1; then
+    echo "check_cross_audit_phase0_bans_model_fast correctly rejected stale cross-audit-no-ban fixture"
+    return 0
+  fi
+  echo "check_cross_audit_phase0_bans_model_fast wrongly accepted cross-audit-no-ban.md"
+  return 1
+}
+
+# Positive invocations — 13 rows per spec §6.1 invocation matrix.
+check "check_kb_discovery_doc_canonical" check_kb_discovery_doc_canonical docs/kb-discovery.md
+check "check_skill_phase0_references_shared_doc" check_skill_phase0_references_shared_doc skills/feature/SKILL.md
+check "check_skill_phase0_references_shared_doc" check_skill_phase0_references_shared_doc skills/cross-audit/SKILL.md
+check "check_skill_phase0_references_shared_doc" check_skill_phase0_references_shared_doc skills/research/SKILL.md
+check "check_skill_phase0_extensions_present" check_skill_phase0_extensions_present skills/feature/SKILL.md
+check "check_skill_phase0_extensions_present" check_skill_phase0_extensions_present skills/cross-audit/SKILL.md
+check "check_skill_phase0_extensions_present" check_skill_phase0_extensions_present skills/research/SKILL.md
+check "check_skill_phase0_no_inline_algorithm" check_skill_phase0_no_inline_algorithm skills/feature/SKILL.md
+check "check_skill_phase0_no_inline_algorithm" check_skill_phase0_no_inline_algorithm skills/cross-audit/SKILL.md
+check "check_skill_phase0_no_inline_algorithm" check_skill_phase0_no_inline_algorithm skills/research/SKILL.md
+check "check_feature_phase0_mentions_codex_keys" check_feature_phase0_mentions_codex_keys skills/feature/SKILL.md
+check "check_cross_audit_phase0_bans_model_fast" check_cross_audit_phase0_bans_model_fast skills/cross-audit/SKILL.md
+check "check_investigate_no_phase0" check_investigate_no_phase0 skills/investigate/SKILL.md
+# Negative invocations — 4 rows per spec §6.1 invocation matrix.
+check "check_smoke_helper_phase0_append_rejected" check_smoke_helper_phase0_append_rejected
+check "check_smoke_helper_phase0_inline_rejected" check_smoke_helper_phase0_inline_rejected
+check "check_smoke_helper_phase0_investigate_rejected" check_smoke_helper_phase0_investigate_rejected
+check "check_smoke_helper_phase0_cross_audit_rejected" check_smoke_helper_phase0_cross_audit_rejected
 echo
 
 

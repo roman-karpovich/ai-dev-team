@@ -40,33 +40,13 @@ Parse `$ARGUMENTS` to determine the mode:
 
 ---
 
-## Phase 0: KB Discovery (all modes)
+## Phase 0: KB Discovery
 
-1. Determine `project` and `kb_path` via config before using legacy discovery.
-2. Read `.ai-dev-team.local.yml` first. `.ai-dev-team.local.yml` is the local override file, should be gitignored in the consumer repo, and `.ai-dev-team.local.yml overrides .ai-dev-team.yml`.
-3. Read `.ai-dev-team.yml` second. Compact shared-config fallback anchor: `.ai-dev-team.yml → memory → sibling heuristic → ask`
-4. Supported config shape:
+KB discovery algorithm (resolving `kb_path` and `project` via `.ai-dev-team.local.yml → .ai-dev-team.yml → memory → sibling → ask`) follows `docs/kb-discovery.md` — single source of truth.
 
-```yaml
-kb_path: /absolute/path/to/knowledge-base
-project: my-project-name
+### Feature-skill extensions
 
-# Optional Codex MCP overrides (propagate to developer-codex + cross-auditor)
-codex:
-  model: gpt-5.4          # omit to use ~/.codex/config.toml default
-  reasoning_effort: xhigh  # minimal|low|medium|high|xhigh (default: xhigh)
-```
-
-5. Read top-level `kb_path` and `project` independently. `per-field resolution: local → shared → memory → sibling → ask, continue on per-file parse error`
-6. If either config file is malformed, missing `kb_path`, or points at a non-existent directory: warn once for that file and continue to the next source in the chain. Do not abort the session on parse error.
-7. When config is valid, skip confirmation prompt
-8. When config is valid, do not write to memory
-9. If config does not resolve a field, fall through to legacy discovery:
-   - `kb_path`: check `memory/reference_kb_<project>.md`, then look for a sibling directory containing "knowledge" in its name (`ls ../`), then ask the user
-   - `project`: use memory if available, otherwise use the current repo directory name, then ask if ambiguous
-10. If no valid config resolved `kb_path` and a sibling KB is auto-discovered, confirm with the user before using it. After explicit confirmation in the legacy flow, save `kb_path` and `project` to memory (`reference_kb_<project>.md`).
-11. After legacy discovery succeeds (step 9 or 10 resolved via memory / sibling / ask), if `.ai-dev-team.yml` does not exist in the repo root, prompt: **"Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]"**. On yes: write a file containing the resolved `kb_path` and `project` fields (copy-and-substitute from `.ai-dev-team.yml.example` if present). If the file exists but lacks one of these fields, print a one-line warning with the value to add — never overwrite user config automatically.
-12. Also read `codex.model` and `codex.reasoning_effort` from the same config chain. When the feature skill dispatches to `developer-codex` or spawns `cross-auditor`, pass these through as `codex_model` and `codex_reasoning_effort` input params. If both are absent the agents use their built-in defaults. Also read `codex.model_fast` from the same config chain; it is forwarded as `codex_model` only when the user picks "Codex Fast" from the agent-selection menu. `cross-auditor` never receives `codex.model_fast`.
+Feature skill reads `codex.model`, `codex.model_fast`, and `codex.reasoning_effort` from the resolved config and passes them through to `developer-codex` / `cross-auditor`. `codex.model_fast` is forwarded as `codex_model` only when the user picks "Codex Fast" from the agent-selection menu; `cross-auditor` never receives `codex.model_fast`.
 
 ---
 
