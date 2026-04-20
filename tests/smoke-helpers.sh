@@ -945,3 +945,27 @@ check_research_skill_competitive_analysis_points_to_investigate() {
     || { echo "$path missing byte-exact 'adversarial Claude+Codex debate and produces a convergence report' clause"; return 1; }
   echo "$path has competitive-analysis → /investigate pointer (2 byte-exact pins)"
 }
+
+check_branch_frontmatter_ref_lowercase() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # Reject backtick-wrapped uppercase YAML-key reference `Branch:` in prose.
+  # The canonical spec-template frontmatter key is lowercase `branch:`.
+  # Permit sentence-case usages (no backticks) since those are report
+  # headings, not YAML key references.
+  if grep -qF '`Branch:`' "$path"; then
+    echo "$path contains backtick-wrapped uppercase YAML-key reference \`Branch:\` in prose; canonical key is lowercase \`branch:\`"
+    return 1
+  fi
+  echo "$path prose uses lowercase \`branch:\` for frontmatter key reference (no \`Branch:\` uppercase drift)"
+}
+
+check_readme_no_audit_migration_note() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  if grep -qF 'Migration note: `audit` replaced by cross-audit.' "$path"; then
+    echo "$path still contains obsolete migration note 'Migration note: \`audit\` replaced by cross-audit.'; the \`audit\` skill was removed long ago"
+    return 1
+  fi
+  echo "$path has no obsolete '\`audit\` replaced by cross-audit' migration note"
+}

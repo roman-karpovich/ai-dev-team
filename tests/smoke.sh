@@ -1711,10 +1711,10 @@ print('no hard-coded dated feature/ prefix survives')
 PY
 }
 
-# (#15-e) README contains byte-exact concrete `Branch: feat/2026-04-17-my-feature` worked example
+# (#15-e) README contains byte-exact concrete `branch: feat/2026-04-17-my-feature` worked example
 check_readme_has_concrete_feat_example() {
-  grep -qF 'Branch: feat/2026-04-17-my-feature' "$README_MD" \
-    || { echo "README.md missing byte-exact 'Branch: feat/2026-04-17-my-feature' worked example"; return 1; }
+  grep -qF 'branch: feat/2026-04-17-my-feature' "$README_MD" \
+    || { echo "README.md missing byte-exact 'branch: feat/2026-04-17-my-feature' worked example"; return 1; }
   echo "README.md has concrete feat/ worked example"
 }
 
