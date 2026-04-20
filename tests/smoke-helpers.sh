@@ -718,6 +718,19 @@ check_overview_git_references_canonical() {
 check_session_start_trigger_map_complete() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF '### Skill trigger map' "$path" \
+    || { echo "$path missing '### Skill trigger map' section heading"; return 1; }
+  # Scope the 8-target presence check to the ### Skill trigger map section
+  # so tokens that survive elsewhere (e.g. Key facts bullets) cannot mask a
+  # row dropped from the canonical table.
+  local section
+  section=$(awk '
+    !in_s && /^### Skill trigger map/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path '### Skill trigger map' section empty"; return 1; }
   local missing=0 target
   for target in \
     '/feature new' \
@@ -728,12 +741,11 @@ check_session_start_trigger_map_complete() {
     '/feature extend' \
     '/feature verify' \
     '/feature checklist'; do
-    grep -qF "$target" "$path" || { echo "$path missing canonical trigger target '$target'"; missing=1; }
+    printf '%s\n' "$section" | grep -qF "$target" \
+      || { echo "$path §Skill trigger map missing canonical trigger target '$target'"; missing=1; }
   done
   [ "$missing" -eq 0 ] || return 1
-  grep -qF 'Skill trigger map' "$path" \
-    || { echo "$path missing 'Skill trigger map' section signature"; return 1; }
-  echo "$path has all 8 canonical trigger targets + 'Skill trigger map' signature"
+  echo "$path §Skill trigger map has all 8 canonical trigger targets"
 }
 
 check_claude_md_snippet_points_to_hook() {
@@ -752,9 +764,33 @@ check_claude_md_snippet_points_to_hook() {
     grep -qF "$target" "$path" || { echo "$path missing canonical trigger target '$target'"; missing=1; }
   done
   [ "$missing" -eq 0 ] || return 1
-  grep -qF '`hooks/session-start` (injected into every session at runtime)' "$path" \
-    || { echo "$path missing byte-exact source-of-truth pointer '\`hooks/session-start\` (injected into every session at runtime)'"; return 1; }
-  echo "$path has all 8 canonical trigger targets + source-of-truth pointer to hooks/session-start"
+  # Pointer must live ABOVE the fenced paste block so it never leaks into
+  # downstream CLAUDE.md content. Extract pre-fence prefix (lines before the
+  # first fence line) and the fence body (lines between the first two fence
+  # lines). Pointer required in prefix; forbidden in fence body. Recognises
+  # both ``` and ~~~ fence styles so a future snippet author cannot bypass
+  # the assertion by switching markers.
+  local prefix inside
+  prefix=$(awk '
+    /^(```|~~~)/ { exit }
+    { print }
+  ' "$path")
+  inside=$(awk '
+    BEGIN { depth = 0 }
+    /^(```|~~~)/ {
+      if (depth == 0) { depth = 1; next }
+      depth = 0
+      exit
+    }
+    depth == 1 { print }
+  ' "$path")
+  printf '%s\n' "$prefix" | grep -qF '`hooks/session-start` (injected into every session at runtime)' \
+    || { echo "$path missing byte-exact pointer sentence in pre-fence prefix (must live outside fenced paste block so it never leaks into pasted CLAUDE.md)"; return 1; }
+  if printf '%s\n' "$inside" | grep -qF '`hooks/session-start` (injected into every session at runtime)'; then
+    echo "$path pointer sentence present INSIDE fenced paste block — moving it inside would leak into every downstream project's pasted CLAUDE.md"
+    return 1
+  fi
+  echo "$path has all 8 canonical trigger targets + pointer sentence positioned above the fenced paste block"
 }
 
 check_readme_ambient_workflow_references_sources() {
@@ -778,12 +814,12 @@ check_readme_ambient_workflow_references_sources() {
     printf '%s\n' "$section" | grep -qF "$cmd" \
       || { echo "$path §Ambient workflow missing core slash command '$cmd'"; return 1; }
   done
-  # Negative — section must not carry a full trigger table (i.e., must be a
-  # short reference, not a full pasted matrix). Count table data rows starting
-  # with '| "' (user-says examples) or '| \"' — reject if >= 2.
-  local table_rows
-  table_rows=$(printf '%s\n' "$section" | grep -cE '^\| "')
-  [ "$table_rows" -lt 2 ] \
-    || { echo "$path §Ambient workflow still contains a full trigger table ($table_rows table-rows); must be a short reference"; return 1; }
-  echo "$path §Ambient workflow is short reference with links to both sources + 4 core commands (table_rows=$table_rows)"
+  # Negative — short reference means NO table at all. Reject any line
+  # starting with '|' inside the section (row-format-agnostic: catches
+  # plain-text rows, backtick rows, non-ASCII-quote rows, separator rows).
+  local table_lines
+  table_lines=$(printf '%s\n' "$section" | grep -cE '^\|')
+  [ "$table_lines" -eq 0 ] \
+    || { echo "$path §Ambient workflow still contains markdown table lines ($table_lines line(s) starting with '|'); must be a short reference with no table"; return 1; }
+  echo "$path §Ambient workflow is short reference with links to both sources + 4 core commands (no table)"
 }

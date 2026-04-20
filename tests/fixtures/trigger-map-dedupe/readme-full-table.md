@@ -9,9 +9,13 @@ After install, Claude knows when to use which skill automatically — no slash c
 | "review this", "audit src/", "check for bugs" | `/cross-audit` |
 | "should we use X or Y?", "is this approach right?" | `/investigate` |
 
-At session start, Claude proactively checks for in-progress specs and reports status before asking what to do next.
+The full trigger map — see [`hooks/session-start`](hooks/session-start) (authoritative) and [`docs/claude-md-snippet.md`](docs/claude-md-snippet.md) (portable).
 
-Slash commands still work if you prefer explicit control.
+<!--
+Fixture carries BOTH required links AND all 4 core commands AND a full table.
+It trips specifically on the row-count assertion (X4 audit finding) — links
+and commands alone would not exercise it.
+-->
 
 ---
 
