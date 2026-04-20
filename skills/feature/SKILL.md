@@ -306,7 +306,7 @@ Set spec `status: AUDIT_PASSED`.
 
 ### Baseline test
 
-Before spawning any developer, detect the base branch (`git branch -r | grep -E 'origin/(master|main)$'` — prefer `master` if both exist), ensure you are on it (or the branch specified in the spec `Branch:` field), then run the **verifier** subagent:
+Before spawning any developer, detect the base branch (`git branch -r | grep -E 'origin/(master|main)$'` — prefer `master` if both exist), ensure you are on it (or the branch specified in the spec `branch:` field), then run the **verifier** subagent:
 
 ```
 project_path: <project_path>

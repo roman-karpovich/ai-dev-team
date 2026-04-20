@@ -51,7 +51,7 @@ Pick a research subtype for the new note (default: `exploration` — hit Enter t
 
 1. `incident-investigation` — facts-first analysis of a production incident before a postmortem
 2. `math-model` — formulas, derivations, modeling spreadsheets
-3. `competitive-analysis` — market / vendor / protocol comparison
+3. `competitive-analysis` — market / vendor / protocol comparison. For decision-making comparisons with a recommendation at the end, use `/investigate` instead — it runs an adversarial Claude+Codex debate and produces a convergence report.
 4. `exploration` — open-ended investigation without a clear destination
 
 **Which subtype?**

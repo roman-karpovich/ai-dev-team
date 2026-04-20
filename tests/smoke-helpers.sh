@@ -720,17 +720,18 @@ check_session_start_trigger_map_complete() {
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qF '### Skill trigger map' "$path" \
     || { echo "$path missing '### Skill trigger map' section heading"; return 1; }
-  # Scope the 8-target presence check to the ### Skill trigger map section
-  # so tokens that survive elsewhere (e.g. Key facts bullets) cannot mask a
-  # row dropped from the canonical table.
-  local section
-  section=$(awk '
+  # p3-cleanup audit X1: section-scoping alone is not enough — a clarifier
+  # paragraph inside the section that mentions `/investigate` would mask a
+  # dropped `/investigate` row. Scope the 8-target check to table data rows
+  # only (lines starting with '|') inside §Skill trigger map.
+  local table_rows
+  table_rows=$(awk '
     !in_s && /^### Skill trigger map/ { in_s = 1; next }
     in_s && /^## / { exit }
     in_s && /^### / { exit }
-    in_s { print }
+    in_s && /^\|/ { print }
   ' "$path")
-  [ -n "$section" ] || { echo "$path '### Skill trigger map' section empty"; return 1; }
+  [ -n "$table_rows" ] || { echo "$path '### Skill trigger map' section has no table rows (lines starting with '|')"; return 1; }
   local missing=0 target
   for target in \
     '/feature new' \
@@ -741,16 +742,28 @@ check_session_start_trigger_map_complete() {
     '/feature extend' \
     '/feature verify' \
     '/feature checklist'; do
-    printf '%s\n' "$section" | grep -qF "$target" \
-      || { echo "$path §Skill trigger map missing canonical trigger target '$target'"; missing=1; }
+    printf '%s\n' "$table_rows" | grep -qF "$target" \
+      || { echo "$path §Skill trigger map table rows missing canonical trigger target '$target'"; missing=1; }
   done
   [ "$missing" -eq 0 ] || return 1
-  echo "$path §Skill trigger map has all 8 canonical trigger targets"
+  echo "$path §Skill trigger map table rows contain all 8 canonical trigger targets"
 }
 
 check_claude_md_snippet_points_to_hook() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # p3-cleanup audit X2: scope the 8-target check to trigger-map table data
+  # rows (lines starting with '|' inside '### Skill trigger map'). A
+  # clarifier paragraph mentioning `/investigate` would otherwise mask a
+  # dropped `/investigate` row.
+  local table_rows
+  table_rows=$(awk '
+    !in_s && /^### Skill trigger map/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s && /^### / { exit }
+    in_s && /^\|/ { print }
+  ' "$path")
+  [ -n "$table_rows" ] || { echo "$path '### Skill trigger map' section has no table rows (lines starting with '|')"; return 1; }
   local missing=0 target
   for target in \
     '/feature new' \
@@ -761,7 +774,8 @@ check_claude_md_snippet_points_to_hook() {
     '/feature extend' \
     '/feature verify' \
     '/feature checklist'; do
-    grep -qF "$target" "$path" || { echo "$path missing canonical trigger target '$target'"; missing=1; }
+    printf '%s\n' "$table_rows" | grep -qF "$target" \
+      || { echo "$path §Skill trigger map table rows missing canonical trigger target '$target'"; missing=1; }
   done
   [ "$missing" -eq 0 ] || return 1
   # Pointer must live ABOVE the fenced paste block so it never leaks into
@@ -884,4 +898,130 @@ check_cross_audit_skill_focus_areas_references_canonical() {
     return 1
   fi
   echo "$path §Adaptation by Project Type has canonical short reference (no H3+ subsections, no '- **label**:' bullets)"
+}
+
+# --- P3 cleanup bundle (spec 2026-04-20-p3-cleanup-bundle) ---
+
+check_spec_template_codex_fast_rationale() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "## 5. Implementation Checklist" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## 5. Implementation Checklist' section"; return 1; }
+  printf '%s\n' "$section" | grep -qF '**Why not `@codex-fast`?**' \
+    || { echo "$path §5 missing byte-exact '**Why not \`@codex-fast\`?**' marker"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Fast is an orchestrator-time dispatch choice driven by `codex.model_fast` in user config, not a step property.' \
+    || { echo "$path §5 missing byte-exact orchestrator-time rationale sentence"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'the orchestrator routes it to Fast only when the user selects option 1b at the agent-selection banner' \
+    || { echo "$path §5 missing byte-exact 'orchestrator routes it to Fast only when the user selects option 1b' clause"; return 1; }
+  # p3-cleanup audit X6: pin the actionable instruction "still tagged `@codex`"
+  # so a future edit can't quietly remove the practical guidance while the
+  # explanatory clauses stay intact.
+  printf '%s\n' "$section" | grep -qF 'A step that would benefit from Fast is still tagged `@codex`' \
+    || { echo "$path §5 missing byte-exact actionable instruction 'A step that would benefit from Fast is still tagged \`@codex\`'"; return 1; }
+  echo "$path §5 has @codex-fast rationale paragraph (4 byte-exact pins incl. actionable instruction)"
+}
+
+check_agent_routing_codex_fast_rationale() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "## Codex Fast (opt-in)" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## Codex Fast (opt-in)' section"; return 1; }
+  printf '%s\n' "$section" | grep -qF '`@codex-fast` is intentionally not a valid spec pre-tag' \
+    || { echo "$path §Codex Fast missing byte-exact '\`@codex-fast\` is intentionally not a valid spec pre-tag' sentence"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Fast is orchestrator-time dispatch driven by user config, not a step property' \
+    || { echo "$path §Codex Fast missing byte-exact 'Fast is orchestrator-time dispatch driven by user config, not a step property' clause"; return 1; }
+  # p3-cleanup audit X6: pin the actionable instruction "Tag `@codex`" so the
+  # practical guidance cannot be removed while the explanatory clauses stay.
+  printf '%s\n' "$section" | grep -qF 'Tag `@codex`; the orchestrator picks Fast at the agent-selection banner.' \
+    || { echo "$path §Codex Fast missing byte-exact actionable instruction 'Tag \`@codex\`; the orchestrator picks Fast at the agent-selection banner.'"; return 1; }
+  echo "$path §Codex Fast has @codex-fast rationale sentence (3 byte-exact pins incl. actionable instruction)"
+}
+
+check_trigger_map_investigate_research_clarifier() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # p3-cleanup audit X3: scope the clarifier to the §Skill trigger map section
+  # (where it belongs) rather than whole-file. Both hook and snippet carry the
+  # '### Skill trigger map' heading; the helper extracts that section and
+  # requires all three pins inside it. A clarifier moved out of the section
+  # (e.g. into Key facts, or outside the fence for the snippet) is rejected.
+  grep -qF '### Skill trigger map' "$path" \
+    || { echo "$path missing '### Skill trigger map' section heading (clarifier must live in that section)"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && /^### Skill trigger map/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path '### Skill trigger map' section empty"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Disambiguation: "compare / which is better / tradeoffs"' \
+    || { echo "$path §Skill trigger map missing byte-exact clarifier opener 'Disambiguation: \"compare / which is better / tradeoffs\"'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'adversarial Claude+Codex debate, single-session, convergence report with a recommendation' \
+    || { echo "$path §Skill trigger map missing byte-exact adversarial-debate description"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Use `/research new competitive-analysis` only when the user wants free-form notes accumulated over multiple sessions, not a decision.' \
+    || { echo "$path §Skill trigger map missing byte-exact /research-new-competitive-analysis fallback sentence"; return 1; }
+  echo "$path §Skill trigger map has investigate-vs-research clarifier (3 byte-exact pins, section-scoped)"
+}
+
+check_research_skill_competitive_analysis_points_to_investigate() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # p3-cleanup audit X4: pin the full competitive-analysis bullet line
+  # byte-exact so the pointer cannot be detached from the bullet (e.g. moved
+  # to an unrelated section or rewritten to not mention /investigate).
+  grep -qF -- '3. `competitive-analysis` — market / vendor / protocol comparison. For decision-making comparisons with a recommendation at the end, use `/investigate` instead — it runs an adversarial Claude+Codex debate and produces a convergence report.' "$path" \
+    || { echo "$path missing byte-exact full competitive-analysis bullet with /investigate pointer attached"; return 1; }
+  echo "$path has full-line byte-exact competitive-analysis → /investigate bullet"
+}
+
+check_branch_frontmatter_ref_lowercase() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # p3-cleanup audit X5: broaden rejection to ANY 'Branch:' occurrence in the
+  # file (case-sensitive). Pre-fix helper only caught backtick-wrapped form;
+  # `**Branch:**`, `"Branch:"`, bare `Branch:`, and `` `Branch: ` `` (trailing
+  # space) all slipped through. Target files (README.md, feature/SKILL.md)
+  # should have zero uppercase 'Branch:' occurrences since canonical YAML
+  # frontmatter key is lowercase; any form is rejection-worthy.
+  if grep -qF 'Branch:' "$path"; then
+    local occurrences
+    occurrences=$(grep -n 'Branch:' "$path" | head -3)
+    echo "$path contains uppercase 'Branch:' form(s); canonical YAML frontmatter key is lowercase 'branch:'. First hits:"
+    echo "$occurrences"
+    return 1
+  fi
+  echo "$path has no uppercase 'Branch:' form (lowercase 'branch:' canonical used everywhere)"
+}
+
+check_readme_no_audit_migration_note() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # p3-cleanup audit X7: broaden to reject case-variants and simple paraphrases
+  # of the audit→cross-audit migration note. Any line mentioning both "audit"
+  # and "cross-audit" with "replaced by" is rejection-worthy since the
+  # `audit` skill has been gone long enough that no migration signpost is
+  # needed or accurate.
+  if grep -qiE 'migration[[:space:]]+note.*`?audit`?.*replaced[[:space:]]+by.*cross[- ]?audit' "$path"; then
+    echo "$path still contains an obsolete 'audit replaced by cross-audit' migration-note line (case-insensitive match); the \`audit\` skill was removed long ago"
+    grep -niE 'migration[[:space:]]+note.*`?audit`?.*replaced[[:space:]]+by.*cross[- ]?audit' "$path" | head -3
+    return 1
+  fi
+  # Also reject the literal pre-edit sentence exactly (redundant belt-and-
+  # braces — the regex above already covers it, but kept as a safety net).
+  if grep -qF 'Migration note: `audit` replaced by cross-audit.' "$path"; then
+    echo "$path still contains obsolete migration note (literal pre-edit form)"
+    return 1
+  fi
+  echo "$path has no obsolete 'audit replaced by cross-audit' migration note (regex + literal both clean)"
 }

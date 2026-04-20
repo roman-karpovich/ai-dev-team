@@ -60,6 +60,8 @@ resume. Trigger IDs below (`T-C#`, `T-S#`, `T-M#`, `T-CF#`) are the only valid `
 
 **Cross-auditor never consumes `codex.model_fast`.** Audit reasoning depth is non-negotiable; Fast is developer-codex-only.
 
+`@codex-fast` is intentionally not a valid spec pre-tag: Fast is orchestrator-time dispatch driven by user config, not a step property. Tag `@codex`; the orchestrator picks Fast at the agent-selection banner.
+
 ## Rationale logging
 
 Every time the orchestrator picks a developer agent (new spec or `continue`), append to the spec Log:
