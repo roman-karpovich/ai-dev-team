@@ -1422,6 +1422,50 @@ check "smoke-helper-dwf-test-quality-rejects-wrong-section"   check_smoke_helper
 check "smoke-helper-dwf-observed-notes-rejects-wrong-section" check_smoke_helper_dwf_observed_notes_rejects_wrong_section
 echo
 
+# --- DONE→VERIFIED migration (spec 2026-04-20-done-verified-migration) ---
+echo "DONE→VERIFIED migration (2026-04-20):"
+
+# DV1: librarian canonical block helper must reject the stale fixture.
+check_smoke_helper_librarian_rejects_stale() {
+  ! check_librarian_status_block_canonical 'tests/fixtures/done-verified-migration/librarian-stale.md' >/dev/null 2>&1 \
+    || { echo "check_librarian_status_block_canonical wrongly accepted librarian-stale.md"; return 1; }
+  echo "check_librarian_status_block_canonical correctly rejected stale librarian fixture"
+}
+
+# DV2: discard-mode helper must reject the stale fixture.
+check_smoke_helper_discard_mode_rejects_stale() {
+  ! check_discard_mode_refuses_verified_shipped 'tests/fixtures/done-verified-migration/discard-mode-stale.md' >/dev/null 2>&1 \
+    || { echo "check_discard_mode_refuses_verified_shipped wrongly accepted discard-mode-stale.md"; return 1; }
+  echo "check_discard_mode_refuses_verified_shipped correctly rejected stale discard-mode fixture"
+}
+
+# DV3: feature/SKILL.md active-done-writes helper must reject the stale fixture.
+check_smoke_helper_feature_skill_rejects_stale() {
+  ! check_feature_skill_no_active_done_writes 'tests/fixtures/done-verified-migration/skill-md-stale.md' >/dev/null 2>&1 \
+    || { echo "check_feature_skill_no_active_done_writes wrongly accepted skill-md-stale.md"; return 1; }
+  echo "check_feature_skill_no_active_done_writes correctly rejected stale skill-md fixture"
+}
+
+# DV4: developer-workflow active-done-writes helper must reject the stale fixture.
+check_smoke_helper_developer_workflow_rejects_stale() {
+  ! check_developer_workflow_no_active_done_writes 'tests/fixtures/done-verified-migration/developer-workflow-stale.md' >/dev/null 2>&1 \
+    || { echo "check_developer_workflow_no_active_done_writes wrongly accepted developer-workflow-stale.md"; return 1; }
+  echo "check_developer_workflow_no_active_done_writes correctly rejected stale developer-workflow fixture"
+}
+
+# 4 positive: helper against real plugin file
+check "check_librarian_status_block_canonical" check_librarian_status_block_canonical agents/librarian.md
+check "check_discard_mode_refuses_verified_shipped" check_discard_mode_refuses_verified_shipped skills/feature/SKILL.md
+check "check_feature_skill_no_active_done_writes" check_feature_skill_no_active_done_writes skills/feature/SKILL.md
+check "check_developer_workflow_no_active_done_writes" check_developer_workflow_no_active_done_writes skills/feature/references/developer-workflow.md
+
+# 4 negative: wrapper-invocations verifying helpers reject stale fixtures
+check "check_smoke_helper_librarian_rejects_stale" check_smoke_helper_librarian_rejects_stale
+check "check_smoke_helper_discard_mode_rejects_stale" check_smoke_helper_discard_mode_rejects_stale
+check "check_smoke_helper_feature_skill_rejects_stale" check_smoke_helper_feature_skill_rejects_stale
+check "check_smoke_helper_developer_workflow_rejects_stale" check_smoke_helper_developer_workflow_rejects_stale
+echo
+
 # --- Agent routing (2026-04-18) ---
 echo "Agent routing (2026-04-18):"
 

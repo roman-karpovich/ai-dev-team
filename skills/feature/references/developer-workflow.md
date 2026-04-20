@@ -25,7 +25,7 @@ Every developer agent receives in its prompt:
 5. **Read relevant source files** before writing. Understand existing patterns, style, dependencies.
 6. **For each step in order** — follow the Per-step protocol below.
 7. **Blockers**: if you cannot proceed (ambiguity, missing dependency, spec contradiction), stop and report to the user. Append a brief note to the spec Log. Do NOT guess and expand scope silently.
-8. **When your scope is complete**: leave `status: IN_PROGRESS`. Do NOT set `status: DONE`. The feature-skill orchestrator owns the DONE transition after the verifier passes.
+8. When your scope is complete: leave status: IN_PROGRESS. Do NOT set a terminal status. The feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.
 
 ---
 
@@ -101,7 +101,7 @@ Update the spec file directly during work:
 
 - Check off completed steps: `- [ ]` → `- [x]` (only after compliance PASS).
 - **Append** to the Log section (append-only): `- YYYY-MM-DD: <decision or note>`. Never edit past Log entries.
-- Leave `status: IN_PROGRESS` when done — the feature-skill orchestrator owns the DONE transition after the verifier passes.
+- Leave status: IN_PROGRESS when done — the feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.
 
 ---
 
