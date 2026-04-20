@@ -69,9 +69,12 @@ Ordered steps. Each is a concrete, reviewable unit of work — a behavioral chan
 
 For each step, the orchestrator initializes a corresponding `planned` block in the execution workdoc before implementation begins.
 
-- [ ] Step 1: description
-- [ ] Step 2: description
-- [ ] ...
+- [ ] Step 1: description @codex
+- [ ] Step 2: description @senior
+- [ ] Step 3: description @middle
+- [ ] Step 4: description
+
+**Agent pre-tag (optional).** Each step may carry an optional `@<agent>` suffix — accepted tokens are `@codex`, `@senior`, and `@middle`, each separated from the description by exactly one space at the end of the line. Tags are case-insensitive: the orchestrator lowercases the tag at read time, so `@SENIOR` and `@Senior` resolve to `@senior`. Canonical form is lowercase — authors should write lowercase. No other suffix forms (no `@codex-fast`, no `@agent=codex`, no `(agent: codex)`). Untagged steps remain valid and defer to the orchestrator's matrix-trigger flow at Agent selection time (and `last_agent=` in Continue mode).
 
 ## 6.1 Automated verification
 
