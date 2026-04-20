@@ -418,7 +418,7 @@ scope: <list of changed files from spec checklist>
 
 - **PASS**: All results are captured in the workdoc.
   > 💡 Consider running `/compact` before hand-off — implementation context is no longer needed.
-  Verify passed. Moving to hand-off. Do **not** set `status: DONE` yet — wait until the user selects a preserving option (merge, push, or keep). Setting DONE before that means a discard would leave the spec permanently marked DONE with no surviving branch.
+  Verify passed. Moving to hand-off. Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet — wait until the user selects a preserving option (merge, push, or keep). §3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off. Setting a terminal before hand-off means a discard would leave the spec permanently marked terminal with no surviving branch.
 - **FAIL**: present failures to user. Analyze the verifier report to identify which checklist step(s) are responsible. Spawn the developer with `rework step N: fix test failure: <relevant excerpt>` for each affected step. Re-verify after fix.
 - **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off (see banner below). Log the absence of a project-level test suite.
 
@@ -599,9 +599,10 @@ No spec-path was supplied to `/feature discard`. Pick one of the active specs be
 
 **Which spec should be discarded?**
 
-3. Refuse if `status: DONE` — already merged, not something discard can undo. Tell the user to revert the merge commit instead.
-4. Refuse if `status: DISCARDED` — already gone.
-5. Show the commit list and branch name, then ask for typed confirmation via the banner below.
+3. Refuse if `status: VERIFIED` (or legacy `DONE`) — spec is closed. Tell the user: "Spec already verified; to undo, revert the merge commit(s) via git."
+4. Refuse if `status: SHIPPED` — feature merged with an open post-merge checklist. Tell the user: "Spec already shipped. Use `/feature checklist` to manage open items, or revert the merge commit(s) if you need to roll back."
+5. Refuse if `status: DISCARDED` — already gone.
+6. Show the commit list and branch name, then ask for typed confirmation via the banner below.
 
 ```
 git log --oneline <base>..<branch>
@@ -614,8 +615,8 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 
 **Type the word `discard` to confirm — any other reply aborts. Confirm?**
 
-6. On confirmation: `git checkout <base-branch> && git branch -D <branch>` (use `-D` — force, since the branch likely isn't merged into base). Set `status: DISCARDED`, append Log: `- YYYY-MM-DD: feature discarded by user`.
-7. On any other answer: abort, leave state untouched.
+7. On confirmation: `git checkout <base-branch> && git branch -D <branch>` (use `-D` — force, since the branch likely isn't merged into base). Set `status: DISCARDED`, append Log: `- YYYY-MM-DD: feature discarded by user`.
+8. On any other answer: abort, leave state untouched.
 
 ---
 
@@ -625,7 +626,7 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 2. Find all specs: `<kb_path>/repos/*/design/YYYY-MM-DD-*.md`
 3. Read status, implementation checklist, and post-merge checklist (section 8) from each
 4. For every `SHIPPED` spec: run the auto-resolve pass (see Verify mode) so blockers pointing at now-verified specs collapse before we render
-5. Filter: by default, hide `VERIFIED` / `DONE`, `DISCARDED`, and `BLOCKED` (they are not actionable now). Always show `SHIPPED`. If the argument is `status --all`, show every spec regardless of status.
+5. Filter: by default, hide `VERIFIED` (or legacy `DONE`), `DISCARDED`, and `BLOCKED` (they are not actionable now). Always show `SHIPPED`. If the argument is `status --all`, show every spec regardless of status.
 6. Group the visible specs into named sections:
 
 ```
@@ -684,7 +685,7 @@ Type-specific options:
   `start-soak` is called.
 
 Works even when spec is in `IN_PROGRESS` — items can be anticipated during
-development. Refuses to add items to `VERIFIED` / `DISCARDED` specs.
+development. Refuses to add items to `VERIFIED` (or legacy `DONE`) / `DISCARDED` specs.
 
 ### `checklist done <spec-path> <n> [--note="..."]`
 
@@ -854,7 +855,7 @@ The spec is already merged. Do not re-open it for new implementation work. Two o
 
 **Which option — (a) or (b)?**
 
-3. **Spec is `VERIFIED` / `DONE`** — ask the banner below.
+3. **Spec is `VERIFIED` (or legacy `DONE`)** — ask the banner below.
 
 ---
 ## ⏸ AWAITING YOUR INPUT
@@ -874,7 +875,7 @@ Whichever option is chosen, append one Log line to the source spec documenting t
 `/feature extend <description>` — append a new step to a spec's Implementation Checklist and create the matching workdoc entry.
 
 1. Resolve the target spec. If `$ARGUMENTS` contains a spec-path, use that; otherwise use the spec currently under discussion (ask if ambiguous).
-2. Refuse on `SHIPPED` / `VERIFIED` / `DONE` / `DISCARDED` — follow-up specs and post-merge action items are the right tools there (see *Scope addition mid-flow*).
+2. Refuse on `SHIPPED` / `VERIFIED` (or legacy `DONE`) / `DISCARDED` — follow-up specs and post-merge action items are the right tools there (see *Scope addition mid-flow*).
 3. If the spec is `DRAFT` / `APPROVED`, add the step via a normal spec edit in section `## 5. Implementation Checklist`; skip the workdoc write (no workdoc exists until `AUDIT_PASSED`).
 4. If the spec is `AUDIT_PASSED` / `IN_PROGRESS`:
    - Append `- [ ] Step N: <description>` to the Implementation Checklist (N = next integer).
