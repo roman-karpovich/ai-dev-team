@@ -1339,6 +1339,74 @@ check "developer-workflow-test-quality-points-to-r3"    check_developer_workflow
 check "developer-workflow-observed-notes-requirement"   check_developer_workflow_observed_notes_requirement   "$DWF"
 echo
 
+# --- R3 fixture-based behavioral assertions (2026-04-19, backlog #24) ---
+echo "R3 fixture-based behavioral assertions:"
+
+# iter-15 X45: fixture paths are INLINED directly into each wrapper body
+# (not stored in intermediate variables such as `R3_WRONG`/`DWF_WRONG`).
+# The iter-14 X43 approach sealed the variables via `readonly`, but the
+# static checks (`grep -cFx`, unique-count, `unset` prohibition) did not
+# cover alternate write paths — `printf -v R3_WRONG …`, `declare
+# R3_WRONG=…`, `typeset`, `eval "R3_WRONG=…"`, `read -r R3_WRONG <<< …`
+# — any of which could rebind the variable BEFORE `readonly` took
+# effect, pointing helpers at a non-existent path, where
+# `extract_md_section` returns empty, the helper returns 1, the wrapper's
+# `!` inverts to 0, and all 6 wrappers silently PASS without exercising
+# the fixtures. Inlining the paths as string literals in the function
+# bodies makes them part of `assert_fn_matches_spec_runtime`'s body-diff
+# — bash's own parser normalizes them and any drift is caught by the
+# runtime body match against spec §3.5.
+
+# H1: structure-triplet helper must reject the wrong-section fixture.
+check_smoke_helper_r3_structure_rejects_wrong_section() {
+  ! check_r3_structure_triplet_present 'tests/fixtures/smoke-helpers/r3-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_r3_structure_triplet_present wrongly accepted tests/fixtures/smoke-helpers/r3-wrong-section.md"; return 1; }
+  echo "check_r3_structure_triplet_present correctly rejected wrong-section fixture"
+}
+
+# H2: anti-patterns helper must reject the wrong-section fixture.
+check_smoke_helper_r3_anti_patterns_rejects_wrong_section() {
+  ! check_r3_anti_patterns_enumerated 'tests/fixtures/smoke-helpers/r3-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_r3_anti_patterns_enumerated wrongly accepted tests/fixtures/smoke-helpers/r3-wrong-section.md"; return 1; }
+  echo "check_r3_anti_patterns_enumerated correctly rejected wrong-section fixture"
+}
+
+# H3: notes-requirement helper must reject the wrong-section fixture.
+check_smoke_helper_r3_notes_rejects_wrong_section() {
+  ! check_r3_notes_requirement_present 'tests/fixtures/smoke-helpers/r3-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_r3_notes_requirement_present wrongly accepted tests/fixtures/smoke-helpers/r3-wrong-section.md"; return 1; }
+  echo "check_r3_notes_requirement_present correctly rejected wrong-section fixture"
+}
+
+# H4: DWF short-form-R3 helper must reject the DWF wrong-section fixture.
+check_smoke_helper_dwf_short_form_rejects_wrong_section() {
+  ! check_developer_workflow_short_form_r3 'tests/fixtures/smoke-helpers/dwf-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_developer_workflow_short_form_r3 wrongly accepted tests/fixtures/smoke-helpers/dwf-wrong-section.md"; return 1; }
+  echo "check_developer_workflow_short_form_r3 correctly rejected wrong-section fixture"
+}
+
+# H5: DWF §Test Quality pointer helper must reject the wrong-section fixture.
+check_smoke_helper_dwf_test_quality_rejects_wrong_section() {
+  ! check_developer_workflow_test_quality_points_to_r3 'tests/fixtures/smoke-helpers/dwf-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_developer_workflow_test_quality_points_to_r3 wrongly accepted tests/fixtures/smoke-helpers/dwf-wrong-section.md"; return 1; }
+  echo "check_developer_workflow_test_quality_points_to_r3 correctly rejected wrong-section fixture"
+}
+
+# H6: DWF §Per-step protocol observed.notes helper must reject the wrong-section fixture.
+check_smoke_helper_dwf_observed_notes_rejects_wrong_section() {
+  ! check_developer_workflow_observed_notes_requirement 'tests/fixtures/smoke-helpers/dwf-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_developer_workflow_observed_notes_requirement wrongly accepted tests/fixtures/smoke-helpers/dwf-wrong-section.md"; return 1; }
+  echo "check_developer_workflow_observed_notes_requirement correctly rejected wrong-section fixture"
+}
+
+check "smoke-helper-r3-structure-rejects-wrong-section"       check_smoke_helper_r3_structure_rejects_wrong_section
+check "smoke-helper-r3-anti-patterns-rejects-wrong-section"   check_smoke_helper_r3_anti_patterns_rejects_wrong_section
+check "smoke-helper-r3-notes-rejects-wrong-section"           check_smoke_helper_r3_notes_rejects_wrong_section
+check "smoke-helper-dwf-short-form-rejects-wrong-section"     check_smoke_helper_dwf_short_form_rejects_wrong_section
+check "smoke-helper-dwf-test-quality-rejects-wrong-section"   check_smoke_helper_dwf_test_quality_rejects_wrong_section
+check "smoke-helper-dwf-observed-notes-rejects-wrong-section" check_smoke_helper_dwf_observed_notes_rejects_wrong_section
+echo
+
 # --- Agent routing (2026-04-18) ---
 echo "Agent routing (2026-04-18):"
 
