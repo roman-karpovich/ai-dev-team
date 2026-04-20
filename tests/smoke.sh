@@ -329,10 +329,18 @@ check_agent_refs_dev_workflow() {
   grep -q "developer-workflow.md" "$agent"
 }
 
+# Ensures codex-implement.md remains deleted (see spec 2026-04-20-orphan-codex-implement).
+check_codex_implement_not_present() {
+  [ ! -e skills/feature/references/codex-implement.md ] \
+    || { echo "skills/feature/references/codex-implement.md reappeared — see spec 2026-04-20-orphan-codex-implement"; return 1; }
+  echo "codex-implement.md correctly absent"
+}
+
 check "shared reference exists" check_dev_workflow_exists
 for agent in agents/developer-codex.md agents/developer-senior.md agents/developer-middle.md; do
   check "agent links shared workflow: $agent" check_agent_refs_dev_workflow "$agent"
 done
+check "check_codex_implement_not_present" check_codex_implement_not_present
 echo
 
 # --- Broken-link guard ---
