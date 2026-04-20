@@ -2790,6 +2790,69 @@ check "check_smoke_helper_phase0_investigate_rejected" check_smoke_helper_phase0
 check "check_smoke_helper_phase0_cross_audit_rejected" check_smoke_helper_phase0_cross_audit_rejected
 echo
 
+# --- Git conventions dedupe (spec 2026-04-20-git-conventions-dedupe) ---
+echo "Git conventions dedupe:"
+
+# Negative wrappers — each asserts the corresponding helper rejects its
+# dedicated fixture from tests/fixtures/git-conventions-dedupe/.
+check_smoke_helper_git_feature_skill_inline_rejected() {
+  if ! check_feature_skill_git_references_canonical 'tests/fixtures/git-conventions-dedupe/feature-skill-inline-git.md' >/dev/null 2>&1; then
+    echo "check_feature_skill_git_references_canonical correctly rejected stale feature-skill-inline-git fixture"
+    return 0
+  fi
+  echo "check_feature_skill_git_references_canonical wrongly accepted feature-skill-inline-git.md"
+  return 1
+}
+
+check_smoke_helper_git_overview_master_only_rejected() {
+  if ! check_overview_git_references_canonical 'tests/fixtures/git-conventions-dedupe/overview-master-only.md' >/dev/null 2>&1; then
+    echo "check_overview_git_references_canonical correctly rejected stale overview-master-only fixture"
+    return 0
+  fi
+  echo "check_overview_git_references_canonical wrongly accepted overview-master-only.md"
+  return 1
+}
+
+# Hybrid-reintroduction + body-mutation wrappers (audit findings X1/X2/X3).
+check_smoke_helper_git_feature_skill_hybrid_rejected() {
+  if ! check_feature_skill_git_references_canonical 'tests/fixtures/git-conventions-dedupe/feature-skill-hybrid-git.md' >/dev/null 2>&1; then
+    echo "check_feature_skill_git_references_canonical correctly rejected hybrid feature-skill fixture"
+    return 0
+  fi
+  echo "check_feature_skill_git_references_canonical wrongly accepted feature-skill-hybrid-git.md"
+  return 1
+}
+
+check_smoke_helper_git_overview_hybrid_rejected() {
+  if ! check_overview_git_references_canonical 'tests/fixtures/git-conventions-dedupe/overview-hybrid-git.md' >/dev/null 2>&1; then
+    echo "check_overview_git_references_canonical correctly rejected hybrid overview fixture"
+    return 0
+  fi
+  echo "check_overview_git_references_canonical wrongly accepted overview-hybrid-git.md"
+  return 1
+}
+
+check_smoke_helper_git_dev_workflow_mutated_body_rejected() {
+  if ! check_dev_workflow_git_canonical 'tests/fixtures/git-conventions-dedupe/dev-workflow-mutated-body.md' >/dev/null 2>&1; then
+    echo "check_dev_workflow_git_canonical correctly rejected mutated-body dev-workflow fixture"
+    return 0
+  fi
+  echo "check_dev_workflow_git_canonical wrongly accepted dev-workflow-mutated-body.md"
+  return 1
+}
+
+# Positive invocations — 3 rows per spec §3.4 invariants table.
+check "check_dev_workflow_git_canonical" check_dev_workflow_git_canonical skills/feature/references/developer-workflow.md
+check "check_feature_skill_git_references_canonical" check_feature_skill_git_references_canonical skills/feature/SKILL.md
+check "check_overview_git_references_canonical" check_overview_git_references_canonical docs/AI_Dev_Team_Overview.md
+# Negative invocations — 2 original + 3 audit (X1/X2/X3) rows.
+check "check_smoke_helper_git_feature_skill_inline_rejected" check_smoke_helper_git_feature_skill_inline_rejected
+check "check_smoke_helper_git_overview_master_only_rejected" check_smoke_helper_git_overview_master_only_rejected
+check "check_smoke_helper_git_feature_skill_hybrid_rejected" check_smoke_helper_git_feature_skill_hybrid_rejected
+check "check_smoke_helper_git_overview_hybrid_rejected" check_smoke_helper_git_overview_hybrid_rejected
+check "check_smoke_helper_git_dev_workflow_mutated_body_rejected" check_smoke_helper_git_dev_workflow_mutated_body_rejected
+echo
+
 
 echo
 echo "Passed: $PASS"
