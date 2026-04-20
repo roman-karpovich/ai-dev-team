@@ -182,6 +182,214 @@ check_skill_md_continue_mode_tag_read() {
   echo "$path Continue-mode range has all §3.5 byte-frozen prose pins"
 }
 
+# --- DONE→VERIFIED migration (spec 2026-04-20-done-verified-migration) ---
+# Self-contained helpers: each does inline awk extraction, does NOT rely on
+# extract_md_section from the caller. Accepts $1 = path (real plugin file OR
+# negative fixture). Returns 0 iff the canonical shape is present AND stale
+# pre-fix text is absent; non-zero otherwise with one diagnostic line.
+
+check_librarian_status_block_canonical() {
+  local path="$1"
+  local section
+  # Inline extraction — first '### Feature Spec frontmatter' heading to next '### '.
+  section=$(awk '
+    !in_s && $0 == "### Feature Spec frontmatter" { in_s = 1; print; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  [[ -n "$section" ]] || { echo "$path missing '### Feature Spec frontmatter' section"; return 1; }
+
+  # Positive: canonical enum line (8-status form).
+  printf '%s\n' "$section" | grep -qF 'status: DRAFT | APPROVED | AUDIT_PASSED | IN_PROGRESS | BLOCKED | SHIPPED | VERIFIED | DISCARDED' \
+    || { echo "$path §Feature Spec frontmatter missing canonical 8-status enum line"; return 1; }
+
+  # Positive: transitions diagram anchor.
+  printf '%s\n' "$section" | grep -qF 'DRAFT → APPROVED → AUDIT_PASSED → IN_PROGRESS → SHIPPED → VERIFIED' \
+    || { echo "$path §Feature Spec frontmatter missing canonical transitions arrow"; return 1; }
+
+  # Positive: BLOCKED ↕ glyph on its own line.
+  printf '%s\n' "$section" | grep -qF '↕' \
+    || { echo "$path §Feature Spec frontmatter missing BLOCKED bidirectional arrow glyph '↕'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'BLOCKED' \
+    || { echo "$path §Feature Spec frontmatter missing BLOCKED token in transitions block"; return 1; }
+
+  # Positive: legacy DONE annotation sentence.
+  printf '%s\n' "$section" | grep -qF 'DONE: legacy read-only synonym of VERIFIED' \
+    || { echo "$path §Feature Spec frontmatter missing legacy DONE annotation sentence"; return 1; }
+
+  # Positive: 9 description bullets, one unique signature each.
+  printf '%s\n' "$section" | grep -qF 'spec written, not yet reviewed by user' \
+    || { echo "$path §Feature Spec frontmatter missing DRAFT bullet signature"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'user approved the spec, spec audit not yet run' \
+    || { echo "$path §Feature Spec frontmatter missing APPROVED bullet signature"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'dual-model spec audit passed (or skipped), ready for implementation' \
+    || { echo "$path §Feature Spec frontmatter missing AUDIT_PASSED bullet signature"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'developer agent is actively implementing' \
+    || { echo "$path §Feature Spec frontmatter missing IN_PROGRESS bullet signature"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'work paused on an external dependency; unblock condition recorded in Log' \
+    || { echo "$path §Feature Spec frontmatter missing BLOCKED bullet signature"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'feature merged, post-merge checklist still has open items' \
+    || { echo "$path §Feature Spec frontmatter missing SHIPPED bullet signature"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'terminal — feature complete, observed, all post-merge items resolved' \
+    || { echo "$path §Feature Spec frontmatter missing VERIFIED bullet signature"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'work thrown away via explicit' \
+    || { echo "$path §Feature Spec frontmatter missing DISCARDED bullet signature"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'read-only synonym of' \
+    || { echo "$path §Feature Spec frontmatter missing DONE (legacy) bullet signature"; return 1; }
+
+  # Negative: stale 6-status enum must be gone.
+  if printf '%s\n' "$section" | grep -qF 'status: DRAFT | APPROVED | AUDIT_PASSED | IN_PROGRESS | DONE | DISCARDED'; then
+    echo "$path §Feature Spec frontmatter still contains stale 6-status enum"
+    return 1
+  fi
+  # Negative: stale transition arrow must be gone.
+  if printf '%s\n' "$section" | grep -qF 'DRAFT → APPROVED → AUDIT_PASSED → IN_PROGRESS → DONE'; then
+    echo "$path §Feature Spec frontmatter still contains stale '... → DONE' transition arrow"
+    return 1
+  fi
+  # Negative: stale DONE terminal wording must be gone.
+  if printf '%s\n' "$section" | grep -qF 'DONE`: all checklist steps complete, verification passed, work preserved'; then
+    echo "$path §Feature Spec frontmatter still contains stale 'DONE: all checklist steps complete ...' wording"
+    return 1
+  fi
+
+  # Structural: exactly 9 status-bullet lines matching ^- `[A-Z_]+`.
+  local bullet_count
+  bullet_count=$(printf '%s\n' "$section" | grep -cE '^- `[A-Z_]+`')
+  [[ "$bullet_count" == "9" ]] \
+    || { echo "$path §Feature Spec frontmatter expected exactly 9 status bullets, got $bullet_count"; return 1; }
+
+  echo "$path §Feature Spec frontmatter has canonical 8-status enum + transitions + 9 bullets incl. legacy DONE"
+}
+
+check_discard_mode_refuses_verified_shipped() {
+  local path="$1"
+  local section
+  # Inline extraction — first '## Discard mode' heading to next '## ' heading,
+  # but skip '## ⏸ AWAITING YOUR INPUT' banners (they nest inside the mode).
+  section=$(awk '
+    !in_s && $0 == "## Discard mode" { in_s = 1; print; next }
+    in_s && /^## ⏸ AWAITING YOUR INPUT/ { print; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [[ -n "$section" ]] || { echo "$path missing '## Discard mode' section"; return 1; }
+
+  # Positive: canonical refuse items 3, 4, 5.
+  printf '%s\n' "$section" | grep -qF 'Refuse if `status: VERIFIED` (or legacy `DONE`)' \
+    || { echo "$path §Discard mode missing item-3 signature 'Refuse if \`status: VERIFIED\` (or legacy \`DONE\`)'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Spec already verified; to undo, revert the merge commit(s) via git.' \
+    || { echo "$path §Discard mode missing item-3 remediation sentence"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Refuse if `status: SHIPPED`' \
+    || { echo "$path §Discard mode missing item-4 signature 'Refuse if \`status: SHIPPED\`'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Spec already shipped. Use `/feature checklist` to manage open items' \
+    || { echo "$path §Discard mode missing item-4 remediation sentence"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Refuse if `status: DISCARDED` — already gone.' \
+    || { echo "$path §Discard mode missing item-5 signature 'Refuse if \`status: DISCARDED\` — already gone.'"; return 1; }
+
+  # Negative: stale item 3 must be gone.
+  if printf '%s\n' "$section" | grep -qF 'Refuse if `status: DONE` — already merged, not something discard can undo.'; then
+    echo "$path §Discard mode still contains stale 'Refuse if \`status: DONE\` — already merged ...' item"
+    return 1
+  fi
+
+  # Structural: exactly 3 refuse items matching '^[0-9]+\. Refuse if `status:'.
+  local refuse_count
+  refuse_count=$(printf '%s\n' "$section" | grep -cE '^[0-9]+\. Refuse if `status:')
+  [[ "$refuse_count" == "3" ]] \
+    || { echo "$path §Discard mode expected exactly 3 refuse items, got $refuse_count"; return 1; }
+
+  echo "$path §Discard mode has canonical 3-item refuse list (VERIFIED/SHIPPED/DISCARDED)"
+}
+
+check_feature_skill_no_active_done_writes() {
+  local path="$1"
+  [[ -r "$path" ]] || { echo "$path not readable"; return 1; }
+
+  # Positive: §3.5 checklist add sentence.
+  grep -qF 'Refuses to add items to `VERIFIED` (or legacy `DONE`) / `DISCARDED` specs.' "$path" \
+    || { echo "$path missing §3.5 canonical checklist-add refuse sentence"; return 1; }
+
+  # Positive: §3.6 post-verify paragraph — three key sentences byte-exact.
+  grep -qF 'Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet' "$path" \
+    || { echo "$path missing §3.6 'Do **not** set a terminal status ...' clause"; return 1; }
+  grep -qF '§3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off' "$path" \
+    || { echo "$path missing §3.6 '§3.4a applies the correct terminal ...' clause"; return 1; }
+  grep -qF 'Setting a terminal before hand-off means a discard would leave the spec permanently marked terminal with no surviving branch' "$path" \
+    || { echo "$path missing §3.6 'Setting a terminal before hand-off ...' clause"; return 1; }
+
+  # Positive: §3.8 line 628 canonical form.
+  grep -qF 'hide `VERIFIED` (or legacy `DONE`), `DISCARDED`, and `BLOCKED`' "$path" \
+    || { echo "$path missing §3.8 line-628 'hide \`VERIFIED\` (or legacy \`DONE\`), \`DISCARDED\`, and \`BLOCKED\`' form"; return 1; }
+
+  # Positive: §3.8 line 857 canonical form.
+  grep -qF '**Spec is `VERIFIED` (or legacy `DONE`)**' "$path" \
+    || { echo "$path missing §3.8 line-857 '**Spec is \`VERIFIED\` (or legacy \`DONE\`)**' form"; return 1; }
+
+  # Positive: §3.8 line 877 canonical form.
+  grep -qF 'Refuse on `SHIPPED` / `VERIFIED` (or legacy `DONE`) / `DISCARDED`' "$path" \
+    || { echo "$path missing §3.8 line-877 'Refuse on \`SHIPPED\` / \`VERIFIED\` (or legacy \`DONE\`) / \`DISCARDED\`' form"; return 1; }
+
+  # Negatives: each stale pre-fix form must be gone.
+  if grep -qF 'set `status: DONE`' "$path"; then
+    echo "$path still contains stale 'set \`status: DONE\`' write (guards §3.6 pre-fix)"
+    return 1
+  fi
+  if grep -qF 'Refuses to add items to `VERIFIED` / `DISCARDED` specs.' "$path"; then
+    echo "$path still contains stale §3.5 pre-fix sentence 'Refuses to add items to \`VERIFIED\` / \`DISCARDED\` specs.'"
+    return 1
+  fi
+  if grep -qF 'hide `VERIFIED` / `DONE`, `DISCARDED`, and `BLOCKED`' "$path"; then
+    echo "$path still contains stale §3.8 line-628 'hide \`VERIFIED\` / \`DONE\`, ...' form"
+    return 1
+  fi
+  if grep -qF '**Spec is `VERIFIED` / `DONE`**' "$path"; then
+    echo "$path still contains stale §3.8 line-857 '**Spec is \`VERIFIED\` / \`DONE\`**' form"
+    return 1
+  fi
+  if grep -qF 'Refuse on `SHIPPED` / `VERIFIED` / `DONE` / `DISCARDED`' "$path"; then
+    echo "$path still contains stale §3.8 line-877 'Refuse on \`SHIPPED\` / \`VERIFIED\` / \`DONE\` / \`DISCARDED\`' form"
+    return 1
+  fi
+
+  echo "$path has canonical no-active-DONE-writes form (§3.5/§3.6/§3.8 all present, stale gone)"
+}
+
+check_developer_workflow_no_active_done_writes() {
+  local path="$1"
+  [[ -r "$path" ]] || { echo "$path not readable"; return 1; }
+
+  # Positive — line 28 full replacement: three key phrases.
+  grep -qF 'When your scope is complete: leave status: IN_PROGRESS.' "$path" \
+    || { echo "$path missing line-28 preamble 'When your scope is complete: leave status: IN_PROGRESS.'"; return 1; }
+  grep -qF 'Do NOT set a terminal status.' "$path" \
+    || { echo "$path missing line-28 'Do NOT set a terminal status.' prohibition"; return 1; }
+  grep -qF 'The feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
+    || { echo "$path missing line-28 shared sentence 'The feature-skill orchestrator owns the terminal transition ...'"; return 1; }
+
+  # Positive — line 104 full replacement: single full-sentence check.
+  grep -qF 'Leave status: IN_PROGRESS when done — the feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
+    || { echo "$path missing line-104 full-sentence canonical replacement"; return 1; }
+
+  # Negatives.
+  if grep -qF 'set status: DONE' "$path"; then
+    echo "$path still contains stale 'set status: DONE' write"
+    return 1
+  fi
+  if grep -qF 'owns the DONE transition' "$path"; then
+    echo "$path still contains stale 'owns the DONE transition' phrase"
+    return 1
+  fi
+
+  # Count: shared sentence must appear at least twice (once per paragraph).
+  local shared_count
+  shared_count=$(grep -cF 'owns the terminal transition (VERIFIED / SHIPPED, per §3.4a' "$path")
+  [[ "$shared_count" -ge 2 ]] \
+    || { echo "$path expected >=2 occurrences of shared 'owns the terminal transition (VERIFIED / SHIPPED, per §3.4a' sentence, got $shared_count"; return 1; }
+
+  echo "$path has canonical no-active-DONE-writes form (line-28 + line-104 both present, stale gone)"
+}
+
 check_cross_auditor_pretag_consistency_check() {
   local path='agents/cross-auditor.md'
   local section

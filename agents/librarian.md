@@ -60,19 +60,29 @@ Create subdirectories as needed (`repos/<project>/design/`, `repos/<project>/sec
 title: <feature title>
 project: <project name>
 type: spec
-status: DRAFT | APPROVED | AUDIT_PASSED | IN_PROGRESS | DONE | DISCARDED
+status: DRAFT | APPROVED | AUDIT_PASSED | IN_PROGRESS | BLOCKED | SHIPPED | VERIFIED | DISCARDED
 created: YYYY-MM-DD
 tags: [spec, <project>]
 ---
 ```
 
-Valid status transitions: `DRAFT → APPROVED → AUDIT_PASSED → IN_PROGRESS → DONE` or `IN_PROGRESS → DISCARDED` (user discarded work after verify)
+Valid transitions:
+  DRAFT → APPROVED → AUDIT_PASSED → IN_PROGRESS → SHIPPED → VERIFIED
+                                         ↕
+                                     BLOCKED
+  Any non-terminal → DISCARDED (explicit `/feature discard`).
+  DONE: legacy read-only synonym of VERIFIED — accepted when reading older
+  specs, never written by new transitions.
+
 - `DRAFT`: spec written, not yet reviewed by user
 - `APPROVED`: user approved the spec, spec audit not yet run
-- `AUDIT_PASSED`: dual-model spec audit passed (no CRITICAL/HIGH), ready for implementation
+- `AUDIT_PASSED`: dual-model spec audit passed (or skipped), ready for implementation
 - `IN_PROGRESS`: developer agent is actively implementing
-- `DONE`: all checklist steps complete, verification passed, work preserved (merged/pushed/kept)
-- `DISCARDED`: user discarded the feature branch after verification; spec preserved for reference only
+- `BLOCKED`: work paused on an external dependency; unblock condition recorded in Log
+- `SHIPPED`: feature merged, post-merge checklist still has open items; `/feature verify` closes it when all items resolve
+- `VERIFIED`: terminal — feature complete, observed, all post-merge items resolved
+- `DISCARDED`: work thrown away via explicit `/feature discard`; spec preserved for reference
+- `DONE` *(legacy)*: read-only synonym of `VERIFIED` for specs predating 2026-04-17
 
 ### Audit Findings frontmatter
 ```yaml
