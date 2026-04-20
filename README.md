@@ -252,8 +252,6 @@ developer-senior ← wide codebase exploration needed, or genuinely ambiguous sc
 | `cross-audit` | `/cross-audit <findings-path>` | Re-audit iteration: verify fixes, look for new issues |
 | `investigate` | `/investigate <question>` | Background Claude vs Codex debate, returns convergence report |
 
-Migration note: `audit` replaced by cross-audit.
-
 ---
 
 ## KB structure
@@ -314,9 +312,9 @@ bash <plugin-root>/hooks/session-start | python3 -m json.tool   # should print J
 If the hook emits JSON correctly but Claude Code doesn't inject it, re-install the plugin (`claude plugin uninstall ai-dev-team && claude plugin install ai-dev-team`). If the hook errors, report the error in the plugin repo.
 
 **Baseline test fails immediately — the repo uses `develop` / `trunk` / something other than `master` or `main`.**
-The feature skill auto-detects `master` or `main`. For a non-standard base branch, set the `Branch:` field in the spec frontmatter and reference the real base explicitly, e.g.:
+The feature skill auto-detects `master` or `main`. For a non-standard base branch, set the `branch:` field in the spec frontmatter and reference the real base explicitly, e.g.:
 ```yaml
-Branch: feat/2026-04-17-my-feature  # cut from develop, not master — `feat/` here is one of the seven conventional prefixes (`feat / fix / refactor / ci / docs / test / chore`) and depends on the spec's `change_type`
+branch: feat/2026-04-17-my-feature  # cut from develop, not master — `feat/` here is one of the seven conventional prefixes (`feat / fix / refactor / ci / docs / test / chore`) and depends on the spec's `change_type`
 ```
 Then check out the non-standard base before running `/feature`. A permanent fix is tracked in BACKLOG.
 

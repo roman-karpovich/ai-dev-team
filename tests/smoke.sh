@@ -1711,10 +1711,10 @@ print('no hard-coded dated feature/ prefix survives')
 PY
 }
 
-# (#15-e) README contains byte-exact concrete `Branch: feat/2026-04-17-my-feature` worked example
+# (#15-e) README contains byte-exact concrete `branch: feat/2026-04-17-my-feature` worked example
 check_readme_has_concrete_feat_example() {
-  grep -qF 'Branch: feat/2026-04-17-my-feature' "$README_MD" \
-    || { echo "README.md missing byte-exact 'Branch: feat/2026-04-17-my-feature' worked example"; return 1; }
+  grep -qF 'branch: feat/2026-04-17-my-feature' "$README_MD" \
+    || { echo "README.md missing byte-exact 'branch: feat/2026-04-17-my-feature' worked example"; return 1; }
   echo "README.md has concrete feat/ worked example"
 }
 
@@ -2966,6 +2966,82 @@ check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_
 check "check_smoke_helper_focus_areas_skill_hybrid_rejected" check_smoke_helper_focus_areas_skill_hybrid_rejected
 check "check_smoke_helper_focus_areas_skill_bullet_form_rejected" check_smoke_helper_focus_areas_skill_bullet_form_rejected
 check "check_smoke_helper_focus_areas_cross_auditor_demoted_rejected" check_smoke_helper_focus_areas_cross_auditor_demoted_rejected
+echo
+
+# --- P3 cleanup bundle (spec 2026-04-20-p3-cleanup-bundle) ---
+echo "P3 cleanup bundle:"
+
+check_smoke_helper_p3_readme_audit_migration_rejected() {
+  if ! check_readme_no_audit_migration_note 'tests/fixtures/p3-cleanup/readme-with-audit-migration-note.md' >/dev/null 2>&1; then
+    echo "check_readme_no_audit_migration_note correctly rejected README fixture with obsolete audit→cross-audit migration note"
+    return 0
+  fi
+  echo "check_readme_no_audit_migration_note wrongly accepted readme-with-audit-migration-note.md"
+  return 1
+}
+
+# Audit wrappers (X1/X2/X5/X6) — fixtures that pre-fix helpers silently accepted.
+check_smoke_helper_p3_session_start_clarifier_masks_missing_row_rejected() {
+  if ! check_session_start_trigger_map_complete 'tests/fixtures/p3-cleanup/session-start-clarifier-but-no-investigate-row.md' >/dev/null 2>&1; then
+    echo "check_session_start_trigger_map_complete correctly rejected clarifier-masks-missing-row fixture"
+    return 0
+  fi
+  echo "check_session_start_trigger_map_complete wrongly accepted session-start-clarifier-but-no-investigate-row.md"
+  return 1
+}
+
+check_smoke_helper_p3_snippet_clarifier_masks_missing_row_rejected() {
+  if ! check_claude_md_snippet_points_to_hook 'tests/fixtures/p3-cleanup/snippet-clarifier-but-no-investigate-row.md' >/dev/null 2>&1; then
+    echo "check_claude_md_snippet_points_to_hook correctly rejected clarifier-masks-missing-row snippet fixture"
+    return 0
+  fi
+  echo "check_claude_md_snippet_points_to_hook wrongly accepted snippet-clarifier-but-no-investigate-row.md"
+  return 1
+}
+
+check_smoke_helper_p3_branch_bold_uppercase_rejected() {
+  if ! check_branch_frontmatter_ref_lowercase 'tests/fixtures/p3-cleanup/readme-branch-bold-uppercase.md' >/dev/null 2>&1; then
+    echo "check_branch_frontmatter_ref_lowercase correctly rejected bold-wrapped Branch: fixture"
+    return 0
+  fi
+  echo "check_branch_frontmatter_ref_lowercase wrongly accepted readme-branch-bold-uppercase.md"
+  return 1
+}
+
+check_smoke_helper_p3_spec_template_no_codex_action_rejected() {
+  if ! check_spec_template_codex_fast_rationale 'tests/fixtures/p3-cleanup/spec-template-no-codex-action.md' >/dev/null 2>&1; then
+    echo "check_spec_template_codex_fast_rationale correctly rejected no-actionable-instruction fixture"
+    return 0
+  fi
+  echo "check_spec_template_codex_fast_rationale wrongly accepted spec-template-no-codex-action.md"
+  return 1
+}
+
+check_smoke_helper_p3_agent_routing_no_codex_action_rejected() {
+  if ! check_agent_routing_codex_fast_rationale 'tests/fixtures/p3-cleanup/agent-routing-no-codex-action.md' >/dev/null 2>&1; then
+    echo "check_agent_routing_codex_fast_rationale correctly rejected no-actionable-instruction fixture"
+    return 0
+  fi
+  echo "check_agent_routing_codex_fast_rationale wrongly accepted agent-routing-no-codex-action.md"
+  return 1
+}
+
+# Positive invocations — 8 per spec §3.4.
+check "check_spec_template_codex_fast_rationale" check_spec_template_codex_fast_rationale skills/feature/references/spec-template.md
+check "check_agent_routing_codex_fast_rationale" check_agent_routing_codex_fast_rationale skills/feature/references/agent-routing.md
+check "check_trigger_map_investigate_research_clarifier (hook)" check_trigger_map_investigate_research_clarifier hooks/session-start
+check "check_trigger_map_investigate_research_clarifier (snippet)" check_trigger_map_investigate_research_clarifier docs/claude-md-snippet.md
+check "check_research_skill_competitive_analysis_points_to_investigate" check_research_skill_competitive_analysis_points_to_investigate skills/research/SKILL.md
+check "check_branch_frontmatter_ref_lowercase (README)" check_branch_frontmatter_ref_lowercase README.md
+check "check_branch_frontmatter_ref_lowercase (feature/SKILL.md)" check_branch_frontmatter_ref_lowercase skills/feature/SKILL.md
+check "check_readme_no_audit_migration_note" check_readme_no_audit_migration_note README.md
+# Negative invocations — 1 original + 5 audit (X1/X2/X5/X6) rows.
+check "check_smoke_helper_p3_readme_audit_migration_rejected" check_smoke_helper_p3_readme_audit_migration_rejected
+check "check_smoke_helper_p3_session_start_clarifier_masks_missing_row_rejected" check_smoke_helper_p3_session_start_clarifier_masks_missing_row_rejected
+check "check_smoke_helper_p3_snippet_clarifier_masks_missing_row_rejected" check_smoke_helper_p3_snippet_clarifier_masks_missing_row_rejected
+check "check_smoke_helper_p3_branch_bold_uppercase_rejected" check_smoke_helper_p3_branch_bold_uppercase_rejected
+check "check_smoke_helper_p3_spec_template_no_codex_action_rejected" check_smoke_helper_p3_spec_template_no_codex_action_rejected
+check "check_smoke_helper_p3_agent_routing_no_codex_action_rejected" check_smoke_helper_p3_agent_routing_no_codex_action_rejected
 echo
 
 

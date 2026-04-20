@@ -46,6 +46,8 @@ Recognise these intents and invoke the matching skill automatically:
 | "feature X is stable in prod", "verify feature X", "закрой чеклист" | `/feature verify <spec>` |
 | "blocker N done", "deployed to mainnet", "soak started" | `/feature checklist <done\|start-soak> <spec> <n>` |
 
+Disambiguation: "compare / which is better / tradeoffs" → `/investigate` (adversarial Claude+Codex debate, single-session, convergence report with a recommendation). Use `/research new competitive-analysis` only when the user wants free-form notes accumulated over multiple sessions, not a decision.
+
 Don't wait for the user to type a slash command. If the intent matches, invoke the skill.
 
 ### Audit findings handling

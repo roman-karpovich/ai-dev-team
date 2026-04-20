@@ -76,6 +76,8 @@ For each step, the orchestrator initializes a corresponding `planned` block in t
 
 **Agent pre-tag (optional).** Each step may carry an optional `@<agent>` suffix — accepted tokens are `@codex`, `@senior`, and `@middle`, each separated from the description by exactly one space at the end of the line. Tags are case-insensitive: the orchestrator lowercases the tag at read time, so `@SENIOR` and `@Senior` resolve to `@senior`. Canonical form is lowercase — authors should write lowercase. No other suffix forms (no `@codex-fast`, no `@agent=codex`, no `(agent: codex)`). Untagged steps remain valid and defer to the orchestrator's matrix-trigger flow at Agent selection time (and `last_agent=` in Continue mode).
 
+**Why not `@codex-fast`?** Fast is an orchestrator-time dispatch choice driven by `codex.model_fast` in user config, not a step property. A step that would benefit from Fast is still tagged `@codex`; the orchestrator routes it to Fast only when the user selects option 1b at the agent-selection banner.
+
 ## 6.1 Automated verification
 
 How to test the feature end-to-end after all steps are complete.
