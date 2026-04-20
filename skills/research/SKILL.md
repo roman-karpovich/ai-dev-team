@@ -28,19 +28,13 @@ Parse `$ARGUMENTS`:
 
 ---
 
-## Phase 0: KB Discovery (all modes)
+## Phase 0: KB Discovery
 
-Identical to `/feature` Phase 0 — re-use the same config chain and legacy fallback:
+KB discovery algorithm follows `docs/kb-discovery.md` — single source of truth.
 
-1. Determine `project` and `kb_path` via config before using legacy discovery.
-2. Read `.ai-dev-team.local.yml` first; it overrides `.ai-dev-team.yml`.
-3. Read `.ai-dev-team.yml` second. Fallback anchor: `.ai-dev-team.yml → memory → sibling heuristic → ask`.
-4. Supported config shape is shared with `/feature` — see `skills/feature/SKILL.md`.
-5. `per-field resolution: local → shared → memory → sibling → ask, continue on per-file parse error`.
-6. On parse error / missing field → warn once, continue down the chain. Do not abort the session.
-7. When config is valid, skip confirmation and do not write to memory.
-8. Fallback to memory (`reference_kb_<project>.md`), then sibling directory containing "knowledge", then ask.
-9. After legacy discovery succeeds and `.ai-dev-team.yml` is absent, prompt: **"Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]"**. Same behaviour as `/feature`.
+### Research-skill extensions
+
+Research skill reads only `kb_path` and `project` from the resolved config. No codex.* reads, no LLM dispatch.
 
 ---
 
