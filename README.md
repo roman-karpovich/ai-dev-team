@@ -80,18 +80,11 @@ An example file is included with the plugin at `.ai-dev-team.yml.example`.
 
 ## Ambient workflow
 
-After install, Claude knows when to use which skill automatically — no slash commands required:
+After install, Claude knows when to use which skill automatically — no slash commands required. Core triggers: `/feature new` (add/implement/build), `/feature continue` (resume/where-were-we), `/cross-audit` (review/audit/check-for-bugs), `/investigate` (compare/tradeoffs/which-is-better).
 
-| You say... | Claude does |
-|---|---|
-| "add retry logic", "implement X", "let's build Y" | `/feature new` |
-| "continue", "where were we?", "resume..." | `/feature continue` |
-| "review this", "audit src/", "check for bugs" | `/cross-audit` |
-| "should we use X or Y?", "is this approach right?" | `/investigate` |
+The full trigger map — including Russian variants, scope-addition handling, `/feature status`, `/feature verify`, and `/feature checklist` — lives in two places. The authoritative copy is [`hooks/session-start`](hooks/session-start), injected into every session at runtime. The portable paste-ready copy for your project's `CLAUDE.md` is in [`docs/claude-md-snippet.md`](docs/claude-md-snippet.md).
 
-At session start, Claude proactively checks for in-progress specs and reports status before asking what to do next.
-
-Slash commands still work if you prefer explicit control.
+At session start, Claude proactively checks for in-progress specs and reports status before asking what to do next. Slash commands still work if you prefer explicit control.
 
 ---
 

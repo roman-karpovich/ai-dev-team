@@ -2853,6 +2853,70 @@ check "check_smoke_helper_git_overview_hybrid_rejected" check_smoke_helper_git_o
 check "check_smoke_helper_git_dev_workflow_mutated_body_rejected" check_smoke_helper_git_dev_workflow_mutated_body_rejected
 echo
 
+# --- Trigger-map dedupe (spec 2026-04-20-trigger-map-dedupe) ---
+echo "Trigger-map dedupe:"
+
+# Negative wrappers — each asserts the corresponding helper rejects its
+# dedicated fixture from tests/fixtures/trigger-map-dedupe/.
+check_smoke_helper_trigger_map_session_start_rejected() {
+  if ! check_session_start_trigger_map_complete 'tests/fixtures/trigger-map-dedupe/session-start-missing-trigger.md' >/dev/null 2>&1; then
+    echo "check_session_start_trigger_map_complete correctly rejected missing-trigger fixture"
+    return 0
+  fi
+  echo "check_session_start_trigger_map_complete wrongly accepted session-start-missing-trigger.md"
+  return 1
+}
+
+check_smoke_helper_trigger_map_snippet_rejected() {
+  if ! check_claude_md_snippet_points_to_hook 'tests/fixtures/trigger-map-dedupe/snippet-no-pointer.md' >/dev/null 2>&1; then
+    echo "check_claude_md_snippet_points_to_hook correctly rejected no-pointer snippet fixture"
+    return 0
+  fi
+  echo "check_claude_md_snippet_points_to_hook wrongly accepted snippet-no-pointer.md"
+  return 1
+}
+
+check_smoke_helper_trigger_map_readme_rejected() {
+  if ! check_readme_ambient_workflow_references_sources 'tests/fixtures/trigger-map-dedupe/readme-full-table.md' >/dev/null 2>&1; then
+    echo "check_readme_ambient_workflow_references_sources correctly rejected full-table README fixture"
+    return 0
+  fi
+  echo "check_readme_ambient_workflow_references_sources wrongly accepted readme-full-table.md"
+  return 1
+}
+
+# Audit wrappers (X1/X2) — hybrid fixtures where the required tokens survive
+# outside the scoped section or inside the fenced paste block.
+check_smoke_helper_trigger_map_session_start_token_elsewhere_rejected() {
+  if ! check_session_start_trigger_map_complete 'tests/fixtures/trigger-map-dedupe/session-start-token-elsewhere.md' >/dev/null 2>&1; then
+    echo "check_session_start_trigger_map_complete correctly rejected token-elsewhere hook fixture"
+    return 0
+  fi
+  echo "check_session_start_trigger_map_complete wrongly accepted session-start-token-elsewhere.md"
+  return 1
+}
+
+check_smoke_helper_trigger_map_snippet_pointer_inside_fence_rejected() {
+  if ! check_claude_md_snippet_points_to_hook 'tests/fixtures/trigger-map-dedupe/snippet-pointer-inside-fence.md' >/dev/null 2>&1; then
+    echo "check_claude_md_snippet_points_to_hook correctly rejected pointer-inside-fence snippet fixture"
+    return 0
+  fi
+  echo "check_claude_md_snippet_points_to_hook wrongly accepted snippet-pointer-inside-fence.md"
+  return 1
+}
+
+# Positive invocations — 3 rows per spec §3.4.
+check "check_session_start_trigger_map_complete" check_session_start_trigger_map_complete hooks/session-start
+check "check_claude_md_snippet_points_to_hook" check_claude_md_snippet_points_to_hook docs/claude-md-snippet.md
+check "check_readme_ambient_workflow_references_sources" check_readme_ambient_workflow_references_sources README.md
+# Negative invocations — 3 original + 2 audit (X1/X2) rows.
+check "check_smoke_helper_trigger_map_session_start_rejected" check_smoke_helper_trigger_map_session_start_rejected
+check "check_smoke_helper_trigger_map_snippet_rejected" check_smoke_helper_trigger_map_snippet_rejected
+check "check_smoke_helper_trigger_map_readme_rejected" check_smoke_helper_trigger_map_readme_rejected
+check "check_smoke_helper_trigger_map_session_start_token_elsewhere_rejected" check_smoke_helper_trigger_map_session_start_token_elsewhere_rejected
+check "check_smoke_helper_trigger_map_snippet_pointer_inside_fence_rejected" check_smoke_helper_trigger_map_snippet_pointer_inside_fence_rejected
+echo
+
 
 echo
 echo "Passed: $PASS"

@@ -9,6 +9,8 @@ Claude will guide you through the right skill based on what you say — no need 
 
 Paste the section between the `---` markers into your project's `CLAUDE.md`.
 
+> **Trigger-map source of truth:** `hooks/session-start` (injected into every session at runtime). The table below is the portable paste-ready copy — kept current as of 2026-04-20; if it diverges from the hook, the hook wins at runtime.
+
 ---
 
 ```markdown
