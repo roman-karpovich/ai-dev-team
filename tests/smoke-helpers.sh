@@ -923,3 +923,25 @@ check_agent_routing_codex_fast_rationale() {
     || { echo "$path §Codex Fast missing byte-exact 'Fast is orchestrator-time dispatch driven by user config, not a step property' clause"; return 1; }
   echo "$path §Codex Fast has @codex-fast rationale sentence (2 byte-exact pins)"
 }
+
+check_trigger_map_investigate_research_clarifier() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'Disambiguation: "compare / which is better / tradeoffs"' "$path" \
+    || { echo "$path missing byte-exact clarifier opener 'Disambiguation: \"compare / which is better / tradeoffs\"'"; return 1; }
+  grep -qF 'adversarial Claude+Codex debate, single-session, convergence report with a recommendation' "$path" \
+    || { echo "$path missing byte-exact adversarial-debate description"; return 1; }
+  grep -qF 'Use `/research new competitive-analysis` only when the user wants free-form notes accumulated over multiple sessions, not a decision.' "$path" \
+    || { echo "$path missing byte-exact /research-new-competitive-analysis fallback sentence"; return 1; }
+  echo "$path has investigate-vs-research clarifier (3 byte-exact pins)"
+}
+
+check_research_skill_competitive_analysis_points_to_investigate() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'For decision-making comparisons with a recommendation at the end, use `/investigate` instead' "$path" \
+    || { echo "$path missing byte-exact '/investigate' pointer sentence for competitive-analysis subtype"; return 1; }
+  grep -qF 'adversarial Claude+Codex debate and produces a convergence report' "$path" \
+    || { echo "$path missing byte-exact 'adversarial Claude+Codex debate and produces a convergence report' clause"; return 1; }
+  echo "$path has competitive-analysis → /investigate pointer (2 byte-exact pins)"
+}
