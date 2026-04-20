@@ -2726,6 +2726,70 @@ check "publish.md F15 token-non-empty check" check_f15_token_non_empty
 check "publish.md F15 --account publish-mode scope" check_f15_account_publish_scope
 echo
 
+# --- Shared Phase 0 / KB discovery (spec 2026-04-20-shared-phase0) ---
+echo "Shared Phase 0 / KB discovery:"
+
+# Negative wrappers — each asserts the corresponding helper rejects its
+# dedicated fixture from tests/fixtures/shared-phase0/. Pattern mirrors
+# tests/smoke-helpers-check-wiring.sh (spec #1) — three substrings per body:
+# negation `!` + rejection guard diagnostic + success echo.
+check_smoke_helper_phase0_append_rejected() {
+  if ! check_skill_phase0_no_inline_algorithm 'tests/fixtures/shared-phase0/feature-append-instead-of-replace.md' >/dev/null 2>&1; then
+    echo "check_skill_phase0_no_inline_algorithm correctly rejected stale append-instead-of-replace fixture"
+    return 0
+  fi
+  echo "check_skill_phase0_no_inline_algorithm wrongly accepted feature-append-instead-of-replace.md"
+  return 1
+}
+
+check_smoke_helper_phase0_inline_rejected() {
+  if ! check_skill_phase0_no_inline_algorithm 'tests/fixtures/shared-phase0/feature-inline-algorithm.md' >/dev/null 2>&1; then
+    echo "check_skill_phase0_no_inline_algorithm correctly rejected stale inline-algorithm fixture"
+    return 0
+  fi
+  echo "check_skill_phase0_no_inline_algorithm wrongly accepted feature-inline-algorithm.md"
+  return 1
+}
+
+check_smoke_helper_phase0_investigate_rejected() {
+  if ! check_investigate_no_phase0 'tests/fixtures/shared-phase0/investigate-with-phase0.md' >/dev/null 2>&1; then
+    echo "check_investigate_no_phase0 correctly rejected stale investigate-with-phase0 fixture"
+    return 0
+  fi
+  echo "check_investigate_no_phase0 wrongly accepted investigate-with-phase0.md"
+  return 1
+}
+
+check_smoke_helper_phase0_cross_audit_rejected() {
+  if ! check_cross_audit_phase0_bans_model_fast 'tests/fixtures/shared-phase0/cross-audit-no-ban.md' >/dev/null 2>&1; then
+    echo "check_cross_audit_phase0_bans_model_fast correctly rejected stale cross-audit-no-ban fixture"
+    return 0
+  fi
+  echo "check_cross_audit_phase0_bans_model_fast wrongly accepted cross-audit-no-ban.md"
+  return 1
+}
+
+# Positive invocations — 13 rows per spec §6.1 invocation matrix.
+check "check_kb_discovery_doc_canonical" check_kb_discovery_doc_canonical docs/kb-discovery.md
+check "check_skill_phase0_references_shared_doc" check_skill_phase0_references_shared_doc skills/feature/SKILL.md
+check "check_skill_phase0_references_shared_doc" check_skill_phase0_references_shared_doc skills/cross-audit/SKILL.md
+check "check_skill_phase0_references_shared_doc" check_skill_phase0_references_shared_doc skills/research/SKILL.md
+check "check_skill_phase0_extensions_present" check_skill_phase0_extensions_present skills/feature/SKILL.md
+check "check_skill_phase0_extensions_present" check_skill_phase0_extensions_present skills/cross-audit/SKILL.md
+check "check_skill_phase0_extensions_present" check_skill_phase0_extensions_present skills/research/SKILL.md
+check "check_skill_phase0_no_inline_algorithm" check_skill_phase0_no_inline_algorithm skills/feature/SKILL.md
+check "check_skill_phase0_no_inline_algorithm" check_skill_phase0_no_inline_algorithm skills/cross-audit/SKILL.md
+check "check_skill_phase0_no_inline_algorithm" check_skill_phase0_no_inline_algorithm skills/research/SKILL.md
+check "check_feature_phase0_mentions_codex_keys" check_feature_phase0_mentions_codex_keys skills/feature/SKILL.md
+check "check_cross_audit_phase0_bans_model_fast" check_cross_audit_phase0_bans_model_fast skills/cross-audit/SKILL.md
+check "check_investigate_no_phase0" check_investigate_no_phase0 skills/investigate/SKILL.md
+# Negative invocations — 4 rows per spec §6.1 invocation matrix.
+check "check_smoke_helper_phase0_append_rejected" check_smoke_helper_phase0_append_rejected
+check "check_smoke_helper_phase0_inline_rejected" check_smoke_helper_phase0_inline_rejected
+check "check_smoke_helper_phase0_investigate_rejected" check_smoke_helper_phase0_investigate_rejected
+check "check_smoke_helper_phase0_cross_audit_rejected" check_smoke_helper_phase0_cross_audit_rejected
+echo
+
 
 echo
 echo "Passed: $PASS"
