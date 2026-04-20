@@ -2917,6 +2917,25 @@ check "check_smoke_helper_trigger_map_session_start_token_elsewhere_rejected" ch
 check "check_smoke_helper_trigger_map_snippet_pointer_inside_fence_rejected" check_smoke_helper_trigger_map_snippet_pointer_inside_fence_rejected
 echo
 
+# --- Focus-areas dedupe (spec 2026-04-20-focus-areas-dedupe) ---
+echo "Focus-areas dedupe:"
+
+check_smoke_helper_focus_areas_skill_inline_rejected() {
+  if ! check_cross_audit_skill_focus_areas_references_canonical 'tests/fixtures/focus-areas-dedupe/skill-inline-focus-areas.md' >/dev/null 2>&1; then
+    echo "check_cross_audit_skill_focus_areas_references_canonical correctly rejected inline decorative-block fixture"
+    return 0
+  fi
+  echo "check_cross_audit_skill_focus_areas_references_canonical wrongly accepted skill-inline-focus-areas.md"
+  return 1
+}
+
+# Positive invocations — 2 rows per spec §3.4.
+check "check_cross_auditor_mode_focus_areas_canonical" check_cross_auditor_mode_focus_areas_canonical agents/cross-auditor.md
+check "check_cross_audit_skill_focus_areas_references_canonical" check_cross_audit_skill_focus_areas_references_canonical skills/cross-audit/SKILL.md
+# Negative invocations — 1 row per spec §3.5.
+check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
+echo
+
 
 echo
 echo "Passed: $PASS"
