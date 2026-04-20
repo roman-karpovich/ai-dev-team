@@ -611,13 +611,30 @@ check_cross_audit_phase0_bans_model_fast() {
 check_dev_workflow_git_canonical() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # Required headings.
   grep -qF '## Git Workflow' "$path" \
     || { echo "$path missing '## Git Workflow' heading"; return 1; }
   grep -qF '### Pre-commit branch assertion (MANDATORY)' "$path" \
     || { echo "$path missing '### Pre-commit branch assertion (MANDATORY)' subsection"; return 1; }
   grep -qF '### Post-merge bug flow' "$path" \
     || { echo "$path missing '### Post-merge bug flow' subsection"; return 1; }
-  echo "$path has canonical §Git Workflow (heading + Pre-commit assertion + Post-merge bug flow)"
+  # Load-bearing body pins — Pre-commit branch assertion rules 1/2/3.
+  grep -qF 'Never on `main` or `master`.' "$path" \
+    || { echo "$path §Pre-commit branch assertion missing rule-1 'Never on \`main\` or \`master\`.' pin"; return 1; }
+  grep -qF 'Spec is authoritative.' "$path" \
+    || { echo "$path §Pre-commit branch assertion missing rule-2 'Spec is authoritative.' pin"; return 1; }
+  grep -qF 'No spec → still no main.' "$path" \
+    || { echo "$path §Pre-commit branch assertion missing rule-3 'No spec → still no main.' pin"; return 1; }
+  # Load-bearing body pins — Post-merge bug flow cases 1/2/3 + enforcement.
+  grep -qF 'Spec still IN_PROGRESS, merge was a PR-squash with the feature branch deleted' "$path" \
+    || { echo "$path §Post-merge bug flow missing case-1 opener 'Spec still IN_PROGRESS, merge was a PR-squash with the feature branch deleted' pin"; return 1; }
+  grep -qF '**Spec is SHIPPED**' "$path" \
+    || { echo "$path §Post-merge bug flow missing case-2 '**Spec is SHIPPED**' pin"; return 1; }
+  grep -qF '**Spec is VERIFIED**' "$path" \
+    || { echo "$path §Post-merge bug flow missing case-3 '**Spec is VERIFIED**' pin"; return 1; }
+  grep -qF 'The checker enforces this:' "$path" \
+    || { echo "$path §Post-merge bug flow missing final enforcement sentence 'The checker enforces this:' pin"; return 1; }
+  echo "$path has canonical §Git Workflow (heading + Pre-commit assertion + Post-merge bug flow + body pins)"
 }
 
 check_feature_skill_git_references_canonical() {
@@ -643,16 +660,14 @@ check_feature_skill_git_references_canonical() {
     || { echo "$path §Git conventions missing 'no pushing' phrase"; return 1; }
   printf '%s\n' "$section" | grep -qF 'The canonical section includes the load-bearing pre-commit branch assertion and post-merge bug flow.' \
     || { echo "$path §Git conventions missing byte-exact canonical-section sentence"; return 1; }
-  # Negative — reject stale full 6-point list signatures.
-  if printf '%s\n' "$section" | grep -qE '^- \*\*Base branch\*\*:'; then
-    echo "$path §Git conventions still contains stale '**Base branch**:' bullet (long-form inline list)"
+  # Negative — short reference only; reject any list-item bullet (prevents
+  # hybrid reintroduction where canonical paragraph stays but stale bullets
+  # are appended).
+  if printf '%s\n' "$section" | grep -qE '^- '; then
+    echo "$path §Git conventions contains bullet lines ('^- '); must be a short reference paragraph only"
     return 1
   fi
-  if printf '%s\n' "$section" | grep -qE '^- \*\*Feature branch\*\*:'; then
-    echo "$path §Git conventions still contains stale '**Feature branch**:' bullet (long-form inline list)"
-    return 1
-  fi
-  echo "$path §Git conventions has canonical short reference to developer-workflow.md §Git Workflow"
+  echo "$path §Git conventions has canonical short reference to developer-workflow.md §Git Workflow (no bullets)"
 }
 
 check_overview_git_references_canonical() {
@@ -684,5 +699,12 @@ check_overview_git_references_canonical() {
     echo "$path §Git conventions for developers still contains stale 'Base branch is \`master\` unless spec says otherwise' drift"
     return 1
   fi
-  echo "$path §Git conventions for developers has canonical short reference to developer-workflow.md §Git Workflow (master-or-main, no drift)"
+  # Negative — short reference only; reject any list-item bullet (prevents
+  # hybrid reintroduction where canonical sentence stays but stale bullets
+  # are appended).
+  if printf '%s\n' "$section" | grep -qE '^- '; then
+    echo "$path §Git conventions for developers contains bullet lines ('^- '); must be a short reference paragraph only"
+    return 1
+  fi
+  echo "$path §Git conventions for developers has canonical short reference to developer-workflow.md §Git Workflow (master-or-main, no drift, no bullets)"
 }
