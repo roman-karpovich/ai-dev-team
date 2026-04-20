@@ -885,3 +885,41 @@ check_cross_audit_skill_focus_areas_references_canonical() {
   fi
   echo "$path §Adaptation by Project Type has canonical short reference (no H3+ subsections, no '- **label**:' bullets)"
 }
+
+# --- P3 cleanup bundle (spec 2026-04-20-p3-cleanup-bundle) ---
+
+check_spec_template_codex_fast_rationale() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "## 5. Implementation Checklist" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## 5. Implementation Checklist' section"; return 1; }
+  printf '%s\n' "$section" | grep -qF '**Why not `@codex-fast`?**' \
+    || { echo "$path §5 missing byte-exact '**Why not \`@codex-fast\`?**' marker"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Fast is an orchestrator-time dispatch choice driven by `codex.model_fast` in user config, not a step property.' \
+    || { echo "$path §5 missing byte-exact orchestrator-time rationale sentence"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'the orchestrator routes it to Fast only when the user selects option 1b at the agent-selection banner' \
+    || { echo "$path §5 missing byte-exact 'orchestrator routes it to Fast only when the user selects option 1b' clause"; return 1; }
+  echo "$path §5 has @codex-fast rationale paragraph (3 byte-exact pins)"
+}
+
+check_agent_routing_codex_fast_rationale() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "## Codex Fast (opt-in)" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## Codex Fast (opt-in)' section"; return 1; }
+  printf '%s\n' "$section" | grep -qF '`@codex-fast` is intentionally not a valid spec pre-tag' \
+    || { echo "$path §Codex Fast missing byte-exact '\`@codex-fast\` is intentionally not a valid spec pre-tag' sentence"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Fast is orchestrator-time dispatch driven by user config, not a step property' \
+    || { echo "$path §Codex Fast missing byte-exact 'Fast is orchestrator-time dispatch driven by user config, not a step property' clause"; return 1; }
+  echo "$path §Codex Fast has @codex-fast rationale sentence (2 byte-exact pins)"
+}
