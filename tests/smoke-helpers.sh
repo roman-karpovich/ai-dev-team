@@ -265,9 +265,11 @@ check_librarian_status_block_canonical() {
 check_discard_mode_refuses_verified_shipped() {
   local path="$1"
   local section
-  # Inline extraction — first '## Discard mode' heading to next '## '.
+  # Inline extraction — first '## Discard mode' heading to next '## ' heading,
+  # but skip '## ⏸ AWAITING YOUR INPUT' banners (they nest inside the mode).
   section=$(awk '
     !in_s && $0 == "## Discard mode" { in_s = 1; print; next }
+    in_s && /^## ⏸ AWAITING YOUR INPUT/ { print; next }
     in_s && /^## / { exit }
     in_s { print }
   ' "$path")
