@@ -79,6 +79,7 @@ Reviews a **feature spec document** (not code) before implementation begins. The
 - **Verification gaps**: will the verification steps actually detect a broken implementation?
 - **Scope**: no hidden cross-cutting concerns, no missing inter-service impacts
 - **Risk**: significant technical risks not mentioned in the spec
+- **Agent pre-tag consistency** (if §5 steps carry `@<agent>` tags): each tag must (a) match at least one positive trigger for the tagged agent in `skills/feature/references/agent-routing.md` AND (b) not contradict any anti-trigger of the tagged agent (per that agent's own Anti-triggers list — iter-4 X24: only the tagged agent's anti-triggers apply, not other agents' positive triggers). A step tagged `@codex` but described as "ambiguous scope" / "cross-cutting refactor" / "broad live filesystem exploration" fails (b) → HIGH. A step tagged `@senior` but described as "trivial one-liner" fails both (a) and (b) — Senior has no positive trigger that fits trivial work and "trivial one-liner" is explicitly in Senior's anti-trigger list → HIGH. A step tagged `@middle` described as "new abstraction" / "design judgment required" fails (b) — both phrases match Middle's anti-trigger list → HIGH. Malformed tags — unknown token, wrong spacing, or any suffix form other than `@codex` / `@senior` / `@middle` — are flagged HIGH regardless of trigger analysis (iter-3 X18). Untagged steps → no check.
 
 ## Severity Ladder (mode-dependent)
 

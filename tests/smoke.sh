@@ -89,7 +89,12 @@ readonly -f \
   check_r3_notes_requirement_present \
   check_developer_workflow_short_form_r3 \
   check_developer_workflow_test_quality_points_to_r3 \
-  check_developer_workflow_observed_notes_requirement
+  check_developer_workflow_observed_notes_requirement \
+  check_spec_template_agent_pretag_grammar \
+  check_skill_md_step2_pretag_guidance \
+  check_skill_md_agent_selection_tag_read \
+  check_skill_md_continue_mode_tag_read \
+  check_cross_auditor_pretag_consistency_check
 
 echo "Plugin: $PLUGIN_ROOT"
 echo
@@ -410,6 +415,16 @@ check_skill_discard_mode() {
 
 check "SKILL.md mentions BLOCKED"           check_skill_blocked
 check "SKILL.md has /feature discard mode"  check_skill_discard_mode
+echo
+
+# --- Per-step agent pre-tag ---
+echo "Per-step agent pre-tag:"
+
+check "spec-template-has-agent-pretag-grammar"       check_spec_template_agent_pretag_grammar
+check "skill-md-step2-has-pretag-guidance"           check_skill_md_step2_pretag_guidance
+check "skill-md-agent-selection-reads-tag"           check_skill_md_agent_selection_tag_read
+check "skill-md-continue-mode-reads-tag"             check_skill_md_continue_mode_tag_read
+check "cross-auditor-has-pretag-consistency-check"   check_cross_auditor_pretag_consistency_check
 echo
 
 # --- Cross-audit severity flag (2026-04-17) ---
