@@ -836,18 +836,22 @@ check_cross_auditor_mode_focus_areas_canonical() {
   grep -qF '## Mode Focus Areas' "$path" \
     || { echo "$path missing '## Mode Focus Areas' heading"; return 1; }
   local section
+  # Line-equality anchor for parity with the SKILL-side helper (audit X4).
   section=$(awk '
-    !in_s && /^## Mode Focus Areas/ { in_s = 1; next }
+    !in_s && $0 == "## Mode Focus Areas" { in_s = 1; next }
     in_s && /^## / { exit }
     in_s { print }
   ' "$path")
   [ -n "$section" ] || { echo "$path ## Mode Focus Areas section empty"; return 1; }
+  # Line-exact match on each mode heading (audit X3): substring match would
+  # pass if a mode subsection were demoted from ### to #### or if the token
+  # leaked only into prose with the heading silently dropped.
   local mode
   for mode in '`logic` mode' '`security` mode' '`full` mode' '`spec` mode'; do
-    printf '%s\n' "$section" | grep -qF "### $mode" \
-      || { echo "$path ## Mode Focus Areas missing '### $mode' subsection"; return 1; }
+    printf '%s\n' "$section" | grep -qFx "### $mode" \
+      || { echo "$path ## Mode Focus Areas missing line-exact '### $mode' subsection heading"; return 1; }
   done
-  echo "$path has canonical ## Mode Focus Areas (heading + 4 mode subsections: logic/security/full/spec)"
+  echo "$path has canonical ## Mode Focus Areas (heading + 4 line-exact mode subsection headings: logic/security/full/spec)"
 }
 
 check_cross_audit_skill_focus_areas_references_canonical() {
@@ -864,11 +868,20 @@ check_cross_audit_skill_focus_areas_references_canonical() {
     || { echo "$path §Adaptation by Project Type missing pointer 'agents/cross-auditor.md'"; return 1; }
   printf '%s\n' "$section" | grep -qF '§Mode Focus Areas' \
     || { echo "$path §Adaptation by Project Type missing '§Mode Focus Areas' pointer"; return 1; }
-  # Negative — reject any ### subsection in the section (pre-edit decorative
-  # block had 4 such subsections; short reference must have none).
-  if printf '%s\n' "$section" | grep -qE '^### '; then
-    echo "$path §Adaptation by Project Type still contains '### ' subsections (decorative full block); must be a short reference"
+  # Negative — reject any H3-or-deeper heading in the section (audit X2
+  # broadened '^### ' to '^[[:space:]]*#{3,}[[:space:]]' so leading whitespace
+  # and H4+ demotions no longer bypass the guard; pre-edit decorative block
+  # had 4 such subsections — a short reference must carry zero).
+  if printf '%s\n' "$section" | grep -qE '^[[:space:]]*#{3,}[[:space:]]'; then
+    echo "$path §Adaptation by Project Type still contains H3-or-deeper subsection heading (decorative full block); must be a short reference"
     return 1
   fi
-  echo "$path §Adaptation by Project Type has canonical short reference (no ### subsections)"
+  # Negative — reject bullet-form reintroduction of the 4 per-project-type
+  # entries (audit X2: author could drop headings but keep the list as
+  # '- **Smart Contracts / DeFi**: ...' bullets).
+  if printf '%s\n' "$section" | grep -qE '^- \*\*[^*]+\*\*:'; then
+    echo "$path §Adaptation by Project Type still contains '- **<label>**:' bullet-form entry (bullet-style reintroduction); must be a short reference with no per-project-type list"
+    return 1
+  fi
+  echo "$path §Adaptation by Project Type has canonical short reference (no H3+ subsections, no '- **label**:' bullets)"
 }

@@ -2929,11 +2929,43 @@ check_smoke_helper_focus_areas_skill_inline_rejected() {
   return 1
 }
 
+# Audit wrappers (X1/X2/X3) — hybrid / bullet-form / demoted-heading fixtures
+# that pre-fix helpers silently accepted.
+check_smoke_helper_focus_areas_skill_hybrid_rejected() {
+  if ! check_cross_audit_skill_focus_areas_references_canonical 'tests/fixtures/focus-areas-dedupe/skill-hybrid-focus-areas.md' >/dev/null 2>&1; then
+    echo "check_cross_audit_skill_focus_areas_references_canonical correctly rejected hybrid pointer+subsections fixture"
+    return 0
+  fi
+  echo "check_cross_audit_skill_focus_areas_references_canonical wrongly accepted skill-hybrid-focus-areas.md"
+  return 1
+}
+
+check_smoke_helper_focus_areas_skill_bullet_form_rejected() {
+  if ! check_cross_audit_skill_focus_areas_references_canonical 'tests/fixtures/focus-areas-dedupe/skill-bullet-form-focus-areas.md' >/dev/null 2>&1; then
+    echo "check_cross_audit_skill_focus_areas_references_canonical correctly rejected bullet-form reintroduction fixture"
+    return 0
+  fi
+  echo "check_cross_audit_skill_focus_areas_references_canonical wrongly accepted skill-bullet-form-focus-areas.md"
+  return 1
+}
+
+check_smoke_helper_focus_areas_cross_auditor_demoted_rejected() {
+  if ! check_cross_auditor_mode_focus_areas_canonical 'tests/fixtures/focus-areas-dedupe/cross-auditor-demoted-mode.md' >/dev/null 2>&1; then
+    echo "check_cross_auditor_mode_focus_areas_canonical correctly rejected demoted-heading fixture"
+    return 0
+  fi
+  echo "check_cross_auditor_mode_focus_areas_canonical wrongly accepted cross-auditor-demoted-mode.md"
+  return 1
+}
+
 # Positive invocations — 2 rows per spec §3.4.
 check "check_cross_auditor_mode_focus_areas_canonical" check_cross_auditor_mode_focus_areas_canonical agents/cross-auditor.md
 check "check_cross_audit_skill_focus_areas_references_canonical" check_cross_audit_skill_focus_areas_references_canonical skills/cross-audit/SKILL.md
-# Negative invocations — 1 row per spec §3.5.
+# Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
+check "check_smoke_helper_focus_areas_skill_hybrid_rejected" check_smoke_helper_focus_areas_skill_hybrid_rejected
+check "check_smoke_helper_focus_areas_skill_bullet_form_rejected" check_smoke_helper_focus_areas_skill_bullet_form_rejected
+check "check_smoke_helper_focus_areas_cross_auditor_demoted_rejected" check_smoke_helper_focus_areas_cross_auditor_demoted_rejected
 echo
 
 
