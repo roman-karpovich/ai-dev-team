@@ -40,7 +40,8 @@ You receive a prompt with:
 - **pr_head_oid** (PR mode, required when `pr_number` is set): `headRefOid` captured by the skill Phase 0.5 before content materialization. Used to detect force-push between preflight and checkout, and persisted into findings frontmatter so the publish action can detect audit-time-vs-publish-time force-push.
 - **pr_changed_files** (PR mode, required when `pr_number` is set): list of objects — `{filename, status, previous_filename, patch_present}` — produced by `gh api /pulls/{N}/files --paginate --jq '.[] | {filename, status, previous_filename, patch_present: (.patch != null)}'`. These are objects (not strings); the raw `patch` text is deliberately stripped by the jq projection (no patch-text fallback for submodule detection; see `pr_files` section below).
 - **probe_modes** (optional; default empty `{}`): dict mapping probe id → effective mode after YAML + CLI `--probe-downgrade` override resolution, as computed by the skill in Phase 0 (spec 2026-04-21-cross-audit-probes-foundation §3.4). Allowed mode values: `off|shadow|warn|block`. Empty dict when no probe is configured. Missing ids implicitly `off`. Threaded into Phase 3 rendering: findings from probes in `shadow` mode land in `## Shadow findings (informational)`; `warn|block` findings land in `## Summary` with `blocking` derived from the mode. `off`-mode probes MUST NOT be dispatched and MUST NOT produce receipts.
-- **probe_receipts** (optional; default empty `[]`): list of JSON receipts, one per probe run (§3.3 receipt schema: `probe_id / probe_version / mode_at_emit / trigger_input_hash / probe_output_hash / degraded_mode / emitted_at / eligible_reason / scope_files_read`, plus optional `failure_reason` / `failure_remediation` when the probe fail-opens). Empty list when no probe is active this iteration. Consumed in Step 3 Consolidation — per-probe findings dedupe-merge with LLM halves by structured fingerprint (§3.5), the orchestrator synthesizes `probe_failures[]` for any receipt carrying `degraded_mode: true` (§3.3 X18 producer contract), and findings.md rendering is delegated to `hooks/lib/render_findings.sh` via its stdin schema.
+
+`probe_receipts[]` is NO LONGER a skill-threaded input. Probe dispatch happens inside this agent at Step 0.5 (see below) so probes read the PR-materialized worktree, not the caller's cwd; `probe_receipts`, `probe_findings`, and `probe_failures_seed[]` are produced there and consumed by Step 3 Consolidation. The skill threads only `probe_modes` today (spec 2026-04-21-probe-e-diff-scope-leak §3.5 / X2).
 
 ## Mode Focus Areas
 
@@ -180,6 +181,85 @@ The caller's cwd is **not** a safe source of audit content — it may be on a di
 
    Fields, in order: `filename:` / `status:` / `previous_filename:` / `patch_present:` / `is_submodule:`.
 
+## Step 0.5: Probe dispatch (runs inside materialized worktree)
+
+Per spec 2026-04-21-probe-e-diff-scope-leak §3.5 (X2 resolution — dispatch pivoted from skill Phase 1.5 into this agent so probes read the Step-0-materialized PR worktree, not the caller's cwd). For spec/code mode (no PR), Step 0 is a no-op and Step 0.5 runs against the caller's cwd.
+
+Runs after Step 0 (PR materialization, if PR mode) and BEFORE Step 1 (Codex launch). Produces three in-memory outputs consumed later in Step 3 Consolidation:
+
+- `probe_receipts[]` — happy-path receipt_metadata dicts for degraded-mode synthesis backstop (Foundation §3.7 X18).
+- `probe_findings[]` — canonical-payload findings with `mode_at_emit` attached (pre-ID allocation).
+- `probe_failures_seed[]` — six-way fail-open entries (X4 + iter-2 X11 resolutions) with populated `probe_id` / `failure_reason` / `failure_remediation` triples.
+- `probe_receipt_metadata_by_provisional_id{}` — side-map (iter-4 X19) keyed by `provisional_id` carrying `receipt_metadata` from Step 0.5 to Step 3 stage 4.5 (dedupe/scorer strip unknown fields between stages).
+
+Pseudocode (§3.5):
+
+```
+probe_receipts = []                                     # happy-path metadata dicts
+probe_findings = []                                     # findings with canonical_payload, pre-ID
+probe_failures_seed = []                                # fail-open entries (X20 — sole v1 artefact)
+probe_receipt_metadata_by_provisional_id = {}           # side-map (X19)
+
+for probe_id, mode in probe_modes.items():
+  if mode == "off": continue                            # off-floor enforcement
+  probe_script = f"hooks/lib/probe_{probe_id}.sh"
+  if not exists(probe_script):                          # fail-open class 1: script missing
+    probe_failures_seed.append({
+      "probe_id": probe_id,
+      "failure_reason": f"probe script {probe_script} not found",
+      "failure_remediation": "update ai-dev-team plugin or remove probe_modes entry",
+    })
+    continue
+  input_json = build_probe_input(probe_id)
+  # build_probe_input packs {diff, changed_python_files, changed_shell_files,
+  # changed_yaml_files, repo_root, base_ref, audit_slug, mode}. Diff acquisition:
+  # git diff <base_ref>...HEAD --name-only + -U0 hunks inside the worktree;
+  # hunks parsed into diff.added_lines = {file: set-of-added-linenos}.
+  try:
+    output_raw = run(probe_script, stdin=input_json, timeout=60s)
+  except TimeoutError as e:                             # fail-open class 2: timeout
+    probe_failures_seed.append({
+      "probe_id": probe_id,
+      "failure_reason": f"probe exceeded 60s timeout: {str(e)[:200]}",
+      "failure_remediation": f"re-run /cross-audit; if persistent, shrink audit scope or file probe_{probe_id} performance bug",
+    })
+    continue
+  except NonZeroExit as e:                              # fail-open class 3: non-zero (subsumes uncaught Python exceptions — interpreter exits non-zero)
+    probe_failures_seed.append({
+      "probe_id": probe_id,
+      "failure_reason": f"probe exited non-zero: {str(e)[:200]}",
+      "failure_remediation": f"re-run /cross-audit after checking probe_{probe_id} stderr logs",
+    })
+    continue
+  try:
+    result = json.loads(output_raw)
+  except JSONDecodeError as e:                          # fail-open class 4: JSONDecode
+    probe_failures_seed.append({
+      "probe_id": probe_id,
+      "failure_reason": f"probe stdout not valid JSON: {str(e)[:200]}",
+      "failure_remediation": f"fix probe_{probe_id} to emit canonical JSON",
+    })
+    continue
+  schema_ok, schema_err = validate_probe_output_schema(result)
+  if not schema_ok:                                     # fail-open class 5: schema invalid
+    probe_failures_seed.append({
+      "probe_id": probe_id,
+      "failure_reason": f"probe output schema invalid: {schema_err}",
+      "failure_remediation": f"fix probe_{probe_id} to conform to §3.3 stdout shape",
+    })
+    continue
+  # Happy path — transport metadata via side-map keyed by provisional_id (iter-4 X19).
+  for f in result["findings"]:
+    f["mode_at_emit"] = mode
+    probe_receipt_metadata_by_provisional_id[f["provisional_id"]] = result["receipt_metadata"]
+    probe_findings.append(f)
+  probe_receipts.append(result["receipt_metadata"])
+```
+
+`validate_probe_output_schema(result)`: returns `(True, None)` iff `result` is an object with both `findings` (list) and `receipt_metadata` (object) keys; each `findings[]` element is an object carrying `provisional_id` (string), `sources` (list), `severity` (string), `title` (string), `file` (string), `description` (string), `fix` (string), `fingerprint_anchors` (object), `canonical_payload` (object); `receipt_metadata` carries `probe_id` (string), `probe_version` (string), `trigger_input_hash` (string), `scope_files_read` (list), `skipped_files` (list), `emitted_at` (string), `degraded_mode` (bool), `eligible_reason` (string). Any violation returns `(False, "<short error>")`.
+
+**Fail-open coverage** (spec 2026-04-21-probe-e-diff-scope-leak §3.5): six classes explicitly handled as distinct branches — probe-script-missing, TimeoutError, NonZeroExit (subsumes uncaught Python exceptions — the interpreter exits non-zero), JSONDecodeError, schema validation failure, receipt-write IOError/OSError (class 6 lives later in Step 3 stage 4.5). Each class synthesizes a `probe_failures_seed[]` entry with a populated `probe_id` / `failure_reason` / `failure_remediation` triple. The renderer's existing hard-stop on malformed `probe_failures[]` (Foundation §3.3 X10) is the backstop — Step 0.5 MUST emit fully-populated string triples.
+
 ## Step 1: Launch Codex (before your own deep review)
 
 **IMPORTANT**: Launch Codex FIRST so both audits run in parallel.
@@ -250,7 +330,7 @@ Do NOT filter out `previously_fixed` items before consolidation — they are ver
 After Claude+Codex collection (Steps 1-2 above), run the following five-stage pipeline before any findings.md write:
 
 1. **Claude + Codex findings collected** — today's Step 1/2 output merges under legacy rules above.
-2. **Probe receipts appended** — for each entry in the `probe_receipts` input field, emit one corresponding finding into the combined list with `sources: ["probe:<id>"]`, `mode_at_emit: <mode>`, `probe_receipt: <path>`, `probe_version: <version>`, `eligible_reason: <string>` from the receipt, and the probe's structured `fingerprint_anchors`. No-op when `probe_receipts` is empty.
+2. **Probe findings appended (from Step 0.5 output)** — iterate over `probe_findings[]` produced by Step 0.5 (not a skill-threaded input — see Step 0.5 above). For each `finding_dict`, emit one combined-list entry with `id = finding_dict["provisional_id"]` AND `provisional_id = finding_dict["provisional_id"]` — the two keys hold the same string pre-allocation so `hooks/lib/dedupe_findings.sh` (which dereferences `m["id"]` unconditionally) accepts the input (iter-5 X22). `sources: ["probe:" + metadata["probe_id"]]` where `metadata = probe_receipt_metadata_by_provisional_id[finding_dict["provisional_id"]]` (iter-4 X19 side-map lookup — NOT a field on the combined-list entry). `blocking` derived from `mode_at_emit` per iter-3 X13 rule (`shadow → false`, `warn → false`, `block → true`; receipt-level `degraded_mode: true` downgrades blocking to false at render time via `render_findings.sh`). Carry `severity`, `title`, `file`, `description`, `fix`, `fingerprint_anchors`, `canonical_payload` from `finding_dict`; carry `mode_at_emit`, `probe_version`, `eligible_reason` from `metadata`. Set `probe_receipt: None` — populated in stage 4.5 after final-ID allocation. No-op when `probe_findings[]` is empty.
 3. **Structured dedupe via `hooks/lib/dedupe_findings.sh`** — pipe the combined list through the helper. Probe+LLM entries with matching fingerprints merge into single entries carrying `sources: ["probe:<id>", "claude" | "codex"]` per §3.3 X2 contract. Partial matches get mutual `related_to[]` cross-references without merging.
 4. **Haiku decoupled scoring via `haiku-finding-scorer` agent** (Task tool) — new in Foundation:
    - Filter the deduped list to **pure-LLM entries only** (no `probe:*` in `sources[]`). Probe-sourced findings (including merged probe+LLM) pin `confidence: 100` inline and skip the scorer entirely.
@@ -270,10 +350,19 @@ After Claude+Codex collection (Steps 1-2 above), run the following five-stage pi
      - HIGH (`len(sources) >= 2`) → `confidence: 90`
      - REVIEW (`len(sources) == 1`) → `confidence: 60`
      Set `legacy_pseudo_confidence: true` on each affected pure-LLM entry (NEVER on merged probe+LLM entries — probe pins `confidence: 100` independently). Emit `scorer_status: failed` + `scorer_failure_reason: "<reason>"` on renderer stdin. Renderer renders the degraded-mode banner's scorer-unavailable line; all pure-LLM entries land in Summary (advisory section suppressed under scorer-failed mode).
+4.5. **Probe receipt files written (stage 4.5 — spec 2026-04-21-probe-e-diff-scope-leak §3.5 / X14 renumbering)** — runs between Foundation stage 4 (scorer) and Foundation stage 5 (probe_failures synthesis). After final finding-ID allocation, walk the deduped+scored `final_findings` list; for each finding that is probe-sourced, write its receipt file to disk at `<kb>/repos/<project>/security/<audit_slug>-probe-receipts/<finding_id>.json` per Foundation §3.3 per-finding contract (X1 resolution).
+
+   - **Probe-sourced predicate** (Foundation §3.3 X2 / iter-3 X18): `any(s.startswith("probe:") for s in finding["sources"])`. NOT `sources[0]`-only — merged probe+LLM entries may reorder sources.
+   - **Side-map lookup**: `metadata = probe_receipt_metadata_by_provisional_id[finding["provisional_id"]]`. `provisional_id` is guaranteed present here — stage 2 emit sets it alongside `id` (iter-5 X22); `hooks/lib/dedupe_findings.sh merge_pair` preserves it through probe+LLM merges (iter-5 X23 carried-field list); stage 4.5 id-swap (iter-5 X24) sets `finding["id"] = <allocated_id>` WHILE preserving `finding["provisional_id"]` intact. Only stage 4.5 itself MAY drop `provisional_id` post-write; render does not consume it.
+   - **`hashed_probe_output_envelope`** (3 fields, iter-3 X17 distinction): `{probe_id, probe_version, emitted_findings: [finding["canonical_payload"]]}`. sha256 of `json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)` → `probe_output_hash`.
+   - **`on_disk_receipt_body`** (11 fields per iter-4 X21 — `skipped_files` is the 11th body field, NOT in the hashed envelope): `{probe_id, probe_version, mode_at_emit, trigger_input_hash, probe_output_hash, degraded_mode, emitted_at, eligible_reason, scope_files_read, skipped_files, emitted_findings}`. Built as `{**metadata, probe_output_hash, mode_at_emit: finding["mode_at_emit"], emitted_findings: hashed_probe_output_envelope["emitted_findings"]}`. Serialized with the same `json.dumps` parameters as the hashed envelope; the written bytes differ because the body has 8 additional fields.
+   - **Write path + fail-open class 6** (X4 resolution — sixth fail-open branch): `receipt_path = <kb>/repos/<project>/security/<audit_slug>-probe-receipts/<finding["id"]>.json`. On `IOError` / `OSError` during write, append an entry `{probe_id: metadata["probe_id"], failure_reason: "receipt write failed: …", failure_remediation: "check KB mount is writable + re-run /cross-audit"}` to `probe_failures_seed[]`; set `finding["probe_receipt"] = None` (finding stays in findings.md; degraded-mode banner line renders). On success: `finding["probe_receipt"] = receipt_path`.
+
 5. **`probe_failures[]` synthesis from degraded-mode receipts** (X18 producer contract): walk `probe_receipts[]`; for each receipt with `degraded_mode: true`, emit one item `{probe_id, reason, remediation}` into `probe_failures[]`:
    - `reason` = receipt's optional `failure_reason` if set and non-empty string; otherwise generic fallback `"probe produced degraded_mode=true without surfacing reason/remediation strings"`.
    - `remediation` = receipt's optional `failure_remediation` if set and non-empty string; otherwise generic fallback `"check probe logs in <receipt path>; re-run when probe is fixed"`.
    Consumer (renderer, hooks/lib/render_findings.sh) hard-stops on malformed `probe_failures[]` per §3.3 X10 — orchestrator MUST emit all three required fields as non-empty strings.
+   **Union with Step-0.5 / stage-4.5 seed** (spec 2026-04-21-probe-e-diff-scope-leak §3.5 / iter-4 X20): compose the final `probe_failures[]` as `synth_probe_failures(probe_receipts) + probe_failures_seed`. Probe E v1 has no happy-path `degraded_mode: true` receipts (every fail-open branch bails BEFORE `probe_receipts.append`), so the Foundation synthesis is a no-op for v1; the seed carries every fail-open entry. Forward-compat: future probes that emit `degraded_mode: true` alongside valid findings will be caught by the Foundation path.
 6. **Render via `hooks/lib/render_findings.sh`** — pipe `{findings: <scored+deduped>, probe_modes, probe_failures: <synthesized>, scorer_status, scorer_failure_reason}` through the helper. Helper output is the full findings.md body. Step 4 below writes the final file with frontmatter.
 
 ## Step 4: Write Output Documents

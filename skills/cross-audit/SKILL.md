@@ -203,7 +203,9 @@ gh_host: <resolved host or omitted>
 
 [Probe plumbing — populated from Phase 0:]
 probe_modes: [dict mapping probe id → effective mode after YAML + CLI override; empty dict when no probe configured]
-probe_receipts: [list of JSON receipts, one per probe run; empty list when no probe is active]
+# probe_receipts is NO LONGER threaded by the skill — probe dispatch happens
+# inside the cross-auditor agent at Step 0.5 (spec 2026-04-21-probe-e-diff-
+# scope-leak §3.5 / X2); receipts are produced there.
 
 [If re-audit: include the current findings doc path for context]
 ```

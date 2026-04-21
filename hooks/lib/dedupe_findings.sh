@@ -206,11 +206,26 @@ def merge_pair(primary, secondary):
     - severity: max of the two.
     - description: preserve probe's description when a probe source is present;
       otherwise use whichever is longer.
-    - probe fields (probe_receipt, probe_version, mode_at_emit, eligible_reason):
+    - probe fields (probe_receipt, probe_version, mode_at_emit, eligible_reason,
+      provisional_id, canonical_payload, blocking, fingerprint_anchors):
       take from whichever finding is probe-sourced.
+
+    Probe+LLM mixed merges (iter-5 X23 — spec 2026-04-21-probe-e-diff-scope-leak
+    §3.2): swap so the probe-sourced member becomes primary BEFORE the
+    ``dict(members[0])`` copy. `sources` union order becomes probe-first
+    deterministically; the merged entry retains the probe's `provisional_id`,
+    `canonical_payload`, `blocking`, and `fingerprint_anchors` so the Step 3
+    stage-4.5 side-map lookup by `provisional_id` succeeds post-merge (iter-4
+    X19 coupling). Probe+probe and LLM+LLM paths unchanged.
     """
+    primary_has_probe = get_probe_id(primary) is not None
+    secondary_has_probe = get_probe_id(secondary) is not None
+    # iter-5 X23 — probe-primary swap for mixed probe+LLM merges.
+    if secondary_has_probe and not primary_has_probe:
+        primary, secondary = secondary, primary
+        primary_has_probe, secondary_has_probe = True, False
     out = dict(primary)
-    # sources
+    # sources — union preserving primary's (now probe, in mixed case) order.
     sources_out = list(primary.get("sources") or [])
     for s in secondary.get("sources") or []:
         if s not in sources_out:
@@ -220,21 +235,24 @@ def merge_pair(primary, secondary):
     out["severity"] = max_severity(
         primary.get("severity", ""), secondary.get("severity", "")
     )
-    # description: probe description wins; else longer prose.
-    primary_has_probe = get_probe_id(primary) is not None
-    secondary_has_probe = get_probe_id(secondary) is not None
+    # description: probe description wins; else longer prose. (After the X23
+    # swap `primary_has_probe` is True for any probe+LLM mixed merge.)
     if primary_has_probe and not secondary_has_probe:
         out["description"] = primary.get("description", "")
-    elif secondary_has_probe and not primary_has_probe:
-        out["description"] = secondary.get("description", "")
     else:
         p_desc = primary.get("description", "") or ""
         s_desc = secondary.get("description", "") or ""
         out["description"] = p_desc if len(p_desc) >= len(s_desc) else s_desc
-    # probe-only fields: prefer the entry that carries a probe source.
+    # probe-only fields — already on `out` via dict(primary) because the X23
+    # swap guarantees primary is the probe-sourced member for mixed merges.
+    # This residual block is a safety-net for future probe+probe+LLM multi-way
+    # merges where a canonical probe field could live on a non-primary member.
+    # iter-5 X23 extends the carried-field list to eight keys.
     if secondary_has_probe and not primary_has_probe:
         for key in (
             "probe_receipt", "probe_version", "mode_at_emit", "eligible_reason",
+            "provisional_id", "canonical_payload", "blocking",
+            "fingerprint_anchors",
         ):
             if secondary.get(key) is not None:
                 out[key] = secondary[key]
