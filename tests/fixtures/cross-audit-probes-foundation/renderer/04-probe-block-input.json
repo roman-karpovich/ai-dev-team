@@ -1,0 +1,23 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "severity": "HIGH",
+      "title": "New test in step N claims failing_test_cmd but ships no red_capture",
+      "sources": ["probe:G"],
+      "file": "tests/fixtures/new-feature/exec.md",
+      "description": "Probe G detected step-N entry with failing_test_cmd declaration but no corresponding red_capture path under captures/.",
+      "fix": "Run the failing test once and save the output to captures/step-NN-red.txt before committing.",
+      "mode_at_emit": "block",
+      "blocking": true,
+      "probe_receipt": "<kb>/security/probe-receipts/X1.json",
+      "probe_version": "g.1.0",
+      "eligible_reason": "step claims failing_test_cmd without accompanying red_capture path",
+      "confidence": 100,
+      "status": "OPEN"
+    }
+  ],
+  "probe_modes": {"g": "block"},
+  "probe_failures": [],
+  "scorer_status": "ok"
+}

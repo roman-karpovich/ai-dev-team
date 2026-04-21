@@ -1,0 +1,1 @@
+{"probe_failures":[{"probe_id":"F","reason":"probe produced degraded_mode=true without surfacing reason/remediation strings","remediation":"check probe logs in <kb>/security/probe-receipts/F-X1.json; re-run when probe is fixed"}]}

@@ -1,0 +1,29 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "severity": "HIGH",
+      "title": "SQL injection in GET /users search endpoint",
+      "sources": ["claude", "codex"],
+      "file": "src/api/users.py:67",
+      "description": "search_query parameter is concatenated directly into the LIKE clause without parameterization.",
+      "fix": "Use parameterized query with bind variables.",
+      "mode_at_emit": null,
+      "blocking": false,
+      "probe_receipt": null,
+      "probe_version": null,
+      "eligible_reason": null,
+      "confidence": 90,
+      "status": "OPEN"
+    }
+  ],
+  "probe_modes": {"e": "shadow"},
+  "probe_failures": [
+    {
+      "probe_id": "E",
+      "reason": "git diff returned non-zero in isolated worktree",
+      "remediation": "re-run /cross-audit after checking out base branch cleanly"
+    }
+  ],
+  "scorer_status": "ok"
+}
