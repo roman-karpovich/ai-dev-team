@@ -3213,6 +3213,11 @@ check "check_probe_f_detector_inner_function_no_discipline_inheritance" check_pr
 check "check_probe_f_detector_skipped_at_module_level" check_probe_f_detector_skipped_at_module_level
 check "check_probe_f_detector_clean_when_docstring_budget_only" check_probe_f_detector_clean_when_docstring_budget_only
 check "check_probe_f_detector_alias_coverage" check_probe_f_detector_alias_coverage
+# Step 3 — CLI downgrade + upgrade-refused docs smoke (2 helpers per probe E
+# precedent; X6 iter-1 resolution: documentation grep, not end-to-end dispatch
+# harness — generic Step 0.5 dispatch coverage inherited from probe E).
+check "check_probe_f_cli_downgrade" check_probe_f_cli_downgrade
+check "check_probe_f_downgrade_upgrade_refused_when_yaml_off" check_probe_f_downgrade_upgrade_refused_when_yaml_off
 echo
 
 

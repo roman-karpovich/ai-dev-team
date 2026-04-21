@@ -2798,6 +2798,61 @@ check_probe_f_detector_clean_when_docstring_budget_only() {
   _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/11-docstring-budget-only
 }
 
+check_probe_f_cli_downgrade() {
+  # Documentation smoke (X6 iter-1 resolution; follows probe E precedent).
+  # Asserts skills/cross-audit/SKILL.md declares the downgrade-to-off path for
+  # probe id `f`:
+  #   - generic --probe-downgrade <id>=<mode> CLI flag
+  #   - block → warn → shadow → off ladder
+  #   - probe id `f` is named as an acceptable id
+  #   - agent-side mode==off short-circuit is present (generic across probes)
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF -- '--probe-downgrade' "$path" \
+    || { echo "$path missing '--probe-downgrade' CLI flag reference"; return 1; }
+  grep -qE 'downgrade-only|block → warn → shadow → off|block \\-> warn \\-> shadow \\-> off' "$path" \
+    || { echo "$path missing downgrade-only ladder (block→warn→shadow→off)"; return 1; }
+  # Probe id `f` must appear in the enumerated probe-id list or a concrete
+  # example (e.g. `--probe-downgrade f=off`). Line 47 of SKILL.md enumerates
+  # `(e, f, g, and any future id)`; line 33 carries a `--probe-downgrade f=off`
+  # example. Either anchor is acceptable.
+  grep -qE '\bf\b[^a-z]' "$path" \
+    || { echo "$path missing probe id 'f' mention (either enum list or --probe-downgrade f=... example)"; return 1; }
+  grep -qE 'probe-downgrade +f=|probe id.*\bf\b|\(`e`, `f`|\be`, `f`,' "$path" \
+    || { echo "$path missing probe-id-f concrete anchor (--probe-downgrade f=... example or probe-id enum list naming f)"; return 1; }
+  local agent="agents/cross-auditor.md"
+  grep -qF 'mode == "off"' "$agent" \
+    || { echo "$agent Step 0.5 missing mode==off short-circuit (downgrade semantics require dispatch skip)"; return 1; }
+  echo "--probe-downgrade CLI flag documented for probe id f; downgrade-only ladder + agent mode==off short-circuit present"
+}
+
+check_probe_f_downgrade_upgrade_refused_when_yaml_off() {
+  # Documentation smoke (X6 iter-1 follow-up). Asserts skills/cross-audit/
+  # SKILL.md Phase 0 declares the upgrade-refused-against-absent-YAML path
+  # for probe id `f` per Foundation §3.4 X9 off-floor rule:
+  #   - off is the floor / lower bound
+  #   - 'upgrade refused' or 'no-op upgrade refused' phrase
+  #   - absent-key default rationale
+  #   - probe id `f` named as a target id (shared with Step 3a helper)
+  #   - agent mode==off short-circuit
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE 'off is the (floor|lower bound)' "$path" \
+    || { echo "$path missing 'off is the floor / lower bound' rule (X9 off-floor)"; return 1; }
+  grep -qE 'upgrade refused|no-op upgrade refused' "$path" \
+    || { echo "$path missing 'upgrade refused' phrase for --probe-downgrade against off"; return 1; }
+  grep -qE 'absent(-| )key (default|.*floor)' "$path" \
+    || { echo "$path missing absent-key-default==floor rationale"; return 1; }
+  # Probe id `f` must be named — either in the enum list (line 47) or a
+  # concrete example. Cross-matches with check_probe_f_cli_downgrade.
+  grep -qE 'probe-downgrade +f=|probe id.*\bf\b|\(`e`, `f`|\be`, `f`,' "$path" \
+    || { echo "$path missing probe-id-f concrete anchor for off-floor upgrade-refused rule"; return 1; }
+  local agent="agents/cross-auditor.md"
+  grep -qF 'mode == "off"' "$agent" \
+    || { echo "$agent Step 0.5 missing mode==off short-circuit (upgrade-refused semantics require dispatch skip)"; return 1; }
+  echo "X9 off-floor refusal documented in skill for probe id f; agent Step 0.5 enforces mode==off dispatch skip"
+}
+
 check_probe_f_detector_alias_coverage() {
   # Fixture 12 — authoritative-set alias sampling (X15 iter-5). Single file
   # with three functions: alpha() uses .paginate (fires), beta(pagination_token)
