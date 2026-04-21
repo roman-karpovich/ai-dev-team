@@ -3064,6 +3064,26 @@ check "check_findings_renderer_fixture_04_probe_block" check_findings_renderer_m
 check "check_findings_renderer_fixture_05_multi_source_merged" check_findings_renderer_modes_multi_source
 check "check_findings_renderer_fixture_06_probe_fail_open" check_findings_renderer_fail_open
 check "check_findings_renderer_fixture_07_probe_failures_malformed_hard_stop" check_probe_failures_schema_hard_stop
+
+# Step 3 — dedupe (E/F/G umbrella + 9 near-miss sub-fixtures + merged-probe+LLM)
+#   + receipt hash canonicalization rerun-stability.
+# Per spec §6.1 Step 3: 5 umbrella helpers + 10 sub-assertions = 15 PASS lines.
+check "check_dedupe_fingerprint_e_shape" check_dedupe_fingerprint_e_shape
+check "check_dedupe_fingerprint_f_shape" check_dedupe_fingerprint_f_shape
+check "check_dedupe_fingerprint_g_shape" check_dedupe_fingerprint_g_shape
+check "check_dedupe_merged_probe_llm_sources_list" check_dedupe_merged_probe_llm_sources_list
+check "check_receipt_hash_canonicalization_rerun_stable" check_receipt_hash_canonicalization_rerun_stable
+# Sub-assertions (3 near-miss per probe E/F/G + 1 merged-probe+LLM = 10).
+check "check_dedupe_fingerprint_e_exact_merge" check_dedupe_fingerprint_e_exact
+check "check_dedupe_fingerprint_e_partial_related_to" check_dedupe_fingerprint_e_partial
+check "check_dedupe_fingerprint_e_no_match_distinct" check_dedupe_fingerprint_e_no_match
+check "check_dedupe_fingerprint_f_exact_merge" check_dedupe_fingerprint_f_exact
+check "check_dedupe_fingerprint_f_partial_related_to" check_dedupe_fingerprint_f_partial
+check "check_dedupe_fingerprint_f_no_match_distinct" check_dedupe_fingerprint_f_no_match
+check "check_dedupe_fingerprint_g_exact_merge" check_dedupe_fingerprint_g_exact
+check "check_dedupe_fingerprint_g_partial_related_to" check_dedupe_fingerprint_g_partial
+check "check_dedupe_fingerprint_g_no_match_distinct" check_dedupe_fingerprint_g_no_match
+check "check_dedupe_merged_probe_llm_entry" check_dedupe_merged_probe_llm_sources_list
 echo
 
 

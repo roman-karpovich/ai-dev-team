@@ -1161,6 +1161,160 @@ check_findings_renderer_fail_open() {
     tests/fixtures/cross-audit-probes-foundation/renderer/06-probe-fail-open-expected.md
 }
 
+# --- Step 3: hooks/lib/dedupe_findings.sh + receipt hash canonicalization ---
+
+_dedupe_findings_byte_diff() {
+  # $1 = input JSON path, $2 = expected JSON golden path
+  local input="$1" expected="$2"
+  local script="hooks/lib/dedupe_findings.sh"
+  [ -x "$script" ] || { echo "$script not executable"; return 1; }
+  [ -r "$input" ] || { echo "input fixture $input not readable"; return 1; }
+  [ -r "$expected" ] || { echo "expected golden $expected not readable"; return 1; }
+  local actual_tmp="/tmp/smoke-dedupe-actual.$$"
+  if ! bash "$script" <"$input" >"$actual_tmp" 2>/tmp/smoke-dedupe-err.$$; then
+    echo "dedupe_findings.sh exited non-zero on $input"
+    cat /tmp/smoke-dedupe-err.$$
+    rm -f /tmp/smoke-dedupe-err.$$ "$actual_tmp"
+    return 1
+  fi
+  rm -f /tmp/smoke-dedupe-err.$$
+  if ! diff "$actual_tmp" "$expected" >/tmp/smoke-dedupe-diff.$$ 2>&1; then
+    echo "dedupe_findings.sh output for $input does not byte-match $expected:"
+    head -20 /tmp/smoke-dedupe-diff.$$
+    rm -f /tmp/smoke-dedupe-diff.$$ "$actual_tmp"
+    return 1
+  fi
+  rm -f /tmp/smoke-dedupe-diff.$$ "$actual_tmp"
+  echo "dedupe_findings.sh output byte-matches $expected"
+}
+
+check_dedupe_fingerprint_e_exact() {
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/E-01-exact-match-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/E-01-exact-match-expected.json
+}
+
+check_dedupe_fingerprint_e_partial() {
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/E-02-partial-match-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/E-02-partial-match-expected.json
+}
+
+check_dedupe_fingerprint_e_no_match() {
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/E-03-no-match-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/E-03-no-match-expected.json
+}
+
+check_dedupe_fingerprint_f_exact() {
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/F-01-exact-match-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/F-01-exact-match-expected.json
+}
+
+check_dedupe_fingerprint_f_partial() {
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/F-02-partial-match-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/F-02-partial-match-expected.json
+}
+
+check_dedupe_fingerprint_f_no_match() {
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/F-03-no-match-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/F-03-no-match-expected.json
+}
+
+check_dedupe_fingerprint_g_exact() {
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/G-01-exact-match-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/G-01-exact-match-expected.json
+}
+
+check_dedupe_fingerprint_g_partial() {
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/G-02-partial-match-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/G-02-partial-match-expected.json
+}
+
+check_dedupe_fingerprint_g_no_match() {
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/G-03-no-match-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/G-03-no-match-expected.json
+}
+
+check_dedupe_fingerprint_e_shape() {
+  # Umbrella helper: exercises all three E near-miss fixtures (exact match →
+  # merge, partial → related_to, no match → distinct).
+  check_dedupe_fingerprint_e_exact || return 1
+  check_dedupe_fingerprint_e_partial || return 1
+  check_dedupe_fingerprint_e_no_match || return 1
+  echo "all three E-probe fingerprint sub-fixtures byte-match"
+}
+
+check_dedupe_fingerprint_f_shape() {
+  check_dedupe_fingerprint_f_exact || return 1
+  check_dedupe_fingerprint_f_partial || return 1
+  check_dedupe_fingerprint_f_no_match || return 1
+  echo "all three F-probe fingerprint sub-fixtures byte-match"
+}
+
+check_dedupe_fingerprint_g_shape() {
+  check_dedupe_fingerprint_g_exact || return 1
+  check_dedupe_fingerprint_g_partial || return 1
+  check_dedupe_fingerprint_g_no_match || return 1
+  echo "all three G-probe fingerprint sub-fixtures byte-match"
+}
+
+check_dedupe_merged_probe_llm_sources_list() {
+  # Merged probe+LLM: probe:E + claude (sharing E-anchors) → single entry with
+  # authoritative sources: ["probe:E", "claude"], probe receipt preserved
+  # (§3.3 X2 contract — no `both` primitive).
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-expected.json
+}
+
+check_receipt_hash_canonicalization_rerun_stable() {
+  # §3.3 X3: rerun-stability. Run the reference canonicalizer twice on the
+  # same 2-file synthetic input — outputs byte-identical. Then run once with
+  # reversed scope_files order — output byte-identical to the first two (sort
+  # is internal).
+  local script="hooks/lib/receipt_canonicalize.sh"
+  [ -x "$script" ] || { echo "$script not executable"; return 1; }
+  local input_a="tests/fixtures/cross-audit-probes-foundation/receipt/canonical-2-file-input.json"
+  local input_b="tests/fixtures/cross-audit-probes-foundation/receipt/canonical-2-file-reversed-input.json"
+  [ -r "$input_a" ] || { echo "$input_a not readable"; return 1; }
+  [ -r "$input_b" ] || { echo "$input_b not readable"; return 1; }
+  local out1 out2 out3
+  out1=$(bash "$script" <"$input_a") || { echo "receipt_canonicalize.sh failed on input_a run1"; return 1; }
+  out2=$(bash "$script" <"$input_a") || { echo "receipt_canonicalize.sh failed on input_a run2"; return 1; }
+  out3=$(bash "$script" <"$input_b") || { echo "receipt_canonicalize.sh failed on reversed input"; return 1; }
+  if [ "$out1" != "$out2" ]; then
+    echo "receipt_canonicalize.sh not deterministic across two runs on identical input"
+    echo "  run1: $out1"
+    echo "  run2: $out2"
+    return 1
+  fi
+  if [ "$out1" != "$out3" ]; then
+    echo "receipt_canonicalize.sh output changes when scope_files order is reversed (sort should be internal)"
+    echo "  normal: $out1"
+    echo "  reversed: $out3"
+    return 1
+  fi
+  # Guard against a dummy-hash regression: the hex digests must be 64-char sha256.
+  if ! printf '%s' "$out1" | grep -qE '"trigger_input_hash":"[0-9a-f]{64}"'; then
+    echo "receipt_canonicalize.sh output does not carry a 64-char sha256 trigger_input_hash"
+    echo "  output: $out1"
+    return 1
+  fi
+  if ! printf '%s' "$out1" | grep -qE '"probe_output_hash":"[0-9a-f]{64}"'; then
+    echo "receipt_canonicalize.sh output does not carry a 64-char sha256 probe_output_hash"
+    echo "  output: $out1"
+    return 1
+  fi
+  echo "receipt_canonicalize.sh is rerun-stable and scope-order-invariant; both hashes are sha256 hex"
+}
+
 check_probe_failures_schema_hard_stop() {
   # Fixture (7): malformed probe_failures[] entry (missing `remediation` field) —
   # renderer MUST exit non-zero with non-empty stderr per §3.3 X10 contract.

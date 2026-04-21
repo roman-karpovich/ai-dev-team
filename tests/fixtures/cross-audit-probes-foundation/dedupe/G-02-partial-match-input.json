@@ -1,0 +1,36 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "sources": ["probe:G"],
+      "file": "tests/fixtures/new-feature/exec.md",
+      "severity": "HIGH",
+      "description": "step 3 missing red capture",
+      "fingerprint_anchors": {
+        "test_file": "tests/fixtures/new-feature/exec.md",
+        "test_id_or_step_id": "step-03",
+        "failure_kind": "missing_red_proof"
+      },
+      "mode_at_emit": "block",
+      "probe_receipt": "<kb>/security/probe-receipts/X1.json",
+      "probe_version": "g.1.0",
+      "eligible_reason": "missing red_capture"
+    },
+    {
+      "id": "X2",
+      "sources": ["probe:G"],
+      "file": "tests/fixtures/new-feature/exec.md",
+      "severity": "HIGH",
+      "description": "step 3 test is compile-time equivalent to step 2 test",
+      "fingerprint_anchors": {
+        "test_file": "tests/fixtures/new-feature/exec.md",
+        "test_id_or_step_id": "step-03",
+        "failure_kind": "compile_time_equivalent"
+      },
+      "mode_at_emit": "block",
+      "probe_receipt": "<kb>/security/probe-receipts/X2.json",
+      "probe_version": "g.1.0",
+      "eligible_reason": "equivalent structure"
+    }
+  ]
+}
