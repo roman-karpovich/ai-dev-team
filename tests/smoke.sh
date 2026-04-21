@@ -3089,6 +3089,15 @@ check "check_dedupe_merged_probe_llm_entry" check_dedupe_merged_probe_llm_source
 check "check_yaml_example_probes_block" check_yaml_example_probes_block
 check "check_docs_kb_discovery_probes_block" check_docs_kb_discovery_probes_block
 check "check_skill_md_phase0_probe_mode_read" check_skill_md_phase0_probe_mode_read
+
+# Step 5 — --probe-downgrade CLI flag + Phase 3 shadow/advisory sections +
+# cross-auditor input-surface. Per §6.1 Step 5 delta: +6.
+check "check_skill_md_probe_downgrade_flag" check_skill_md_probe_downgrade_flag
+check "check_skill_md_probe_downgrade_off_floor_refusal" check_skill_md_probe_downgrade_off_floor_refusal
+check "check_skill_md_phase3_shadow_section" check_skill_md_phase3_shadow_section
+check "check_skill_md_phase3_advisory_section_footer" check_skill_md_phase3_advisory_section_footer
+check "check_cross_auditor_probe_modes_input_declared" check_cross_auditor_probe_modes_input_declared
+check "check_cross_auditor_probe_receipts_input_declared" check_cross_auditor_probe_receipts_input_declared
 echo
 
 

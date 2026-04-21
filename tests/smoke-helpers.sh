@@ -1276,6 +1276,116 @@ check_dedupe_merged_probe_llm_sources_list() {
 
 # --- Step 4: cross_audit.probes.<id>.mode config surface ---
 
+# --- Step 5: --probe-downgrade CLI flag + Phase 3 UX + cross-auditor input-surface ---
+
+check_skill_md_probe_downgrade_flag() {
+  # SKILL.md argument-parsing flags list declares --probe-downgrade <id>=<mode>
+  # with downgrade-only semantics (block → warn → shadow → off allowed;
+  # upgrade direction refused with one-line warning per §3.4).
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF -- '--probe-downgrade' "$path" \
+    || { echo "$path missing --probe-downgrade flag declaration"; return 1; }
+  grep -qE 'downgrade.*only|only.*downgrade' "$path" \
+    || { echo "$path missing downgrade-only semantics (upgrade refused) for --probe-downgrade"; return 1; }
+  # Per §3.4 the allowed direction must be enumerated or implied; require at
+  # least one of the canonical phrasings.
+  grep -qE 'block[[:space:]]*(→|->)[[:space:]]*warn|warn[[:space:]]*(→|->)[[:space:]]*shadow|shadow[[:space:]]*(→|->)[[:space:]]*off' "$path" \
+    || { echo "$path missing direction enumeration (block → warn → shadow → off)"; return 1; }
+  echo "$path declares --probe-downgrade with downgrade-only semantics + direction enumeration"
+}
+
+check_skill_md_probe_downgrade_off_floor_refusal() {
+  # §3.4 X9: when effective YAML mode is `off` (including absent-key default),
+  # any --probe-downgrade <id>=<mode!=off> is an upgrade and is refused with a
+  # one-line warning. Only --probe-downgrade <id>=off is a legal no-op.
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # Off-floor rule must be explicit in prose (§3.4 X9 resolution).
+  grep -qE 'off[[:space:]]+(is[[:space:]]+(the[[:space:]]+)?(lower[[:space:]]+bound|floor)|floor)' "$path" \
+    || { echo "$path missing 'off is the floor / off is the lower bound' phrase per §3.4 X9"; return 1; }
+  # Absent-YAML default must be called out as treated-as-off (so a blanket off
+  # floor rule that is silent about absent-key default would fail this).
+  grep -qE '(absent.*key.*default|absent.*YAML|absent.*key|default[[:space:]]+when[[:space:]]+absent).*off|off.*(absent.*YAML|absent[[:space:]]+key)' "$path" \
+    || { echo "$path missing 'absent YAML / absent key = off' tie-in for the floor rule"; return 1; }
+  echo "$path has off-floor rule with absent-YAML-default tie-in (§3.4 X9)"
+}
+
+check_skill_md_phase3_shadow_section() {
+  # Phase 3 renders a separate `## Shadow findings (informational)` section
+  # distinct from the decision banner, with a banner footer citing the count
+  # and link to the shadow-findings anchor.
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'Shadow findings (informational)' "$path" \
+    || { echo "$path missing literal '## Shadow findings (informational)' section reference in Phase 3"; return 1; }
+  # Shadow findings must be declared NOT surfaced in the Phase 3 decision
+  # banner (suppression rule).
+  grep -qE 'shadow.*(not.*surfaced|suppressed.*banner|NOT.*(surfaced|in.*banner))' "$path" \
+    || { echo "$path missing 'shadow findings NOT surfaced in decision banner' suppression rule"; return 1; }
+  # Banner footer with shadow count + path link.
+  grep -qE 'N[[:space:]]+shadow[- ]?mode[[:space:]]+findings|shadow[- ]?mode[[:space:]]+findings.*count' "$path" \
+    || grep -qE 'shadow[- ]findings[- ]count|shadow[- ]findings[[:space:]]+count' "$path" \
+    || { echo "$path missing banner footer line citing shadow count"; return 1; }
+  grep -qF '#shadow-findings' "$path" \
+    || { echo "$path missing banner-footer anchor link '#shadow-findings'"; return 1; }
+  echo "$path Phase 3 carries shadow section + suppression rule + banner footer with count + anchor"
+}
+
+check_skill_md_phase3_advisory_section_footer() {
+  # X11 resolution: a second informational section `## Low-confidence LLM
+  # findings (advisory)` sits alongside Shadow findings. Its own banner
+  # footer appears in addition to (not replacing) the shadow footer — both
+  # coexist when both sections are non-empty; each is omitted when its
+  # section is empty.
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'Low-confidence LLM findings (advisory)' "$path" \
+    || { echo "$path missing '## Low-confidence LLM findings (advisory)' section per X11"; return 1; }
+  grep -qF '#low-confidence-llm-findings-advisory' "$path" \
+    || { echo "$path missing '#low-confidence-llm-findings-advisory' banner footer anchor link"; return 1; }
+  # The banner must gain a second footer line (not replace shadow); require
+  # wording that shows coexistence or 'second footer / both footers'.
+  grep -qE '(coexist|both[[:space:]]+footers|second[[:space:]]+footer|in[[:space:]]+addition[[:space:]]+to[[:space:]]+the[[:space:]]+shadow)' "$path" \
+    || { echo "$path missing coexist-with-shadow clause for the advisory-section footer"; return 1; }
+  # Each footer omitted when its section is empty.
+  grep -qE '(omitted[[:space:]]+when|each[[:space:]]+footer[[:space:]]+is[[:space:]]+omitted|footer[[:space:]]+is[[:space:]]+omitted)' "$path" \
+    || { echo "$path missing 'each footer omitted when its section is empty' rule"; return 1; }
+  # Advisory findings also suppressed from the decision banner (case-insensitive).
+  grep -qiE 'low[- ]confidence.*(not[[:space:]]+surfaced|suppressed.*banner|not.*in.*banner)' "$path" \
+    || grep -qiE 'advisory.*(not[[:space:]]+surfaced|suppressed.*banner|not.*in.*banner)' "$path" \
+    || { echo "$path missing 'low-confidence/advisory findings NOT surfaced in decision banner' suppression rule"; return 1; }
+  echo "$path Phase 3 has advisory section + coexist-footer rule + empty-section-omit rule + suppression"
+}
+
+check_cross_auditor_probe_modes_input_declared() {
+  # agents/cross-auditor.md input-surface declares a new `probe_modes` input
+  # field (dict mapping probe id → effective mode after YAML + CLI override).
+  # Empty dict when no probe is configured.
+  local path="agents/cross-auditor.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE '\*\*probe_modes\*\*|`probe_modes`' "$path" \
+    || { echo "$path missing 'probe_modes' input field declaration"; return 1; }
+  # Must declare the map / dict shape (probe id → mode).
+  grep -qE 'probe_modes.*(dict|mapping|map|object).*(probe[- ]id|id).*(mode|value)' "$path" \
+    || grep -qE 'probe_modes.*probe[[:space:]]+id[[:space:]]*→[[:space:]]*(effective[[:space:]]+)?mode' "$path" \
+    || { echo "$path missing probe_modes shape documentation (dict/map probe_id → mode)"; return 1; }
+  echo "$path input surface declares probe_modes (dict: probe id → mode)"
+}
+
+check_cross_auditor_probe_receipts_input_declared() {
+  # agents/cross-auditor.md input-surface declares a new `probe_receipts` input
+  # field (list of JSON receipts, one per probe run; empty list when no probe
+  # is active). §3.7.
+  local path="agents/cross-auditor.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE '\*\*probe_receipts\*\*|`probe_receipts`' "$path" \
+    || { echo "$path missing 'probe_receipts' input field declaration"; return 1; }
+  grep -qE 'probe_receipts.*(list|array).*(receipt|JSON)' "$path" \
+    || { echo "$path missing probe_receipts shape documentation (list of receipt JSON)"; return 1; }
+  echo "$path input surface declares probe_receipts (list of JSON receipts)"
+}
+
 check_yaml_example_probes_block() {
   # .ai-dev-team.yml.example carries a commented-out cross_audit.probes block
   # showing mode values off|shadow|warn|block and documenting that off is the
