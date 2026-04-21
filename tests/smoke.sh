@@ -3044,6 +3044,11 @@ check "check_smoke_helper_p3_spec_template_no_codex_action_rejected" check_smoke
 check "check_smoke_helper_p3_agent_routing_no_codex_action_rejected" check_smoke_helper_p3_agent_routing_no_codex_action_rejected
 echo
 
+# --- Cross-audit probes foundation (spec 2026-04-21-cross-audit-probes-foundation) ---
+echo "Cross-audit probes foundation:"
+check "check_agents_cross_auditor_schema_cut_fields" check_agents_cross_auditor_schema_cut_fields
+echo
+
 
 echo
 echo "Passed: $PASS"

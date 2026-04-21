@@ -290,10 +290,10 @@ tags: [audit, <project>]
 
 ## Summary
 
-| ID | Severity | Issue | Claude | Codex | Confidence | Status |
-|----|----------|-------|--------|-------|------------|--------|
-| X1 | CRITICAL | ... | ✅ | ✅ | HIGH | OPEN |
-| X2 | HIGH | ... | ✅ | — | REVIEW | OPEN |
+| ID | Severity | Issue | Source | Mode | Confidence | Status |
+|----|----------|-------|--------|------|------------|--------|
+| X1 | CRITICAL | ... | claude+codex |  | 90 | OPEN |
+| X2 | HIGH | ... | claude |  | 60 | OPEN |
 
 ## Details
 
@@ -303,8 +303,28 @@ tags: [audit, <project>]
 - **File**: path:line
 - **Description**: ...
 - **Fix**: ...
+- **Sources**: [claude, codex]
+- **Mode at emit**: (probe findings only; blank for pure-LLM)
+- **Blocking**: false
+- **Probe receipt**: (probe findings only; null for pure-LLM)
+- **Probe version**: (probe findings only; null for pure-LLM)
+- **Eligible reason**: (probe findings only; null for pure-LLM)
 - **Status**: OPEN
 ```
+
+**Schema-cut column semantics (see spec 2026-04-21-cross-audit-probes-foundation §3.3)**:
+- `Source` is a **rendered display column** derived from the authoritative internal `sources[]` list — single element renders verbatim (`claude`, `codex`, `probe:E`), multiple elements render `+`-joined in the list's emission order (`claude+codex`, `probe:E+claude`). The details block carries `**Sources**: [...]` as the authoritative list field; `Source` is NEVER stored as a primitive and is NOT a details-block field.
+- `Mode` column mirrors the per-finding `mode_at_emit` value for probe findings (`shadow | warn | block`); blank for pure-LLM findings.
+- `Confidence` column semantics:
+  - Probe-sourced findings (any `probe:*` in `sources[]`, including merged probe+LLM) pin `100` — deterministic emission; scorer is skipped.
+  - Pure-LLM findings (no `probe:*` in `sources[]`) carry an integer 0–100 assigned by the Haiku finding-scorer.
+
+**Legacy `Found by` → `sources[]` round-trip mapping**: when re-auditing a pre-schema-cut findings doc, the renderer maps the legacy `Found by` details value into the authoritative `sources[]` list using the three-case expansion:
+- `Found by: Both` → `sources: [claude, codex]`
+- `Found by: Only Claude` → `sources: [claude]`
+- `Found by: Only Codex` → `sources: [codex]`
+
+The `Source` display column is then re-rendered from `sources[]` (e.g. `claude+codex` for the `Both` case). The legacy literal `Both` string is never emitted as a current-mode value — it exists only as a read-only legacy-doc cell that the renderer migrates on first re-audit.
 
 ### workdoc-iterN.md (new file per iteration — previous iterations kept for reference)
 

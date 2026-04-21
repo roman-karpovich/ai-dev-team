@@ -1025,3 +1025,51 @@ check_readme_no_audit_migration_note() {
   fi
   echo "$path has no obsolete 'audit replaced by cross-audit' migration note (regex + literal both clean)"
 }
+
+# --- Cross-audit probes foundation (spec 2026-04-21-cross-audit-probes-foundation) ---
+
+check_agents_cross_auditor_schema_cut_fields() {
+  # Step 1 helper — asserts agents/cross-auditor.md §Step 4 findings.md template carries:
+  #  (1) the updated table header `ID | Severity | Issue | Source | Mode | Confidence | Status`
+  #  (2) new details-block fields: Sources / Mode at emit / Blocking / Probe receipt / Probe version / Eligible reason
+  #      (Source is column-only — NOT a details-block field)
+  #  (3) legacy `Found by` → `sources[]` round-trip mapping note with three-case expansion
+  local path="agents/cross-auditor.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+
+  # (1) Table header — canonical byte-exact
+  grep -qF '| ID | Severity | Issue | Source | Mode | Confidence | Status |' "$path" \
+    || { echo "$path missing schema-cut table header '| ID | Severity | Issue | Source | Mode | Confidence | Status |'"; return 1; }
+
+  # (2) Details-block new fields (order preserved, one per line)
+  grep -qF '**Sources**:' "$path" \
+    || { echo "$path missing details-block field '**Sources**:' (authoritative list)"; return 1; }
+  grep -qF '**Mode at emit**:' "$path" \
+    || { echo "$path missing details-block field '**Mode at emit**:' (probe findings only)"; return 1; }
+  grep -qF '**Blocking**:' "$path" \
+    || { echo "$path missing details-block field '**Blocking**:'"; return 1; }
+  grep -qF '**Probe receipt**:' "$path" \
+    || { echo "$path missing details-block field '**Probe receipt**:'"; return 1; }
+  grep -qF '**Probe version**:' "$path" \
+    || { echo "$path missing details-block field '**Probe version**:'"; return 1; }
+  grep -qF '**Eligible reason**:' "$path" \
+    || { echo "$path missing details-block field '**Eligible reason**:'"; return 1; }
+
+  # (3) Round-trip mapping note — must include the three-case expansion.
+  # Tolerates backtick-wrapped form of the values; arrow must be Unicode `→`.
+  grep -qE 'Both`?[[:space:]]*→[[:space:]]*`?sources: \[claude, codex\]' "$path" \
+    || { echo "$path missing legacy round-trip mapping 'Both → sources: [claude, codex]'"; return 1; }
+  grep -qE 'Only Claude`?[[:space:]]*→[[:space:]]*`?sources: \[claude\]' "$path" \
+    || { echo "$path missing legacy round-trip mapping 'Only Claude → sources: [claude]'"; return 1; }
+  grep -qE 'Only Codex`?[[:space:]]*→[[:space:]]*`?sources: \[codex\]' "$path" \
+    || { echo "$path missing legacy round-trip mapping 'Only Codex → sources: [codex]'"; return 1; }
+
+  # Column-vs-field distinction: the details block MUST NOT carry a bare `**Source**:` field
+  # (Source is rendered only as a table column; Sources[] is the authoritative list field).
+  if grep -qE '^\-\s+\*\*Source\*\*:' "$path"; then
+    echo "$path details block carries forbidden '- **Source**:' field (Source is column-only; authoritative details-block field is '**Sources**:')"
+    return 1
+  fi
+
+  echo "$path §Step 4 findings template carries schema-cut columns + details fields + Found-by→sources[] round-trip mapping"
+}
