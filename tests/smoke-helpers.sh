@@ -1073,3 +1073,114 @@ check_agents_cross_auditor_schema_cut_fields() {
 
   echo "$path §Step 4 findings template carries schema-cut columns + details fields + Found-by→sources[] round-trip mapping"
 }
+
+# --- Step 2: hooks/lib/render_findings.sh ---
+#
+# Each helper below drives hooks/lib/render_findings.sh with a fixture
+# input JSON and compares stdout byte-for-byte against the paired
+# expected .md golden. Hard-stop fixture asserts non-zero exit code
+# plus non-empty stderr.
+
+_render_findings_byte_diff() {
+  # $1 = input JSON path, $2 = expected .md golden path
+  # Uses a temp file for captured stdout to preserve trailing newlines that
+  # $(…) strips. Byte-for-byte diff against the golden.
+  local input="$1" expected="$2"
+  local script="hooks/lib/render_findings.sh"
+  [ -x "$script" ] || { echo "$script not executable"; return 1; }
+  [ -r "$input" ] || { echo "input fixture $input not readable"; return 1; }
+  [ -r "$expected" ] || { echo "expected golden $expected not readable"; return 1; }
+  local actual_tmp="/tmp/smoke-render-actual.$$"
+  if ! bash "$script" <"$input" >"$actual_tmp" 2>/tmp/smoke-render-err.$$; then
+    echo "render_findings.sh exited non-zero on $input"
+    cat /tmp/smoke-render-err.$$
+    rm -f /tmp/smoke-render-err.$$ "$actual_tmp"
+    return 1
+  fi
+  rm -f /tmp/smoke-render-err.$$
+  if ! diff "$actual_tmp" "$expected" >/tmp/smoke-render-diff.$$ 2>&1; then
+    echo "render_findings.sh output for $input does not byte-match $expected:"
+    head -30 /tmp/smoke-render-diff.$$
+    rm -f /tmp/smoke-render-diff.$$ "$actual_tmp"
+    return 1
+  fi
+  rm -f /tmp/smoke-render-diff.$$ "$actual_tmp"
+  echo "render_findings.sh output byte-matches $expected"
+}
+
+check_findings_renderer_schema_cut() {
+  # Fixture (1): no-probes legacy — two Claude+Codex findings with pure-LLM sources,
+  # renders schema-cut table header + Details block with all new fields.
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/01-no-probes-legacy-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/01-no-probes-legacy-expected.md
+}
+
+check_findings_renderer_modes_shadow() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/02-probe-shadow-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/02-probe-shadow-expected.md
+}
+
+check_findings_renderer_modes_warn() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/03-probe-warn-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/03-probe-warn-expected.md
+}
+
+check_findings_renderer_modes_block() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/04-probe-block-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/04-probe-block-expected.md
+}
+
+check_findings_renderer_modes_multi_source() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/05-multi-source-merged-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/05-multi-source-merged-expected.md
+}
+
+# Alias: keep `check_findings_renderer_modes` as the umbrella helper name the
+# spec §3.2 Changes table and exec Step 2 grep pattern call out. Runs all four
+# mode fixtures serially. The four per-fixture helpers above are what smoke.sh
+# actually invokes (one `check` line per golden-diff sub-assertion, matching
+# the §6.1 count).
+check_findings_renderer_modes() {
+  check_findings_renderer_modes_shadow || return 1
+  check_findings_renderer_modes_warn || return 1
+  check_findings_renderer_modes_block || return 1
+  check_findings_renderer_modes_multi_source || return 1
+  echo "all four mode-routing fixtures byte-match their goldens"
+}
+
+check_findings_renderer_fail_open() {
+  # Fixture (6): probe_failures[] non-empty → degraded-mode banner at top of output,
+  # listing each failed probe with reason/remediation.
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/06-probe-fail-open-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/06-probe-fail-open-expected.md
+}
+
+check_probe_failures_schema_hard_stop() {
+  # Fixture (7): malformed probe_failures[] entry (missing `remediation` field) —
+  # renderer MUST exit non-zero with non-empty stderr per §3.3 X10 contract.
+  local script="hooks/lib/render_findings.sh"
+  local input="tests/fixtures/cross-audit-probes-foundation/renderer/07-probe-failures-malformed-input.json"
+  [ -x "$script" ] || { echo "$script not executable"; return 1; }
+  [ -r "$input" ] || { echo "input fixture $input not readable"; return 1; }
+  local exit_code=0
+  bash "$script" <"$input" >/tmp/smoke-hardstop-out.$$ 2>/tmp/smoke-hardstop-err.$$ || exit_code=$?
+  if [ "$exit_code" -eq 0 ]; then
+    echo "render_findings.sh accepted malformed probe_failures[] (expected non-zero exit); stdout:"
+    head -5 /tmp/smoke-hardstop-out.$$
+    rm -f /tmp/smoke-hardstop-out.$$ /tmp/smoke-hardstop-err.$$
+    return 1
+  fi
+  if [ ! -s /tmp/smoke-hardstop-err.$$ ]; then
+    echo "render_findings.sh exited non-zero but stderr is empty; §3.3 X10 requires a diagnostic"
+    rm -f /tmp/smoke-hardstop-out.$$ /tmp/smoke-hardstop-err.$$
+    return 1
+  fi
+  rm -f /tmp/smoke-hardstop-out.$$ /tmp/smoke-hardstop-err.$$
+  echo "render_findings.sh correctly hard-stopped on malformed probe_failures[] (exit=$exit_code, stderr non-empty)"
+}

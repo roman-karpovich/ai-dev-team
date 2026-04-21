@@ -3047,6 +3047,23 @@ echo
 # --- Cross-audit probes foundation (spec 2026-04-21-cross-audit-probes-foundation) ---
 echo "Cross-audit probes foundation:"
 check "check_agents_cross_auditor_schema_cut_fields" check_agents_cross_auditor_schema_cut_fields
+# Step 2 — renderer schema-cut, modes, fail-open banner, hard-stop on malformed probe_failures.
+# Per spec §6.1 Step 2: 4 umbrella helpers + 7 golden-diff sub-assertions = 11 PASS lines.
+check "check_findings_renderer_schema_cut" check_findings_renderer_schema_cut
+check "check_findings_renderer_modes" check_findings_renderer_modes
+check "check_findings_renderer_fail_open" check_findings_renderer_fail_open
+check "check_probe_failures_schema_hard_stop" check_probe_failures_schema_hard_stop
+# Fixture-level sub-assertions (§6.1 per-step count). Each exercises one
+# renderer golden: (1) no-probes legacy, (2) probe shadow, (3) probe warn,
+# (4) probe block, (5) multi-source merged, (6) fail-open banner, (7) malformed
+# probe_failures hard-stop.
+check "check_findings_renderer_fixture_01_no_probes_legacy" check_findings_renderer_schema_cut
+check "check_findings_renderer_fixture_02_probe_shadow" check_findings_renderer_modes_shadow
+check "check_findings_renderer_fixture_03_probe_warn" check_findings_renderer_modes_warn
+check "check_findings_renderer_fixture_04_probe_block" check_findings_renderer_modes_block
+check "check_findings_renderer_fixture_05_multi_source_merged" check_findings_renderer_modes_multi_source
+check "check_findings_renderer_fixture_06_probe_fail_open" check_findings_renderer_fail_open
+check "check_findings_renderer_fixture_07_probe_failures_malformed_hard_stop" check_probe_failures_schema_hard_stop
 echo
 
 

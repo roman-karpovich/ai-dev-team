@@ -1,0 +1,11 @@
+{
+  "findings": [],
+  "probe_modes": {"e": "shadow"},
+  "probe_failures": [
+    {
+      "probe_id": "E",
+      "reason": "git diff returned non-zero in isolated worktree"
+    }
+  ],
+  "scorer_status": "ok"
+}

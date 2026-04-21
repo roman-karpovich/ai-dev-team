@@ -1,0 +1,23 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "severity": "HIGH",
+      "title": "Paging .limit(200) on unbounded Horizon history",
+      "sources": ["probe:F"],
+      "file": "src/stellar/reconcile.py:87",
+      "description": "Probe F detected .limit(200).order(desc=False) on Horizon history without cursor; production cardinality is unbounded years of data.",
+      "fix": "Use cursor-paged iteration with an explicit upper bound.",
+      "mode_at_emit": "warn",
+      "blocking": false,
+      "probe_receipt": "<kb>/security/probe-receipts/X1.json",
+      "probe_version": "f.1.0",
+      "eligible_reason": "paging call .limit(200) detected on Horizon history without cursor at reconcile.py:87",
+      "confidence": 100,
+      "status": "OPEN"
+    }
+  ],
+  "probe_modes": {"f": "warn"},
+  "probe_failures": [],
+  "scorer_status": "ok"
+}
