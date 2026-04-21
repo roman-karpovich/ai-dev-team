@@ -16,6 +16,14 @@ cd "$PLUGIN_ROOT" || exit 2
 PROBE_E_CORPUS_ROOT="${PROBE_E_CORPUS_ROOT:-/Users/th13f/dev/personal/finance-learning/repos/ai-dev-team/research/cross-audit-probe-e}"
 export PROBE_E_CORPUS_ROOT
 
+# Probe F frozen-replay corpus — KB-local path resolved by the smoke harness
+# (Step 4 helper `check_probe_f_corpus_exists`). Defaults to the author's KB
+# path; override via PROBE_F_CORPUS_ROOT env var in CI or on other machines.
+# When the path is missing, the helper skips gracefully (corpus lives OUTSIDE
+# the plugin repo — KB/Obsidian vault — so CI-without-KB still passes).
+PROBE_F_CORPUS_ROOT="${PROBE_F_CORPUS_ROOT:-/Users/th13f/dev/personal/finance-learning/repos/ai-dev-team/research/cross-audit-probe-f}"
+export PROBE_F_CORPUS_ROOT
+
 PASS=0
 FAIL=0
 FAILURES=()
@@ -3187,6 +3195,24 @@ check "check_probe_e_merged_receipt_written" check_probe_e_merged_receipt_writte
 # Step 5 — docs/example surface (2 helpers).
 check "check_yaml_example_probes_e_hint" check_yaml_example_probes_e_hint
 check "check_docs_kb_discovery_probe_e_row" check_docs_kb_discovery_probe_e_row
+echo
+
+# --- Cross-audit probe F (spec 2026-04-21-probe-f-cardinality-blindness) ---
+echo "Cross-audit probe F:"
+# Step 2 — probe detector (11 helpers: 10 fixture byte-diffs + rerun-stability;
+# fixtures 08-11 are X3 iter-1 branch coverage; fixture 12 is X15 iter-5
+# alias sampling).
+check "check_probe_f_detector_fires_on_missing_cursor" check_probe_f_detector_fires_on_missing_cursor
+check "check_probe_f_detector_clean_when_cursor_param_present" check_probe_f_detector_clean_when_cursor_param_present
+check "check_probe_f_detector_clean_when_docstring_budget_present" check_probe_f_detector_clean_when_docstring_budget_present
+check "check_probe_f_detector_ineligible_no_paging_marker" check_probe_f_detector_ineligible_no_paging_marker
+check "check_probe_f_receipt_rerun_stable" check_probe_f_receipt_rerun_stable
+check "check_probe_f_changed_test_file_skipped" check_probe_f_changed_test_file_skipped
+check "check_probe_f_detector_fires_on_async_function" check_probe_f_detector_fires_on_async_function
+check "check_probe_f_detector_inner_function_no_discipline_inheritance" check_probe_f_detector_inner_function_no_discipline_inheritance
+check "check_probe_f_detector_skipped_at_module_level" check_probe_f_detector_skipped_at_module_level
+check "check_probe_f_detector_clean_when_docstring_budget_only" check_probe_f_detector_clean_when_docstring_budget_only
+check "check_probe_f_detector_alias_coverage" check_probe_f_detector_alias_coverage
 echo
 
 

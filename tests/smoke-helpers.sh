@@ -2631,3 +2631,189 @@ check_docs_kb_discovery_probe_e_row() {
     || { echo "$path probe-E row missing 'Python only' or 'same-file' v1-limitation"; return 1; }
   echo "$path probe-E row present (detector summary + trigger + v1 limitation columns)"
 }
+
+# ============================================================================
+# Cross-audit probe F (spec 2026-04-21-probe-f-cardinality-blindness)
+# ============================================================================
+
+# Shared helper: run hooks/lib/probe_f.sh against a fixture dir and byte-diff
+# findings + receipt_metadata separately. The probe is invoked with cwd =
+# $fixture_dir so `repo_root: "."` resolves inside the fixture.
+# PROBE_F_FAKE_NOW is set for determinism so emitted_at byte-matches the
+# expected fixture value.
+_probe_f_byte_diff() {
+  # $1 = fixture dir (relative to plugin root)
+  local fdir="$1"
+  local input="$fdir/input.json"
+  local expected_findings="$fdir/expected-findings.json"
+  local expected_meta="$fdir/expected-receipt-metadata.json"
+  [ -r "$input" ] || { echo "$input not readable"; return 1; }
+  [ -r "$expected_findings" ] || { echo "$expected_findings not readable"; return 1; }
+  [ -r "$expected_meta" ] || { echo "$expected_meta not readable"; return 1; }
+  local plugin_root
+  plugin_root="$(pwd)"
+  local out_tmp="/tmp/smoke-probe-f-out.$$"
+  local exit_code=0
+  ( cd "$fdir" \
+    && PROBE_F_FAKE_NOW="2026-04-21T14:23:17Z" \
+    bash "$plugin_root/hooks/lib/probe_f.sh" < input.json ) >"$out_tmp" 2>/tmp/smoke-probe-f-err.$$ || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "probe_f.sh exited $exit_code against $fdir; stderr:"
+    head -5 /tmp/smoke-probe-f-err.$$
+    rm -f "$out_tmp" /tmp/smoke-probe-f-err.$$
+    return 1
+  fi
+  rm -f /tmp/smoke-probe-f-err.$$
+  local actual_findings actual_meta exp_findings exp_meta
+  actual_findings=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d["findings"],sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
+  actual_meta=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d["receipt_metadata"],sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
+  exp_findings=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected_findings")
+  exp_meta=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected_meta")
+  rm -f "$out_tmp"
+  if [ "$actual_findings" != "$exp_findings" ]; then
+    echo "probe_f findings mismatch for $fdir:"
+    diff <(printf '%s\n' "$actual_findings") <(printf '%s\n' "$exp_findings") | head -10
+    return 1
+  fi
+  if [ "$actual_meta" != "$exp_meta" ]; then
+    echo "probe_f receipt_metadata mismatch for $fdir:"
+    diff <(printf '%s\n' "$actual_meta") <(printf '%s\n' "$exp_meta") | head -10
+    return 1
+  fi
+  echo "probe_f output byte-matches expected for $fdir"
+}
+
+check_probe_f_detector_fires_on_missing_cursor() {
+  # Fixture 01 — positive: `.limit(200).order(desc=False)` chain. Red-proves
+  # §3.4 step 5 (lineno, end_col_offset) tiebreak since expected paging_symbol
+  # is `.limit` (leftmost-in-source, smallest end_col_offset) rather than
+  # `.order` (latest end_col_offset in the chain).
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/01-positive-missing-cursor || return 1
+  # Extract the emission count + paging_symbol and assert them explicitly per
+  # spec §3.2 helper contract.
+  local out n_findings paging_symbol
+  local plugin_root; plugin_root="$(pwd)"
+  local fdir="tests/fixtures/cross-audit-probe-f/01-positive-missing-cursor"
+  out=$( ( cd "$fdir" && PROBE_F_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_f.sh" < input.json ) )
+  n_findings=$(printf '%s' "$out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["findings"]))')
+  paging_symbol=$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["findings"][0]["fingerprint_anchors"]["paging_symbol"])')
+  [ "$n_findings" = "1" ] || { echo "fixture 01 expected 1 emission, got $n_findings"; return 1; }
+  [ "$paging_symbol" = ".limit" ] || { echo "fixture 01 expected paging_symbol=.limit (end_col_offset tiebreak), got $paging_symbol"; return 1; }
+  echo "fixture 01 positive + multi-marker collapse red-proves (lineno, end_col_offset) tiebreak"
+}
+
+check_probe_f_detector_clean_when_cursor_param_present() {
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/02-clean-cursor-param-present
+}
+
+check_probe_f_detector_clean_when_docstring_budget_present() {
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/03-clean-docstring-budget-present
+}
+
+check_probe_f_detector_ineligible_no_paging_marker() {
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/04-ineligible-no-paging-marker
+}
+
+check_probe_f_receipt_rerun_stable() {
+  # Fixture 05 — rerun stability. Two independent invocations produce byte-
+  # identical findings + receipt_metadata (including trigger_input_hash +
+  # skipped_files, where `src/bad.py` is the SyntaxError twin appearing in
+  # skipped_files verbatim).
+  local fdir="tests/fixtures/cross-audit-probe-f/05-rerun-stability"
+  local plugin_root; plugin_root="$(pwd)"
+  local out1 out2
+  out1=$( ( cd "$fdir" && PROBE_F_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_f.sh" < input.json ) )
+  out2=$( ( cd "$fdir" && PROBE_F_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_f.sh" < input.json ) )
+  if [ "$out1" != "$out2" ]; then
+    echo "probe_f output differs between two runs against $fdir (non-deterministic)"
+    diff <(printf '%s\n' "$out1") <(printf '%s\n' "$out2") | head -10
+    return 1
+  fi
+  _probe_f_byte_diff "$fdir" || return 1
+  local h1 h2 sk1 sk2 f1 f2
+  h1=$(printf '%s\n' "$out1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["receipt_metadata"]["trigger_input_hash"])')
+  h2=$(printf '%s\n' "$out2" | python3 -c 'import json,sys; print(json.load(sys.stdin)["receipt_metadata"]["trigger_input_hash"])')
+  sk1=$(printf '%s\n' "$out1" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["receipt_metadata"]["skipped_files"]))')
+  sk2=$(printf '%s\n' "$out2" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["receipt_metadata"]["skipped_files"]))')
+  f1=$(printf '%s\n' "$out1" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["findings"],sort_keys=True,separators=(",",":"),ensure_ascii=False))')
+  f2=$(printf '%s\n' "$out2" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["findings"],sort_keys=True,separators=(",",":"),ensure_ascii=False))')
+  [ "$h1" = "$h2" ] || { echo "trigger_input_hash not stable: $h1 vs $h2"; return 1; }
+  [ "$sk1" = "$sk2" ] || { echo "skipped_files not stable: $sk1 vs $sk2"; return 1; }
+  [ "$f1" = "$f2" ] || { echo "findings not stable across runs"; return 1; }
+  echo "probe_f receipt rerun-stability: trigger_input_hash + skipped_files + findings byte-identical across two runs"
+}
+
+check_probe_f_changed_test_file_skipped() {
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/07-changed-test-file-skipped
+}
+
+check_probe_f_detector_fires_on_async_function() {
+  # Fixture 08 — AsyncFunctionDef walk-up (X3 iter-1). Asserts enclosing
+  # function is the async def name. An impl that only walks FunctionDef
+  # would drop the marker entirely (0 emissions) or record enclosing_function
+  # as "<module>" — both fail the byte-diff.
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/08-async-function-walk-up || return 1
+  local plugin_root; plugin_root="$(pwd)"
+  local fdir="tests/fixtures/cross-audit-probe-f/08-async-function-walk-up"
+  local enclosing
+  enclosing=$( ( cd "$fdir" && PROBE_F_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_f.sh" < input.json ) \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["findings"][0]["canonical_payload"]["enclosing_function"])')
+  [ "$enclosing" = "reconcile_bribe_payouts_async" ] \
+    || { echo "fixture 08 expected enclosing_function=reconcile_bribe_payouts_async, got $enclosing"; return 1; }
+  echo "fixture 08 AsyncFunctionDef walk-up resolves enclosing function correctly"
+}
+
+check_probe_f_detector_inner_function_no_discipline_inheritance() {
+  # Fixture 09 — nested inner function does NOT inherit `cursor` discipline
+  # from outer wrapper (X3 iter-1). Asserts enclosing_function="inner".
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/09-nested-inner-function-no-inheritance || return 1
+  local plugin_root; plugin_root="$(pwd)"
+  local fdir="tests/fixtures/cross-audit-probe-f/09-nested-inner-function-no-inheritance"
+  local enclosing
+  enclosing=$( ( cd "$fdir" && PROBE_F_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_f.sh" < input.json ) \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["findings"][0]["canonical_payload"]["enclosing_function"])')
+  [ "$enclosing" = "inner" ] \
+    || { echo "fixture 09 expected enclosing_function=inner, got $enclosing"; return 1; }
+  echo "fixture 09 nested-inner-function correctly resolved (no discipline inheritance)"
+}
+
+check_probe_f_detector_skipped_at_module_level() {
+  # Fixture 10 — module-level paging call → 0 emissions (§3.4 step 3 anti-
+  # goal, X3 iter-1). Red-proves impls that fall back to <module>.
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/10-module-level-skip || return 1
+  local plugin_root; plugin_root="$(pwd)"
+  local fdir="tests/fixtures/cross-audit-probe-f/10-module-level-skip"
+  local n
+  n=$( ( cd "$fdir" && PROBE_F_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_f.sh" < input.json ) \
+    | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["findings"]))')
+  [ "$n" = "0" ] || { echo "fixture 10 expected 0 emissions (module-level anti-goal), got $n"; return 1; }
+  echo "fixture 10 module-level marker correctly skipped (§3.4 anti-goal)"
+}
+
+check_probe_f_detector_clean_when_docstring_budget_only() {
+  # Fixture 11 — docstring `budget: 5s wall-time assumed` matches `budget:`
+  # (left-\b + literal colon, no right-\b) but NOT `cardinality`. Expected:
+  # 0 emissions. Red-proves impls that apply \b on both sides of `budget:`
+  # (the right-side \b would fail to match since `:` is non-word).
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/11-docstring-budget-only
+}
+
+check_probe_f_detector_alias_coverage() {
+  # Fixture 12 — authoritative-set alias sampling (X15 iter-5). Single file
+  # with three functions: alpha() uses .paginate (fires), beta(pagination_token)
+  # uses .limit (disciplined by param alias), gamma() docstring perf_budget uses
+  # .iterator (disciplined by keyword alias). Expected: 1 emission total with
+  # paging_symbol=.paginate, enclosing_function=alpha.
+  _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/12-alias-coverage-sampling || return 1
+  local plugin_root; plugin_root="$(pwd)"
+  local fdir="tests/fixtures/cross-audit-probe-f/12-alias-coverage-sampling"
+  local out n paging enclosing
+  out=$( ( cd "$fdir" && PROBE_F_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_f.sh" < input.json ) )
+  n=$(printf '%s' "$out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["findings"]))')
+  paging=$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["findings"][0]["fingerprint_anchors"]["paging_symbol"])')
+  enclosing=$(printf '%s' "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["findings"][0]["canonical_payload"]["enclosing_function"])')
+  [ "$n" = "1" ] || { echo "fixture 12 expected 1 emission (alpha only), got $n"; return 1; }
+  [ "$paging" = ".paginate" ] || { echo "fixture 12 expected paging_symbol=.paginate, got $paging"; return 1; }
+  [ "$enclosing" = "alpha" ] || { echo "fixture 12 expected enclosing_function=alpha, got $enclosing"; return 1; }
+  echo "fixture 12 alias coverage: .paginate fires + pagination_token param discipline + perf_budget keyword discipline"
+}
