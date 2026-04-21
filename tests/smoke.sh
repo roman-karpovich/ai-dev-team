@@ -3097,7 +3097,7 @@ check "check_skill_md_probe_downgrade_off_floor_refusal" check_skill_md_probe_do
 check "check_skill_md_phase3_shadow_section" check_skill_md_phase3_shadow_section
 check "check_skill_md_phase3_advisory_section_footer" check_skill_md_phase3_advisory_section_footer
 check "check_cross_auditor_probe_modes_input_declared" check_cross_auditor_probe_modes_input_declared
-check "check_cross_auditor_probe_receipts_input_declared" check_cross_auditor_probe_receipts_input_declared
+check "check_cross_auditor_probe_receipts_produced_by_step05" check_cross_auditor_probe_receipts_produced_by_step05
 
 # Step 6 — renderer low-confidence advisory section + merged probe+LLM routing
 # + combined fail-open banner. Per §6.1 Step 6 delta: +4 umbrella + 6 fixture
@@ -3152,6 +3152,15 @@ check "check_probe_e_detector_ineligible_no_additions" check_probe_e_detector_in
 check "check_probe_e_detector_ineligible_collection_too_small" check_probe_e_detector_ineligible_collection_too_small
 check "check_probe_e_receipt_rerun_stable" check_probe_e_receipt_rerun_stable
 check "check_probe_e_changed_test_file_skipped" check_probe_e_changed_test_file_skipped
+# Step 3 — agent Step 0.5 + skill + dedupe merge_pair swap (6 helpers; the 7th
+# is check_cross_auditor_probe_receipts_produced_by_step05 above under Foundation
+# Step 5 block — it replaces the pre-X10 input-bullet helper in-place).
+check "check_cross_auditor_step05_probe_dispatch" check_cross_auditor_step05_probe_dispatch
+check "check_probe_e_cli_downgrade" check_probe_e_cli_downgrade
+check "check_probe_e_downgrade_upgrade_refused_when_yaml_off" check_probe_e_downgrade_upgrade_refused_when_yaml_off
+check "check_probe_e_fail_open_banner" check_probe_e_fail_open_banner
+check "check_probe_e_fail_open_schema_invalid_body" check_probe_e_fail_open_schema_invalid_body
+check "check_probe_e_fail_open_write_receipt_failure" check_probe_e_fail_open_write_receipt_failure
 echo
 
 

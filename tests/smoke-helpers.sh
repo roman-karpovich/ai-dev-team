@@ -1839,17 +1839,37 @@ check_cross_auditor_probe_modes_input_declared() {
   echo "$path input surface declares probe_modes (dict: probe id → mode)"
 }
 
-check_cross_auditor_probe_receipts_input_declared() {
-  # agents/cross-auditor.md input-surface declares a new `probe_receipts` input
-  # field (list of JSON receipts, one per probe run; empty list when no probe
-  # is active). §3.7.
+check_cross_auditor_probe_receipts_produced_by_step05() {
+  # Spec 2026-04-21-probe-e-diff-scope-leak §3.2 (c) / §5 Step 3 (iter-3 X15 /
+  # iter-2 X10) — probe_receipts is no longer a skill-threaded input bullet.
+  # The ## Input section must NOT list it as an input field; Step 0.5 is the
+  # producer path. Replaces the Foundation-era
+  # check_cross_auditor_probe_receipts_input_declared (which asserted the
+  # opposite invariant and shipped before probe E's dispatch pivot).
   local path="agents/cross-auditor.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  grep -qE '\*\*probe_receipts\*\*|`probe_receipts`' "$path" \
-    || { echo "$path missing 'probe_receipts' input field declaration"; return 1; }
-  grep -qE 'probe_receipts.*(list|array).*(receipt|JSON)' "$path" \
-    || { echo "$path missing probe_receipts shape documentation (list of receipt JSON)"; return 1; }
-  echo "$path input surface declares probe_receipts (list of JSON receipts)"
+  # Extract just the ## Input section (range from '## Input' up to next '## ').
+  local input_section
+  input_section=$(awk '
+    !in_s && $0 == "## Input" { in_s = 1; print; next }
+    in_s && /^## / && $0 != "## Input" { exit }
+    in_s { print }
+  ' "$path")
+  [[ -n "$input_section" ]] || { echo "$path missing '## Input' section"; return 1; }
+  # Reject any line in ## Input shaped like the old bullet:
+  #   '- **probe_receipts** (optional;...' OR '- **probe_receipts**:'
+  if printf '%s\n' "$input_section" | grep -qE '^- \*\*probe_receipts\*\*'; then
+    echo "$path ## Input still lists probe_receipts as an input bullet (expected removed per §3.2 (c) / X10)"
+    return 1
+  fi
+  # Positive: Step 0.5 must exist as the producer path.
+  grep -qE '^## Step 0\.5' "$path" \
+    || { echo "$path missing '## Step 0.5' producer section (expected between Step 0 and Step 1)"; return 1; }
+  grep -qF 'probe_findings' "$path" \
+    || { echo "$path missing 'probe_findings' — Step 0.5 should produce it"; return 1; }
+  grep -qF 'probe_receipt_metadata_by_provisional_id' "$path" \
+    || { echo "$path missing 'probe_receipt_metadata_by_provisional_id' side-map (iter-4 X19)"; return 1; }
+  echo "$path ## Input no longer lists probe_receipts bullet; Step 0.5 produces probe_findings/probe_receipts via side-map (X19)"
 }
 
 check_yaml_example_probes_block() {
@@ -2076,4 +2096,192 @@ check_probe_e_receipt_rerun_stable() {
   [ "$sk1" = "$sk2" ] || { echo "skipped_files not stable: $sk1 vs $sk2"; return 1; }
   [ "$f1" = "$f2" ] || { echo "findings not stable across runs"; return 1; }
   echo "probe_e receipt rerun-stability: trigger_input_hash + skipped_files + findings byte-identical across two runs"
+}
+
+# --- Step 3: Cross-auditor agent Step 0.5 + skill + dedupe merge_pair swap ---
+
+check_cross_auditor_step05_probe_dispatch() {
+  # agents/cross-auditor.md carries a '## Step 0.5: Probe dispatch' section
+  # positioned between '## Step 0' (PR materialization) and '## Step 1:
+  # Launch Codex' per spec §3.5 pseudocode. Asserts section presence, ordering
+  # vs Step 0 / Step 1, six-way fail-open class enumeration, and side-map key
+  # (iter-4 X19).
+  local path="agents/cross-auditor.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local step0_line step05_line step1_line
+  step0_line=$(grep -nE '^## Step 0 \(PR mode only\)' "$path" | head -1 | cut -d: -f1)
+  step05_line=$(grep -nE '^## Step 0\.5' "$path" | head -1 | cut -d: -f1)
+  step1_line=$(grep -nE '^## Step 1: Launch Codex' "$path" | head -1 | cut -d: -f1)
+  [[ -n "$step05_line" ]] || { echo "$path missing '## Step 0.5' heading"; return 1; }
+  [[ -n "$step0_line" && -n "$step1_line" ]] \
+    || { echo "$path missing Step 0 or Step 1 neighbours for Step 0.5 ordering check"; return 1; }
+  [[ "$step0_line" -lt "$step05_line" && "$step05_line" -lt "$step1_line" ]] \
+    || { echo "$path Step 0.5 is not positioned between Step 0 ($step0_line) and Step 1 ($step1_line) — got Step 0.5 at $step05_line"; return 1; }
+  # Extract the Step 0.5 section.
+  local step05
+  step05=$(awk '
+    !in_s && /^## Step 0\.5/ { in_s = 1; print; next }
+    in_s && /^## / && !/^## Step 0\.5/ { exit }
+    in_s { print }
+  ' "$path")
+  # Six-way fail-open enumeration — distinct class markers.
+  printf '%s\n' "$step05" | grep -qF 'probe script' \
+    || { echo "$path Step 0.5 missing fail-open class 1 'probe script' (script-missing)"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'TimeoutError' \
+    || { echo "$path Step 0.5 missing fail-open class 2 'TimeoutError'"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'NonZeroExit' \
+    || { echo "$path Step 0.5 missing fail-open class 3 'NonZeroExit'"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'JSONDecodeError' \
+    || { echo "$path Step 0.5 missing fail-open class 4 'JSONDecodeError'"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'schema' \
+    || { echo "$path Step 0.5 missing fail-open class 5 'schema' (validation)"; return 1; }
+  # Class 6 (receipt-write IOError) lives in stage 4.5 (Step 3 pipeline).
+  grep -qF 'receipt write failed' "$path" \
+    || { echo "$path missing fail-open class 6 (receipt write failed) in Step 3 stage 4.5"; return 1; }
+  # Side-map (iter-4 X19) + provisional_id coupling (iter-5 X22).
+  printf '%s\n' "$step05" | grep -qF 'probe_receipt_metadata_by_provisional_id' \
+    || { echo "$path Step 0.5 missing side-map key (iter-4 X19)"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'probe_findings' \
+    || { echo "$path Step 0.5 missing probe_findings output list"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'probe_failures_seed' \
+    || { echo "$path Step 0.5 missing probe_failures_seed list (iter-4 X20)"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'mode == "off"' \
+    || { echo "$path Step 0.5 missing off-floor enforcement 'mode == \"off\"'"; return 1; }
+  echo "$path Step 0.5 present, ordered between Step 0 and Step 1, six fail-open classes + side-map + off-floor enforcement"
+}
+
+check_probe_e_cli_downgrade() {
+  # skills/cross-audit/SKILL.md Phase 0 documents --probe-downgrade <id>=off
+  # CLI semantics: effective mode 'off' means Step 0.5 does not dispatch, no
+  # receipts produced. This helper is a documentation smoke — asserts the skill
+  # prose declares the downgrade-to-off path. End-to-end dispatch-skipping is
+  # exercised by the agent prose (Step 0.5 'if mode == "off": continue').
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF -- '--probe-downgrade' "$path" \
+    || { echo "$path missing '--probe-downgrade' CLI flag reference"; return 1; }
+  grep -qE 'downgrade-only|block → warn → shadow → off|block \\-> warn \\-> shadow \\-> off' "$path" \
+    || { echo "$path missing downgrade-only ladder (block→warn→shadow→off)"; return 1; }
+  # Probe-E specific cue — the flag must apply to probe ids including 'e'.
+  grep -qE '<id>=<mode>|id=mode' "$path" \
+    || { echo "$path missing generic '<id>=<mode>' placeholder for --probe-downgrade"; return 1; }
+  # Agent Step 0.5 off-floor enforcement (the mode==off dispatch-skip guards
+  # the downgraded mode from producing receipts).
+  local agent="agents/cross-auditor.md"
+  grep -qF 'mode == "off"' "$agent" \
+    || { echo "$agent Step 0.5 missing mode==off short-circuit (downgrade semantics require dispatch skip)"; return 1; }
+  echo "--probe-downgrade CLI flag documented with downgrade-only ladder; agent enforces mode==off dispatch skip"
+}
+
+check_probe_e_downgrade_upgrade_refused_when_yaml_off() {
+  # iter-1 X8 — --probe-downgrade e=shadow against absent YAML (effective off)
+  # is refused by skill Phase 0. Asserts the skill prose documents the off-
+  # floor refusal rule AND that Step 0.5 sees probe_modes[e]=off → zero
+  # dispatch.
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE 'off is the (floor|lower bound)' "$path" \
+    || { echo "$path missing 'off is the floor / lower bound' rule (X9 off-floor)"; return 1; }
+  grep -qE 'upgrade refused|no-op upgrade refused' "$path" \
+    || { echo "$path missing 'upgrade refused' phrase for --probe-downgrade against off"; return 1; }
+  grep -qE 'absent(-| )key (default|.*floor)' "$path" \
+    || { echo "$path missing absent-key-default==floor rationale"; return 1; }
+  # Agent-side: off-floor is enforced at Step 0.5 via mode==off short-circuit.
+  local agent="agents/cross-auditor.md"
+  grep -qF 'mode == "off"' "$agent" \
+    || { echo "$agent Step 0.5 missing mode==off short-circuit (upgrade-refused semantics require dispatch skip)"; return 1; }
+  echo "X8 off-floor refusal documented in skill; agent Step 0.5 enforces mode==off dispatch skip"
+}
+
+# Shared helper: emulate the orchestrator's fail-open path by invoking
+# hooks/lib/render_findings.sh with a synthesized probe_failures[] seed and
+# asserting the degraded banner renders.
+_probe_e_fail_open_render() {
+  # $1 = failure_reason string. Writes stdin JSON to renderer with a single
+  # probe_failures entry, empty findings, empty probe_modes, scorer_status=ok.
+  local reason="$1"
+  local remediation="$2"
+  local stdin_payload
+  stdin_payload=$(python3 -c "
+import json,sys
+payload = {
+  'findings': [],
+  'probe_modes': {'e': 'shadow'},
+  'probe_failures': [{'probe_id': 'E', 'reason': sys.argv[1], 'remediation': sys.argv[2]}],
+  'scorer_status': 'ok',
+  'scorer_failure_reason': '',
+}
+sys.stdout.write(json.dumps(payload))
+" "$reason" "$remediation")
+  local rendered
+  rendered=$(printf '%s' "$stdin_payload" | bash hooks/lib/render_findings.sh 2>/tmp/smoke-probe-e-render-err.$$) || {
+    echo "render_findings.sh failed; stderr:"
+    cat /tmp/smoke-probe-e-render-err.$$
+    rm -f /tmp/smoke-probe-e-render-err.$$
+    return 1
+  }
+  rm -f /tmp/smoke-probe-e-render-err.$$
+  printf '%s\n' "$rendered" | grep -qF 'Probe(s) fail-opened this iteration' \
+    || { echo "rendered output missing degraded-mode banner line"; printf '%s\n' "$rendered" | head -5; return 1; }
+  printf '%s\n' "$rendered" | grep -qF "probe:E" \
+    || { echo "rendered banner missing probe:E entry"; return 1; }
+  printf '%s\n' "$rendered" | grep -qF "$reason" \
+    || { echo "rendered banner missing expected reason substring '$reason'"; return 1; }
+  return 0
+}
+
+check_probe_e_fail_open_banner() {
+  # X4 — fail-open class 3 (NonZeroExit). Agent Step 0.5 catches NonZeroExit
+  # and seeds probe_failures_seed[] with a populated reason/remediation
+  # triple; synth_probe_failures union emits to renderer; renderer renders
+  # the degraded-mode banner line. Helper asserts the rendered banner
+  # surfaces the reason substring.
+  _probe_e_fail_open_render \
+    "probe exited non-zero: ast.parse failed on src/foo.py" \
+    "re-run /cross-audit after checking probe_E stderr logs" \
+    || return 1
+  # Also assert the agent prose contains the NonZeroExit branch.
+  grep -qF 'probe exited non-zero' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md missing 'probe exited non-zero' Step 0.5 branch"; return 1; }
+  echo "fail-open banner renders (NonZeroExit class); agent prose declares the branch"
+}
+
+check_probe_e_fail_open_schema_invalid_body() {
+  # iter-7 X30 rename — fail-open class 5 (schema validation failure). The
+  # probe stdout IS valid JSON but missing a required key (e.g. `findings`).
+  # Schema validator rejects with a short error; Step 0.5 synthesizes a
+  # probe_failures_seed entry with 'probe output schema invalid:' reason.
+  # Renderer surfaces the banner line.
+  _probe_e_fail_open_render \
+    "probe output schema invalid: missing required key 'findings'" \
+    "fix probe_E to conform to §3.3 stdout shape" \
+    || return 1
+  grep -qF 'probe output schema invalid' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md missing 'probe output schema invalid' Step 0.5 branch"; return 1; }
+  echo "fail-open banner renders (schema-invalid-body class, iter-7 X30 rename); agent prose declares the branch"
+}
+
+check_probe_e_fail_open_write_receipt_failure() {
+  # X4 — fail-open class 6 (receipt-write IOError/OSError, stage 4.5). When
+  # the KB mount is read-only the stage-4.5 write raises, Step 3 sets the
+  # finding's probe_receipt=None and seeds probe_failures_seed[] with a
+  # 'receipt write failed:' reason. Helper asserts the agent prose declares
+  # the branch and the renderer surfaces the banner line.
+  _probe_e_fail_open_render \
+    "receipt write failed: [Errno 30] Read-only file system: '/kb/security/2026-04-21-foo-probe-receipts/X5.json'" \
+    "check KB mount is writable + re-run /cross-audit" \
+    || return 1
+  grep -qF 'receipt write failed' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md missing 'receipt write failed' stage-4.5 branch (fail-open class 6)"; return 1; }
+  # Also assert the pair (receipt write failed, check KB mount).
+  grep -qF 'check KB mount is writable' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md stage-4.5 branch missing remediation 'check KB mount is writable'"; return 1; }
+  # Also exercise the full stage-4.5 side-map + receipt-write loop — if the
+  # agent's stage-4.5 prose drifts (e.g. stops preserving provisional_id),
+  # the seed-and-render layer above doesn't catch it. Assert the prose pins:
+  grep -qE 'any\(s\.startswith\("probe:"\) for s in finding\["sources"\]\)' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md stage-4.5 missing probe-sourced predicate (Foundation §3.3 X2 / iter-3 X18)"; return 1; }
+  grep -qE 'provisional_id' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md stage-4.5 missing provisional_id preservation (iter-5 X22/X24)"; return 1; }
+  echo "fail-open banner renders (receipt-write class, stage 4.5); agent prose declares branch + remediation + probe-sourced predicate + provisional_id preservation"
 }
