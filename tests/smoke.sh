@@ -3224,6 +3224,10 @@ check "check_probe_f_downgrade_upgrade_refused_when_yaml_off" check_probe_f_down
 check "check_probe_f_corpus_exists" check_probe_f_corpus_exists
 check "check_probe_f_dedupe_with_llm" check_probe_f_dedupe_with_llm
 check "check_probe_f_merged_receipt_written" check_probe_f_merged_receipt_written
+# Step 5 — docs/example surface (2 helpers; distinctive-keyword-per-axis
+# calibration per X16 iter-5 + X17 iter-6).
+check "check_yaml_example_probes_f_hint" check_yaml_example_probes_f_hint
+check "check_docs_kb_discovery_probe_f_row" check_docs_kb_discovery_probe_f_row
 echo
 
 

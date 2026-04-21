@@ -2798,6 +2798,58 @@ check_probe_f_detector_clean_when_docstring_budget_only() {
   _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/11-docstring-budget-only
 }
 
+check_yaml_example_probes_f_hint() {
+  # .ai-dev-team.yml.example's commented cross_audit.probes.f: line must
+  # carry (a) the commented `f: { mode: off }` structural line; and within
+  # a 4-line window around it: (b) spec-slug token `probe-f-cardinality`,
+  # (c) one of `shadow|live evidence|graduation` (graduation-path hint),
+  # (d) one of `missing-cursor|cardinality|pagination` (detector-specific
+  # term). Distinctive-keyword-per-axis calibration (X16 iter-5 + X17
+  # iter-6 — robust to minor prose edits; §3.7 quoted YAML block remains
+  # authoritative for on-disk shape, wrap-respecting across `#` lines).
+  local path=".ai-dev-team.yml.example"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE '^#\s+f:\s*\{\s*mode:\s*off\s*\}' "$path" \
+    || { echo "$path missing 'f: { mode: off }' commented probes.f line"; return 1; }
+  # Extract a window around the `f:` line (the line + 6 following — allows
+  # the wrap-respecting §3.7 comment form to fit).
+  local window
+  window=$(grep -nA6 -E '^#\s+f:\s*\{\s*mode:\s*off\s*\}' "$path" | head -8)
+  printf '%s\n' "$window" | grep -qF 'probe-f-cardinality' \
+    || { echo "$path probes.f comment missing spec-slug 'probe-f-cardinality' within window"; return 1; }
+  printf '%s\n' "$window" | grep -qE 'shadow|live evidence|graduation' \
+    || { echo "$path probes.f comment missing 'shadow'/'live evidence'/'graduation' hint"; return 1; }
+  printf '%s\n' "$window" | grep -qE 'missing-cursor|cardinality|pagination' \
+    || { echo "$path probes.f comment missing 'missing-cursor'/'cardinality'/'pagination' detector term"; return 1; }
+  echo "$path probes.f comment has spec slug + shadow/graduation hint + detector term"
+}
+
+check_docs_kb_discovery_probe_f_row() {
+  # docs/kb-discovery.md has a probe-F row in the reference table per §3.7.
+  # Distinctive-keyword-per-axis calibration (X17 iter-6): each column
+  # carries its distinctive keyword — Detector: `missing-cursor`;
+  # Trigger: `paging-method-call` or `paging`; Scope: `same-file`;
+  # v1-limitation: BOTH `Python only` AND `single failure_kind`.
+  local path="docs/kb-discovery.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE '\| v1 limitation \|' "$path" \
+    || { echo "$path missing reference table 'v1 limitation' column header"; return 1; }
+  local row
+  row=$(grep -E '^\| f \|' "$path" | head -1)
+  [[ -n "$row" ]] || { echo "$path missing '| f |' probe-F row"; return 1; }
+  echo "$row" | grep -qiF 'missing-cursor' \
+    || { echo "$path probe-F row missing 'missing-cursor' detector summary"; return 1; }
+  echo "$row" | grep -qiE 'paging-method-call|paging' \
+    || { echo "$path probe-F row missing 'paging-method-call'/'paging' trigger"; return 1; }
+  echo "$row" | grep -qiF 'same-file' \
+    || { echo "$path probe-F row missing 'same-file' scope-reads column"; return 1; }
+  echo "$row" | grep -qiF 'Python only' \
+    || { echo "$path probe-F row missing 'Python only' v1-limitation"; return 1; }
+  echo "$row" | grep -qiF 'single failure_kind' \
+    || { echo "$path probe-F row missing 'single failure_kind' v1-limitation"; return 1; }
+  echo "$path probe-F row present (detector + trigger + scope + Python-only + single-failure_kind v1-limitations)"
+}
+
 check_probe_f_corpus_exists() {
   # Frozen-replay corpus lives in the KB (outside the plugin repo). When the
   # corpus path is missing (CI without Obsidian vault, fresh clone, etc.) the
