@@ -8,6 +8,14 @@ set -u
 PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PLUGIN_ROOT" || exit 2
 
+# Probe E frozen-replay corpus — KB-local path resolved by the smoke harness
+# (Step 4 helper `check_probe_e_corpus_exists`). Defaults to the author's KB
+# path; override via PROBE_E_CORPUS_ROOT env var in CI or on other machines.
+# When the path is missing, the helper skips gracefully (corpus lives OUTSIDE
+# the plugin repo — KB/Obsidian vault — so CI-without-KB still passes).
+PROBE_E_CORPUS_ROOT="${PROBE_E_CORPUS_ROOT:-/Users/th13f/dev/personal/finance-learning/repos/ai-dev-team/research/cross-audit-probe-e}"
+export PROBE_E_CORPUS_ROOT
+
 PASS=0
 FAIL=0
 FAILURES=()
@@ -3161,6 +3169,14 @@ check "check_probe_e_downgrade_upgrade_refused_when_yaml_off" check_probe_e_down
 check "check_probe_e_fail_open_banner" check_probe_e_fail_open_banner
 check "check_probe_e_fail_open_schema_invalid_body" check_probe_e_fail_open_schema_invalid_body
 check "check_probe_e_fail_open_write_receipt_failure" check_probe_e_fail_open_write_receipt_failure
+# Step 4 — operability smoke: corpus replay + probe+LLM dedupe + merged-
+# receipt end-to-end. check_probe_e_corpus_exists SKIPs gracefully when the
+# KB-local corpus root is not available (e.g. fresh clone / CI without
+# Obsidian vault); PROBE_E_CORPUS_ROOT override documented at the top of
+# this file.
+check "check_probe_e_corpus_exists" check_probe_e_corpus_exists
+check "check_probe_e_dedupe_with_llm" check_probe_e_dedupe_with_llm
+check "check_probe_e_merged_receipt_written" check_probe_e_merged_receipt_written
 echo
 
 
