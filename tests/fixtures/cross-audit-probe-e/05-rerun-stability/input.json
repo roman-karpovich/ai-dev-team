@@ -1,0 +1,13 @@
+{
+  "diff": {
+    "added_lines": {
+      "src/good.py": [5],
+      "src/bad.py": [5]
+    }
+  },
+  "changed_python_files": ["src/good.py", "src/bad.py"],
+  "repo_root": ".",
+  "audit_slug": "2026-04-21-fixture-05",
+  "base_ref": "main",
+  "mode": "shadow"
+}

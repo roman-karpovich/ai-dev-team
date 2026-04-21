@@ -1,0 +1,12 @@
+{
+  "diff": {
+    "added_lines": {
+      "src/foo.py": [5]
+    }
+  },
+  "changed_python_files": ["src/foo.py"],
+  "repo_root": ".",
+  "audit_slug": "2026-04-21-fixture-01",
+  "base_ref": "main",
+  "mode": "shadow"
+}
