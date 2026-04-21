@@ -3,7 +3,7 @@
 | ID | Severity | Issue | Source | Mode | Confidence | Status |
 |----|----------|-------|--------|------|------------|--------|
 | X1 | CRITICAL | Missing input validation on /api/v1/deposit | claude+codex |  | 90 | OPEN |
-| X2 | HIGH | Race condition in reward claim flow | claude |  | 60 | OPEN |
+| X2 | HIGH | Race condition in reward claim flow | claude |  | 85 | OPEN |
 
 ## Details
 
@@ -32,5 +32,5 @@
 - **Probe receipt**: null
 - **Probe version**: null
 - **Eligible reason**: null
-- **Confidence**: 60
+- **Confidence**: 85
 - **Status**: OPEN

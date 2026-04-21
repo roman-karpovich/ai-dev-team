@@ -1,0 +1,23 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "severity": "HIGH",
+      "title": "Possible race condition in retry queue",
+      "sources": ["claude"],
+      "file": "src/stellar/retry.py:52",
+      "description": "claude flagged a possible race but evidence is weak.",
+      "fix": "Add a lock around the queue.push call.",
+      "mode_at_emit": null,
+      "blocking": false,
+      "probe_receipt": null,
+      "probe_version": null,
+      "eligible_reason": null,
+      "confidence": 45,
+      "status": "OPEN"
+    }
+  ],
+  "probe_modes": {},
+  "probe_failures": [],
+  "scorer_status": "ok"
+}

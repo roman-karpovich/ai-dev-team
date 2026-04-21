@@ -1276,6 +1276,64 @@ check_dedupe_merged_probe_llm_sources_list() {
 
 # --- Step 4: cross_audit.probes.<id>.mode config surface ---
 
+# --- Step 6: Extended renderer — advisory section + merged routing + combined fail-open ---
+
+check_findings_renderer_low_confidence_section_fixture_a() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/a-low-only-llm-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/a-low-only-llm-expected.md
+}
+
+check_findings_renderer_low_confidence_section_fixture_b() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/b-mixed-high-low-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/b-mixed-high-low-expected.md
+}
+
+check_findings_renderer_scorer_fail_open_fixture_c() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/c-scorer-failed-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/c-scorer-failed-expected.md
+}
+
+check_findings_renderer_merged_probe_llm_routing_fixture_d() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/d-merged-probe-shadow-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/d-merged-probe-shadow-expected.md
+}
+
+check_findings_renderer_merged_probe_llm_routing_fixture_e() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/e-merged-probe-warn-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/e-merged-probe-warn-expected.md
+}
+
+check_findings_renderer_combined_fail_open_banner_fixture_f() {
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/f-combined-fail-open-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/f-combined-fail-open-expected.md
+}
+
+check_findings_renderer_low_confidence_section() {
+  check_findings_renderer_low_confidence_section_fixture_a || return 1
+  check_findings_renderer_low_confidence_section_fixture_b || return 1
+  echo "low-confidence LLM advisory-section fixtures (a low-only, b mixed) byte-match"
+}
+
+check_findings_renderer_scorer_fail_open() {
+  check_findings_renderer_scorer_fail_open_fixture_c
+}
+
+check_findings_renderer_merged_probe_llm_routing() {
+  check_findings_renderer_merged_probe_llm_routing_fixture_d || return 1
+  check_findings_renderer_merged_probe_llm_routing_fixture_e || return 1
+  echo "merged probe+LLM routing fixtures (d shadow, e warn) byte-match"
+}
+
+check_findings_renderer_combined_fail_open_banner() {
+  check_findings_renderer_combined_fail_open_banner_fixture_f
+}
+
 # --- Step 5: --probe-downgrade CLI flag + Phase 3 UX + cross-auditor input-surface ---
 
 check_skill_md_probe_downgrade_flag() {

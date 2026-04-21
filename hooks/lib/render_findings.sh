@@ -72,6 +72,7 @@ findings = payload.get("findings")
 probe_modes = payload.get("probe_modes")
 probe_failures = payload.get("probe_failures")
 scorer_status = payload.get("scorer_status", "ok")
+scorer_failure_reason = payload.get("scorer_failure_reason", "")
 
 if findings is None or not isinstance(findings, list):
     die("top-level 'findings' must be a list")
@@ -81,6 +82,8 @@ if probe_failures is None or not isinstance(probe_failures, list):
     die("top-level 'probe_failures' must be a list")
 if scorer_status not in ("ok", "failed"):
     die(f"top-level 'scorer_status' must be 'ok' or 'failed' (got {scorer_status!r})")
+if scorer_status == "failed" and not isinstance(scorer_failure_reason, str):
+    die("'scorer_failure_reason' must be a string when scorer_status == 'failed'")
 
 # ---- Validate probe_failures[] schema (X10 hard-stop contract) --------------
 REQUIRED_FAILURE_FIELDS = ("probe_id", "reason", "remediation")
@@ -124,38 +127,67 @@ def render_scalar(value):
     return str(value)
 
 
-def classify_section(finding):
-    """Return 'shadow' or 'summary' — the section this finding lands in (Step 2 scope).
-    Advisory routing arrives in Step 6."""
+def classify_section(finding, scorer_failed):
+    """Return 'shadow', 'summary', or 'advisory' — the section this finding
+    lands in per §3.5a single routing cascade (first match wins):
+
+    1. Any probe:* in sources[] → route by mode_at_emit:
+       - shadow → Shadow section
+       - warn | block → Summary section
+       (Probe mode DOMINATES even for merged probe+LLM — LLM half is absorbed.)
+    2. Pure-LLM with confidence >= 80 → Summary
+    3. Pure-LLM with confidence < 80 → Advisory
+       UNLESS scorer failed — in which case ALL pure-LLM land in Summary
+       (§3.5a fail-open: renderer cannot trust low confidence values to route).
+    """
     if is_probe_sourced(finding):
         mode = finding.get("mode_at_emit")
         if mode == "shadow":
             return "shadow"
-        # warn | block | anything else (probes shouldn't emit other modes) → Summary.
         return "summary"
-    # Pure-LLM — Summary in Step 2 (Step 6 may reroute <80 to advisory).
-    return "summary"
+    # Pure-LLM
+    if scorer_failed:
+        return "summary"
+    conf = finding.get("confidence", 0)
+    if isinstance(conf, int) and conf >= 80:
+        return "summary"
+    return "advisory"
 
 
 # ---- Emit output ------------------------------------------------------------
 out = []
+scorer_failed = (scorer_status == "failed")
 
-# Degraded-mode banner — top of findings.md when any probe fail-opened.
-if probe_failures:
-    out.append("⚠️  Probe(s) fail-opened this iteration — findings may be incomplete:")
-    for pf in probe_failures:
+# Degraded-mode banner — top of findings.md when any probe fail-opened OR the
+# scorer fail-opened. Both lines render inside a single banner block (§3.5a
+# X6 combined-fail layout).
+if probe_failures or scorer_failed:
+    if probe_failures:
+        out.append("⚠️  Probe(s) fail-opened this iteration — findings may be incomplete:")
+        for pf in probe_failures:
+            out.append(
+                f"  - probe:{pf['probe_id']} (reason: {pf['reason']}; "
+                f"remediation: {pf['remediation']})"
+            )
+    if scorer_failed:
         out.append(
-            f"  - probe:{pf['probe_id']} (reason: {pf['reason']}; "
-            f"remediation: {pf['remediation']})"
+            f"⚠️  Haiku finding-scorer unavailable ({scorer_failure_reason}). "
+            "LLM findings retain legacy self-reported confidence labels "
+            "mapped to pseudo-confidence — rerun /cross-audit when scorer "
+            "is restored for full decoupled scoring."
         )
     out.append("")  # blank line before Summary
 
-# Partition findings by section.
+# Partition findings by section per §3.5a routing cascade.
 summary = []
 shadow = []
+advisory = []
 for f in findings:
-    if classify_section(f) == "shadow":
+    section = classify_section(f, scorer_failed)
+    if section == "shadow":
         shadow.append(f)
+    elif section == "advisory":
+        advisory.append(f)
     else:
         summary.append(f)
 
@@ -167,6 +199,23 @@ if summary:
     out.append("| ID | Severity | Issue | Source | Mode | Confidence | Status |")
     out.append("|----|----------|-------|--------|------|------------|--------|")
     for f in summary:
+        mode = f.get("mode_at_emit") or ""
+        src = render_source_cell(f.get("sources") or [])
+        out.append(
+            f"| {f['id']} | {f['severity']} | {f['title']} | {src} | {mode} | "
+            f"{f['confidence']} | {f['status']} |"
+        )
+    out.append("")
+
+# ## Low-confidence LLM findings (advisory) table — when any pure-LLM
+# findings scored below 80. Suppressed entirely when scorer failed (all
+# pure-LLM already rerouted to Summary via classify_section).
+if advisory:
+    out.append("## Low-confidence LLM findings (advisory)")
+    out.append("")
+    out.append("| ID | Severity | Issue | Source | Mode | Confidence | Status |")
+    out.append("|----|----------|-------|--------|------|------------|--------|")
+    for f in advisory:
         mode = f.get("mode_at_emit") or ""
         src = render_source_cell(f.get("sources") or [])
         out.append(
@@ -190,8 +239,8 @@ if shadow:
         )
     out.append("")
 
-# ## Details — combined block for summary + shadow, in input order.
-all_findings = summary + shadow
+# ## Details — combined block for summary + advisory + shadow, in input order.
+all_findings = summary + advisory + shadow
 if all_findings:
     out.append("## Details")
     out.append("")
@@ -211,6 +260,13 @@ if all_findings:
         out.append(f"- **Probe version**: {render_scalar(f.get('probe_version'))}")
         out.append(f"- **Eligible reason**: {render_scalar(f.get('eligible_reason'))}")
         out.append(f"- **Confidence**: {f['confidence']}")
+        # `legacy_pseudo_confidence: true` detail renders only when the flag
+        # is truthy on the entry. Per §3.5a it's set on pure-LLM entries
+        # during scorer fail-open AND on round-trip legacy migrations; it is
+        # NEVER set on merged probe+LLM entries (probe pins confidence=100
+        # independently of scorer state).
+        if f.get("legacy_pseudo_confidence"):
+            out.append(f"- **Legacy pseudo-confidence**: true")
         out.append(f"- **Status**: {f['status']}")
 
 sys.stdout.write("\n".join(out) + "\n")
