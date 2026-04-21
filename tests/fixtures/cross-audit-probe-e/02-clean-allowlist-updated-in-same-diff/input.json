@@ -1,7 +1,7 @@
 {
   "diff": {
     "added_lines": {
-      "src/foo.py": [5, 12]
+      "src/foo.py": [5, 13]
     }
   },
   "changed_python_files": ["src/foo.py"],

@@ -3143,6 +3143,17 @@ check "check_scorer_fixture_k_probe_failures_synthesis_explicit_strings" check_s
 check "check_scorer_fixture_l_probe_failures_fallback_generic_strings" check_scorer_fixture_l_probe_failures_fallback_generic_strings
 echo
 
+# --- Cross-audit probe E (spec 2026-04-21-probe-e-diff-scope-leak) ---
+echo "Cross-audit probe E:"
+# Step 2 — probe detector (6 helpers: 5 fixture byte-diffs + rerun-stability).
+check "check_probe_e_detector_fires_on_allowlist_leak" check_probe_e_detector_fires_on_allowlist_leak
+check "check_probe_e_detector_clean_when_allowlist_updated" check_probe_e_detector_clean_when_allowlist_updated
+check "check_probe_e_detector_ineligible_no_additions" check_probe_e_detector_ineligible_no_additions
+check "check_probe_e_detector_ineligible_collection_too_small" check_probe_e_detector_ineligible_collection_too_small
+check "check_probe_e_receipt_rerun_stable" check_probe_e_receipt_rerun_stable
+check "check_probe_e_changed_test_file_skipped" check_probe_e_changed_test_file_skipped
+echo
+
 
 echo
 echo "Passed: $PASS"

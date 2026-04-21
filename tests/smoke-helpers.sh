@@ -1973,3 +1973,107 @@ check_probe_failures_schema_hard_stop() {
   rm -f /tmp/smoke-hardstop-out.$$ /tmp/smoke-hardstop-err.$$
   echo "render_findings.sh correctly hard-stopped on malformed probe_failures[] (exit=$exit_code, stderr non-empty)"
 }
+
+# ============================================================================
+# Cross-audit probe E (spec 2026-04-21-probe-e-diff-scope-leak)
+# ============================================================================
+
+# Shared helper: run hooks/lib/probe_e.sh against a fixture dir and byte-diff
+# the findings array AND receipt_metadata object separately. The probe is
+# invoked with cwd = $fixture_dir so `repo_root: "."` resolves inside the
+# fixture. PROBE_E_FAKE_NOW is set for determinism so emitted_at byte-matches
+# the expected fixture value.
+_probe_e_byte_diff() {
+  # $1 = fixture dir (relative to plugin root)
+  local fdir="$1"
+  local input="$fdir/input.json"
+  local expected_findings="$fdir/expected-findings.json"
+  local expected_meta="$fdir/expected-receipt-metadata.json"
+  [ -r "$input" ] || { echo "$input not readable"; return 1; }
+  [ -r "$expected_findings" ] || { echo "$expected_findings not readable"; return 1; }
+  [ -r "$expected_meta" ] || { echo "$expected_meta not readable"; return 1; }
+  local plugin_root
+  plugin_root="$(pwd)"
+  local out_tmp="/tmp/smoke-probe-e-out.$$"
+  local exit_code=0
+  ( cd "$fdir" \
+    && PROBE_E_FAKE_NOW="2026-04-21T14:23:17Z" \
+    bash "$plugin_root/hooks/lib/probe_e.sh" < input.json ) >"$out_tmp" 2>/tmp/smoke-probe-e-err.$$ || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "probe_e.sh exited $exit_code against $fdir; stderr:"
+    head -5 /tmp/smoke-probe-e-err.$$
+    rm -f "$out_tmp" /tmp/smoke-probe-e-err.$$
+    return 1
+  fi
+  rm -f /tmp/smoke-probe-e-err.$$
+  # Canonicalize actual + expected per sort_keys.
+  local actual_findings actual_meta exp_findings exp_meta
+  actual_findings=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d["findings"],sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
+  actual_meta=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d["receipt_metadata"],sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
+  exp_findings=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected_findings")
+  exp_meta=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected_meta")
+  rm -f "$out_tmp"
+  if [ "$actual_findings" != "$exp_findings" ]; then
+    echo "probe_e findings mismatch for $fdir:"
+    diff <(printf '%s\n' "$actual_findings") <(printf '%s\n' "$exp_findings") | head -10
+    return 1
+  fi
+  if [ "$actual_meta" != "$exp_meta" ]; then
+    echo "probe_e receipt_metadata mismatch for $fdir:"
+    diff <(printf '%s\n' "$actual_meta") <(printf '%s\n' "$exp_meta") | head -10
+    return 1
+  fi
+  echo "probe_e output byte-matches expected for $fdir"
+}
+
+check_probe_e_detector_fires_on_allowlist_leak() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/01-positive-allowlist-leak
+}
+
+check_probe_e_detector_clean_when_allowlist_updated() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/02-clean-allowlist-updated-in-same-diff
+}
+
+check_probe_e_detector_ineligible_no_additions() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/03-ineligible-no-string-additions
+}
+
+check_probe_e_detector_ineligible_collection_too_small() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/04-ineligible-collection-too-small
+}
+
+check_probe_e_changed_test_file_skipped() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/07-changed-test-file-skipped
+}
+
+check_probe_e_receipt_rerun_stable() {
+  # Two independent invocations against fixture 05 must produce byte-identical
+  # findings arrays AND byte-identical receipt_metadata.trigger_input_hash +
+  # skipped_files (X21 per-file fail-open coverage). emitted_at is pinned by
+  # PROBE_E_FAKE_NOW so the whole receipt matches; the strict per-field check
+  # below enforces the §3.3-listed rerun-stability fields explicitly.
+  local fdir="tests/fixtures/cross-audit-probe-e/05-rerun-stability"
+  local plugin_root; plugin_root="$(pwd)"
+  local out1 out2
+  out1=$( ( cd "$fdir" && PROBE_E_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_e.sh" < input.json ) )
+  out2=$( ( cd "$fdir" && PROBE_E_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_e.sh" < input.json ) )
+  if [ "$out1" != "$out2" ]; then
+    echo "probe_e output differs between two runs against $fdir (non-deterministic)"
+    diff <(printf '%s\n' "$out1") <(printf '%s\n' "$out2") | head -10
+    return 1
+  fi
+  # Byte-diff against expected (fires detection path + skipped_files).
+  _probe_e_byte_diff "$fdir" || return 1
+  # Explicit per-field rerun-stability assertions per §3.6 fixture-05 contract.
+  local h1 h2 sk1 sk2 f1 f2
+  h1=$(printf '%s\n' "$out1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["receipt_metadata"]["trigger_input_hash"])')
+  h2=$(printf '%s\n' "$out2" | python3 -c 'import json,sys; print(json.load(sys.stdin)["receipt_metadata"]["trigger_input_hash"])')
+  sk1=$(printf '%s\n' "$out1" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["receipt_metadata"]["skipped_files"]))')
+  sk2=$(printf '%s\n' "$out2" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["receipt_metadata"]["skipped_files"]))')
+  f1=$(printf '%s\n' "$out1" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["findings"],sort_keys=True,separators=(",",":"),ensure_ascii=False))')
+  f2=$(printf '%s\n' "$out2" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["findings"],sort_keys=True,separators=(",",":"),ensure_ascii=False))')
+  [ "$h1" = "$h2" ] || { echo "trigger_input_hash not stable: $h1 vs $h2"; return 1; }
+  [ "$sk1" = "$sk2" ] || { echo "skipped_files not stable: $sk1 vs $sk2"; return 1; }
+  [ "$f1" = "$f2" ] || { echo "findings not stable across runs"; return 1; }
+  echo "probe_e receipt rerun-stability: trigger_input_hash + skipped_files + findings byte-identical across two runs"
+}
