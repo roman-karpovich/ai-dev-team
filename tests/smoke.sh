@@ -3218,6 +3218,12 @@ check "check_probe_f_detector_alias_coverage" check_probe_f_detector_alias_cover
 # harness — generic Step 0.5 dispatch coverage inherited from probe E).
 check "check_probe_f_cli_downgrade" check_probe_f_cli_downgrade
 check "check_probe_f_downgrade_upgrade_refused_when_yaml_off" check_probe_f_downgrade_upgrade_refused_when_yaml_off
+# Step 4 — operability smoke: corpus replay + probe+LLM dedupe + merged-
+# receipt end-to-end. check_probe_f_corpus_exists SKIPs gracefully when
+# PROBE_F_CORPUS_ROOT is unset or not a directory (KB-local artefact).
+check "check_probe_f_corpus_exists" check_probe_f_corpus_exists
+check "check_probe_f_dedupe_with_llm" check_probe_f_dedupe_with_llm
+check "check_probe_f_merged_receipt_written" check_probe_f_merged_receipt_written
 echo
 
 

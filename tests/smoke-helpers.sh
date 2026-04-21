@@ -2798,6 +2798,261 @@ check_probe_f_detector_clean_when_docstring_budget_only() {
   _probe_f_byte_diff tests/fixtures/cross-audit-probe-f/11-docstring-budget-only
 }
 
+check_probe_f_corpus_exists() {
+  # Frozen-replay corpus lives in the KB (outside the plugin repo). When the
+  # corpus path is missing (CI without Obsidian vault, fresh clone, etc.) the
+  # helper SKIPs gracefully — the corpus is a human-curated soak artefact,
+  # not a CI-blocking invariant. When present: assert 3 snapshot subdirs
+  # exist + corpus MD exists, then run probe F against each snapshot and
+  # assert expected outcomes (hit / clean / clean).
+  local corpus_root="${PROBE_F_CORPUS_ROOT:-}"
+  if [ -z "$corpus_root" ] || [ ! -d "$corpus_root" ]; then
+    echo "probe-F corpus not found at '${corpus_root:-<unset>}' — SKIP (human-curated KB artefact)"
+    return 0
+  fi
+  [ -r "$corpus_root/frozen-replay-corpus.md" ] \
+    || { echo "$corpus_root/frozen-replay-corpus.md missing"; return 1; }
+  local snap_dir="$corpus_root/snapshots"
+  [ -d "$snap_dir" ] || { echo "$snap_dir missing"; return 1; }
+  local plugin_root; plugin_root="$(pwd)"
+  local failures=0
+  local snap_name
+  for snap_name in aqua-bribes-pr-3-step-4 aqua-bribes-pr-3-step-4-fixed-cursor ai-dev-team-foundation-step-2-renderer; do
+    local d="$snap_dir/$snap_name"
+    if [ ! -d "$d" ]; then
+      echo "corpus snapshot dir missing: $d"; failures=$((failures+1)); continue
+    fi
+    if [ ! -r "$d/input.json" ]; then
+      echo "corpus snapshot input.json missing: $d/input.json"; failures=$((failures+1)); continue
+    fi
+    local out
+    out=$( ( cd "$d" && PROBE_F_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_f.sh" < input.json ) 2>/tmp/smoke-probe-f-corpus-err.$$ ) || {
+      echo "probe_f.sh failed on corpus $snap_name; stderr:"; cat /tmp/smoke-probe-f-corpus-err.$$
+      rm -f /tmp/smoke-probe-f-corpus-err.$$
+      failures=$((failures+1)); continue
+    }
+    rm -f /tmp/smoke-probe-f-corpus-err.$$
+    local n_findings
+    n_findings=$(printf '%s\n' "$out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["findings"]))')
+    case "$snap_name" in
+      aqua-bribes-pr-3-step-4)
+        if [ "$n_findings" != "1" ]; then
+          echo "corpus hit case '$snap_name' expected 1 emission, got $n_findings"
+          failures=$((failures+1))
+        fi
+        # Verify the specific hit: paging_symbol=.limit (end_col_offset
+        # tiebreak winner over chained .order), failure_kind=missing_cursor,
+        # enclosing_function=reconcile_bribe_payouts.
+        printf '%s\n' "$out" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if not d['findings']:
+    print('no findings'); sys.exit(1)
+f = d['findings'][0]
+cp = f.get('canonical_payload', {})
+ef = cp.get('enclosing_function')
+if ef != 'reconcile_bribe_payouts':
+    print('enclosing_function mismatch: %r' % (ef,)); sys.exit(1)
+ps = cp.get('paging_symbol')
+if ps != '.limit':
+    print('paging_symbol mismatch: %r' % (ps,)); sys.exit(1)
+fk = cp.get('failure_kind')
+if fk != 'missing_cursor':
+    print('failure_kind mismatch: %r' % (fk,)); sys.exit(1)
+" || { echo "corpus hit case '$snap_name' canonical_payload wrong"; failures=$((failures+1)); }
+        ;;
+      aqua-bribes-pr-3-step-4-fixed-cursor|ai-dev-team-foundation-step-2-renderer)
+        if [ "$n_findings" != "0" ]; then
+          echo "corpus clean-negative case '$snap_name' expected 0 emissions, got $n_findings"
+          failures=$((failures+1))
+        fi
+        ;;
+    esac
+  done
+  if [ "$failures" -ne 0 ]; then
+    echo "probe-F corpus replay: $failures failure(s)"
+    return 1
+  fi
+  echo "probe-F frozen-replay corpus: 3 snapshots replayed (1 hit + 2 clean negatives)"
+}
+
+check_probe_f_dedupe_with_llm() {
+  # Fixture 06 (hand-authored Step 1 per iter-6 X26 carve-out) exercises
+  # hooks/lib/dedupe_findings.sh merge_pair post-iter-5 X23:
+  #   - probe-primary swap (probe appears at members[1], LLM at members[0])
+  #   - extended carried-field list (provisional_id / canonical_payload /
+  #     blocking / fingerprint_anchors)
+  # Byte-diffs the dedupe output against fixture 06 expected-dedupe.json
+  # (X12 iter-3 + X14 iter-4 explicit byte-diff target).
+  local fdir="tests/fixtures/cross-audit-probe-f/06-dedupe-with-llm"
+  local input="$fdir/input.json"
+  local expected="$fdir/expected-dedupe.json"
+  [ -r "$input" ] || { echo "$input not readable"; return 1; }
+  [ -r "$expected" ] || { echo "$expected not readable"; return 1; }
+  local actual
+  actual=$(cat "$input" | bash hooks/lib/dedupe_findings.sh 2>/tmp/smoke-dd-f-err.$$) || {
+    echo "dedupe_findings.sh failed; stderr:"; cat /tmp/smoke-dd-f-err.$$
+    rm -f /tmp/smoke-dd-f-err.$$
+    return 1
+  }
+  rm -f /tmp/smoke-dd-f-err.$$
+  if ! diff <(printf '%s\n' "$actual") "$expected" >/tmp/smoke-dd-f-diff.$$ 2>&1; then
+    echo "fixture 06 dedupe output does not byte-match $expected:"
+    head -20 /tmp/smoke-dd-f-diff.$$
+    rm -f /tmp/smoke-dd-f-diff.$$
+    return 1
+  fi
+  rm -f /tmp/smoke-dd-f-diff.$$
+  # Explicit per-field assertions — catches silent schema drift in the
+  # probe-primary swap / carried-field list (iter-5 X23 preserved: sources
+  # order, provisional_id, canonical_payload, blocking, fingerprint_anchors).
+  local sources provisional canonical blocking anchors
+  sources=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["findings_deduped"][0]["sources"]))')
+  provisional=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; print(json.load(sys.stdin)["findings_deduped"][0].get("provisional_id","<missing>"))')
+  canonical=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; d=json.load(sys.stdin)["findings_deduped"][0]; print("present" if d.get("canonical_payload") else "missing")')
+  blocking=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; d=json.load(sys.stdin)["findings_deduped"][0]; print(d.get("blocking", "<missing>"))')
+  anchors=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; d=json.load(sys.stdin)["findings_deduped"][0]; print("present" if d.get("fingerprint_anchors") else "missing")')
+  [ "$sources" = "probe:F,claude" ] || { echo "sources order wrong: $sources (expected probe:F,claude — X23 probe-first)"; return 1; }
+  [ "$provisional" = "pF-1" ] || { echo "provisional_id not preserved: $provisional (expected pF-1 — X23 carried-field list)"; return 1; }
+  [ "$canonical" = "present" ] || { echo "canonical_payload dropped (expected preserved — X23)"; return 1; }
+  [ "$blocking" = "False" ] || { echo "blocking wrong or dropped: $blocking (expected False — X23)"; return 1; }
+  [ "$anchors" = "present" ] || { echo "fingerprint_anchors dropped (expected preserved — X23)"; return 1; }
+  echo "fixture 06 dedupe byte-matches + probe-first sources + provisional_id/canonical_payload/blocking/fingerprint_anchors preserved (iter-5 X23)"
+}
+
+check_probe_f_merged_receipt_written() {
+  # End-to-end — run fixture 06 through the full Step 3 Consolidation
+  # pipeline (stage 2 emit + stage 3 dedupe + stage 4 scorer-skip-probe +
+  # stage 4.5 side-map + receipt-write). Asserts the resulting receipt file
+  # exists at <audit_slug>-probe-receipts/<merged_final_id>.json with the
+  # 11-field on_disk_receipt_body whose probe_output_hash verifies against
+  # the reconstructed hashed_probe_output_envelope. Probe E precedent
+  # `check_probe_e_merged_receipt_written` — same contract for probe F.
+  local fdir="tests/fixtures/cross-audit-probe-f/06-dedupe-with-llm"
+  [ -r "$fdir/input.json" ] || { echo "$fdir/input.json missing"; return 1; }
+  local work
+  work=$(mktemp -d)
+  trap "rm -rf '$work'" RETURN
+  local kb_root="$work/kb"
+  local audit_slug="2026-04-21-fixture-06-f-merged-receipt"
+  local receipts_dir="$kb_root/security/$audit_slug-probe-receipts"
+  mkdir -p "$receipts_dir"
+  local deduped
+  deduped=$(cat "$fdir/input.json" | bash hooks/lib/dedupe_findings.sh)
+  local result
+  result=$(PROBE_F_DEDUPED="$deduped" RECEIPTS_DIR="$receipts_dir" python3 <<'PY'
+import hashlib, json, os, sys
+
+deduped = json.loads(os.environ["PROBE_F_DEDUPED"])
+receipts_dir = os.environ["RECEIPTS_DIR"]
+
+# Build side-map from the fixture's original probe entry (pF-1) — shape
+# identical to probe E §3.3 receipt_metadata.
+probe_receipt_metadata_by_provisional_id = {
+    "pF-1": {
+        "probe_id": "F",
+        "probe_version": "f.1.0",
+        "trigger_input_hash": "31e0e0b181fc26897034dbe0e2f5b01c2f702f0d7fdfa52c960a8b3fef100211",
+        "scope_files_read": ["src/aqua/reconcile.py"],
+        "skipped_files": [],
+        "emitted_at": "2026-04-21T14:23:17Z",
+        "degraded_mode": False,
+        "eligible_reason": "1 paging-marker add in function lacking cursor-discipline",
+    },
+}
+
+# Final-ID allocation — X24: set id = final_id WHILE preserving
+# provisional_id. Fixture 06's single merged entry → final_id = "X5".
+final_findings = []
+for f in deduped["findings_deduped"]:
+    entry = dict(f)
+    entry["id"] = "X5"
+    final_findings.append(entry)
+
+probe_failures_seed = []
+for finding in final_findings:
+    if not any(s.startswith("probe:") for s in finding["sources"]):
+        continue
+    # Side-map lookup — X19 coupling; key preserved through dedupe (X23) +
+    # final-ID allocation (X24).
+    metadata = probe_receipt_metadata_by_provisional_id[finding["provisional_id"]]
+    hashed_probe_output_envelope = {
+        "probe_id": metadata["probe_id"],
+        "probe_version": metadata["probe_version"],
+        "emitted_findings": [finding["canonical_payload"]],
+    }
+    envelope_bytes = json.dumps(
+        hashed_probe_output_envelope,
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    ).encode("utf-8")
+    probe_output_hash = hashlib.sha256(envelope_bytes).hexdigest()
+    on_disk_receipt_body = {
+        **metadata,
+        "probe_output_hash": probe_output_hash,
+        "mode_at_emit": finding["mode_at_emit"],
+        "emitted_findings": hashed_probe_output_envelope["emitted_findings"],
+    }
+    receipt_path = os.path.join(receipts_dir, f"{finding['id']}.json")
+    try:
+        with open(receipt_path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(
+                on_disk_receipt_body,
+                sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            ))
+    except (IOError, OSError) as e:
+        probe_failures_seed.append({
+            "probe_id": metadata["probe_id"],
+            "failure_reason": f"receipt write failed: {str(e)[:200]}",
+            "failure_remediation": "check KB mount is writable + re-run /cross-audit",
+        })
+        finding["probe_receipt"] = None
+    else:
+        finding["probe_receipt"] = receipt_path
+
+summary = {
+    "final_findings": [{"id": f["id"], "provisional_id": f.get("provisional_id"), "probe_receipt": f.get("probe_receipt"), "sources": f.get("sources")} for f in final_findings],
+    "probe_failures_seed": probe_failures_seed,
+    "envelope_hash_expected": probe_output_hash,
+}
+sys.stdout.write(json.dumps(summary, sort_keys=True))
+PY
+)
+  [ $? -eq 0 ] || { echo "stage-4.5 orchestrator emulation failed"; return 1; }
+  local merged_id merged_provisional merged_sources receipt_path
+  merged_id=$(printf '%s\n' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["final_findings"][0]["id"])')
+  merged_provisional=$(printf '%s\n' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["final_findings"][0]["provisional_id"])')
+  merged_sources=$(printf '%s\n' "$result" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["final_findings"][0]["sources"]))')
+  receipt_path=$(printf '%s\n' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["final_findings"][0]["probe_receipt"] or "")')
+  [ "$merged_id" = "X5" ] || { echo "merged id wrong: $merged_id"; return 1; }
+  [ "$merged_provisional" = "pF-1" ] || { echo "provisional_id not preserved through id-swap (X24): $merged_provisional"; return 1; }
+  [ "$merged_sources" = "probe:F,claude" ] || { echo "merged sources wrong: $merged_sources (expected probe:F,claude probe-first)"; return 1; }
+  [ -n "$receipt_path" ] || { echo "probe_receipt not populated on merged entry"; return 1; }
+  [ -f "$receipt_path" ] || { echo "receipt file not written at $receipt_path"; return 1; }
+  python3 -c "
+import hashlib, json, sys
+body = json.load(open('$receipt_path'))
+expected_keys = {
+    'probe_id', 'probe_version', 'mode_at_emit', 'trigger_input_hash',
+    'probe_output_hash', 'degraded_mode', 'emitted_at', 'eligible_reason',
+    'scope_files_read', 'skipped_files', 'emitted_findings',
+}
+missing = expected_keys - set(body.keys())
+extra = set(body.keys()) - expected_keys
+if missing: print('missing body keys:', missing); sys.exit(1)
+if extra: print('extra body keys:', extra); sys.exit(1)
+env = {'probe_id': body['probe_id'], 'probe_version': body['probe_version'], 'emitted_findings': body['emitted_findings']}
+env_bytes = json.dumps(env, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+recomputed = hashlib.sha256(env_bytes).hexdigest()
+if recomputed != body['probe_output_hash']:
+    print(f'probe_output_hash mismatch: disk={body[\"probe_output_hash\"]} recomputed={recomputed}')
+    sys.exit(1)
+if not isinstance(body['emitted_findings'], list) or len(body['emitted_findings']) != 1:
+    print(f'emitted_findings shape wrong: {body[\"emitted_findings\"]!r}')
+    sys.exit(1)
+" || { echo "11-field body / probe_output_hash verification failed for $receipt_path"; return 1; }
+  echo "merged-receipt end-to-end: fixture 06 → dedupe (X23) → final-ID alloc (X24) → side-map lookup (X19) → 11-field receipt written at $receipt_path with verified probe_output_hash"
+}
+
 check_probe_f_cli_downgrade() {
   # Documentation smoke (X6 iter-1 resolution; follows probe E precedent).
   # Asserts skills/cross-audit/SKILL.md declares the downgrade-to-off path for
