@@ -3084,6 +3084,11 @@ check "check_dedupe_fingerprint_g_exact_merge" check_dedupe_fingerprint_g_exact
 check "check_dedupe_fingerprint_g_partial_related_to" check_dedupe_fingerprint_g_partial
 check "check_dedupe_fingerprint_g_no_match_distinct" check_dedupe_fingerprint_g_no_match
 check "check_dedupe_merged_probe_llm_entry" check_dedupe_merged_probe_llm_sources_list
+
+# Step 4 — cross_audit.probes.<id>.mode config surface (yml example, docs, skill Phase 0).
+check "check_yaml_example_probes_block" check_yaml_example_probes_block
+check "check_docs_kb_discovery_probes_block" check_docs_kb_discovery_probes_block
+check "check_skill_md_phase0_probe_mode_read" check_skill_md_phase0_probe_mode_read
 echo
 
 

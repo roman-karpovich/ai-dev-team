@@ -1274,6 +1274,65 @@ check_dedupe_merged_probe_llm_sources_list() {
     tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-expected.json
 }
 
+# --- Step 4: cross_audit.probes.<id>.mode config surface ---
+
+check_yaml_example_probes_block() {
+  # .ai-dev-team.yml.example carries a commented-out cross_audit.probes block
+  # showing mode values off|shadow|warn|block and documenting that off is the
+  # default when the key is absent.
+  local path=".ai-dev-team.yml.example"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF '# cross_audit:' "$path" \
+    || { echo "$path missing commented-out '# cross_audit:' top-level key"; return 1; }
+  grep -qF '#   probes:' "$path" \
+    || { echo "$path missing commented-out '#   probes:' nested block"; return 1; }
+  # At least one probe-id example row with a valid mode literal.
+  grep -qE '#[[:space:]]+e: \{ mode: (off|shadow|warn|block) \}' "$path" \
+    || { echo "$path missing example probe row '#     e: { mode: off }' (or shadow|warn|block)"; return 1; }
+  # Documents the four-mode kill-switch enumeration.
+  if ! grep -qE '(off|shadow|warn|block).*(off|shadow|warn|block).*(off|shadow|warn|block).*(off|shadow|warn|block)' "$path"; then
+    echo "$path missing enumeration of four modes (off|shadow|warn|block) in the cross_audit.probes commented block"
+    return 1
+  fi
+  echo "$path has cross_audit.probes.<id>.mode commented example block with 4-mode enumeration"
+}
+
+check_docs_kb_discovery_probes_block() {
+  # docs/kb-discovery.md has a section (or subsection) documenting the
+  # cross_audit.probes.<id>.mode YAML schema — default off, modes
+  # off|shadow|warn|block, and one-line-warning on unknown probe id.
+  local path="docs/kb-discovery.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'cross_audit.probes' "$path" \
+    || { echo "$path missing 'cross_audit.probes' schema documentation"; return 1; }
+  # The four mode values must be enumerated in the docs block.
+  grep -qF 'off|shadow|warn|block' "$path" \
+    || grep -qE '`off`.*`shadow`.*`warn`.*`block`' "$path" \
+    || { echo "$path missing four-mode enumeration off|shadow|warn|block"; return 1; }
+  # Unknown-probe-id warning note per §3.4.
+  grep -qE '(unknown probe id|unrecognized probe id|unknown id).*warning' "$path" \
+    || { echo "$path missing 'unknown probe id → warning' note (§3.4 — warn, do not hard-stop)"; return 1; }
+  # Default 'off' when absent.
+  grep -qE 'default.*off|off.*when.*absent|absent.*off' "$path" \
+    || { echo "$path missing 'default off when absent' note for cross_audit.probes"; return 1; }
+  echo "$path has cross_audit.probes.<id>.mode documentation with mode enum + default-off + unknown-id warning"
+}
+
+check_skill_md_phase0_probe_mode_read() {
+  # skills/cross-audit/SKILL.md Phase 0 extensions block reads
+  # cross_audit.probes.<id>.mode from the resolved config. Explicit default-off
+  # on absence. Unknown probe id emits warning (not hard-stop).
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'cross_audit.probes' "$path" \
+    || { echo "$path missing reference to cross_audit.probes.<id>.mode in Phase 0"; return 1; }
+  grep -qE 'default.*`?off`?|`?off`?.*default|defaults to (`|'\'')?off' "$path" \
+    || { echo "$path missing 'default off' language for cross_audit.probes"; return 1; }
+  grep -qE 'unknown.*probe.*warning|warning.*unknown.*probe|unrecognized.*warning' "$path" \
+    || { echo "$path missing 'unknown probe id → warning (not hard-stop)' note"; return 1; }
+  echo "$path Phase 0 reads cross_audit.probes.<id>.mode with default-off + unknown-id warning semantics"
+}
+
 check_receipt_hash_canonicalization_rerun_stable() {
   # §3.3 X3: rerun-stability. Run the reference canonicalizer twice on the
   # same 2-file synthetic input — outputs byte-identical. Then run once with
