@@ -1,0 +1,1 @@
+{"degraded_mode":false,"eligible_reason":"1 same-file allowlist-leak candidate detected","emitted_at":"2026-04-21T14:23:17Z","probe_id":"E","probe_version":"e.1.0","scope_files_read":["src/foo.py"],"skipped_files":[],"trigger_input_hash":"8a136581cc54236deddbc272e0002d553d80ff7d8cea8714d34e132c6a5e0c1f"}

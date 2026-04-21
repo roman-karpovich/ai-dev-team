@@ -24,7 +24,9 @@ kb_path: <set-me>
 # Foundation ships the parser + validator; probes E, F, G arrive in follow-up specs.
 # cross_audit:
 #   probes:
-#     e: { mode: off }      # E = diff-scope leak detector (follow-up spec)
+#     e: { mode: off }      # E = diff-scope leak detector (same-file Python allowlist, spec
+#                           # 2026-04-21-probe-e-diff-scope-leak); set `mode: shadow` to start
+#                           # collecting live evidence toward graduation.
 #     f: { mode: off }      # F = cardinality blindness detector (follow-up spec)
 #     g: { mode: off }      # G = test-set redundancy detector (follow-up spec)
 

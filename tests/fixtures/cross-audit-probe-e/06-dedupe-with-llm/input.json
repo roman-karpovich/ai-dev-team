@@ -1,0 +1,47 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "sources": ["claude"],
+      "file": "src/foo.py:8",
+      "severity": "HIGH",
+      "title": "Claude: allowlist-leak concern",
+      "description": "Claude spotted a potential allowlist leak near the build_failure marker.",
+      "fix": "Review the _clean_rewards allowlist.",
+      "fingerprint_anchors": {
+        "primary_file": "src/foo.py",
+        "marker_literal": "build_failure:",
+        "consumer_symbol": "_clean_rewards"
+      }
+    },
+    {
+      "id": "pE-1",
+      "provisional_id": "pE-1",
+      "sources": ["probe:E"],
+      "file": "src/foo.py:8",
+      "severity": "HIGH",
+      "title": "New marker added; same-file consumer allowlist unchanged",
+      "description": "Marker 'build_failure:' added at line 5 matches the structural pattern of 3 existing allowlist entries in _clean_rewards (line 8) — all end with ':'. The allowlist was not updated to include the new marker. Unchanged consumer likely drops values carrying this marker.",
+      "fix": "Either add 'build_failure:' to the allowlist in _clean_rewards, OR document in the spec §2 Current State why the new marker is deliberately out of the consumer's scope.",
+      "mode_at_emit": "warn",
+      "blocking": false,
+      "probe_version": "e.1.0",
+      "eligible_reason": "1 same-file allowlist-leak candidate detected",
+      "fingerprint_anchors": {
+        "primary_file": "src/foo.py",
+        "marker_literal": "build_failure:",
+        "consumer_symbol": "_clean_rewards"
+      },
+      "canonical_payload": {
+        "primary_file": "src/foo.py",
+        "marker_literal": "build_failure:",
+        "consumer_symbol": "_clean_rewards",
+        "add_site_line": 5,
+        "consumer_line": 8,
+        "allowlist_size": 3,
+        "shared_pattern": "trailing_:"
+      },
+      "probe_receipt": null
+    }
+  ]
+}

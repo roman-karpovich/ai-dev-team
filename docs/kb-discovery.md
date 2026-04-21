@@ -99,6 +99,12 @@ Semantics (per spec 2026-04-21-cross-audit-probes-foundation §3.4):
   - `warn` — probe is dispatched; findings are rendered in `## Summary` with `blocking: false`, surfaced in the Phase 3 banner as a regular finding.
   - `block` — probe is dispatched; findings are rendered in `## Summary` with `blocking: true`, surfaced in the Phase 3 banner with a `[BLOCKING]` prefix.
 
+**Probe-mode reference table** (§3.7 — spec 2026-04-21-probe-e-diff-scope-leak). One row per probe currently shipping; new probes append rows in follow-up specs.
+
+| Probe id | Detector (v1) | Trigger | Scope reads | v1 limitation |
+|----------|---------------|---------|-------------|---------------|
+| e | same-file allowlist leak | changed `.py` files in diff with string additions (test files skipped) | changed `.py` file full content at HEAD (same-file only) | Python only; same-file consumer detection only |
+
 See `skills/cross-audit/SKILL.md` Phase 0 for the read sequence and the `--probe-downgrade <id>=<mode>` CLI override (downgrade-only semantics).
 
 ### research skill

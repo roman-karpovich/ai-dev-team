@@ -8,6 +8,14 @@ set -u
 PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PLUGIN_ROOT" || exit 2
 
+# Probe E frozen-replay corpus — KB-local path resolved by the smoke harness
+# (Step 4 helper `check_probe_e_corpus_exists`). Defaults to the author's KB
+# path; override via PROBE_E_CORPUS_ROOT env var in CI or on other machines.
+# When the path is missing, the helper skips gracefully (corpus lives OUTSIDE
+# the plugin repo — KB/Obsidian vault — so CI-without-KB still passes).
+PROBE_E_CORPUS_ROOT="${PROBE_E_CORPUS_ROOT:-/Users/th13f/dev/personal/finance-learning/repos/ai-dev-team/research/cross-audit-probe-e}"
+export PROBE_E_CORPUS_ROOT
+
 PASS=0
 FAIL=0
 FAILURES=()
@@ -3097,7 +3105,13 @@ check "check_skill_md_probe_downgrade_off_floor_refusal" check_skill_md_probe_do
 check "check_skill_md_phase3_shadow_section" check_skill_md_phase3_shadow_section
 check "check_skill_md_phase3_advisory_section_footer" check_skill_md_phase3_advisory_section_footer
 check "check_cross_auditor_probe_modes_input_declared" check_cross_auditor_probe_modes_input_declared
-check "check_cross_auditor_probe_receipts_input_declared" check_cross_auditor_probe_receipts_input_declared
+# The Foundation helper check_cross_auditor_probe_receipts_input_declared was
+# repurposed in-place as check_cross_auditor_probe_receipts_produced_by_step05
+# when spec 2026-04-21-probe-e-diff-scope-leak §3.2 (c) / iter-2 X10 removed
+# the probe_receipts input bullet. The renamed helper + the supplementary
+# skill-side check_cross_auditor_skill_dispatch_drops_probe_receipts both live
+# under the '--- Cross-audit probe E ---' section below (Step 6 spec goal:
+# 'wire every new helper under a new Cross-audit probe E section').
 
 # Step 6 — renderer low-confidence advisory section + merged probe+LLM routing
 # + combined fail-open banner. Per §6.1 Step 6 delta: +4 umbrella + 6 fixture
@@ -3141,6 +3155,38 @@ check "check_scorer_fixture_i_merged_probe_llm_skip_scorer" check_scorer_fixture
 # redundant sub-assertion to land on the spec target 340 exactly.
 check "check_scorer_fixture_k_probe_failures_synthesis_explicit_strings" check_scorer_fixture_k_probe_failures_synthesis_explicit_strings
 check "check_scorer_fixture_l_probe_failures_fallback_generic_strings" check_scorer_fixture_l_probe_failures_fallback_generic_strings
+echo
+
+# --- Cross-audit probe E (spec 2026-04-21-probe-e-diff-scope-leak) ---
+echo "Cross-audit probe E:"
+# Step 2 — probe detector (6 helpers: 5 fixture byte-diffs + rerun-stability).
+check "check_probe_e_detector_fires_on_allowlist_leak" check_probe_e_detector_fires_on_allowlist_leak
+check "check_probe_e_detector_clean_when_allowlist_updated" check_probe_e_detector_clean_when_allowlist_updated
+check "check_probe_e_detector_ineligible_no_additions" check_probe_e_detector_ineligible_no_additions
+check "check_probe_e_detector_ineligible_collection_too_small" check_probe_e_detector_ineligible_collection_too_small
+check "check_probe_e_receipt_rerun_stable" check_probe_e_receipt_rerun_stable
+check "check_probe_e_changed_test_file_skipped" check_probe_e_changed_test_file_skipped
+# Step 3 — agent Step 0.5 + skill + dedupe merge_pair swap (7 spec-listed
+# helpers per §3.2 + 1 supplementary closing the §6.1 arithmetic gap).
+check "check_cross_auditor_step05_probe_dispatch" check_cross_auditor_step05_probe_dispatch
+check "check_probe_e_cli_downgrade" check_probe_e_cli_downgrade
+check "check_probe_e_downgrade_upgrade_refused_when_yaml_off" check_probe_e_downgrade_upgrade_refused_when_yaml_off
+check "check_probe_e_fail_open_banner" check_probe_e_fail_open_banner
+check "check_probe_e_fail_open_schema_invalid_body" check_probe_e_fail_open_schema_invalid_body
+check "check_probe_e_fail_open_write_receipt_failure" check_probe_e_fail_open_write_receipt_failure
+check "check_cross_auditor_probe_receipts_produced_by_step05" check_cross_auditor_probe_receipts_produced_by_step05
+check "check_cross_auditor_skill_dispatch_drops_probe_receipts" check_cross_auditor_skill_dispatch_drops_probe_receipts
+# Step 4 — operability smoke: corpus replay + probe+LLM dedupe + merged-
+# receipt end-to-end. check_probe_e_corpus_exists SKIPs gracefully when the
+# KB-local corpus root is not available (e.g. fresh clone / CI without
+# Obsidian vault); PROBE_E_CORPUS_ROOT override documented at the top of
+# this file.
+check "check_probe_e_corpus_exists" check_probe_e_corpus_exists
+check "check_probe_e_dedupe_with_llm" check_probe_e_dedupe_with_llm
+check "check_probe_e_merged_receipt_written" check_probe_e_merged_receipt_written
+# Step 5 — docs/example surface (2 helpers).
+check "check_yaml_example_probes_e_hint" check_yaml_example_probes_e_hint
+check "check_docs_kb_discovery_probe_e_row" check_docs_kb_discovery_probe_e_row
 echo
 
 

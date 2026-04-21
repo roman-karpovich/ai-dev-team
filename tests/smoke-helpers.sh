@@ -1839,17 +1839,68 @@ check_cross_auditor_probe_modes_input_declared() {
   echo "$path input surface declares probe_modes (dict: probe id → mode)"
 }
 
-check_cross_auditor_probe_receipts_input_declared() {
-  # agents/cross-auditor.md input-surface declares a new `probe_receipts` input
-  # field (list of JSON receipts, one per probe run; empty list when no probe
-  # is active). §3.7.
+check_cross_auditor_skill_dispatch_drops_probe_receipts() {
+  # Supplementary helper (spec §5 Step 3 skill-side update — skills/cross-
+  # audit/SKILL.md agent-dispatch block stops threading `probe_receipts: []`
+  # placeholder per iter-1 X2 pivot). Closes the §6.1 Step 3 +7 vs net-+6
+  # arithmetic gap that surfaces when the Foundation helper
+  # `check_cross_auditor_probe_receipts_input_declared` is repurposed
+  # in-place rather than removed. Asserts the Phase 1-2 Step 2 cross-auditor
+  # dispatch block does NOT pass `probe_receipts:` as a non-commented input
+  # field; the commented-out note explaining why the field was removed IS
+  # allowed (documentation trail).
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local dispatch_block
+  dispatch_block=$(awk '
+    !in_s && /^### Step 2: Launch cross-auditor agent/ { in_s = 1; print; next }
+    in_s && /^### Step 3/ { exit }
+    in_s { print }
+  ' "$path")
+  [[ -n "$dispatch_block" ]] || { echo "$path missing '### Step 2: Launch cross-auditor agent' dispatch block"; return 1; }
+  # Reject non-commented 'probe_receipts:' lines in the dispatch block.
+  if printf '%s\n' "$dispatch_block" | grep -E '^[[:space:]]*probe_receipts:' | grep -qvE '^[[:space:]]*#'; then
+    echo "$path Step 2 dispatch still threads probe_receipts: as non-commented input (expected dropped per iter-1 X2 pivot)"
+    printf '%s\n' "$dispatch_block" | grep -nE 'probe_receipts' | head -3
+    return 1
+  fi
+  # Positive: probe_modes stays threaded.
+  printf '%s\n' "$dispatch_block" | grep -qE '^[[:space:]]*probe_modes:' \
+    || { echo "$path Step 2 dispatch missing probe_modes (should stay threaded)"; return 1; }
+  echo "$path Step 2 dispatch drops probe_receipts placeholder (iter-1 X2 pivot); probe_modes still threaded"
+}
+
+check_cross_auditor_probe_receipts_produced_by_step05() {
+  # Spec 2026-04-21-probe-e-diff-scope-leak §3.2 (c) / §5 Step 3 (iter-3 X15 /
+  # iter-2 X10) — probe_receipts is no longer a skill-threaded input bullet.
+  # The ## Input section must NOT list it as an input field; Step 0.5 is the
+  # producer path. Replaces the Foundation-era
+  # check_cross_auditor_probe_receipts_input_declared (which asserted the
+  # opposite invariant and shipped before probe E's dispatch pivot).
   local path="agents/cross-auditor.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  grep -qE '\*\*probe_receipts\*\*|`probe_receipts`' "$path" \
-    || { echo "$path missing 'probe_receipts' input field declaration"; return 1; }
-  grep -qE 'probe_receipts.*(list|array).*(receipt|JSON)' "$path" \
-    || { echo "$path missing probe_receipts shape documentation (list of receipt JSON)"; return 1; }
-  echo "$path input surface declares probe_receipts (list of JSON receipts)"
+  # Extract just the ## Input section (range from '## Input' up to next '## ').
+  local input_section
+  input_section=$(awk '
+    !in_s && $0 == "## Input" { in_s = 1; print; next }
+    in_s && /^## / && $0 != "## Input" { exit }
+    in_s { print }
+  ' "$path")
+  [[ -n "$input_section" ]] || { echo "$path missing '## Input' section"; return 1; }
+  # Reject any line in ## Input shaped like the old bullet:
+  #   '- **probe_receipts** (optional;...' OR '- **probe_receipts**:'
+  if printf '%s\n' "$input_section" | grep -qE '^- \*\*probe_receipts\*\*'; then
+    echo "$path ## Input still lists probe_receipts as an input bullet (expected removed per §3.2 (c) / X10)"
+    return 1
+  fi
+  # Positive: Step 0.5 must exist as the producer path.
+  grep -qE '^## Step 0\.5' "$path" \
+    || { echo "$path missing '## Step 0.5' producer section (expected between Step 0 and Step 1)"; return 1; }
+  grep -qF 'probe_findings' "$path" \
+    || { echo "$path missing 'probe_findings' — Step 0.5 should produce it"; return 1; }
+  grep -qF 'probe_receipt_metadata_by_provisional_id' "$path" \
+    || { echo "$path missing 'probe_receipt_metadata_by_provisional_id' side-map (iter-4 X19)"; return 1; }
+  echo "$path ## Input no longer lists probe_receipts bullet; Step 0.5 produces probe_findings/probe_receipts via side-map (X19)"
 }
 
 check_yaml_example_probes_block() {
@@ -1972,4 +2023,611 @@ check_probe_failures_schema_hard_stop() {
   fi
   rm -f /tmp/smoke-hardstop-out.$$ /tmp/smoke-hardstop-err.$$
   echo "render_findings.sh correctly hard-stopped on malformed probe_failures[] (exit=$exit_code, stderr non-empty)"
+}
+
+# ============================================================================
+# Cross-audit probe E (spec 2026-04-21-probe-e-diff-scope-leak)
+# ============================================================================
+
+# Shared helper: run hooks/lib/probe_e.sh against a fixture dir and byte-diff
+# the findings array AND receipt_metadata object separately. The probe is
+# invoked with cwd = $fixture_dir so `repo_root: "."` resolves inside the
+# fixture. PROBE_E_FAKE_NOW is set for determinism so emitted_at byte-matches
+# the expected fixture value.
+_probe_e_byte_diff() {
+  # $1 = fixture dir (relative to plugin root)
+  local fdir="$1"
+  local input="$fdir/input.json"
+  local expected_findings="$fdir/expected-findings.json"
+  local expected_meta="$fdir/expected-receipt-metadata.json"
+  [ -r "$input" ] || { echo "$input not readable"; return 1; }
+  [ -r "$expected_findings" ] || { echo "$expected_findings not readable"; return 1; }
+  [ -r "$expected_meta" ] || { echo "$expected_meta not readable"; return 1; }
+  local plugin_root
+  plugin_root="$(pwd)"
+  local out_tmp="/tmp/smoke-probe-e-out.$$"
+  local exit_code=0
+  ( cd "$fdir" \
+    && PROBE_E_FAKE_NOW="2026-04-21T14:23:17Z" \
+    bash "$plugin_root/hooks/lib/probe_e.sh" < input.json ) >"$out_tmp" 2>/tmp/smoke-probe-e-err.$$ || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "probe_e.sh exited $exit_code against $fdir; stderr:"
+    head -5 /tmp/smoke-probe-e-err.$$
+    rm -f "$out_tmp" /tmp/smoke-probe-e-err.$$
+    return 1
+  fi
+  rm -f /tmp/smoke-probe-e-err.$$
+  # Canonicalize actual + expected per sort_keys.
+  local actual_findings actual_meta exp_findings exp_meta
+  actual_findings=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d["findings"],sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
+  actual_meta=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d["receipt_metadata"],sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
+  exp_findings=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected_findings")
+  exp_meta=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected_meta")
+  rm -f "$out_tmp"
+  if [ "$actual_findings" != "$exp_findings" ]; then
+    echo "probe_e findings mismatch for $fdir:"
+    diff <(printf '%s\n' "$actual_findings") <(printf '%s\n' "$exp_findings") | head -10
+    return 1
+  fi
+  if [ "$actual_meta" != "$exp_meta" ]; then
+    echo "probe_e receipt_metadata mismatch for $fdir:"
+    diff <(printf '%s\n' "$actual_meta") <(printf '%s\n' "$exp_meta") | head -10
+    return 1
+  fi
+  echo "probe_e output byte-matches expected for $fdir"
+}
+
+check_probe_e_detector_fires_on_allowlist_leak() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/01-positive-allowlist-leak
+}
+
+check_probe_e_detector_clean_when_allowlist_updated() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/02-clean-allowlist-updated-in-same-diff
+}
+
+check_probe_e_detector_ineligible_no_additions() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/03-ineligible-no-string-additions
+}
+
+check_probe_e_detector_ineligible_collection_too_small() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/04-ineligible-collection-too-small
+}
+
+check_probe_e_changed_test_file_skipped() {
+  _probe_e_byte_diff tests/fixtures/cross-audit-probe-e/07-changed-test-file-skipped
+}
+
+check_probe_e_receipt_rerun_stable() {
+  # Two independent invocations against fixture 05 must produce byte-identical
+  # findings arrays AND byte-identical receipt_metadata.trigger_input_hash +
+  # skipped_files (X21 per-file fail-open coverage). emitted_at is pinned by
+  # PROBE_E_FAKE_NOW so the whole receipt matches; the strict per-field check
+  # below enforces the §3.3-listed rerun-stability fields explicitly.
+  local fdir="tests/fixtures/cross-audit-probe-e/05-rerun-stability"
+  local plugin_root; plugin_root="$(pwd)"
+  local out1 out2
+  out1=$( ( cd "$fdir" && PROBE_E_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_e.sh" < input.json ) )
+  out2=$( ( cd "$fdir" && PROBE_E_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_e.sh" < input.json ) )
+  if [ "$out1" != "$out2" ]; then
+    echo "probe_e output differs between two runs against $fdir (non-deterministic)"
+    diff <(printf '%s\n' "$out1") <(printf '%s\n' "$out2") | head -10
+    return 1
+  fi
+  # Byte-diff against expected (fires detection path + skipped_files).
+  _probe_e_byte_diff "$fdir" || return 1
+  # Explicit per-field rerun-stability assertions per §3.6 fixture-05 contract.
+  local h1 h2 sk1 sk2 f1 f2
+  h1=$(printf '%s\n' "$out1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["receipt_metadata"]["trigger_input_hash"])')
+  h2=$(printf '%s\n' "$out2" | python3 -c 'import json,sys; print(json.load(sys.stdin)["receipt_metadata"]["trigger_input_hash"])')
+  sk1=$(printf '%s\n' "$out1" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["receipt_metadata"]["skipped_files"]))')
+  sk2=$(printf '%s\n' "$out2" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["receipt_metadata"]["skipped_files"]))')
+  f1=$(printf '%s\n' "$out1" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["findings"],sort_keys=True,separators=(",",":"),ensure_ascii=False))')
+  f2=$(printf '%s\n' "$out2" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["findings"],sort_keys=True,separators=(",",":"),ensure_ascii=False))')
+  [ "$h1" = "$h2" ] || { echo "trigger_input_hash not stable: $h1 vs $h2"; return 1; }
+  [ "$sk1" = "$sk2" ] || { echo "skipped_files not stable: $sk1 vs $sk2"; return 1; }
+  [ "$f1" = "$f2" ] || { echo "findings not stable across runs"; return 1; }
+  echo "probe_e receipt rerun-stability: trigger_input_hash + skipped_files + findings byte-identical across two runs"
+}
+
+# --- Step 3: Cross-auditor agent Step 0.5 + skill + dedupe merge_pair swap ---
+
+check_cross_auditor_step05_probe_dispatch() {
+  # agents/cross-auditor.md carries a '## Step 0.5: Probe dispatch' section
+  # positioned between '## Step 0' (PR materialization) and '## Step 1:
+  # Launch Codex' per spec §3.5 pseudocode. Asserts section presence, ordering
+  # vs Step 0 / Step 1, six-way fail-open class enumeration, and side-map key
+  # (iter-4 X19).
+  local path="agents/cross-auditor.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local step0_line step05_line step1_line
+  step0_line=$(grep -nE '^## Step 0 \(PR mode only\)' "$path" | head -1 | cut -d: -f1)
+  step05_line=$(grep -nE '^## Step 0\.5' "$path" | head -1 | cut -d: -f1)
+  step1_line=$(grep -nE '^## Step 1: Launch Codex' "$path" | head -1 | cut -d: -f1)
+  [[ -n "$step05_line" ]] || { echo "$path missing '## Step 0.5' heading"; return 1; }
+  [[ -n "$step0_line" && -n "$step1_line" ]] \
+    || { echo "$path missing Step 0 or Step 1 neighbours for Step 0.5 ordering check"; return 1; }
+  [[ "$step0_line" -lt "$step05_line" && "$step05_line" -lt "$step1_line" ]] \
+    || { echo "$path Step 0.5 is not positioned between Step 0 ($step0_line) and Step 1 ($step1_line) — got Step 0.5 at $step05_line"; return 1; }
+  # Extract the Step 0.5 section.
+  local step05
+  step05=$(awk '
+    !in_s && /^## Step 0\.5/ { in_s = 1; print; next }
+    in_s && /^## / && !/^## Step 0\.5/ { exit }
+    in_s { print }
+  ' "$path")
+  # Six-way fail-open enumeration — distinct class markers.
+  printf '%s\n' "$step05" | grep -qF 'probe script' \
+    || { echo "$path Step 0.5 missing fail-open class 1 'probe script' (script-missing)"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'TimeoutError' \
+    || { echo "$path Step 0.5 missing fail-open class 2 'TimeoutError'"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'NonZeroExit' \
+    || { echo "$path Step 0.5 missing fail-open class 3 'NonZeroExit'"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'JSONDecodeError' \
+    || { echo "$path Step 0.5 missing fail-open class 4 'JSONDecodeError'"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'schema' \
+    || { echo "$path Step 0.5 missing fail-open class 5 'schema' (validation)"; return 1; }
+  # Class 6 (receipt-write IOError) lives in stage 4.5 (Step 3 pipeline).
+  grep -qF 'receipt write failed' "$path" \
+    || { echo "$path missing fail-open class 6 (receipt write failed) in Step 3 stage 4.5"; return 1; }
+  # Side-map (iter-4 X19) + provisional_id coupling (iter-5 X22).
+  printf '%s\n' "$step05" | grep -qF 'probe_receipt_metadata_by_provisional_id' \
+    || { echo "$path Step 0.5 missing side-map key (iter-4 X19)"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'probe_findings' \
+    || { echo "$path Step 0.5 missing probe_findings output list"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'probe_failures_seed' \
+    || { echo "$path Step 0.5 missing probe_failures_seed list (iter-4 X20)"; return 1; }
+  printf '%s\n' "$step05" | grep -qF 'mode == "off"' \
+    || { echo "$path Step 0.5 missing off-floor enforcement 'mode == \"off\"'"; return 1; }
+  echo "$path Step 0.5 present, ordered between Step 0 and Step 1, six fail-open classes + side-map + off-floor enforcement"
+}
+
+check_probe_e_cli_downgrade() {
+  # skills/cross-audit/SKILL.md Phase 0 documents --probe-downgrade <id>=off
+  # CLI semantics: effective mode 'off' means Step 0.5 does not dispatch, no
+  # receipts produced. This helper is a documentation smoke — asserts the skill
+  # prose declares the downgrade-to-off path. End-to-end dispatch-skipping is
+  # exercised by the agent prose (Step 0.5 'if mode == "off": continue').
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF -- '--probe-downgrade' "$path" \
+    || { echo "$path missing '--probe-downgrade' CLI flag reference"; return 1; }
+  grep -qE 'downgrade-only|block → warn → shadow → off|block \\-> warn \\-> shadow \\-> off' "$path" \
+    || { echo "$path missing downgrade-only ladder (block→warn→shadow→off)"; return 1; }
+  # Probe-E specific cue — the flag must apply to probe ids including 'e'.
+  grep -qE '<id>=<mode>|id=mode' "$path" \
+    || { echo "$path missing generic '<id>=<mode>' placeholder for --probe-downgrade"; return 1; }
+  # Agent Step 0.5 off-floor enforcement (the mode==off dispatch-skip guards
+  # the downgraded mode from producing receipts).
+  local agent="agents/cross-auditor.md"
+  grep -qF 'mode == "off"' "$agent" \
+    || { echo "$agent Step 0.5 missing mode==off short-circuit (downgrade semantics require dispatch skip)"; return 1; }
+  echo "--probe-downgrade CLI flag documented with downgrade-only ladder; agent enforces mode==off dispatch skip"
+}
+
+check_probe_e_downgrade_upgrade_refused_when_yaml_off() {
+  # iter-1 X8 — --probe-downgrade e=shadow against absent YAML (effective off)
+  # is refused by skill Phase 0. Asserts the skill prose documents the off-
+  # floor refusal rule AND that Step 0.5 sees probe_modes[e]=off → zero
+  # dispatch.
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE 'off is the (floor|lower bound)' "$path" \
+    || { echo "$path missing 'off is the floor / lower bound' rule (X9 off-floor)"; return 1; }
+  grep -qE 'upgrade refused|no-op upgrade refused' "$path" \
+    || { echo "$path missing 'upgrade refused' phrase for --probe-downgrade against off"; return 1; }
+  grep -qE 'absent(-| )key (default|.*floor)' "$path" \
+    || { echo "$path missing absent-key-default==floor rationale"; return 1; }
+  # Agent-side: off-floor is enforced at Step 0.5 via mode==off short-circuit.
+  local agent="agents/cross-auditor.md"
+  grep -qF 'mode == "off"' "$agent" \
+    || { echo "$agent Step 0.5 missing mode==off short-circuit (upgrade-refused semantics require dispatch skip)"; return 1; }
+  echo "X8 off-floor refusal documented in skill; agent Step 0.5 enforces mode==off dispatch skip"
+}
+
+# Shared helper: emulate the orchestrator's fail-open path by invoking
+# hooks/lib/render_findings.sh with a synthesized probe_failures[] seed and
+# asserting the degraded banner renders.
+_probe_e_fail_open_render() {
+  # $1 = failure_reason string. Writes stdin JSON to renderer with a single
+  # probe_failures entry, empty findings, empty probe_modes, scorer_status=ok.
+  local reason="$1"
+  local remediation="$2"
+  local stdin_payload
+  stdin_payload=$(python3 -c "
+import json,sys
+payload = {
+  'findings': [],
+  'probe_modes': {'e': 'shadow'},
+  'probe_failures': [{'probe_id': 'E', 'reason': sys.argv[1], 'remediation': sys.argv[2]}],
+  'scorer_status': 'ok',
+  'scorer_failure_reason': '',
+}
+sys.stdout.write(json.dumps(payload))
+" "$reason" "$remediation")
+  local rendered
+  rendered=$(printf '%s' "$stdin_payload" | bash hooks/lib/render_findings.sh 2>/tmp/smoke-probe-e-render-err.$$) || {
+    echo "render_findings.sh failed; stderr:"
+    cat /tmp/smoke-probe-e-render-err.$$
+    rm -f /tmp/smoke-probe-e-render-err.$$
+    return 1
+  }
+  rm -f /tmp/smoke-probe-e-render-err.$$
+  printf '%s\n' "$rendered" | grep -qF 'Probe(s) fail-opened this iteration' \
+    || { echo "rendered output missing degraded-mode banner line"; printf '%s\n' "$rendered" | head -5; return 1; }
+  printf '%s\n' "$rendered" | grep -qF "probe:E" \
+    || { echo "rendered banner missing probe:E entry"; return 1; }
+  printf '%s\n' "$rendered" | grep -qF "$reason" \
+    || { echo "rendered banner missing expected reason substring '$reason'"; return 1; }
+  return 0
+}
+
+check_probe_e_fail_open_banner() {
+  # X4 — fail-open class 3 (NonZeroExit). Agent Step 0.5 catches NonZeroExit
+  # and seeds probe_failures_seed[] with a populated reason/remediation
+  # triple; synth_probe_failures union emits to renderer; renderer renders
+  # the degraded-mode banner line. Helper asserts the rendered banner
+  # surfaces the reason substring.
+  _probe_e_fail_open_render \
+    "probe exited non-zero: ast.parse failed on src/foo.py" \
+    "re-run /cross-audit after checking probe_E stderr logs" \
+    || return 1
+  # Also assert the agent prose contains the NonZeroExit branch.
+  grep -qF 'probe exited non-zero' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md missing 'probe exited non-zero' Step 0.5 branch"; return 1; }
+  echo "fail-open banner renders (NonZeroExit class); agent prose declares the branch"
+}
+
+check_probe_e_fail_open_schema_invalid_body() {
+  # iter-7 X30 rename — fail-open class 5 (schema validation failure). The
+  # probe stdout IS valid JSON but missing a required key (e.g. `findings`).
+  # Schema validator rejects with a short error; Step 0.5 synthesizes a
+  # probe_failures_seed entry with 'probe output schema invalid:' reason.
+  # Renderer surfaces the banner line.
+  _probe_e_fail_open_render \
+    "probe output schema invalid: missing required key 'findings'" \
+    "fix probe_E to conform to §3.3 stdout shape" \
+    || return 1
+  grep -qF 'probe output schema invalid' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md missing 'probe output schema invalid' Step 0.5 branch"; return 1; }
+  echo "fail-open banner renders (schema-invalid-body class, iter-7 X30 rename); agent prose declares the branch"
+}
+
+check_probe_e_fail_open_write_receipt_failure() {
+  # X4 — fail-open class 6 (receipt-write IOError/OSError, stage 4.5). When
+  # the KB mount is read-only the stage-4.5 write raises, Step 3 sets the
+  # finding's probe_receipt=None and seeds probe_failures_seed[] with a
+  # 'receipt write failed:' reason. Helper asserts the agent prose declares
+  # the branch and the renderer surfaces the banner line.
+  _probe_e_fail_open_render \
+    "receipt write failed: [Errno 30] Read-only file system: '/kb/security/2026-04-21-foo-probe-receipts/X5.json'" \
+    "check KB mount is writable + re-run /cross-audit" \
+    || return 1
+  grep -qF 'receipt write failed' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md missing 'receipt write failed' stage-4.5 branch (fail-open class 6)"; return 1; }
+  # Also assert the pair (receipt write failed, check KB mount).
+  grep -qF 'check KB mount is writable' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md stage-4.5 branch missing remediation 'check KB mount is writable'"; return 1; }
+  # Also exercise the full stage-4.5 side-map + receipt-write loop — if the
+  # agent's stage-4.5 prose drifts (e.g. stops preserving provisional_id),
+  # the seed-and-render layer above doesn't catch it. Assert the prose pins:
+  grep -qE 'any\(s\.startswith\("probe:"\) for s in finding\["sources"\]\)' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md stage-4.5 missing probe-sourced predicate (Foundation §3.3 X2 / iter-3 X18)"; return 1; }
+  grep -qE 'provisional_id' agents/cross-auditor.md \
+    || { echo "agents/cross-auditor.md stage-4.5 missing provisional_id preservation (iter-5 X22/X24)"; return 1; }
+  echo "fail-open banner renders (receipt-write class, stage 4.5); agent prose declares branch + remediation + probe-sourced predicate + provisional_id preservation"
+}
+
+# --- Step 4: corpus replay + probe+LLM dedupe + merged-receipt end-to-end ---
+
+check_probe_e_corpus_exists() {
+  # Frozen-replay corpus lives in the KB (outside the plugin repo). When the
+  # corpus path is missing (CI without Obsidian vault, fresh clone, etc.) the
+  # helper SKIPs gracefully — the corpus is a human-curated soak artefact,
+  # not a CI-blocking invariant. When present: assert 3 snapshot subdirs exist
+  # + corpus MD exists, then run probe E against each snapshot and assert
+  # expected outcomes (hit / clean / clean).
+  local corpus_root="${PROBE_E_CORPUS_ROOT:-}"
+  if [ -z "$corpus_root" ] || [ ! -d "$corpus_root" ]; then
+    echo "probe-E corpus not found at '${corpus_root:-<unset>}' — SKIP (human-curated KB artefact)"
+    return 0
+  fi
+  [ -r "$corpus_root/frozen-replay-corpus.md" ] \
+    || { echo "$corpus_root/frozen-replay-corpus.md missing"; return 1; }
+  local snap_dir="$corpus_root/snapshots"
+  [ -d "$snap_dir" ] || { echo "$snap_dir missing"; return 1; }
+  local plugin_root; plugin_root="$(pwd)"
+  local failures=0
+  local snap_name
+  for snap_name in aqua-bribes-pr-3-step-2 aqua-bribes-pr-3-step-2-fixed ai-dev-team-foundation-step-2-renderer; do
+    local d="$snap_dir/$snap_name"
+    if [ ! -d "$d" ]; then
+      echo "corpus snapshot dir missing: $d"; failures=$((failures+1)); continue
+    fi
+    if [ ! -r "$d/input.json" ]; then
+      echo "corpus snapshot input.json missing: $d/input.json"; failures=$((failures+1)); continue
+    fi
+    local out
+    out=$( ( cd "$d" && PROBE_E_FAKE_NOW="2026-04-21T14:23:17Z" bash "$plugin_root/hooks/lib/probe_e.sh" < input.json ) 2>/tmp/smoke-probe-e-corpus-err.$$ ) || {
+      echo "probe_e.sh failed on corpus $snap_name; stderr:"; cat /tmp/smoke-probe-e-corpus-err.$$
+      rm -f /tmp/smoke-probe-e-corpus-err.$$
+      failures=$((failures+1)); continue
+    }
+    rm -f /tmp/smoke-probe-e-corpus-err.$$
+    local n_findings
+    n_findings=$(printf '%s\n' "$out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["findings"]))')
+    case "$snap_name" in
+      aqua-bribes-pr-3-step-2)
+        if [ "$n_findings" != "1" ]; then
+          echo "corpus hit case '$snap_name' expected 1 emission, got $n_findings"
+          failures=$((failures+1))
+        fi
+        # Also verify the specific hit: consumer=_clean_rewards, marker=build_failure:.
+        printf '%s\n' "$out" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if not d['findings']:
+    print('no findings'); sys.exit(1)
+f = d['findings'][0]
+cp = f.get('canonical_payload', {})
+cs = cp.get('consumer_symbol')
+if cs != '_clean_rewards':
+    print('consumer_symbol mismatch: %r' % (cs,)); sys.exit(1)
+ml = cp.get('marker_literal')
+if ml != 'build_failure:':
+    print('marker_literal mismatch: %r' % (ml,)); sys.exit(1)
+" || { echo "corpus hit case '$snap_name' canonical_payload wrong"; failures=$((failures+1)); }
+        ;;
+      aqua-bribes-pr-3-step-2-fixed|ai-dev-team-foundation-step-2-renderer)
+        if [ "$n_findings" != "0" ]; then
+          echo "corpus clean-negative case '$snap_name' expected 0 emissions, got $n_findings"
+          failures=$((failures+1))
+        fi
+        ;;
+    esac
+  done
+  if [ "$failures" -ne 0 ]; then
+    echo "probe-E corpus replay: $failures failure(s)"
+    return 1
+  fi
+  echo "probe-E frozen-replay corpus: 3 snapshots replayed (1 hit + 2 clean negatives)"
+}
+
+check_probe_e_dedupe_with_llm() {
+  # Fixture 06 (hand-authored Step 1 per iter-6 X26 carve-out) exercises
+  # hooks/lib/dedupe_findings.sh merge_pair post-iter-5 X23:
+  #   - probe-primary swap (probe appears at members[1], LLM at members[0])
+  #   - extended carried-field list (provisional_id / canonical_payload /
+  #     blocking / fingerprint_anchors)
+  # Byte-diffs the dedupe output against fixture 06 expected-dedupe.json.
+  local fdir="tests/fixtures/cross-audit-probe-e/06-dedupe-with-llm"
+  local input="$fdir/input.json"
+  local expected="$fdir/expected-dedupe.json"
+  [ -r "$input" ] || { echo "$input not readable"; return 1; }
+  [ -r "$expected" ] || { echo "$expected not readable"; return 1; }
+  local actual
+  actual=$(cat "$input" | bash hooks/lib/dedupe_findings.sh 2>/tmp/smoke-dd-err.$$) || {
+    echo "dedupe_findings.sh failed; stderr:"; cat /tmp/smoke-dd-err.$$
+    rm -f /tmp/smoke-dd-err.$$
+    return 1
+  }
+  rm -f /tmp/smoke-dd-err.$$
+  if ! diff <(printf '%s\n' "$actual") "$expected" >/tmp/smoke-dd-diff.$$ 2>&1; then
+    echo "fixture 06 dedupe output does not byte-match $expected:"
+    head -20 /tmp/smoke-dd-diff.$$
+    rm -f /tmp/smoke-dd-diff.$$
+    return 1
+  fi
+  rm -f /tmp/smoke-dd-diff.$$
+  # Explicit per-field assertions — catches silent schema drift in the
+  # probe-primary swap / carried-field list.
+  local sources provisional canonical blocking anchors
+  sources=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["findings_deduped"][0]["sources"]))')
+  provisional=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; print(json.load(sys.stdin)["findings_deduped"][0].get("provisional_id","<missing>"))')
+  canonical=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; d=json.load(sys.stdin)["findings_deduped"][0]; print("present" if d.get("canonical_payload") else "missing")')
+  blocking=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; d=json.load(sys.stdin)["findings_deduped"][0]; print(d.get("blocking", "<missing>"))')
+  anchors=$(printf '%s\n' "$actual" | python3 -c 'import json,sys; d=json.load(sys.stdin)["findings_deduped"][0]; print("present" if d.get("fingerprint_anchors") else "missing")')
+  [ "$sources" = "probe:E,claude" ] || { echo "sources order wrong: $sources (expected probe:E,claude — X23 probe-first)"; return 1; }
+  [ "$provisional" = "pE-1" ] || { echo "provisional_id not preserved: $provisional (expected pE-1 — X23 carried-field list)"; return 1; }
+  [ "$canonical" = "present" ] || { echo "canonical_payload dropped (expected preserved — X23)"; return 1; }
+  [ "$blocking" = "False" ] || { echo "blocking wrong or dropped: $blocking (expected False — X23)"; return 1; }
+  [ "$anchors" = "present" ] || { echo "fingerprint_anchors dropped (expected preserved — X23)"; return 1; }
+  echo "fixture 06 dedupe byte-matches + probe-first sources + provisional_id/canonical_payload/blocking/fingerprint_anchors preserved (iter-5 X23)"
+}
+
+check_probe_e_merged_receipt_written() {
+  # iter-7 X31 end-to-end — run fixture 06 through the full Step 3
+  # Consolidation pipeline:
+  #   stage 2 emit (already done at fixture author time — input.json carries
+  #                 probe-sourced entry with id=provisional_id=pE-1)
+  #   stage 3 dedupe (hooks/lib/dedupe_findings.sh — probe-primary swap)
+  #   stage 4 scorer-skip-probe (no-op for this fixture: only the merged
+  #            probe+LLM entry has probe:* in sources → scorer skips it)
+  #   stage 4.5 side-map lookup + receipt-file write (per §3.5 pseudocode)
+  # Assert the resulting receipt file exists at
+  # <audit_slug>-probe-receipts/<merged_final_id>.json with the 11-field
+  # on_disk_receipt_body whose probe_output_hash verifies against the
+  # reconstructed hashed_probe_output_envelope from emitted_findings[0].
+  local fdir="tests/fixtures/cross-audit-probe-e/06-dedupe-with-llm"
+  [ -r "$fdir/input.json" ] || { echo "$fdir/input.json missing"; return 1; }
+  # Synthetic side-map — fixture 06 doesn't ship one; we reconstruct it from
+  # the stage-2 emit envelope that the orchestrator would have built. The
+  # probe_receipt_metadata comes from the hand-authored probe-E shape per
+  # §3.3 receipt_metadata; pick audit_slug matching fixture 06 and an
+  # emitted_at deterministic to match on-disk bytes.
+  local work
+  work=$(mktemp -d)
+  trap "rm -rf '$work'" RETURN
+  local kb_root="$work/kb"
+  local audit_slug="2026-04-21-fixture-06-merged-receipt"
+  local receipts_dir="$kb_root/security/$audit_slug-probe-receipts"
+  mkdir -p "$receipts_dir"
+  # Dedupe stage 3 against fixture 06.
+  local deduped
+  deduped=$(cat "$fdir/input.json" | bash hooks/lib/dedupe_findings.sh)
+  # Construct the side-map and then emulate stage 4.5 for the merged entry.
+  local result
+  result=$(PROBE_E_DEDUPED="$deduped" RECEIPTS_DIR="$receipts_dir" python3 <<'PY'
+import hashlib, json, os, sys
+
+deduped = json.loads(os.environ["PROBE_E_DEDUPED"])
+receipts_dir = os.environ["RECEIPTS_DIR"]
+
+# Build side-map from the fixture's original probe entry (pE-1).
+# In production this lives in the agent's Step 0.5 local scope; here we
+# reconstruct it from §3.3 receipt_metadata shape.
+probe_receipt_metadata_by_provisional_id = {
+    "pE-1": {
+        "probe_id": "E",
+        "probe_version": "e.1.0",
+        "trigger_input_hash": "8a136581cc54236deddbc272e0002d553d80ff7d8cea8714d34e132c6a5e0c1f",
+        "scope_files_read": ["src/foo.py"],
+        "skipped_files": [],
+        "emitted_at": "2026-04-21T14:23:17Z",
+        "degraded_mode": False,
+        "eligible_reason": "1 same-file allowlist-leak candidate detected",
+    },
+}
+
+# Final-ID allocation — spec §3.3 X24: set id = final_id WHILE preserving
+# provisional_id. For fixture 06's single merged entry: final_id = "X5".
+final_findings = []
+for f in deduped["findings_deduped"]:
+    entry = dict(f)
+    entry["id"] = "X5"  # simulated final-ID allocation
+    # provisional_id preserved intact per X24 — merge_pair (post X23) kept it.
+    final_findings.append(entry)
+
+probe_failures_seed = []
+for finding in final_findings:
+    if not any(s.startswith("probe:") for s in finding["sources"]):
+        continue
+    # Side-map lookup — iter-4 X19 coupling. Key = provisional_id preserved
+    # through dedupe (X23) + final-ID allocation (X24).
+    metadata = probe_receipt_metadata_by_provisional_id[finding["provisional_id"]]
+    hashed_probe_output_envelope = {
+        "probe_id": metadata["probe_id"],
+        "probe_version": metadata["probe_version"],
+        "emitted_findings": [finding["canonical_payload"]],
+    }
+    envelope_bytes = json.dumps(
+        hashed_probe_output_envelope,
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    ).encode("utf-8")
+    probe_output_hash = hashlib.sha256(envelope_bytes).hexdigest()
+    on_disk_receipt_body = {
+        **metadata,
+        "probe_output_hash": probe_output_hash,
+        "mode_at_emit": finding["mode_at_emit"],
+        "emitted_findings": hashed_probe_output_envelope["emitted_findings"],
+    }
+    receipt_path = os.path.join(receipts_dir, f"{finding['id']}.json")
+    try:
+        with open(receipt_path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(
+                on_disk_receipt_body,
+                sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            ))
+    except (IOError, OSError) as e:
+        probe_failures_seed.append({
+            "probe_id": metadata["probe_id"],
+            "failure_reason": f"receipt write failed: {str(e)[:200]}",
+            "failure_remediation": "check KB mount is writable + re-run /cross-audit",
+        })
+        finding["probe_receipt"] = None
+    else:
+        finding["probe_receipt"] = receipt_path
+
+# Emit a small JSON summary for the bash caller to inspect.
+summary = {
+    "final_findings": [{"id": f["id"], "provisional_id": f.get("provisional_id"), "probe_receipt": f.get("probe_receipt"), "sources": f.get("sources")} for f in final_findings],
+    "probe_failures_seed": probe_failures_seed,
+    "envelope_hash_expected": probe_output_hash,
+}
+sys.stdout.write(json.dumps(summary, sort_keys=True))
+PY
+)
+  [ $? -eq 0 ] || { echo "stage-4.5 orchestrator emulation failed"; return 1; }
+  # Summary assertions.
+  local merged_id merged_provisional merged_sources receipt_path
+  merged_id=$(printf '%s\n' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["final_findings"][0]["id"])')
+  merged_provisional=$(printf '%s\n' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["final_findings"][0]["provisional_id"])')
+  merged_sources=$(printf '%s\n' "$result" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["final_findings"][0]["sources"]))')
+  receipt_path=$(printf '%s\n' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["final_findings"][0]["probe_receipt"] or "")')
+  [ "$merged_id" = "X5" ] || { echo "merged id wrong: $merged_id"; return 1; }
+  [ "$merged_provisional" = "pE-1" ] || { echo "provisional_id not preserved through id-swap (X24): $merged_provisional"; return 1; }
+  [ "$merged_sources" = "probe:E,claude" ] || { echo "merged sources wrong: $merged_sources (expected probe:E,claude probe-first)"; return 1; }
+  [ -n "$receipt_path" ] || { echo "probe_receipt not populated on merged entry"; return 1; }
+  [ -f "$receipt_path" ] || { echo "receipt file not written at $receipt_path"; return 1; }
+  # 11-field body — verify all 11 keys present + probe_output_hash verifies.
+  python3 -c "
+import hashlib, json, sys
+body = json.load(open('$receipt_path'))
+expected_keys = {
+    'probe_id', 'probe_version', 'mode_at_emit', 'trigger_input_hash',
+    'probe_output_hash', 'degraded_mode', 'emitted_at', 'eligible_reason',
+    'scope_files_read', 'skipped_files', 'emitted_findings',
+}
+missing = expected_keys - set(body.keys())
+extra = set(body.keys()) - expected_keys
+if missing: print('missing body keys:', missing); sys.exit(1)
+if extra: print('extra body keys:', extra); sys.exit(1)
+# Verify probe_output_hash.
+env = {'probe_id': body['probe_id'], 'probe_version': body['probe_version'], 'emitted_findings': body['emitted_findings']}
+env_bytes = json.dumps(env, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+recomputed = hashlib.sha256(env_bytes).hexdigest()
+if recomputed != body['probe_output_hash']:
+    print(f'probe_output_hash mismatch: disk={body[\"probe_output_hash\"]} recomputed={recomputed}')
+    sys.exit(1)
+# emitted_findings is length-1 per §3.3 (v1 — one finding per receipt file).
+if not isinstance(body['emitted_findings'], list) or len(body['emitted_findings']) != 1:
+    print(f'emitted_findings shape wrong: {body[\"emitted_findings\"]!r}')
+    sys.exit(1)
+" || { echo "11-field body / probe_output_hash verification failed for $receipt_path"; return 1; }
+  echo "merged-receipt end-to-end: fixture 06 → dedupe (X23) → final-ID alloc (X24) → side-map lookup (X19) → 11-field receipt written at $receipt_path with verified probe_output_hash"
+}
+
+# --- Step 5: yml example hint + docs/kb-discovery.md probe-E row ---
+
+check_yaml_example_probes_e_hint() {
+  # .ai-dev-team.yml.example's commented cross_audit.probes.e: line must carry
+  # the hint pointing users at `shadow` as the first step toward graduation
+  # (spec §3.7). Prose is not line-frozen — the assertion checks both the
+  # probe name marker AND the shadow-evidence phrase somewhere near it.
+  local path=".ai-dev-team.yml.example"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE '^#\s+e:\s*\{\s*mode:\s*off\s*\}' "$path" \
+    || { echo "$path missing 'e: { mode: off }' commented probes.e line"; return 1; }
+  # Extract the block starting at the `e:` line and following 3 lines, look
+  # for the shadow-evidence hint.
+  local window
+  window=$(grep -nA3 -E '^#\s+e:\s*\{\s*mode:\s*off\s*\}' "$path" | head -5)
+  printf '%s\n' "$window" | grep -qE 'shadow|live evidence|graduation' \
+    || { echo "$path probes.e comment missing 'shadow' / 'live evidence' / 'graduation' hint"; return 1; }
+  printf '%s\n' "$window" | grep -qE 'diff-scope|allowlist' \
+    || { echo "$path probes.e comment missing 'diff-scope' or 'allowlist' detector summary"; return 1; }
+  echo "$path probes.e comment has shadow/graduation hint + detector summary"
+}
+
+check_docs_kb_discovery_probe_e_row() {
+  # docs/kb-discovery.md has a probe-E row in the reference table per §3.7:
+  # detector summary + trigger + scope reads + v1 limitation column.
+  local path="docs/kb-discovery.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # Reference table header column (includes v1-limitation column per spec §3.7).
+  grep -qE '\| v1 limitation \|' "$path" \
+    || { echo "$path missing reference table 'v1 limitation' column header"; return 1; }
+  # The probe-E row itself.
+  local row
+  row=$(grep -E '^\| e \|' "$path" | head -1)
+  [[ -n "$row" ]] || { echo "$path missing '| e |' probe-E row"; return 1; }
+  # Detector summary mentions same-file allowlist leak.
+  echo "$row" | grep -qiF 'same-file allowlist leak' \
+    || { echo "$path probe-E row missing 'same-file allowlist leak' detector summary"; return 1; }
+  # Trigger mentions changed .py files + test-file skip.
+  echo "$row" | grep -qE 'changed \`?\.?py|test files? skipped' \
+    || { echo "$path probe-E row missing changed .py / test-file-skip trigger"; return 1; }
+  # v1 limitation names Python + same-file.
+  echo "$row" | grep -qE 'Python only|same-file' \
+    || { echo "$path probe-E row missing 'Python only' or 'same-file' v1-limitation"; return 1; }
+  echo "$path probe-E row present (detector summary + trigger + v1 limitation columns)"
 }
