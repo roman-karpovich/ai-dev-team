@@ -1,5 +1,15 @@
 # CLAUDE.md — ai-dev-team
 
+## Mission
+
+**Плагин ai-dev-team даёт качественный аудит при разработке и отлавливает максимум проблем до релиза.**
+
+Код на выходе должен быть качественным, но никакой качественный код не спасёт от пропущенных при аудите проблем — **audit coverage — binding constraint**. Конкретный axis: закрыть blind spots cross-audit через deterministic probes (E/F shipped; G, format-churn pending).
+
+Каждая plugin initiative должна отвечать "какой класс audit-miss'ов она закрывает?". Ответ "никакой" → code-quality improvement (valuable, но не main path миссии). Ответ "вот этот документированный incident" → main path.
+
+Полная формулировка + priority-ranking operational rules: `<kb>/repos/ai-dev-team/MISSION.md`.
+
 ## Contribution flow — PR-only, auto-merge
 
 **Do not commit directly to `main`.** Every change goes through a pull request, which Claude
