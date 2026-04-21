@@ -27,7 +27,13 @@ kb_path: <set-me>
 #     e: { mode: off }      # E = diff-scope leak detector (same-file Python allowlist, spec
 #                           # 2026-04-21-probe-e-diff-scope-leak); set `mode: shadow` to start
 #                           # collecting live evidence toward graduation.
-#     f: { mode: off }      # F = cardinality blindness detector (follow-up spec)
+#     f: { mode: off }      # F = cardinality blindness (same-file missing-cursor,
+#                           # spec 2026-04-21-probe-f-cardinality-blindness) — set to
+#                           # `shadow` to start collecting live evidence toward
+#                           # graduation. Detects added paging-method calls
+#                           # (e.g. `.limit(...)`, `.paginate(...)`) in functions
+#                           # lacking cursor-discipline parameters or cardinality
+#                           # docstring keywords.
 #     g: { mode: off }      # G = test-set redundancy detector (follow-up spec)
 
 # Optional: Multi-GitHub-account config — put this block in `.ai-dev-team.local.yml`

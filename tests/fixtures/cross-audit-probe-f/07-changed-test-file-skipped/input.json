@@ -1,0 +1,16 @@
+{
+  "diff": {
+    "added_lines": {
+      "tests/test_reconcile.py": [
+        5
+      ]
+    }
+  },
+  "changed_python_files": [
+    "tests/test_reconcile.py"
+  ],
+  "repo_root": ".",
+  "audit_slug": "2026-04-21-probe-f-fixture-07",
+  "base_ref": "main",
+  "mode": "shadow"
+}

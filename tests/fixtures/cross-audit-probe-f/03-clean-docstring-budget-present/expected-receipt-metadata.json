@@ -1,0 +1,1 @@
+{"degraded_mode":false,"eligible_reason":"0 paging-marker adds in functions lacking cursor-discipline","emitted_at":"2026-04-21T14:23:17Z","probe_id":"F","probe_version":"f.1.0","scope_files_read":["src/rewards/reconcile.py"],"skipped_files":[],"trigger_input_hash":"c5ea0d367c393f8e50a177a3d29d5c7c917cef2ecb95f47fa986a90f065a2892"}
