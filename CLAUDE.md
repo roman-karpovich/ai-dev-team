@@ -2,13 +2,21 @@
 
 ## Mission
 
-**Плагин ai-dev-team даёт качественный аудит при разработке и отлавливает максимум проблем до релиза.**
+**Плагин ai-dev-team помогает разработке с нескольких сторон — ideation, disciplined execution, quality verification, persistent context, codified code-quality conventions — чтобы сократить bug-escape rate, поднять dev velocity, не терять контекст между сессиями, и получать качественный код от dev-agent'ов.**
 
-Код на выходе должен быть качественным, но никакой качественный код не спасёт от пропущенных при аудите проблем — **audit coverage — binding constraint**. Конкретный axis: закрыть blind spots cross-audit через deterministic probes (E/F shipped; G, format-churn pending).
+Концерны плагина — не абстрактное "качество", а конкретные pain points: lack of discipline, weak tests, lost context, research fragmentation, spec drift, review quality, custom nuances не схваченные dev-agent'ами.
 
-Каждая plugin initiative должна отвечать "какой класс audit-miss'ов она закрывает?". Ответ "никакой" → code-quality improvement (valuable, но не main path миссии). Ответ "вот этот документированный incident" → main path.
+Axes (федерация, не иерархия):
+- **Ideation** — `/investigate`, `/research` (выбор направления, brainstorm)
+- **Orchestration** — `/feature` spec-driven flow (discipline backbone)
+- **Verification** — `/cross-audit` (Claude+Codex + deterministic probes)
+- **Code-quality conventions** — `code-quality-rules.md` R1-R7 для dev-agent'ов
+- **Context persistence** — KB vault (specs, findings, research)
+- **Self-protection** — smoke harness + hooks
 
-Полная формулировка + priority-ranking operational rules: `<kb>/repos/ai-dev-team/MISSION.md`.
+**Current binding constraint** = audit coverage (закрыть cross-audit blind spots через probes E/F/G/…). Salient после aqua-bribes incidents; когда probe series stabilises + team rollout happens, binding может сместиться к другому axis'у. Mission остаётся прежней.
+
+Полная формулировка + success criteria + operational rules: `<kb>/repos/ai-dev-team/MISSION.md`.
 
 ## Contribution flow — PR-only, auto-merge
 
