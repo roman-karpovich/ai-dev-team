@@ -1,0 +1,52 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "sources": [
+        "claude"
+      ],
+      "file": "src/aqua/reconcile.py:5",
+      "severity": "HIGH",
+      "title": "Claude: cardinality blindness concern",
+      "description": "Claude spotted a potential cardinality blindness near the .limit call.",
+      "fix": "Review reconcile_bribe_payouts for cursor seeking.",
+      "fingerprint_anchors": {
+        "primary_file": "src/aqua/reconcile.py",
+        "paging_symbol": ".limit",
+        "failure_kind": "missing_cursor"
+      }
+    },
+    {
+      "id": "pF-1",
+      "provisional_id": "pF-1",
+      "sources": [
+        "probe:F"
+      ],
+      "file": "src/aqua/reconcile.py:5",
+      "severity": "HIGH",
+      "title": "Pagination marker added; enclosing function lacks cardinality discipline",
+      "description": "`.limit` call added at line 5 inside function `reconcile_bribe_payouts` (line 4). The function signature has no cursor-discipline parameter (see §3.4 `DISCIPLINE_PARAMS` authoritative set) and its docstring carries no cardinality keyword (see §3.4 `DISCIPLINE_KEYWORDS` authoritative set). Code may time out under production cardinality.",
+      "fix": "Either (a) add a cursor parameter to the function signature and seek from recent rather than genesis, (b) add a docstring naming the cardinality budget (e.g. `assumes ≤ 10k records; budget: 5s wall-time`), OR (c) document in the spec §2 Current State why unbounded iteration is deliberate.",
+      "mode_at_emit": "warn",
+      "blocking": false,
+      "probe_version": "f.1.0",
+      "eligible_reason": "1 paging-marker add in function lacking cursor-discipline",
+      "fingerprint_anchors": {
+        "primary_file": "src/aqua/reconcile.py",
+        "paging_symbol": ".limit",
+        "failure_kind": "missing_cursor"
+      },
+      "canonical_payload": {
+        "primary_file": "src/aqua/reconcile.py",
+        "paging_symbol": ".limit",
+        "failure_kind": "missing_cursor",
+        "enclosing_function": "reconcile_bribe_payouts",
+        "add_site_line": 5,
+        "function_line": 4,
+        "discipline_params_observed": [],
+        "discipline_keywords_observed": []
+      },
+      "probe_receipt": null
+    }
+  ]
+}

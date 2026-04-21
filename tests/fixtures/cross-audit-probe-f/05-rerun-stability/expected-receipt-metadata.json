@@ -1,0 +1,1 @@
+{"degraded_mode":false,"eligible_reason":"1 paging-marker add in function lacking cursor-discipline","emitted_at":"2026-04-21T14:23:17Z","probe_id":"F","probe_version":"f.1.0","scope_files_read":["src/good.py"],"skipped_files":["src/bad.py"],"trigger_input_hash":"95dd8e577d751e93925b6edf1fb528fbb5edca3c025115fc6b22f2075f187f88"}

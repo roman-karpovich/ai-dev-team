@@ -1,0 +1,1 @@
+{"degraded_mode":false,"eligible_reason":"1 paging-marker add in function lacking cursor-discipline","emitted_at":"2026-04-21T14:23:17Z","probe_id":"F","probe_version":"f.1.0","scope_files_read":["src/aqua/queries.py"],"skipped_files":[],"trigger_input_hash":"6caf9666cced306d774c1843255a82fcf38270f0a51c16e6b504a20636e1bea8"}

@@ -1,0 +1,16 @@
+{
+  "diff": {
+    "added_lines": {
+      "src/aqua/reconcile.py": [
+        6
+      ]
+    }
+  },
+  "changed_python_files": [
+    "src/aqua/reconcile.py"
+  ],
+  "repo_root": ".",
+  "audit_slug": "2026-04-21-probe-f-fixture-03",
+  "base_ref": "main",
+  "mode": "shadow"
+}

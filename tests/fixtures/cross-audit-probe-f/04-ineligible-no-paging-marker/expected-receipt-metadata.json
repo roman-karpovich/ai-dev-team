@@ -1,0 +1,1 @@
+{"degraded_mode":false,"eligible_reason":"0 paging-marker adds in functions lacking cursor-discipline","emitted_at":"2026-04-21T14:23:17Z","probe_id":"F","probe_version":"f.1.0","scope_files_read":["src/aqua/reconcile.py"],"skipped_files":[],"trigger_input_hash":"b3aef26e217a783361904b6af020134cc7b2a69d92c37b837f9c60a966276558"}
