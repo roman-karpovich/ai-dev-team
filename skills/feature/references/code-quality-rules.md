@@ -226,3 +226,29 @@ Tests run in-process wherever the stack supports it; a spawned runserver, geth, 
 5. When a test would force one of the above, re-scope it: either pull the assertion up to the user-facing contract (APIClient / Env / CLI subprocess / package-API call) with real collaborators below, or drop the test. Do not rescue the wrong scope by tightening the mock graph.
 
 ---
+
+## R7 — Keep unit tests in a sibling file, not inline
+
+**Rule**: when a source file (e.g. `foo.rs`) needs an in-crate unit-test module that accesses private items, put the tests in a sibling `foo_tests.rs` and wire them via `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;` at the bottom of `foo.rs`. Do NOT write an inline `#[cfg(test)] mod tests { ... }` block. The concept extends to Python (sibling `test_foo.py` co-located with `foo.py`, same-package import reaches private names via `from foo import _helper`) and to any language whose idiom permits colocating tests with production code. Exception: a trivial test module (<~40 lines, one or two tests) may stay inline.
+
+**Why**: source files that bundle their tests inline grow large — tests often exceed 25% of file length — which inflates the context cost every time a code reader (human or agent) opens the file to study production logic. Every subsequent agent that loads `foo.rs` to reason about one function also loads every inline test body, dragging per-turn context for zero production-logic signal. Rust's `#[path]` submodule idiom keeps `use super::*;` working against private items with zero visibility changes, so the sibling-file variant costs nothing in API surface. Python's same-package import reaches `_private_helper` across files identically. Example: `plane.rs` + `plane_tests.rs` (soroban-amm PR #159 round-trip from inline → sibling post-hoc — R7 prevents the round-trip).
+
+R7 refines R5 — R5 says "mirror the repo convention, including an inline-is-convention repo"; R7 overrides that edge case because the context-cost argument is language-agnostic and stronger than convention-mirroring: a new source file landing under R7 prefers sibling-file even if the surrounding repo uses inline, and notes the convention shift in the spec Log. R5 remains the source of truth for the broader "separate-file vs inline" convention discovery; R7 adds the concrete sibling-file pattern + context-cost rationale + trivial-module exception that R5 does not enumerate.
+
+**How to apply**:
+
+1. Before writing the first test in a module, decide the test file location by language:
+   - **Rust**: sibling `foo_tests.rs` next to `foo.rs`. Wire via a single line at the bottom of `foo.rs`: `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;`. `use super::*;` inside `foo_tests.rs` accesses private items without visibility changes.
+   - **Python**: sibling `test_foo.py` co-located with `foo.py` in the same package directory. Private symbols reach across files via `from foo import _helper` (module-internal access is package-local, not file-local). pytest picks up `test_*.py` automatically.
+   - **TypeScript / JavaScript**: sibling `foo.test.ts` (Jest / Vitest discover automatically). Note TS requires `export` for test access, so R7 may widen visibility slightly for helpers that were previously file-internal — still a net win for most modules >200 lines.
+   - **Go**: the idiom already mandates `foo_test.go` sibling files — R7 is satisfied by default. No action.
+
+2. Measure before committing: inline tests may stay under the trivial-module exception ONLY when the entire test block is <~40 lines AND the source file is <~200 lines total. Above either threshold, extract to a sibling file. The 25% rule-of-thumb in the Why clause is observational — the hard floor for extraction is the combined line-count test above.
+
+3. R7 overrides R5 step 4 where the repo convention is explicitly inline: new files prefer sibling-file regardless, and note the convention shift in the spec Log (`- YYYY-MM-DD: introduced sibling-file test layout per R7; repo previously used inline`). Reviewers accept the new pattern without requiring a migration commit for existing inline files.
+
+4. Extracting from existing inline to sibling is a pure-refactor commit: no test behaviour changes, no assertion edits. Commit title follows conventional format: `refactor(tests): extract <module> tests to sibling file`. This keeps `git blame` on the production file clean for subsequent behaviour-change commits and matches the `refactor` label in `.github/release.yml`.
+
+5. Reviewers verify: a new source file landing with inline tests >40 lines is a review block, not a warning — fix before APPROVED. Trivial single-test inline blocks are fine per the exception. When extracting opportunistically during a feature spec, the extraction commit is separate from the behaviour-change commits per R4-style single-responsibility.
+
+---
