@@ -1,0 +1,18 @@
+{
+  "diff": {
+    "added_lines": {
+      "src/aqua/queries.py": [
+        5,
+        10,
+        16
+      ]
+    }
+  },
+  "changed_python_files": [
+    "src/aqua/queries.py"
+  ],
+  "repo_root": ".",
+  "audit_slug": "2026-04-21-probe-f-fixture-12",
+  "base_ref": "main",
+  "mode": "shadow"
+}
