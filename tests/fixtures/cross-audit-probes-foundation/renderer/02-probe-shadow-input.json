@@ -1,0 +1,23 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "severity": "HIGH",
+      "title": "New build_failure: marker unread by _clean_rewards allowlist",
+      "sources": ["probe:E"],
+      "file": "src/stellar/reconcile.py:142",
+      "description": "Probe E detected persisted-state marker 'build_failure:' added in diff; downstream consumer src/stellar/rewards.py:_clean_rewards allowlist does not include it.",
+      "fix": "Add 'build_failure' to the _clean_rewards allowlist in src/stellar/rewards.py.",
+      "mode_at_emit": "shadow",
+      "blocking": false,
+      "probe_receipt": "<kb>/security/probe-receipts/X1.json",
+      "probe_version": "e.1.0",
+      "eligible_reason": "new persisted-state marker 'build_failure:' present in diff at reconcile.py:142",
+      "confidence": 100,
+      "status": "OPEN"
+    }
+  ],
+  "probe_modes": {"e": "shadow"},
+  "probe_failures": [],
+  "scorer_status": "ok"
+}

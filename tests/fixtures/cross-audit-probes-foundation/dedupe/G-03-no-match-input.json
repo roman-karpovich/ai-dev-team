@@ -1,0 +1,36 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "sources": ["probe:G"],
+      "file": "tests/fixtures/feature-a/exec.md",
+      "severity": "HIGH",
+      "description": "step 3 missing red capture",
+      "fingerprint_anchors": {
+        "test_file": "tests/fixtures/feature-a/exec.md",
+        "test_id_or_step_id": "step-03",
+        "failure_kind": "missing_red_proof"
+      },
+      "mode_at_emit": "block",
+      "probe_receipt": "<kb>/security/probe-receipts/X1.json",
+      "probe_version": "g.1.0",
+      "eligible_reason": "feature-a step-03"
+    },
+    {
+      "id": "X2",
+      "sources": ["probe:G"],
+      "file": "tests/fixtures/feature-b/exec.md",
+      "severity": "HIGH",
+      "description": "step 5 duplicate dimension to step 4",
+      "fingerprint_anchors": {
+        "test_file": "tests/fixtures/feature-b/exec.md",
+        "test_id_or_step_id": "step-05",
+        "failure_kind": "duplicate_dimension"
+      },
+      "mode_at_emit": "block",
+      "probe_receipt": "<kb>/security/probe-receipts/X2.json",
+      "probe_version": "g.1.0",
+      "eligible_reason": "feature-b step-05 vs step-04 duplicate"
+    }
+  ]
+}

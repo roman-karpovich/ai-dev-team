@@ -1,0 +1,42 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "severity": "HIGH",
+      "title": "Possible injection in log formatter",
+      "sources": ["claude"],
+      "file": "src/logs/fmt.py:18",
+      "description": "User-controlled input reaches format string.",
+      "fix": "Use %s placeholder with explicit args.",
+      "mode_at_emit": null,
+      "blocking": false,
+      "probe_receipt": null,
+      "probe_version": null,
+      "eligible_reason": null,
+      "confidence": 90,
+      "status": "OPEN",
+      "legacy_pseudo_confidence": true
+    },
+    {
+      "id": "X2",
+      "severity": "HIGH",
+      "title": "Unclear retry backoff",
+      "sources": ["codex"],
+      "file": "src/net/retry.py:40",
+      "description": "Backoff scheme uses a magic constant.",
+      "fix": "Extract to settings.",
+      "mode_at_emit": null,
+      "blocking": false,
+      "probe_receipt": null,
+      "probe_version": null,
+      "eligible_reason": null,
+      "confidence": 60,
+      "status": "OPEN",
+      "legacy_pseudo_confidence": true
+    }
+  ],
+  "probe_modes": {},
+  "probe_failures": [],
+  "scorer_status": "failed",
+  "scorer_failure_reason": "Task-tool response malformed — unknown finding ID in scores map"
+}

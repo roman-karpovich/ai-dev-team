@@ -1,0 +1,36 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "sources": ["probe:F"],
+      "file": "src/stellar/reconcile.py:87",
+      "severity": "HIGH",
+      "description": "missing cursor on Horizon paging",
+      "fingerprint_anchors": {
+        "primary_file": "src/stellar/reconcile.py",
+        "paging_symbol": ".limit(200)",
+        "failure_kind": "missing_cursor"
+      },
+      "mode_at_emit": "warn",
+      "probe_receipt": "<kb>/security/probe-receipts/X1.json",
+      "probe_version": "f.1.0",
+      "eligible_reason": "paging symbol at reconcile.py:87"
+    },
+    {
+      "id": "X2",
+      "sources": ["probe:F"],
+      "file": "src/stellar/reconcile.py:87",
+      "severity": "HIGH",
+      "description": "no cardinality budget declared in spec",
+      "fingerprint_anchors": {
+        "primary_file": "src/stellar/reconcile.py",
+        "paging_symbol": ".limit(200)",
+        "failure_kind": "no_cardinality_budget"
+      },
+      "mode_at_emit": "warn",
+      "probe_receipt": "<kb>/security/probe-receipts/X2.json",
+      "probe_version": "f.1.0",
+      "eligible_reason": "no budget at reconcile.py spec"
+    }
+  ]
+}

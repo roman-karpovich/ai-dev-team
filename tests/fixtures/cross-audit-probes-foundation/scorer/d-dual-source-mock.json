@@ -1,0 +1,8 @@
+{
+  "scores": {
+    "X1": {
+      "confidence": 75,
+      "rationale": "both halves flagged the same missing validation and the diff confirms amount-field validation is absent; dual-source advisory hint noted but evidence is primary signal"
+    }
+  }
+}

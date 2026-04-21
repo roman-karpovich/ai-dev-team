@@ -1,0 +1,39 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "severity": "CRITICAL",
+      "title": "Missing input validation on /api/v1/deposit",
+      "sources": ["claude", "codex"],
+      "file": "src/api/deposit.py:42",
+      "description": "Amount field not validated against account balance before persist call.",
+      "fix": "Add balance-check guard before calling persist_deposit().",
+      "mode_at_emit": null,
+      "blocking": false,
+      "probe_receipt": null,
+      "probe_version": null,
+      "eligible_reason": null,
+      "confidence": 90,
+      "status": "OPEN"
+    },
+    {
+      "id": "X2",
+      "severity": "HIGH",
+      "title": "Race condition in reward claim flow",
+      "sources": ["claude"],
+      "file": "src/rewards/claim.py:118",
+      "description": "Two concurrent claim() calls can double-withdraw the pending reward.",
+      "fix": "Wrap the read-modify-write in SELECT FOR UPDATE.",
+      "mode_at_emit": null,
+      "blocking": false,
+      "probe_receipt": null,
+      "probe_version": null,
+      "eligible_reason": null,
+      "confidence": 85,
+      "status": "OPEN"
+    }
+  ],
+  "probe_modes": {},
+  "probe_failures": [],
+  "scorer_status": "ok"
+}

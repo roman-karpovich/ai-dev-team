@@ -1,0 +1,18 @@
+{
+  "scope_files": ["src/stellar/reconcile.py", "src/stellar/rewards.py"],
+  "scope_file_contents": {
+    "src/stellar/reconcile.py": "def reconcile():\n    return build_failure_marker()\n",
+    "src/stellar/rewards.py": "ALLOWLIST = {'ok', 'pending'}\n"
+  },
+  "envelope": {
+    "probe_id": "E",
+    "probe_version": "e.1.0",
+    "emitted_findings": [
+      {
+        "primary_file": "src/stellar/reconcile.py",
+        "marker_literal": "build_failure",
+        "consumer_symbol": "_clean_rewards"
+      }
+    ]
+  }
+}

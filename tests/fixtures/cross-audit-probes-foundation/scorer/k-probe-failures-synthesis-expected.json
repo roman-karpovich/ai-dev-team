@@ -1,0 +1,1 @@
+{"probe_failures":[{"probe_id":"E","reason":"git diff returned non-zero in isolated worktree","remediation":"re-run /cross-audit after checking out base branch cleanly"}]}

@@ -1,0 +1,47 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "severity": "HIGH",
+      "title": "Probe E shadow: build_failure marker unread",
+      "sources": ["probe:E"],
+      "file": "src/stellar/reconcile.py:142",
+      "description": "Probe E flagged the marker.",
+      "fix": "Add to allowlist.",
+      "mode_at_emit": "shadow",
+      "blocking": false,
+      "probe_receipt": "<kb>/security/probe-receipts/X1.json",
+      "probe_version": "e.1.0",
+      "eligible_reason": "marker detected at reconcile.py:142",
+      "confidence": 100,
+      "status": "OPEN"
+    },
+    {
+      "id": "X2",
+      "severity": "HIGH",
+      "title": "Race condition in rewards queue",
+      "sources": ["claude"],
+      "file": "src/rewards/queue.py:33",
+      "description": "Concurrent queue push without lock.",
+      "fix": "Serialize with mutex.",
+      "mode_at_emit": null,
+      "blocking": false,
+      "probe_receipt": null,
+      "probe_version": null,
+      "eligible_reason": null,
+      "confidence": 90,
+      "status": "OPEN",
+      "legacy_pseudo_confidence": true
+    }
+  ],
+  "probe_modes": {"e": "shadow"},
+  "probe_failures": [
+    {
+      "probe_id": "F",
+      "reason": "git diff returned non-zero in isolated worktree",
+      "remediation": "re-run /cross-audit after checking out base branch cleanly"
+    }
+  ],
+  "scorer_status": "failed",
+  "scorer_failure_reason": "mock scorer JSON missing score for X2"
+}

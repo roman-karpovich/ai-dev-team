@@ -77,6 +77,30 @@ Feature skill reads `codex.model`, `codex.model_fast`, and `codex.reasoning_effo
 
 Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch. Never reads `codex.model_fast` — audit reasoning depth is non-negotiable, Fast is developer-codex-only. Also reads the optional `github:` block from `.ai-dev-team.local.yml` for multi-account PR auth; see the "Multi-account github: config block" section above for the YAML schema and cross-audit/SKILL.md Phase 0.5 for the full account-resolution ladder.
 
+#### `cross_audit.probes.<id>.mode` kill-switch
+
+Cross-audit also reads an optional `cross_audit.probes` block from the resolved config (team-shared `.ai-dev-team.yml` is the usual home; `.ai-dev-team.local.yml` may override per-user). Each probe carries a four-mode kill-switch with allowed values `off|shadow|warn|block`. Shape:
+
+```yaml
+cross_audit:
+  probes:
+    e: { mode: off }
+    f: { mode: off }
+    g: { mode: off }
+```
+
+Semantics (per spec 2026-04-21-cross-audit-probes-foundation §3.4):
+
+- **Default `off` when absent**: when `cross_audit.probes` is absent, or a given probe id is missing under it, the mode is `off`. Zero-config behaviour of `/cross-audit` is identical to today's; Foundation is invisible until a project opts in.
+- **Unknown probe id → warning**: probes are a forward-looking enum. An unknown probe id emits a one-line warning and is treated as `off`. This is a warning, not a hard-stop — new probes can arrive in follow-up specs without needing a Foundation re-release.
+- **Mode semantics**:
+  - `off` — probe is not dispatched; receipts are not requested; findings are not rendered.
+  - `shadow` — probe is dispatched; findings are rendered in `## Shadow findings (informational)` with `blocking: false`, NOT surfaced in the Phase 3 decision banner.
+  - `warn` — probe is dispatched; findings are rendered in `## Summary` with `blocking: false`, surfaced in the Phase 3 banner as a regular finding.
+  - `block` — probe is dispatched; findings are rendered in `## Summary` with `blocking: true`, surfaced in the Phase 3 banner with a `[BLOCKING]` prefix.
+
+See `skills/cross-audit/SKILL.md` Phase 0 for the read sequence and the `--probe-downgrade <id>=<mode>` CLI override (downgrade-only semantics).
+
 ### research skill
 
 Research skill reads only `kb_path` and `project` from the resolved config. No codex.* reads, no LLM dispatch.

@@ -1,0 +1,24 @@
+{
+  "scores": {
+    "X1":  { "confidence": 85, "rationale": "batch 1 entry" },
+    "X2":  { "confidence": 85, "rationale": "batch 1 entry" },
+    "X3":  { "confidence": 85, "rationale": "batch 1 entry" },
+    "X4":  { "confidence": 85, "rationale": "batch 1 entry" },
+    "X5":  { "confidence": 85, "rationale": "batch 1 entry" },
+    "X6":  { "confidence": 85, "rationale": "batch 1 entry" },
+    "X7":  { "confidence": 85, "rationale": "batch 1 entry" },
+    "X8":  { "confidence": 85, "rationale": "batch 1 entry" },
+    "X9":  { "confidence": 85, "rationale": "batch 1 entry" },
+    "X10": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X11": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X12": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X13": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X14": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X15": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X16": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X17": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X18": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X19": { "confidence": 85, "rationale": "batch 1 entry" },
+    "X20": { "confidence": 85, "rationale": "batch 1 entry" }
+  }
+}

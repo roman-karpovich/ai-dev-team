@@ -17,6 +17,17 @@ kb_path: <set-me>
 #   model_fast: gpt-5.4-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)
 #   NOTE: when codex.model_fast is set, codex.model must also be set and must differ from codex.model_fast (otherwise cross-auditor would use Fast reasoning).
 
+# Optional: Cross-audit probe kill-switch — spec 2026-04-21-cross-audit-probes-foundation §3.4.
+# Each probe has a four-mode switch: off|shadow|warn|block. Every probe defaults to
+# `off` when `cross_audit.probes` is absent or a given probe id is missing. Probe ids
+# are a forward-looking enum; unknown ids emit a one-line warning (not a hard-stop).
+# Foundation ships the parser + validator; probes E, F, G arrive in follow-up specs.
+# cross_audit:
+#   probes:
+#     e: { mode: off }      # E = diff-scope leak detector (follow-up spec)
+#     f: { mode: off }      # F = cardinality blindness detector (follow-up spec)
+#     g: { mode: off }      # G = test-set redundancy detector (follow-up spec)
+
 # Optional: Multi-GitHub-account config — put this block in `.ai-dev-team.local.yml`
 # (NOT the team-shared `.ai-dev-team.yml`). Account identities and token env var
 # names are personal, not team-shared. When this block is absent, `/cross-audit pr`

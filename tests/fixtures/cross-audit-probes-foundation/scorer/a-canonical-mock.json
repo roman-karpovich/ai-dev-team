@@ -1,0 +1,8 @@
+{
+  "scores": {
+    "X1": {
+      "confidence": 85,
+      "rationale": "diff at src/api/admin.py:22 shows /admin/delete endpoint lacks @require_admin decorator; CLAUDE.md §2.1 'auth-before-destructive' rule verifiably present and matches the finding"
+    }
+  }
+}

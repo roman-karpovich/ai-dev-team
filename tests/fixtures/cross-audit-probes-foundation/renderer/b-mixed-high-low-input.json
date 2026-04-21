@@ -1,0 +1,39 @@
+{
+  "findings": [
+    {
+      "id": "X1",
+      "severity": "CRITICAL",
+      "title": "Missing auth on /admin/delete endpoint",
+      "sources": ["claude", "codex"],
+      "file": "src/api/admin.py:22",
+      "description": "Both auditors flagged missing auth check before deletion.",
+      "fix": "Add @require_admin decorator.",
+      "mode_at_emit": null,
+      "blocking": false,
+      "probe_receipt": null,
+      "probe_version": null,
+      "eligible_reason": null,
+      "confidence": 95,
+      "status": "OPEN"
+    },
+    {
+      "id": "X2",
+      "severity": "HIGH",
+      "title": "Unclear variable name obscures intent",
+      "sources": ["claude"],
+      "file": "src/lib/util.py:140",
+      "description": "Variable `x` is overloaded; hard to follow control flow.",
+      "fix": "Rename to retries_remaining.",
+      "mode_at_emit": null,
+      "blocking": false,
+      "probe_receipt": null,
+      "probe_version": null,
+      "eligible_reason": null,
+      "confidence": 35,
+      "status": "OPEN"
+    }
+  ],
+  "probe_modes": {},
+  "probe_failures": [],
+  "scorer_status": "ok"
+}

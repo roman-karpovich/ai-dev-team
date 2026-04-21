@@ -1,0 +1,8 @@
+{
+  "scores": {
+    "X1": {
+      "confidence": 40,
+      "rationale": "finding cites CLAUDE.md §9.9 'fabricated rule' but no such section or phrase is present in any claude_md_paths file — anti-hallucination clause caps confidence at 49"
+    }
+  }
+}

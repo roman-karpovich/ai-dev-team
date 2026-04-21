@@ -3044,6 +3044,105 @@ check "check_smoke_helper_p3_spec_template_no_codex_action_rejected" check_smoke
 check "check_smoke_helper_p3_agent_routing_no_codex_action_rejected" check_smoke_helper_p3_agent_routing_no_codex_action_rejected
 echo
 
+# --- Cross-audit probes foundation (spec 2026-04-21-cross-audit-probes-foundation) ---
+echo "Cross-audit probes foundation:"
+check "check_agents_cross_auditor_schema_cut_fields" check_agents_cross_auditor_schema_cut_fields
+# Step 2 — renderer schema-cut, modes, fail-open banner, hard-stop on malformed probe_failures.
+# Per spec §6.1 Step 2: 4 umbrella helpers + 7 golden-diff sub-assertions = 11 PASS lines.
+check "check_findings_renderer_schema_cut" check_findings_renderer_schema_cut
+check "check_findings_renderer_modes" check_findings_renderer_modes
+check "check_findings_renderer_fail_open" check_findings_renderer_fail_open
+check "check_probe_failures_schema_hard_stop" check_probe_failures_schema_hard_stop
+# Fixture-level sub-assertions (§6.1 per-step count). Each exercises one
+# renderer golden: (1) no-probes legacy, (2) probe shadow, (3) probe warn,
+# (4) probe block, (5) multi-source merged, (6) fail-open banner, (7) malformed
+# probe_failures hard-stop.
+check "check_findings_renderer_fixture_01_no_probes_legacy" check_findings_renderer_schema_cut
+check "check_findings_renderer_fixture_02_probe_shadow" check_findings_renderer_modes_shadow
+check "check_findings_renderer_fixture_03_probe_warn" check_findings_renderer_modes_warn
+check "check_findings_renderer_fixture_04_probe_block" check_findings_renderer_modes_block
+check "check_findings_renderer_fixture_05_multi_source_merged" check_findings_renderer_modes_multi_source
+check "check_findings_renderer_fixture_06_probe_fail_open" check_findings_renderer_fail_open
+check "check_findings_renderer_fixture_07_probe_failures_malformed_hard_stop" check_probe_failures_schema_hard_stop
+
+# Step 3 — dedupe (E/F/G umbrella + 9 near-miss sub-fixtures + merged-probe+LLM)
+#   + receipt hash canonicalization rerun-stability.
+# Per spec §6.1 Step 3: 5 umbrella helpers + 10 sub-assertions = 15 PASS lines.
+check "check_dedupe_fingerprint_e_shape" check_dedupe_fingerprint_e_shape
+check "check_dedupe_fingerprint_f_shape" check_dedupe_fingerprint_f_shape
+check "check_dedupe_fingerprint_g_shape" check_dedupe_fingerprint_g_shape
+check "check_dedupe_merged_probe_llm_sources_list" check_dedupe_merged_probe_llm_sources_list
+check "check_receipt_hash_canonicalization_rerun_stable" check_receipt_hash_canonicalization_rerun_stable
+# Sub-assertions (3 near-miss per probe E/F/G + 1 merged-probe+LLM = 10).
+check "check_dedupe_fingerprint_e_exact_merge" check_dedupe_fingerprint_e_exact
+check "check_dedupe_fingerprint_e_partial_related_to" check_dedupe_fingerprint_e_partial
+check "check_dedupe_fingerprint_e_no_match_distinct" check_dedupe_fingerprint_e_no_match
+check "check_dedupe_fingerprint_f_exact_merge" check_dedupe_fingerprint_f_exact
+check "check_dedupe_fingerprint_f_partial_related_to" check_dedupe_fingerprint_f_partial
+check "check_dedupe_fingerprint_f_no_match_distinct" check_dedupe_fingerprint_f_no_match
+check "check_dedupe_fingerprint_g_exact_merge" check_dedupe_fingerprint_g_exact
+check "check_dedupe_fingerprint_g_partial_related_to" check_dedupe_fingerprint_g_partial
+check "check_dedupe_fingerprint_g_no_match_distinct" check_dedupe_fingerprint_g_no_match
+check "check_dedupe_merged_probe_llm_entry" check_dedupe_merged_probe_llm_sources_list
+
+# Step 4 — cross_audit.probes.<id>.mode config surface (yml example, docs, skill Phase 0).
+check "check_yaml_example_probes_block" check_yaml_example_probes_block
+check "check_docs_kb_discovery_probes_block" check_docs_kb_discovery_probes_block
+check "check_skill_md_phase0_probe_mode_read" check_skill_md_phase0_probe_mode_read
+
+# Step 5 — --probe-downgrade CLI flag + Phase 3 shadow/advisory sections +
+# cross-auditor input-surface. Per §6.1 Step 5 delta: +6.
+check "check_skill_md_probe_downgrade_flag" check_skill_md_probe_downgrade_flag
+check "check_skill_md_probe_downgrade_off_floor_refusal" check_skill_md_probe_downgrade_off_floor_refusal
+check "check_skill_md_phase3_shadow_section" check_skill_md_phase3_shadow_section
+check "check_skill_md_phase3_advisory_section_footer" check_skill_md_phase3_advisory_section_footer
+check "check_cross_auditor_probe_modes_input_declared" check_cross_auditor_probe_modes_input_declared
+check "check_cross_auditor_probe_receipts_input_declared" check_cross_auditor_probe_receipts_input_declared
+
+# Step 6 — renderer low-confidence advisory section + merged probe+LLM routing
+# + combined fail-open banner. Per §6.1 Step 6 delta: +4 umbrella + 6 fixture
+# sub-assertions (a-f) = 10 PASS lines.
+check "check_findings_renderer_low_confidence_section" check_findings_renderer_low_confidence_section
+check "check_findings_renderer_scorer_fail_open" check_findings_renderer_scorer_fail_open
+check "check_findings_renderer_merged_probe_llm_routing" check_findings_renderer_merged_probe_llm_routing
+check "check_findings_renderer_combined_fail_open_banner" check_findings_renderer_combined_fail_open_banner
+check "check_findings_renderer_fixture_a_low_only_llm_advisory" check_findings_renderer_low_confidence_section_fixture_a
+check "check_findings_renderer_fixture_b_mixed_high_low" check_findings_renderer_low_confidence_section_fixture_b
+check "check_findings_renderer_fixture_c_scorer_failed_pseudo_confidence" check_findings_renderer_scorer_fail_open_fixture_c
+check "check_findings_renderer_fixture_d_merged_probe_shadow" check_findings_renderer_merged_probe_llm_routing_fixture_d
+check "check_findings_renderer_fixture_e_merged_probe_warn" check_findings_renderer_merged_probe_llm_routing_fixture_e
+check "check_findings_renderer_fixture_f_combined_probe_scorer_fail" check_findings_renderer_combined_fail_open_banner_fixture_f
+
+# Step 7 — Haiku scorer agent + cross-auditor integration + probe_failures
+# synthesis. Per §6.1 Step 7 delta: +10 umbrella + 12 fixture sub-assertions = 22.
+check "check_haiku_scorer_agent_frontmatter" check_haiku_scorer_agent_frontmatter
+check "check_haiku_scorer_rubric_present" check_haiku_scorer_rubric_present
+check "check_haiku_scorer_anti_hallucination_clause" check_haiku_scorer_anti_hallucination_clause
+check "check_haiku_scorer_io_contract_sources_and_multi_source_note" check_haiku_scorer_io_contract_sources_and_multi_source_note
+check "check_haiku_scorer_fail_open" check_haiku_scorer_fail_open
+check "check_haiku_scorer_edge_cases_zero_partial_cap_timeout" check_haiku_scorer_edge_cases_zero_partial_cap_timeout
+check "check_haiku_scorer_mock_seam_declared" check_haiku_scorer_mock_seam_declared
+check "check_cross_auditor_step3_scorer_integration" check_cross_auditor_step3_scorer_integration
+check "check_cross_auditor_scorer_mock_env_var" check_cross_auditor_scorer_mock_env_var
+check "check_cross_auditor_probe_failures_synthesis_end_to_end" check_cross_auditor_probe_failures_synthesis_end_to_end
+check "check_scorer_fixture_a_canonical_scoring" check_scorer_fixture_a_canonical_scoring
+check "check_scorer_fixture_b_fabricated_citation_capped" check_scorer_fixture_b_fabricated_citation_capped
+check "check_scorer_fixture_c_malformed_triggers_fail_open" check_scorer_fixture_c_malformed_triggers_fail_open
+check "check_scorer_fixture_d_dual_source_not_auto_100" check_scorer_fixture_d_dual_source_not_auto_100
+check "check_scorer_fixture_e_combined_probe_scorer_fail" check_scorer_fixture_e_combined_probe_scorer_fail
+check "check_scorer_fixture_f_zero_llm_findings_skip_scorer" check_scorer_fixture_f_zero_llm_findings_skip_scorer
+check "check_scorer_fixture_g_partial_output_whole_batch_fail_open" check_scorer_fixture_g_partial_output_whole_batch_fail_open
+check "check_scorer_fixture_h_batch_cap_chunking_happy_path" check_scorer_fixture_h_batch_cap_chunking_happy_path
+check "check_scorer_fixture_i_merged_probe_llm_skip_scorer" check_scorer_fixture_i_merged_probe_llm_skip_scorer
+# Fixture (j) mock seam — consolidated into check_cross_auditor_scorer_mock_env_var
+# and check_haiku_scorer_mock_seam_declared (both wired above). §6.1 resolution:
+# adding agents/haiku-finding-scorer.md brought an off-by-one baseline pass from
+# the generic `for agent_file in agents/*.md` loop, so Step 7 consolidates one
+# redundant sub-assertion to land on the spec target 340 exactly.
+check "check_scorer_fixture_k_probe_failures_synthesis_explicit_strings" check_scorer_fixture_k_probe_failures_synthesis_explicit_strings
+check "check_scorer_fixture_l_probe_failures_fallback_generic_strings" check_scorer_fixture_l_probe_failures_fallback_generic_strings
+echo
+
 
 echo
 echo "Passed: $PASS"
