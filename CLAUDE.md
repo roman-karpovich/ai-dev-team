@@ -2,21 +2,21 @@
 
 ## Mission
 
-**Плагин ai-dev-team помогает разработке с нескольких сторон — ideation, disciplined execution, quality verification, persistent context, codified code-quality conventions — чтобы сократить bug-escape rate, поднять dev velocity, не терять контекст между сессиями, и получать качественный код от dev-agent'ов.**
+**ai-dev-team helps development from multiple angles — ideation, disciplined execution, quality verification, persistent context, codified code-quality conventions — to reduce bug-escape rate, increase dev velocity, preserve context across sessions, and get quality code (not just "works") from dev-agents.**
 
-Концерны плагина — не абстрактное "качество", а конкретные pain points: lack of discipline, weak tests, lost context, research fragmentation, spec drift, review quality, custom nuances не схваченные dev-agent'ами.
+The plugin targets concrete pain points, not abstract "quality": lack of discipline, weak tests, lost context, research fragmentation, spec drift, shallow review quality, custom project nuances dev-agents don't pick up on their own.
 
-Axes (федерация, не иерархия):
-- **Ideation** — `/investigate`, `/research` (выбор направления, brainstorm)
-- **Orchestration** — `/feature` spec-driven flow (discipline backbone)
-- **Verification** — `/cross-audit` (Claude+Codex + deterministic probes)
-- **Code-quality conventions** — `code-quality-rules.md` R1-R7 для dev-agent'ов
-- **Context persistence** — KB vault (specs, findings, research)
+Axes (federation, not hierarchy):
+- **Ideation** — `/investigate`, `/research` (direction picking, brainstorming)
+- **Orchestration** — `/feature` spec-driven flow (the discipline backbone)
+- **Verification** — `/cross-audit` (Claude+Codex halves + deterministic probes)
+- **Code-quality conventions** — `skills/feature/references/code-quality-rules.md` R1-R7 for dev-agents
+- **Context persistence** — KB vault (specs, findings, research) across sessions
 - **Self-protection** — smoke harness + hooks
 
-**Current binding constraint** = audit coverage (закрыть cross-audit blind spots через probes E/F/G/…). Salient после aqua-bribes incidents; когда probe series stabilises + team rollout happens, binding может сместиться к другому axis'у. Mission остаётся прежней.
+**Current binding constraint**: audit coverage (closing cross-audit blind spots via deterministic probes E/F/G/…). Salient after the aqua-bribes incidents; once the probe series stabilises and team rollout happens, the binding constraint may shift to another axis. The mission itself stays the same.
 
-Полная формулировка + success criteria + operational rules: `<kb>/repos/ai-dev-team/MISSION.md`.
+Full formulation + success criteria + operational rules: `<kb>/repos/ai-dev-team/MISSION.md`.
 
 ## Contribution flow — PR-only, auto-merge
 
