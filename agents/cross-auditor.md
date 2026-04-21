@@ -245,6 +245,37 @@ Do NOT filter out `previously_fixed` items before consolidation — they are ver
 
 **Semantic suppression (re-audit only)**: if the findings file already exists, read all entries with status ACCEPTED or DEFERRED. Before assigning a new ID to a candidate finding, check if it describes the same issue as any ACCEPTED/DEFERRED entry (same file:line or same root cause). If so: skip it entirely — the user has already made a deliberate decision about that issue. Do not create a new ID for it.
 
+### Step 3 pipeline (5 stages, per spec 2026-04-21-cross-audit-probes-foundation §3.5 + §3.5a + §3.7)
+
+After Claude+Codex collection (Steps 1-2 above), run the following five-stage pipeline before any findings.md write:
+
+1. **Claude + Codex findings collected** — today's Step 1/2 output merges under legacy rules above.
+2. **Probe receipts appended** — for each entry in the `probe_receipts` input field, emit one corresponding finding into the combined list with `sources: ["probe:<id>"]`, `mode_at_emit: <mode>`, `probe_receipt: <path>`, `probe_version: <version>`, `eligible_reason: <string>` from the receipt, and the probe's structured `fingerprint_anchors`. No-op when `probe_receipts` is empty.
+3. **Structured dedupe via `hooks/lib/dedupe_findings.sh`** — pipe the combined list through the helper. Probe+LLM entries with matching fingerprints merge into single entries carrying `sources: ["probe:<id>", "claude" | "codex"]` per §3.3 X2 contract. Partial matches get mutual `related_to[]` cross-references without merging.
+4. **Haiku decoupled scoring via `haiku-finding-scorer` agent** (Task tool) — new in Foundation:
+   - Filter the deduped list to **pure-LLM entries only** (no `probe:*` in `sources[]`). Probe-sourced findings (including merged probe+LLM) pin `confidence: 100` inline and skip the scorer entirely.
+   - If the pure-LLM subset is **empty** (X1 rule 1): SKIP the scorer call entirely. Emit `scorer_status: ok` and no degraded-mode banner line. Renderer receives no scorer output.
+   - Batch cap: **20 findings per Task-tool invocation** (X1 rule 3). If the pure-LLM subset has >20 entries, chunk into consecutive 20-finding batches preserving IDs; emit one Task-tool call per chunk; merge the returned `scores` maps (disjoint IDs by construction).
+   - **60-second timeout per chunk** (X1 rule 4). Timeout → chunk failure → whole-iteration fail-open (rule 2 behaviour).
+   - Invoke the Task tool with the `agents/haiku-finding-scorer.md` agent name. Pass the input JSON per the agent's I/O contract — `findings: [...]` with the pure-LLM subset (each carrying `sources`, `severity`, `file`, `line`, `description`, `fix_suggestion`, `diff_slice`, `multi_source_note`), plus `claude_md_paths: [...]` resolved inside the audit worktree.
+   - `multi_source_note` (X8 contract): when `len(sources) >= 2`, set it to a string of form `"also raised by: <other source(s) joined by ', '>"` from the perspective of `sources[0]` (e.g. `sources: ["claude", "codex"]` → `"also raised by: codex"`). When `len(sources) == 1`, set it to `null`.
+   - **Mock seam** (X7): when the environment variable `CROSS_AUDIT_SCORER_MOCK_JSON` is set to a filesystem path, **replace** the Task-tool invocation by reading that file's JSON as the scorer response. The mock file is treated EXACTLY as a real scorer response — subject to every validation rule below. Production invocations leave the env var unset.
+   - **Validation rules** (X1 rule 2 — any violation triggers whole-iteration fail-open):
+     - Response is valid JSON and a top-level object with a `scores` key.
+     - `scores` is an object with EXACTLY one entry per finding ID sent in input — no missing IDs, no extras, no duplicates.
+     - Each entry has an integer `confidence` in the range 0–100 and a non-empty string `rationale`.
+     - No stray top-level keys.
+   - On validation pass: merge each `scores[id].confidence` back onto the matching pure-LLM finding (write the `confidence` field; rationale is discarded — not persisted into findings.md).
+   - On validation fail OR Task-tool error OR rate limit OR timeout: **whole-iteration fail-open**. Fall back to the legacy `HIGH`/`REVIEW` label and map:
+     - HIGH (`len(sources) >= 2`) → `confidence: 90`
+     - REVIEW (`len(sources) == 1`) → `confidence: 60`
+     Set `legacy_pseudo_confidence: true` on each affected pure-LLM entry (NEVER on merged probe+LLM entries — probe pins `confidence: 100` independently). Emit `scorer_status: failed` + `scorer_failure_reason: "<reason>"` on renderer stdin. Renderer renders the degraded-mode banner's scorer-unavailable line; all pure-LLM entries land in Summary (advisory section suppressed under scorer-failed mode).
+5. **`probe_failures[]` synthesis from degraded-mode receipts** (X18 producer contract): walk `probe_receipts[]`; for each receipt with `degraded_mode: true`, emit one item `{probe_id, reason, remediation}` into `probe_failures[]`:
+   - `reason` = receipt's optional `failure_reason` if set and non-empty string; otherwise generic fallback `"probe produced degraded_mode=true without surfacing reason/remediation strings"`.
+   - `remediation` = receipt's optional `failure_remediation` if set and non-empty string; otherwise generic fallback `"check probe logs in <receipt path>; re-run when probe is fixed"`.
+   Consumer (renderer, hooks/lib/render_findings.sh) hard-stops on malformed `probe_failures[]` per §3.3 X10 — orchestrator MUST emit all three required fields as non-empty strings.
+6. **Render via `hooks/lib/render_findings.sh`** — pipe `{findings: <scored+deduped>, probe_modes, probe_failures: <synthesized>, scorer_status, scorer_failure_reason}` through the helper. Helper output is the full findings.md body. Step 4 below writes the final file with frontmatter.
+
 ## Step 4: Write Output Documents
 
 **`spec` mode exception**: do NOT write files. Return the consolidated findings as your inline output message to the caller (the feature skill). Format as a readable markdown report with a summary table and details section — the same structure as findings.md, but returned as the agent response, not written to disk. Spec audit findings are transient; once the spec is fixed, the issues are gone.

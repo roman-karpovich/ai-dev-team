@@ -1,0 +1,18 @@
+{
+  "probe_receipts": [
+    {
+      "probe_id": "E",
+      "probe_version": "e.1.0",
+      "mode_at_emit": "shadow",
+      "trigger_input_hash": "deadbeef",
+      "probe_output_hash": "cafebabe",
+      "degraded_mode": true,
+      "emitted_at": "2026-04-21T14:23:17Z",
+      "eligible_reason": "detected at reconcile.py:142",
+      "scope_files_read": ["src/stellar/reconcile.py"],
+      "failure_reason": "git diff returned non-zero in isolated worktree",
+      "failure_remediation": "re-run /cross-audit after checking out base branch cleanly",
+      "_receipt_path": "<kb>/security/probe-receipts/E-X1.json"
+    }
+  ]
+}

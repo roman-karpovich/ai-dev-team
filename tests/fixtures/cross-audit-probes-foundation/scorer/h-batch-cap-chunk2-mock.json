@@ -1,0 +1,9 @@
+{
+  "scores": {
+    "X21": { "confidence": 85, "rationale": "batch 2 entry" },
+    "X22": { "confidence": 85, "rationale": "batch 2 entry" },
+    "X23": { "confidence": 85, "rationale": "batch 2 entry" },
+    "X24": { "confidence": 85, "rationale": "batch 2 entry" },
+    "X25": { "confidence": 85, "rationale": "batch 2 entry" }
+  }
+}
