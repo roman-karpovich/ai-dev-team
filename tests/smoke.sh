@@ -3106,6 +3106,7 @@ check "check_skill_md_phase3_shadow_section" check_skill_md_phase3_shadow_sectio
 check "check_skill_md_phase3_advisory_section_footer" check_skill_md_phase3_advisory_section_footer
 check "check_cross_auditor_probe_modes_input_declared" check_cross_auditor_probe_modes_input_declared
 check "check_cross_auditor_probe_receipts_produced_by_step05" check_cross_auditor_probe_receipts_produced_by_step05
+check "check_cross_auditor_skill_dispatch_drops_probe_receipts" check_cross_auditor_skill_dispatch_drops_probe_receipts
 
 # Step 6 — renderer low-confidence advisory section + merged probe+LLM routing
 # + combined fail-open banner. Per §6.1 Step 6 delta: +4 umbrella + 6 fixture
@@ -3177,6 +3178,9 @@ check "check_probe_e_fail_open_write_receipt_failure" check_probe_e_fail_open_wr
 check "check_probe_e_corpus_exists" check_probe_e_corpus_exists
 check "check_probe_e_dedupe_with_llm" check_probe_e_dedupe_with_llm
 check "check_probe_e_merged_receipt_written" check_probe_e_merged_receipt_written
+# Step 5 — docs/example surface (2 helpers).
+check "check_yaml_example_probes_e_hint" check_yaml_example_probes_e_hint
+check "check_docs_kb_discovery_probe_e_row" check_docs_kb_discovery_probe_e_row
 echo
 
 

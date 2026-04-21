@@ -1839,6 +1839,37 @@ check_cross_auditor_probe_modes_input_declared() {
   echo "$path input surface declares probe_modes (dict: probe id → mode)"
 }
 
+check_cross_auditor_skill_dispatch_drops_probe_receipts() {
+  # Supplementary helper (spec §5 Step 3 skill-side update — skills/cross-
+  # audit/SKILL.md agent-dispatch block stops threading `probe_receipts: []`
+  # placeholder per iter-1 X2 pivot). Closes the §6.1 Step 3 +7 vs net-+6
+  # arithmetic gap that surfaces when the Foundation helper
+  # `check_cross_auditor_probe_receipts_input_declared` is repurposed
+  # in-place rather than removed. Asserts the Phase 1-2 Step 2 cross-auditor
+  # dispatch block does NOT pass `probe_receipts:` as a non-commented input
+  # field; the commented-out note explaining why the field was removed IS
+  # allowed (documentation trail).
+  local path="skills/cross-audit/SKILL.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local dispatch_block
+  dispatch_block=$(awk '
+    !in_s && /^### Step 2: Launch cross-auditor agent/ { in_s = 1; print; next }
+    in_s && /^### Step 3/ { exit }
+    in_s { print }
+  ' "$path")
+  [[ -n "$dispatch_block" ]] || { echo "$path missing '### Step 2: Launch cross-auditor agent' dispatch block"; return 1; }
+  # Reject non-commented 'probe_receipts:' lines in the dispatch block.
+  if printf '%s\n' "$dispatch_block" | grep -E '^[[:space:]]*probe_receipts:' | grep -qvE '^[[:space:]]*#'; then
+    echo "$path Step 2 dispatch still threads probe_receipts: as non-commented input (expected dropped per iter-1 X2 pivot)"
+    printf '%s\n' "$dispatch_block" | grep -nE 'probe_receipts' | head -3
+    return 1
+  fi
+  # Positive: probe_modes stays threaded.
+  printf '%s\n' "$dispatch_block" | grep -qE '^[[:space:]]*probe_modes:' \
+    || { echo "$path Step 2 dispatch missing probe_modes (should stay threaded)"; return 1; }
+  echo "$path Step 2 dispatch drops probe_receipts placeholder (iter-1 X2 pivot); probe_modes still threaded"
+}
+
 check_cross_auditor_probe_receipts_produced_by_step05() {
   # Spec 2026-04-21-probe-e-diff-scope-leak §3.2 (c) / §5 Step 3 (iter-3 X15 /
   # iter-2 X10) — probe_receipts is no longer a skill-threaded input bullet.
@@ -2553,4 +2584,50 @@ if not isinstance(body['emitted_findings'], list) or len(body['emitted_findings'
     sys.exit(1)
 " || { echo "11-field body / probe_output_hash verification failed for $receipt_path"; return 1; }
   echo "merged-receipt end-to-end: fixture 06 → dedupe (X23) → final-ID alloc (X24) → side-map lookup (X19) → 11-field receipt written at $receipt_path with verified probe_output_hash"
+}
+
+# --- Step 5: yml example hint + docs/kb-discovery.md probe-E row ---
+
+check_yaml_example_probes_e_hint() {
+  # .ai-dev-team.yml.example's commented cross_audit.probes.e: line must carry
+  # the hint pointing users at `shadow` as the first step toward graduation
+  # (spec §3.7). Prose is not line-frozen — the assertion checks both the
+  # probe name marker AND the shadow-evidence phrase somewhere near it.
+  local path=".ai-dev-team.yml.example"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE '^#\s+e:\s*\{\s*mode:\s*off\s*\}' "$path" \
+    || { echo "$path missing 'e: { mode: off }' commented probes.e line"; return 1; }
+  # Extract the block starting at the `e:` line and following 3 lines, look
+  # for the shadow-evidence hint.
+  local window
+  window=$(grep -nA3 -E '^#\s+e:\s*\{\s*mode:\s*off\s*\}' "$path" | head -5)
+  printf '%s\n' "$window" | grep -qE 'shadow|live evidence|graduation' \
+    || { echo "$path probes.e comment missing 'shadow' / 'live evidence' / 'graduation' hint"; return 1; }
+  printf '%s\n' "$window" | grep -qE 'diff-scope|allowlist' \
+    || { echo "$path probes.e comment missing 'diff-scope' or 'allowlist' detector summary"; return 1; }
+  echo "$path probes.e comment has shadow/graduation hint + detector summary"
+}
+
+check_docs_kb_discovery_probe_e_row() {
+  # docs/kb-discovery.md has a probe-E row in the reference table per §3.7:
+  # detector summary + trigger + scope reads + v1 limitation column.
+  local path="docs/kb-discovery.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # Reference table header column (includes v1-limitation column per spec §3.7).
+  grep -qE '\| v1 limitation \|' "$path" \
+    || { echo "$path missing reference table 'v1 limitation' column header"; return 1; }
+  # The probe-E row itself.
+  local row
+  row=$(grep -E '^\| e \|' "$path" | head -1)
+  [[ -n "$row" ]] || { echo "$path missing '| e |' probe-E row"; return 1; }
+  # Detector summary mentions same-file allowlist leak.
+  echo "$row" | grep -qiF 'same-file allowlist leak' \
+    || { echo "$path probe-E row missing 'same-file allowlist leak' detector summary"; return 1; }
+  # Trigger mentions changed .py files + test-file skip.
+  echo "$row" | grep -qE 'changed \`?\.?py|test files? skipped' \
+    || { echo "$path probe-E row missing changed .py / test-file-skip trigger"; return 1; }
+  # v1 limitation names Python + same-file.
+  echo "$row" | grep -qE 'Python only|same-file' \
+    || { echo "$path probe-E row missing 'Python only' or 'same-file' v1-limitation"; return 1; }
+  echo "$path probe-E row present (detector summary + trigger + v1 limitation columns)"
 }
