@@ -458,9 +458,18 @@ not write it before the spawn call:
 `- YYYY-MM-DD: code audit iteration=N; fixed_ids=[...]; accepted_ids=[...]`
 
 The first round uses the same marker schema as every later round:
-`fixed_ids=[]` and `accepted_ids=[]`. This post-return timing is
-crash-safe: if the process dies during the spawn, there is no
-`code audit iteration=` marker to mislead resume logic.
+`fixed_ids=[]` and `accepted_ids=[]`. Post-return timing narrows the
+crash window: the cross-auditor writes `<slug>-code-findings.md` and
+`<slug>-code-workdoc-iterN.md` before it returns, so a crash between
+the cross-auditor returning and the Log marker being written leaves
+those KB artifacts on disk but no `iteration=N` Log line. Resume takes
+the no-entry fresh-run branch and re-runs iteration N (so N=1 the
+first time around); because the cross-auditor's persistence is
+idempotent on `audit_slug` + `iteration` (findings merge by id,
+per-iteration workdoc is rewritten in place), replaying the same
+iteration converges to the same or a newer finding set. The guarantee
+is **no findings lost**, not **no redone work** — a crashed iteration
+may be replayed.
 
 **If CRITICAL or HIGH findings with status `OPEN` or `REOPENED`
 exist:**
@@ -651,7 +660,7 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `DRAFT` → Spec not yet approved. Present it to the user and ask for approval. Resume from Step 3 (Get approval).
    - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
-   - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — resume flow is Verify → Code audit → Hand-off. Code-audit entry depends on the most recent code-audit Log marker; four marker kinds are recognized (`code audit passed`, `code audit no auditable files in diff`, `code audit decisions recorded`, `code audit iteration=N`), plus the no-entry fresh-run branch. Route using the table below (read Log markers chronologically; use the most recent `code audit …` line):
+   - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — resume flow is Verify → Code audit → Hand-off. Code-audit entry depends on the most recent code-audit Log marker. Four marker kinds plus one no-entry routing branch — five resume paths total (`code audit passed`, `code audit: no auditable files in diff; skipping`, `code audit decisions recorded`, `code audit iteration=N`, plus the no-entry fresh-run branch). Route using the table below (read Log markers chronologically; use the most recent `code audit …` line):
 
      | Log state (most recent code-audit marker) | Routing decision |
      |---|---|
