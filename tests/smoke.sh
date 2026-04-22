@@ -3588,12 +3588,16 @@ _fixture_log_body() {
   awk '!in_s && /^##[[:space:]]*(9\.[[:space:]]+)?Log[[:space:]]*$/ { in_s = 1; next } in_s { print }' "$1"
 }
 
-# Return the single most-recent code-audit marker line in the Log, or empty
-# string if none. "Most recent" = last line matching the canonical code-audit
-# marker regex (Log is chronological top-to-bottom). Ignores malformed /
-# unrecognized trailing lines per §3.7 partial-write edge case.
+# Return the single most-recent complete code-audit marker line in the Log,
+# or empty string if none. "Most recent" = last line matching the canonical
+# code-audit marker regex (Log is chronological top-to-bottom). Only lines
+# matching the full canonical schema for one of the four marker kinds are
+# accepted; malformed or truncated trailing lines are skipped per §3.7
+# partial-write edge case ("fall back to the last complete recognized
+# marker above"). Each pattern is anchored to the `- YYYY-MM-DD:` Log bullet
+# prefix and requires the full field schema for its marker kind.
 _fixture_latest_code_audit_marker() {
-  _fixture_log_body "$1" | grep -E 'code audit( passed| iteration=| decisions recorded|: no auditable files)' | tail -1
+  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\]| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping)$' | tail -1
 }
 
 # Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
@@ -3856,11 +3860,50 @@ check_code_audit_resume_no_prior_entry() {
   echo "no-prior-entry: fresh run — re-run verifier + spawn iteration=1, previously_fixed=[], accepted_ids=[] OK"
 }
 
+# Partial-write edge case — §3.7 "Malformed or truncated trailing code-audit
+# Log lines are ignored; fall back to the last complete recognized marker
+# above." Fixture Log has one complete `code audit iteration=1` marker
+# followed by a truncated trailing line (`code audit iter`) simulating a
+# crash mid-write. The helper must return the complete iteration=1 marker,
+# NOT the truncated line. Branch 4 semantics then fire.
+check_code_audit_resume_malformed_trailing() {
+  local fx='tests/fixtures/code-audit-resume/malformed-trailing/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  # Sanity: the fixture really contains the truncated trailing line (otherwise
+  # the test would degenerate into a happy-path mid-loop-spawn repeat).
+  if ! _fixture_log_body "$fx" | grep -qF -- '- 2026-04-22: code audit iter'; then
+    echo "malformed-trailing: fixture missing the truncated 'code audit iter' trailing line"
+    return 1
+  fi
+  # Also guard: the trailing line must NOT itself be a complete canonical
+  # marker (otherwise the test is not exercising the fall-back rule).
+  local trailing
+  trailing=$(_fixture_log_body "$fx" | tail -1)
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\]| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping)$'; then
+    echo "malformed-trailing: trailing line is a complete canonical marker (fixture invalid)"
+    return 1
+  fi
+  # Load-bearing property: the helper falls back past the truncated line to
+  # the prior complete `iteration=1` marker.
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  local expected="- 2026-04-22: code audit iteration=1; fixed_ids=[]; accepted_ids=[]"
+  if [ "$marker" != "$expected" ]; then
+    echo "malformed-trailing: helper returned '$marker', expected '$expected' (did not fall back past the truncated trailing line)"
+    return 1
+  fi
+  echo "malformed-trailing: helper skipped truncated trailing line and fell back to iteration=1 marker OK"
+}
+
 check "code-audit-resume-clean-passed"         check_code_audit_resume_clean_passed
 check "code-audit-resume-zero-diff-skip"       check_code_audit_resume_zero_diff_skip
 check "code-audit-resume-decisions-recorded"   check_code_audit_resume_decisions_recorded
 check "code-audit-resume-mid-loop-spawn"       check_code_audit_resume_mid_loop_spawn
 check "code-audit-resume-no-prior-entry"       check_code_audit_resume_no_prior_entry
+check "code-audit-resume-malformed-trailing"   check_code_audit_resume_malformed_trailing
 echo
 
 
