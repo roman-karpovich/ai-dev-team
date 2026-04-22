@@ -480,37 +480,55 @@ the rationale `false positive — both auditors erred: <explanation>`.
 
 **Which action should be recorded for each finding?**
 
-3. Apply one transition per finding. A single round may mix `fix`,
-   `accept`, and `defer` across different IDs:
-   - `fix` -> `OPEN|REOPENED -> FIXED`. Spawn the developer using the
-     most recent `last_agent=` from the spec Log as the default (the
-     user may override), with:
-     `task: "rework: fix code-audit finding X<id> in <file>:<line> — <excerpt>. Suggested fix: <fix_suggestion>."`
-     plus `spec_path`, `workdoc_path`, and `project_path`.
+3. **Collect decisions.** For each finding, record the user's chosen
+   action in memory and update the finding's status in the findings
+   file at `<kb>/repos/<project>/<slug>-code-findings.md`. A single
+   round may mix `fix`, `accept`, and `defer` across different IDs.
+   **Do not spawn any developer yet — collection is pure bookkeeping
+   before the checkpoint in step 4.**
+   - `fix` -> `OPEN|REOPENED -> FIXED`. Record the finding as `FIXED`
+     and add its id to `pending_fixed`. Developer spawn happens in
+     step 5 (dispatch), after the checkpoint is on disk.
    - `accept` -> `OPEN|REOPENED -> ACCEPTED`. Require a reason note.
-   - `defer` -> `OPEN|REOPENED -> DEFERRED`. Require a reason note plus
-     a follow-up spec slug.
-4. After every finding in the round has a recorded action, append this
-   crash-safe checkpoint marker:
+     Add the id to `pending_accepted`.
+   - `defer` -> `OPEN|REOPENED -> DEFERRED`. Require a reason note
+     plus a follow-up spec slug. Add the id to `pending_deferred`.
+4. **Checkpoint.** After every finding in the round has a recorded
+   action, append the crash-safe checkpoint marker **before any
+   developer work starts**:
 
 `- YYYY-MM-DD: code audit decisions recorded; iteration=N; pending_fixed=[...]; pending_accepted=[...]; pending_deferred=[...]`
-Treat `pending_accepted` and `pending_deferred` as the carry-forward
-suppression set for the next round. Both sets feed
-`code_audit_accepted_ids` on re-spawn.
 
-5. Re-run the `verifier` subagent.
+   Treat `pending_accepted` and `pending_deferred` as the carry-forward
+   suppression set for the next round. Both sets feed
+   `code_audit_accepted_ids` on re-spawn. With this marker on disk,
+   a crash between triage and developer work resumes cleanly — the
+   decisions-recorded routing branch picks up from dispatch.
+
+5. **Dispatch fix workers.** For each finding in `pending_fixed`,
+   sequentially spawn the developer using the most recent
+   `last_agent=` from the spec Log as the default (the user may
+   override), with:
+   `task: "rework: fix code-audit finding X<id> in <file>:<line> — <excerpt>. Suggested fix: <fix_suggestion>."`
+   plus `spec_path`, `workdoc_path`, and `project_path`. Wait for each
+   developer to confirm its commit before dispatching the next id. The
+   finding's status stays `FIXED` (pre-verification) after the
+   developer returns; re-audit in step 7 promotes `FIXED → VERIFIED`
+   or reopens the finding.
+6. **Re-run the `verifier` subagent** once every fix developer has
+   returned.
    - `PASS`: continue to the next audit round.
    - `FAIL`: use the Verify FAIL rework loop, then re-run `verifier`.
      Once it returns `PASS`, continue to the next audit round.
    - `NO_TESTS`: use the Verify NO_TESTS manual sign-off rules, then
      continue.
-6. Re-spawn `cross-auditor` with `iteration=N+1`,
+7. Re-spawn `cross-auditor` with `iteration=N+1`,
    `previously_fixed=pending_fixed`, and
    `accepted_ids=(pending_accepted ∪ pending_deferred)`.
-7. After the cross-auditor returns, append:
+8. After the cross-auditor returns, append:
 `- YYYY-MM-DD: code audit iteration=N+1; fixed_ids=[...]; accepted_ids=[...]`
 
-8. Repeat the loop until no CRITICAL or HIGH findings remain in `OPEN`
+9. Repeat the loop until no CRITICAL or HIGH findings remain in `OPEN`
    or `REOPENED`. `FIXED` findings count as clean only after a later
    audit round verifies them.
 
