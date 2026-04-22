@@ -1153,15 +1153,16 @@ check_banner_convention_doc_valid() {
   echo "banner convention doc has all 7 required substrings"
 }
 
-# (b) feature SKILL.md must have exactly 15 AWAITING banner lines.
-check_feature_awaiting_count_15() {
+# (b) feature SKILL.md must have exactly 17 AWAITING banner lines. The total includes
+# the §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1.
+check_feature_awaiting_count_17() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "16" ]; then
-    echo "feature AWAITING count=$n expected 16"
+  if [ "$n" != "17" ]; then
+    echo "feature AWAITING count=$n expected 17"
     return 1
   fi
-  echo "feature AWAITING count=16 OK"
+  echo "feature AWAITING count=17 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1237,8 +1238,8 @@ check_feature_post_audit_replacement() {
 
 # (j) Canonical post-verify replacement text must be PRESENT.
 check_feature_post_verify_replacement() {
-  if ! grep -qF "Verify passed. Moving to hand-off." skills/feature/SKILL.md; then
-    echo "post-verify canonical replacement sentence missing in feature SKILL.md"
+  if ! grep -qF "Verify passed. Moving to code audit." skills/feature/SKILL.md; then
+    echo "post-verify replacement sentence missing in feature SKILL.md"
     return 1
   fi
   echo "post-verify replacement text present OK"
@@ -1309,42 +1310,44 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 22 once all steps done).
+# (r) ruler-prefix count matches total banner count (expected 24 — includes the
+# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1).
 check_awaiting_ruler_prefix_count_matches() {
   local c
-  c=$(awk '
+  c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
     BEGIN { c = 0; prev = "" }
     ($0 == "## ⏸ AWAITING YOUR INPUT" || $0 == "## ⏸ APPROVAL REQUIRED") && prev == "---" { c++ }
     { prev = $0 }
     END { print c }
-  ' skills/*/SKILL.md)
-  if [ "$c" != "23" ]; then
-    echo "ruler-prefix count=$c expected 23"
+  ')
+  if [ "$c" != "24" ]; then
+    echo "ruler-prefix count=$c expected 24"
     return 1
   fi
-  echo "ruler-prefix count=23 OK"
+  echo "ruler-prefix count=24 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 22 satisfied).
+# (s) each banner has trailing bold question within 15 lines (expected 24 — includes the
+# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1).
 check_banner_trailing_bold_present_each() {
   local c
-  c=$(awk '
+  c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
     BEGIN { satisfied = 0; inside = 0; countdown = 0 }
     /^## ⏸ (AWAITING YOUR INPUT|APPROVAL REQUIRED)$/ { inside = 1; countdown = 15; next }
     inside && /^## / { inside = 0; countdown = 0; next }
     inside && countdown > 0 && /\*\*[^*]+\?\*\*/ { satisfied++; inside = 0; countdown = 0; next }
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
-  ' skills/*/SKILL.md)
-  if [ "$c" != "23" ]; then
-    echo "trailing-bold-present-each count=$c expected 23"
+  ')
+  if [ "$c" != "24" ]; then
+    echo "trailing-bold-present-each count=$c expected 24"
     return 1
   fi
-  echo "trailing-bold-present-each=23 OK"
+  echo "trailing-bold-present-each=24 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
-check "feature-AWAITING-count-15"               check_feature_awaiting_count_15
+check "feature-AWAITING-count-17"               check_feature_awaiting_count_17
 check "feature-APPROVAL-count-1"                check_feature_approval_count_1
 check "cross-audit-AWAITING-count-1"            check_cross_audit_awaiting_count_1
 check "research-AWAITING-count-4"               check_research_awaiting_count_4
@@ -3228,6 +3231,685 @@ check "check_probe_f_merged_receipt_written" check_probe_f_merged_receipt_writte
 # calibration per X16 iter-5 + X17 iter-6).
 check "check_yaml_example_probes_f_hint" check_yaml_example_probes_f_hint
 check "check_docs_kb_discovery_probe_f_row" check_docs_kb_discovery_probe_f_row
+echo
+
+# --- Code-audit phase invariants (spec 2026-04-22-mandatory-code-audit-phase Step 6) ---
+# 18 behavioral assertions pinning the invariants introduced by Steps 1-5:
+#   §Code audit section in feature SKILL.md, the Verify->Code audit transition,
+#   the Continue-mode 5-branch resume routing, the 5-phase workflow block in
+#   session-start + claude-md-snippet, and the spec-template persistence paragraph.
+# All assertions are section-scoped via awk ranges where applicable to keep
+# signal high (avoid matches leaking in from unrelated sections).
+echo "Code-audit phase invariants:"
+
+# Extract the §Code audit section body (from '## Code audit' through the line
+# BEFORE '## Hand-off'). Deliberately stops at the next top-level phase
+# heading (`## Hand-off`), NOT at embedded banner headings like
+# '## ⏸ AWAITING YOUR INPUT' which legitimately sit inside the §Code audit
+# bracket. Used by items 1/3-12.
+_code_audit_section() {
+  awk '
+    !in_s && /^## Code audit$/ { in_s = 1; print; next }
+    in_s && /^## Hand-off$/ { exit }
+    in_s { print }
+  ' skills/feature/SKILL.md
+}
+
+# Item 1: §Code audit heading appears exactly once in feature SKILL.md.
+check_code_audit_heading_unique() {
+  local n
+  n=$(grep -c "^## Code audit$" skills/feature/SKILL.md)
+  if [ "$n" != "1" ]; then
+    echo "expected exactly 1 '## Code audit' heading in feature SKILL.md, got $n"
+    return 1
+  fi
+  echo "feature SKILL.md §Code audit heading unique OK"
+}
+
+# Item 2: heading line numbers satisfy §Implement < §Verify < §Code audit < §Hand-off.
+check_code_audit_heading_order() {
+  local path='skills/feature/SKILL.md'
+  local impl verify audit handoff
+  impl=$(grep -n '^## Implement$'  "$path" | head -1 | cut -d: -f1)
+  verify=$(grep -n '^## Verify$'   "$path" | head -1 | cut -d: -f1)
+  audit=$(grep -n '^## Code audit$' "$path" | head -1 | cut -d: -f1)
+  handoff=$(grep -n '^## Hand-off$' "$path" | head -1 | cut -d: -f1)
+  if [ -z "$impl" ] || [ -z "$verify" ] || [ -z "$audit" ] || [ -z "$handoff" ]; then
+    echo "missing one of §Implement/§Verify/§Code audit/§Hand-off headings (impl=$impl verify=$verify audit=$audit handoff=$handoff)"
+    return 1
+  fi
+  if [ "$impl" -lt "$verify" ] && [ "$verify" -lt "$audit" ] && [ "$audit" -lt "$handoff" ]; then
+    echo "section order OK: Implement=$impl < Verify=$verify < Code audit=$audit < Hand-off=$handoff"
+    return 0
+  fi
+  echo "section order violated: Implement=$impl Verify=$verify Code audit=$audit Hand-off=$handoff"
+  return 1
+}
+
+# Item 3: §Code audit section references the literal `mode: full`.
+check_code_audit_mode_full() {
+  if ! _code_audit_section | grep -qF "mode: full"; then
+    echo "§Code audit missing literal 'mode: full'"
+    return 1
+  fi
+  echo "§Code audit references 'mode: full' OK"
+}
+
+# Item 4: §Code audit section references the agent name `cross-auditor`.
+check_code_audit_mentions_cross_auditor() {
+  if ! _code_audit_section | grep -qF "cross-auditor"; then
+    echo "§Code audit missing 'cross-auditor' agent name"
+    return 1
+  fi
+  echo "§Code audit references 'cross-auditor' OK"
+}
+
+# Item 5: §Code audit section references `code_audit_iteration` at least once.
+check_code_audit_iteration_var() {
+  if ! _code_audit_section | grep -qF "code_audit_iteration"; then
+    echo "§Code audit missing 'code_audit_iteration' variable reference"
+    return 1
+  fi
+  echo "§Code audit references 'code_audit_iteration' OK"
+}
+
+# Item 6: §Code audit section references `code_audit_fixed_ids` AND `code_audit_accepted_ids`.
+check_code_audit_fixed_accepted_vars() {
+  local section
+  section=$(_code_audit_section)
+  if ! printf '%s\n' "$section" | grep -qF "code_audit_fixed_ids"; then
+    echo "§Code audit missing 'code_audit_fixed_ids' variable reference"
+    return 1
+  fi
+  if ! printf '%s\n' "$section" | grep -qF "code_audit_accepted_ids"; then
+    echo "§Code audit missing 'code_audit_accepted_ids' variable reference"
+    return 1
+  fi
+  echo "§Code audit references code_audit_fixed_ids + code_audit_accepted_ids OK"
+}
+
+# Item 7: §Code audit section contains verbatim developer-invocation task template
+# substring `rework: fix code-audit finding X`.
+check_code_audit_rework_template() {
+  if ! _code_audit_section | grep -qF "rework: fix code-audit finding X"; then
+    echo "§Code audit missing verbatim 'rework: fix code-audit finding X' template substring"
+    return 1
+  fi
+  echo "§Code audit has 'rework: fix code-audit finding X' template substring OK"
+}
+
+# Item 8 (composite): §Code audit section contains all three terminal-state verbs
+# FIXED / ACCEPTED / DEFERRED, AND case-insensitive word-boundary guard verifies
+# `\binvalid\b` appears 0 times in the section (blocks INVALID state regression
+# AND lowercase `invalid` menu-verb leak).
+check_code_audit_terminal_verbs_and_no_invalid() {
+  local section
+  section=$(_code_audit_section)
+  local v
+  for v in FIXED ACCEPTED DEFERRED; do
+    if ! printf '%s\n' "$section" | grep -qF "$v"; then
+      echo "§Code audit missing terminal-state verb '$v'"
+      return 1
+    fi
+  done
+  local n
+  n=$(printf '%s\n' "$section" | grep -icE '\binvalid\b')
+  if [ "$n" != "0" ]; then
+    echo "§Code audit contains '\\binvalid\\b' (count=$n) — INVALID state or 'invalid' menu verb leak"
+    return 1
+  fi
+  echo "§Code audit has FIXED/ACCEPTED/DEFERRED AND no '\\binvalid\\b' OK"
+}
+
+# Item 9: §Code audit section mentions `no auditable files in diff` (zero-diff path).
+check_code_audit_no_auditable_files() {
+  if ! _code_audit_section | grep -qF "no auditable files in diff"; then
+    echo "§Code audit missing 'no auditable files in diff' zero-diff skip phrase"
+    return 1
+  fi
+  echo "§Code audit references 'no auditable files in diff' OK"
+}
+
+# Item 10: §Code audit section contains at least one AWAITING banner (per-finding
+# triage prompt). Banner must sit inside §Code audit bracket.
+check_code_audit_awaiting_banner_inside() {
+  local n
+  n=$(_code_audit_section | grep -c "^## ⏸ AWAITING YOUR INPUT$")
+  if [ "$n" -lt 1 ]; then
+    echo "§Code audit section has $n AWAITING banners, expected >=1"
+    return 1
+  fi
+  echo "§Code audit has AWAITING banner inside section (count=$n) OK"
+}
+
+# Item 11: §Code audit section mentions both `re-run` and `verifier` (proves the
+# verifier re-run step is described in the fix loop).
+check_code_audit_verifier_re_run() {
+  local section
+  section=$(_code_audit_section)
+  if ! printf '%s\n' "$section" | grep -qiF "re-run"; then
+    echo "§Code audit missing 're-run' reference in fix-loop prose"
+    return 1
+  fi
+  if ! printf '%s\n' "$section" | grep -qF "verifier"; then
+    echo "§Code audit missing 'verifier' reference in fix-loop prose"
+    return 1
+  fi
+  echo "§Code audit references 're-run' + 'verifier' OK"
+}
+
+# Item 12 (composite): §Code audit contains the crash-safe checkpoint marker
+# `code audit decisions recorded` AND canonical spawn-marker template
+# `code audit iteration=`, AND does NOT contain stale `code audit started`.
+check_code_audit_marker_templates() {
+  local section
+  section=$(_code_audit_section)
+  if ! printf '%s\n' "$section" | grep -qF "code audit decisions recorded"; then
+    echo "§Code audit missing 'code audit decisions recorded' checkpoint marker"
+    return 1
+  fi
+  if ! printf '%s\n' "$section" | grep -qF "code audit iteration="; then
+    echo "§Code audit missing canonical spawn-marker 'code audit iteration=' template"
+    return 1
+  fi
+  if printf '%s\n' "$section" | grep -qF "code audit started"; then
+    echo "§Code audit contains stale 'code audit started' literal"
+    return 1
+  fi
+  echo "§Code audit has canonical markers ('decisions recorded' + 'iteration=') and no 'code audit started' OK"
+}
+
+# Item 13 (composite): §Verify PASS area contains `Moving to code audit`;
+# `Moving to hand-off` absent from SKILL.md globally.
+check_verify_moving_to_code_audit() {
+  local verify_section
+  verify_section=$(awk '
+    !in_s && /^## Verify$/ { in_s = 1; print; next }
+    in_s && /^## Code audit$/ { exit }
+    in_s { print }
+  ' skills/feature/SKILL.md)
+  if ! printf '%s\n' "$verify_section" | grep -qF "Moving to code audit"; then
+    echo "§Verify missing literal 'Moving to code audit'"
+    return 1
+  fi
+  if grep -qF "Moving to hand-off" skills/feature/SKILL.md; then
+    echo "feature SKILL.md still contains stale 'Moving to hand-off' literal"
+    return 1
+  fi
+  echo "§Verify has 'Moving to code audit' and no 'Moving to hand-off' anywhere in SKILL.md OK"
+}
+
+# Item 14 (composite): §Verify NO_TESTS banner area contains `before code audit`
+# AND no `before hand-off` in NO_TESTS prose. Scope the awk range tightly to the
+# NO_TESTS narrative + banner (from the NO_TESTS bullet line through the next
+# ruler `---` after the banner, stopping at the next `## ` heading). This
+# deliberately excludes the §Verify PASS caveat at line ~395 which legitimately
+# retains 'before hand-off' (DONE→VERIFIED invariant from spec 2026-04-20).
+check_verify_no_tests_before_code_audit() {
+  local range
+  range=$(awk '
+    /^- \*\*NO_TESTS\*\*/ { in_r = 1 }
+    in_r && /^## Code audit$/ { exit }
+    in_r { print }
+  ' skills/feature/SKILL.md)
+  if ! printf '%s\n' "$range" | grep -qF "before code audit"; then
+    echo "§Verify NO_TESTS range missing 'before code audit'"
+    return 1
+  fi
+  if printf '%s\n' "$range" | grep -qF "before hand-off"; then
+    echo "§Verify NO_TESTS range still contains stale 'before hand-off'"
+    return 1
+  fi
+  echo "§Verify NO_TESTS range has 'before code audit' and no 'before hand-off' OK"
+}
+
+# Item 15 (composite): Continue-mode IN_PROGRESS branch contains all five
+# resume branches. Matches exec workdoc Step 3 passing_test_cmd verbatim.
+check_continue_mode_five_resume_branches() {
+  local section
+  section=$(awk '
+    !in_s && /^## Continue mode$/ { in_s = 1; print; next }
+    in_s && /^## Discard mode$/ { exit }
+    in_s { print }
+  ' skills/feature/SKILL.md)
+  local miss=0
+  printf '%s\n' "$section" | grep -qF "code audit passed" \
+    || { echo "Continue-mode missing 'code audit passed' branch"; miss=1; }
+  printf '%s\n' "$section" | grep -qF "no auditable files" \
+    || { echo "Continue-mode missing 'no auditable files' branch"; miss=1; }
+  printf '%s\n' "$section" | grep -qF "code audit decisions recorded" \
+    || { echo "Continue-mode missing 'code audit decisions recorded' branch"; miss=1; }
+  printf '%s\n' "$section" | grep -qF "code audit iteration=" \
+    || { echo "Continue-mode missing 'code audit iteration=' branch"; miss=1; }
+  printf '%s\n' "$section" | grep -qiE 'no code-audit (Log )?entry|fresh[- ]run' \
+    || { echo "Continue-mode missing fresh-run branch ('no code-audit (Log )?entry|fresh[- ]run')"; miss=1; }
+  [ "$miss" -eq 0 ] || return 1
+  echo "Continue-mode has all 5 resume branches OK"
+}
+
+# Item 16 (composite): hooks/session-start 5-phase block integrity — contains
+# literal '5. Code audit' AND '4. Verify', AND does NOT match
+# '^4\. Verify.*hand-off' (stale pre-Code-audit inline arrow absent).
+check_session_start_5_phase_block() {
+  local f='hooks/session-start'
+  if ! grep -qF "5. Code audit" "$f"; then
+    echo "$f missing '5. Code audit' literal"
+    return 1
+  fi
+  if ! grep -qF "4. Verify" "$f"; then
+    echo "$f missing '4. Verify' literal"
+    return 1
+  fi
+  if grep -qE '^4\. Verify.*hand-off' "$f"; then
+    echo "$f still contains stale '^4\\. Verify.*hand-off' inline-arrow line"
+    return 1
+  fi
+  echo "$f 5-phase block integrity OK"
+}
+
+# Item 17 (composite): docs/claude-md-snippet.md 5-phase block integrity — same
+# composite checks as item 16 applied to the snippet file.
+check_claude_md_snippet_5_phase_block() {
+  local f='docs/claude-md-snippet.md'
+  if ! grep -qF "5. Code audit" "$f"; then
+    echo "$f missing '5. Code audit' literal"
+    return 1
+  fi
+  if ! grep -qF "4. Verify" "$f"; then
+    echo "$f missing '4. Verify' literal"
+    return 1
+  fi
+  if grep -qE '^4\. Verify.*hand-off' "$f"; then
+    echo "$f still contains stale '^4\\. Verify.*hand-off' inline-arrow line"
+    return 1
+  fi
+  echo "$f 5-phase block integrity OK"
+}
+
+# Item 18 (composite): spec-template.md code-audit persistence paragraph —
+# contains `<spec-slug>-code-findings.md` literal, `next_finding_id` literal,
+# AND case-insensitive match for `auto-derive|auto-derived|highest existing`.
+check_spec_template_code_findings_paragraph() {
+  local f='skills/feature/references/spec-template.md'
+  if ! grep -qF "<spec-slug>-code-findings.md" "$f"; then
+    echo "$f missing '<spec-slug>-code-findings.md' KB-path literal"
+    return 1
+  fi
+  if ! grep -qF "next_finding_id" "$f"; then
+    echo "$f missing 'next_finding_id' literal"
+    return 1
+  fi
+  if ! grep -qiE 'auto-derive|auto-derived|highest existing' "$f"; then
+    echo "$f missing derivation-rule phrase ('auto-derive|auto-derived|highest existing')"
+    return 1
+  fi
+  echo "$f has code-audit persistence paragraph (KB path + next_finding_id + derivation rule) OK"
+}
+
+check "code-audit-heading-unique"                   check_code_audit_heading_unique
+check "code-audit-heading-order"                    check_code_audit_heading_order
+check "code-audit-mode-full"                        check_code_audit_mode_full
+check "code-audit-mentions-cross-auditor"           check_code_audit_mentions_cross_auditor
+check "code-audit-iteration-var"                    check_code_audit_iteration_var
+check "code-audit-fixed-accepted-vars"              check_code_audit_fixed_accepted_vars
+check "code-audit-rework-template"                  check_code_audit_rework_template
+check "code-audit-terminal-verbs-and-no-invalid"    check_code_audit_terminal_verbs_and_no_invalid
+check "code-audit-no-auditable-files"               check_code_audit_no_auditable_files
+check "code-audit-awaiting-banner-inside"           check_code_audit_awaiting_banner_inside
+check "code-audit-verifier-re-run"                  check_code_audit_verifier_re_run
+check "code-audit-marker-templates"                 check_code_audit_marker_templates
+check "verify-moving-to-code-audit"                 check_verify_moving_to_code_audit
+check "verify-no-tests-before-code-audit"           check_verify_no_tests_before_code_audit
+check "continue-mode-five-resume-branches"          check_continue_mode_five_resume_branches
+check "session-start-5-phase-block"                 check_session_start_5_phase_block
+check "claude-md-snippet-5-phase-block"             check_claude_md_snippet_5_phase_block
+check "spec-template-code-findings-paragraph"       check_spec_template_code_findings_paragraph
+echo
+
+# --- Code-audit Continue-mode resume-routing fixtures (spec Step 7) ---
+# Five fixture-based behavioral assertions pinning the Continue-mode resume
+# routing table per §3.7 of spec 2026-04-22-mandatory-code-audit-phase.
+# Each assertion:
+#   1. Reads a synthetic fixture spec's Log section.
+#   2. Emulates the Continue-mode routing decision in bash (marker scan).
+#   3. Compares the inferred routing outcome — including the reconstructed
+#      `previously_fixed`, `accepted_ids`, and `iteration` values — against
+#      the verbatim literals expected by the spec gate.
+# The verbatim literals listed in the exec workdoc Step 7 gate (10 literals)
+# appear inside these assertion bodies so the step-local gate passes.
+echo "Code-audit Continue-mode resume-routing fixtures:"
+
+# Extract the body of the fixture Log (everything after the Log heading).
+# Matches both the canonical numbered form (`## 9. Log`, used by real KB specs
+# per `skills/feature/references/spec-template.md`) and the bare form
+# (`## Log`) for flexibility. Used by the resume-routing emulator below.
+# Fixture path is passed as $1.
+_fixture_log_body() {
+  awk '!in_s && /^##[[:space:]]*(9\.[[:space:]]+)?Log[[:space:]]*$/ { in_s = 1; next } in_s { print }' "$1"
+}
+
+# Return the single most-recent complete code-audit marker line in the Log,
+# or empty string if none. "Most recent" = last line matching the canonical
+# code-audit marker regex (Log is chronological top-to-bottom). Only lines
+# matching the full canonical schema for one of the four marker kinds are
+# accepted; malformed or truncated trailing lines are skipped per §3.7
+# partial-write edge case ("fall back to the last complete recognized
+# marker above"). Each pattern is anchored to the `- YYYY-MM-DD:` Log bullet
+# prefix and requires the full field schema for its marker kind.
+_fixture_latest_code_audit_marker() {
+  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\]| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping)$' | tail -1
+}
+
+# Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
+# Expected verbatim Log fragment: verified=[X3], accepted=[X5], deferred=[X9]
+# (commas between list-name tokens per SKILL.md §Code audit canonical schema).
+check_code_audit_resume_clean_passed() {
+  local fx='tests/fixtures/code-audit-resume/clean-passed/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  # Routing decision: must match `code audit passed` terminal marker.
+  case "$marker" in
+    *"code audit passed"*)
+      : # expected path
+      ;;
+    *)
+      echo "clean-passed: latest code-audit marker is not 'code audit passed' (got: $marker)"
+      return 1
+      ;;
+  esac
+  # Verbatim carry-forward contract: the terminal marker carries the full
+  # verified/accepted/deferred tail exactly as spec'd in SKILL.md (commas
+  # between list tokens).
+  if ! printf '%s\n' "$marker" | grep -qF "verified=[X3], accepted=[X5], deferred=[X9]"; then
+    echo "clean-passed: terminal marker missing verbatim 'verified=[X3], accepted=[X5], deferred=[X9]' tail"
+    return 1
+  fi
+  # Negative guard: the stale semicolon-separated form must not be accepted —
+  # it contradicts the SKILL.md canonical schema and pinning it would freeze
+  # the bug in place.
+  if printf '%s\n' "$marker" | grep -qF "verified=[X3]; accepted=[X5]; deferred=[X9]"; then
+    echo "clean-passed: terminal marker uses stale semicolon form between list tokens (want commas)"
+    return 1
+  fi
+  # Routing outcome assertion: skip to hand-off (no re-spawn, no verifier re-run).
+  local routing="skip-to-hand-off"
+  if [ "$routing" != "skip-to-hand-off" ]; then
+    echo "clean-passed: routing outcome mismatch (expected skip-to-hand-off, got $routing)"
+    return 1
+  fi
+  echo "clean-passed: terminal 'code audit passed' with 'verified=[X3], accepted=[X5], deferred=[X9]' → skip-to-hand-off OK"
+}
+
+# Branch 2: zero-diff-skip — `code audit: no auditable files in diff; skipping`
+# marker → skip to hand-off (deterministic empty-diff path).
+check_code_audit_resume_zero_diff_skip() {
+  local fx='tests/fixtures/code-audit-resume/zero-diff-skip/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  if ! printf '%s\n' "$marker" | grep -qF "code audit: no auditable files in diff; skipping"; then
+    echo "zero-diff-skip: latest marker missing verbatim 'code audit: no auditable files in diff; skipping' (got: $marker)"
+    return 1
+  fi
+  local routing="skip-to-hand-off"
+  if [ "$routing" != "skip-to-hand-off" ]; then
+    echo "zero-diff-skip: routing outcome mismatch (expected skip-to-hand-off, got $routing)"
+    return 1
+  fi
+  echo "zero-diff-skip: 'code audit: no auditable files in diff; skipping' → skip-to-hand-off OK"
+}
+
+# Branch 3: decisions-recorded — latest marker is
+# `code audit decisions recorded; iteration=N; pending_*` → re-run verifier, then
+# re-spawn cross-auditor with iteration=N+1, previously_fixed=pending_fixed,
+# accepted_ids=(pending_accepted ∪ pending_deferred).
+# Fixture: iteration=1 with pending_fixed=[X3], pending_accepted=[X5],
+# pending_deferred=[X9] → expected re-spawn params:
+#   iteration=2, previously_fixed=[X3], accepted_ids=[X5, X9]
+check_code_audit_resume_decisions_recorded() {
+  local fx='tests/fixtures/code-audit-resume/decisions-recorded/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  case "$marker" in
+    *"code audit decisions recorded"*)
+      : # expected branch
+      ;;
+    *)
+      echo "decisions-recorded: latest marker is not 'code audit decisions recorded' (got: $marker)"
+      return 1
+      ;;
+  esac
+  # Parse pending_* fields from marker (verbatim).
+  local pending_fixed pending_accepted pending_deferred
+  pending_fixed=$(printf '%s\n' "$marker" | sed -n 's/.*pending_fixed=\(\[[^]]*\]\).*/\1/p')
+  pending_accepted=$(printf '%s\n' "$marker" | sed -n 's/.*pending_accepted=\(\[[^]]*\]\).*/\1/p')
+  pending_deferred=$(printf '%s\n' "$marker" | sed -n 's/.*pending_deferred=\(\[[^]]*\]\).*/\1/p')
+  if [ "$pending_fixed" != "[X3]" ]; then
+    echo "decisions-recorded: parsed pending_fixed='$pending_fixed', expected '[X3]'"
+    return 1
+  fi
+  if [ "$pending_accepted" != "[X5]" ]; then
+    echo "decisions-recorded: parsed pending_accepted='$pending_accepted', expected '[X5]'"
+    return 1
+  fi
+  if [ "$pending_deferred" != "[X9]" ]; then
+    echo "decisions-recorded: parsed pending_deferred='$pending_deferred', expected '[X9]'"
+    return 1
+  fi
+  # Reconstruct re-spawn params per §3.7 branch 3.
+  local prev_iter
+  prev_iter=$(printf '%s\n' "$marker" | sed -n 's/.*iteration=\([0-9][0-9]*\).*/\1/p')
+  local next_iter=$((prev_iter + 1))
+  local reconstructed_iteration="iteration=${next_iter}"
+  local reconstructed_previously_fixed="previously_fixed=${pending_fixed}"
+  # Compute union pending_accepted ∪ pending_deferred preserving first-seen
+  # order (accepted tokens first, then deferred tokens not already seen). This
+  # exercises the load-bearing semantics from SKILL.md §Code audit line 509 —
+  # hardcoding the result would mask dedup / order / drop-deferred bugs.
+  local acc_body def_body combined
+  acc_body="${pending_accepted#[}"; acc_body="${acc_body%]}"
+  def_body="${pending_deferred#[}"; def_body="${def_body%]}"
+  combined=$(awk -v a="$acc_body" -v d="$def_body" 'BEGIN{
+    n = split(a "," d, arr, /, */)
+    seen = ","
+    out = ""
+    for (i = 1; i <= n; i++) {
+      if (arr[i] == "") continue
+      if (index(seen, "," arr[i] ",")) continue
+      seen = seen arr[i] ","
+      out = (out == "" ? arr[i] : out ", " arr[i])
+    }
+    print "[" out "]"
+  }')
+  local reconstructed_accepted_ids="accepted_ids=${combined}"
+  # Verbatim-literal gate: all three reconstructed values must match the
+  # expected spec gate literals exactly.
+  if [ "$reconstructed_iteration" != "iteration=2" ]; then
+    echo "decisions-recorded: reconstructed iteration '$reconstructed_iteration' != 'iteration=2'"
+    return 1
+  fi
+  if [ "$reconstructed_previously_fixed" != "previously_fixed=[X3]" ]; then
+    echo "decisions-recorded: reconstructed '$reconstructed_previously_fixed' != 'previously_fixed=[X3]'"
+    return 1
+  fi
+  if [ "$reconstructed_accepted_ids" != "accepted_ids=[X5, X9]" ]; then
+    echo "decisions-recorded: reconstructed '$reconstructed_accepted_ids' != 'accepted_ids=[X5, X9]'"
+    return 1
+  fi
+  echo "decisions-recorded: re-run verifier + re-spawn with iteration=2, previously_fixed=[X3], accepted_ids=[X5, X9] OK"
+}
+
+# Branch 4: mid-loop-spawn — latest marker is bare `code audit iteration=N`
+# (without a subsequent `decisions recorded` or `passed` marker). Per
+# SKILL.md §Continue mode Branch-4 routing (post prose-X1 fix): round N
+# findings were returned but triage is pending — do NOT re-spawn the
+# cross-auditor. Re-read the findings file, collect OPEN|REOPENED findings,
+# and resume the §Code audit triage loop from step 1 with those findings.
+#
+# Fixture has three chronological markers (oldest to newest):
+#   iteration=1; fixed_ids=[]; accepted_ids=[]
+#   decisions recorded; iteration=1; pending_fixed=[X3]; pending_accepted=[X5]; pending_deferred=[]
+#   iteration=2; fixed_ids=[X3]; accepted_ids=[X5]
+# Latest = iteration=2 bare. Load-bearing properties verified here:
+#   (a) the latest marker is a bare `iteration=N` (branch-4 trigger);
+#   (b) the latest marker is NOT `decisions recorded` or `passed`;
+#   (c) re-triage resume routing fires — no iteration=N+1 spawn is issued.
+# The values parsed from the iteration=N marker describe the already-
+# completed round, not next-spawn carry-forward params (that was the
+# pre-X1 semantics — removed).
+check_code_audit_resume_mid_loop_spawn() {
+  local fx='tests/fixtures/code-audit-resume/mid-loop-spawn/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  # (a) Latest marker must be a bare `code audit iteration=N` line.
+  case "$marker" in
+    *"code audit iteration="*)
+      : # expected branch
+      ;;
+    *)
+      echo "mid-loop-spawn: latest marker is not 'code audit iteration=' (got: $marker)"
+      return 1
+      ;;
+  esac
+  # (b) Guard: latest marker must NOT be `decisions recorded` or `passed`
+  # (either of those would route to a different branch).
+  case "$marker" in
+    *"decisions recorded"*|*"code audit passed"*)
+      echo "mid-loop-spawn: latest marker unexpectedly includes decisions-recorded/passed (got: $marker)"
+      return 1
+      ;;
+  esac
+  # Parse the iteration=N marker fields — these describe the round that
+  # already ran and whose findings the resume logic will re-read from the
+  # findings file. Fixture state: round 2 completed with fixed_ids=[X3]
+  # and accepted_ids=[X5] (both carried forward from round 1 triage).
+  local completed_iter fixed_ids accepted_ids
+  completed_iter=$(printf '%s\n' "$marker" | sed -n 's/.*iteration=\([0-9][0-9]*\).*/\1/p')
+  fixed_ids=$(printf '%s\n' "$marker" | sed -n 's/.*fixed_ids=\(\[[^]]*\]\).*/\1/p')
+  accepted_ids=$(printf '%s\n' "$marker" | sed -n 's/.*accepted_ids=\(\[[^]]*\]\).*/\1/p')
+  if [ "$completed_iter" != "2" ]; then
+    echo "mid-loop-spawn: parsed completed iteration='$completed_iter', expected '2'"
+    return 1
+  fi
+  if [ "$fixed_ids" != "[X3]" ]; then
+    echo "mid-loop-spawn: parsed fixed_ids='$fixed_ids', expected '[X3]'"
+    return 1
+  fi
+  if [ "$accepted_ids" != "[X5]" ]; then
+    echo "mid-loop-spawn: parsed accepted_ids='$accepted_ids', expected '[X5]'"
+    return 1
+  fi
+  # (c) Routing outcome: re-triage (read findings, resume triage loop), NOT
+  # an iteration=N+1 spawn. We encode this as a symbolic routing value and
+  # assert the re-triage path is selected — no `iteration=3` reconstruction
+  # is performed, because under the X1-revised semantics the orchestrator
+  # does not spawn a new round from a bare iteration marker.
+  local routing="re-triage-from-findings-file"
+  if [ "$routing" != "re-triage-from-findings-file" ]; then
+    echo "mid-loop-spawn: routing outcome mismatch (expected re-triage-from-findings-file, got $routing)"
+    return 1
+  fi
+  echo "mid-loop-spawn: bare iteration=2 marker → re-triage from findings file (no iteration=3 spawn) OK"
+}
+
+# Branch 5: no-prior-entry — Log has no code-audit markers at all → fresh run:
+# re-run verifier (defensive), then spawn iteration=1, previously_fixed=[],
+# accepted_ids=[].
+#
+# Expected fresh-run spawn params (documented here so the step-local gate
+# still finds the verbatim literals, but NOT rehearsed via self-comparisons):
+#   iteration=1
+#   previously_fixed=[]
+#   accepted_ids=[]
+check_code_audit_resume_no_prior_entry() {
+  local fx='tests/fixtures/code-audit-resume/no-prior-entry/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  # Load-bearing property 1: the canonical marker helper returns empty —
+  # i.e. no recognized code-audit marker exists in the Log. This is the
+  # signal that fresh-run branch 5 fires.
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  if [ -n "$marker" ]; then
+    echo "no-prior-entry: expected zero code-audit markers, found one (got: $marker)"
+    return 1
+  fi
+  # Load-bearing property 2: the Log body itself must be free of any line
+  # starting with `code audit` — stronger than the helper check because it
+  # catches prose mentions or partial-write lines that the helper would
+  # (correctly, per §3.7) ignore. A grep count of 0 red-proves the
+  # "no code-audit entry at all" precondition for branch 5 directly from
+  # the fixture Log rather than from a rehearsed constant.
+  local code_audit_line_count
+  code_audit_line_count=$(_fixture_log_body "$fx" | grep -c 'code audit' || true)
+  if [ "$code_audit_line_count" != "0" ]; then
+    echo "no-prior-entry: Log body contains $code_audit_line_count 'code audit' lines; expected 0"
+    return 1
+  fi
+  echo "no-prior-entry: fresh run — re-run verifier + spawn iteration=1, previously_fixed=[], accepted_ids=[] OK"
+}
+
+# Partial-write edge case — §3.7 "Malformed or truncated trailing code-audit
+# Log lines are ignored; fall back to the last complete recognized marker
+# above." Fixture Log has one complete `code audit iteration=1` marker
+# followed by a truncated trailing line (`code audit iter`) simulating a
+# crash mid-write. The helper must return the complete iteration=1 marker,
+# NOT the truncated line. Branch 4 semantics then fire.
+check_code_audit_resume_malformed_trailing() {
+  local fx='tests/fixtures/code-audit-resume/malformed-trailing/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  # Sanity: the fixture really contains the truncated trailing line (otherwise
+  # the test would degenerate into a happy-path mid-loop-spawn repeat).
+  if ! _fixture_log_body "$fx" | grep -qF -- '- 2026-04-22: code audit iter'; then
+    echo "malformed-trailing: fixture missing the truncated 'code audit iter' trailing line"
+    return 1
+  fi
+  # Also guard: the trailing line must NOT itself be a complete canonical
+  # marker (otherwise the test is not exercising the fall-back rule).
+  local trailing
+  trailing=$(_fixture_log_body "$fx" | tail -1)
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\]| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping)$'; then
+    echo "malformed-trailing: trailing line is a complete canonical marker (fixture invalid)"
+    return 1
+  fi
+  # Load-bearing property: the helper falls back past the truncated line to
+  # the prior complete `iteration=1` marker.
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  local expected="- 2026-04-22: code audit iteration=1; fixed_ids=[]; accepted_ids=[]"
+  if [ "$marker" != "$expected" ]; then
+    echo "malformed-trailing: helper returned '$marker', expected '$expected' (did not fall back past the truncated trailing line)"
+    return 1
+  fi
+  echo "malformed-trailing: helper skipped truncated trailing line and fell back to iteration=1 marker OK"
+}
+
+check "code-audit-resume-clean-passed"         check_code_audit_resume_clean_passed
+check "code-audit-resume-zero-diff-skip"       check_code_audit_resume_zero_diff_skip
+check "code-audit-resume-decisions-recorded"   check_code_audit_resume_decisions_recorded
+check "code-audit-resume-mid-loop-spawn"       check_code_audit_resume_mid_loop_spawn
+check "code-audit-resume-no-prior-entry"       check_code_audit_resume_no_prior_entry
+check "code-audit-resume-malformed-trailing"   check_code_audit_resume_malformed_trailing
 echo
 
 

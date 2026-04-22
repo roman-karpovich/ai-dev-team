@@ -392,26 +392,173 @@ scope: <list of changed files from spec checklist>
 ```
 
 - **PASS**: All results are captured in the workdoc.
-  > 💡 Consider running `/compact` before hand-off — implementation context is no longer needed.
-  Verify passed. Moving to hand-off. Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet — wait until the user selects a preserving option (merge, push, or keep). §3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off. Setting a terminal before hand-off means a discard would leave the spec permanently marked terminal with no surviving branch.
+  Verify passed. Moving to code audit. Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet — wait until the user selects a preserving option (merge, push, or keep). §3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off. Setting a terminal before hand-off means a discard would leave the spec permanently marked terminal with no surviving branch.
 - **FAIL**: present failures to user. Analyze the verifier report to identify which checklist step(s) are responsible. Spawn the developer with `rework step N: fix test failure: <relevant excerpt>` for each affected step. Re-verify after fix.
-- **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off (see banner below). Log the absence of a project-level test suite.
+- **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off (see banner below). On sign-off, proceed to code audit. Log the absence of a project-level test suite.
 
 ---
 ## ⏸ AWAITING YOUR INPUT
 
-No test suite was detected and one or more steps lack green captures. Manual sign-off is required before hand-off.
+No test suite was detected and one or more steps lack green captures. Manual sign-off is required before code audit.
 
 **Do you confirm implementation is complete?**
 
 ---
 
+## Code audit
+
+After verify passes, run a mandatory code audit prior to hand-off. This is
+a closed gate: every CRITICAL or HIGH finding must be triaged
+per-finding as `fix`, `accept`, or `defer` before the flow can move on.
+The only automatic bypass is the zero-diff case where the diff filter
+finds no auditable files in diff.
+
+#### Pass 1: Diff filter (orchestrator self-check)
+
+Before calling any agent, resolve the base branch with:
+```bash
+base=$(git branch -r | grep -E 'origin/(master|main)$' | head -1 | sed 's|.*origin/||')
+```
+
+Then compute the candidate audit scope with:
+```bash
+git diff --name-only --diff-filter=AMRCT "origin/${base}...HEAD"
+```
+
+Use the post-filtered destination paths as the audit scope. Exclude
+binary files and submodule gitlinks after the `git diff` call. If the
+filtered result contains no auditable paths, append this Log marker and
+proceed directly to hand-off:
+
+`- YYYY-MM-DD: code audit: no auditable files in diff; skipping`
+
+#### Pass 2: Cross-audit (dual-model)
+Track `code_audit_iteration` (start at 1). Track
+`code_audit_fixed_ids` and `code_audit_accepted_ids` (both empty on the
+first round). For `next_finding_id`, do not keep a separate variable in
+feature-skill state: on re-spawn, the cross-auditor auto-derives it
+from the highest existing `X<N>` ID in the KB findings file.
+
+Spawn `cross-auditor` with mode: full on the diff (dual-model). Parameters:
+- `scope`: newline-joined auditable paths from Pass 1
+- `mode`: `full`
+- `audit_slug`: `<slug>-code`
+- `iteration`: `<code_audit_iteration>`
+- `previously_fixed`: `<code_audit_fixed_ids>`
+- `accepted_ids`: `<code_audit_accepted_ids>`
+- `kb_path`: `<kb_path>`
+- `project`: `<project>`
+- `working_directory`: `<cwd>`
+- `base_branch`: `<base>`
+
+The cross-auditor persists code findings in KB. After the cross-auditor
+returns findings for round `N`, write this Log marker immediately. Do
+not write it before the spawn call:
+
+`- YYYY-MM-DD: code audit iteration=N; fixed_ids=[...]; accepted_ids=[...]`
+
+The first round uses the same marker schema as every later round:
+`fixed_ids=[]` and `accepted_ids=[]`. Post-return timing narrows the
+crash window: the cross-auditor writes `<slug>-code-findings.md` and
+`<slug>-code-workdoc-iterN.md` before it returns, so a crash between
+the cross-auditor returning and the Log marker being written leaves
+those KB artifacts on disk but no `iteration=N` Log line. Resume takes
+the no-entry fresh-run branch and re-runs iteration N (so N=1 the
+first time around); because the cross-auditor's persistence is
+idempotent on `audit_slug` + `iteration` (findings merge by id,
+per-iteration workdoc is rewritten in place), replaying the same
+iteration converges to the same or a newer finding set. The guarantee
+is **no findings lost**, not **no redone work** — a crashed iteration
+may be replayed.
+
+**If CRITICAL or HIGH findings with status `OPEN` or `REOPENED`
+exist:**
+1. Present the findings to the user grouped by severity.
+2. Stop for per-finding triage. The user must choose an action for each
+   finding; there is no phase-level bypass here.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Code audit found CRITICAL or HIGH findings. Reply with one action per
+finding using `X<id> -> fix`, `X<id> -> accept: <reason>`, or
+`X<id> -> defer: <reason>; spec=<follow-up-slug>`.
+
+Use `accept` for deliberate risk acceptance and for false positives with
+the rationale `false positive — both auditors erred: <explanation>`.
+
+**Which action should be recorded for each finding?**
+
+3. **Collect decisions.** For each finding, record the user's chosen
+   action in memory and update the finding's status in the findings
+   file at `<kb>/repos/<project>/<slug>-code-findings.md`. A single
+   round may mix `fix`, `accept`, and `defer` across different IDs.
+   **Do not spawn any developer yet — collection is pure bookkeeping
+   before the checkpoint in step 4.**
+   - `fix` -> `OPEN|REOPENED -> FIXED`. Record the finding as `FIXED`
+     and add its id to `pending_fixed`. Developer spawn happens in
+     step 5 (dispatch), after the checkpoint is on disk.
+   - `accept` -> `OPEN|REOPENED -> ACCEPTED`. Require a reason note.
+     Add the id to `pending_accepted`.
+   - `defer` -> `OPEN|REOPENED -> DEFERRED`. Require a reason note
+     plus a follow-up spec slug. Add the id to `pending_deferred`.
+4. **Checkpoint.** After every finding in the round has a recorded
+   action, append the crash-safe checkpoint marker **before any
+   developer work starts**:
+
+`- YYYY-MM-DD: code audit decisions recorded; iteration=N; pending_fixed=[...]; pending_accepted=[...]; pending_deferred=[...]`
+
+   Treat `pending_accepted` and `pending_deferred` as the carry-forward
+   suppression set for the next round. Both sets feed
+   `code_audit_accepted_ids` on re-spawn. With this marker on disk,
+   a crash between triage and developer work resumes cleanly — the
+   decisions-recorded routing branch picks up from dispatch.
+
+5. **Dispatch fix workers.** For each finding in `pending_fixed`,
+   sequentially spawn the developer using the most recent
+   `last_agent=` from the spec Log as the default (the user may
+   override), with:
+   `task: "rework: fix code-audit finding X<id> in <file>:<line> — <excerpt>. Suggested fix: <fix_suggestion>."`
+   plus `spec_path`, `workdoc_path`, and `project_path`. Wait for each
+   developer to confirm its commit before dispatching the next id. The
+   finding's status stays `FIXED` (pre-verification) after the
+   developer returns; re-audit in step 7 promotes `FIXED → VERIFIED`
+   or reopens the finding.
+6. **Re-run the `verifier` subagent** once every fix developer has
+   returned.
+   - `PASS`: continue to the next audit round.
+   - `FAIL`: use the Verify FAIL rework loop, then re-run `verifier`.
+     Once it returns `PASS`, continue to the next audit round.
+   - `NO_TESTS`: use the Verify NO_TESTS manual sign-off rules, then
+     continue.
+7. Re-spawn `cross-auditor` with `iteration=N+1`,
+   `previously_fixed=pending_fixed`, and
+   `accepted_ids=(pending_accepted ∪ pending_deferred)`.
+8. After the cross-auditor returns, append:
+`- YYYY-MM-DD: code audit iteration=N+1; fixed_ids=[...]; accepted_ids=[...]`
+
+9. Repeat the loop until no CRITICAL or HIGH findings remain in `OPEN`
+   or `REOPENED`. `FIXED` findings count as clean only after a later
+   audit round verifies them.
+
+**If there are no CRITICAL or HIGH findings, or all such findings have
+been resolved:**
+- Append:
+`- YYYY-MM-DD: code audit passed; iteration=N; verified=[...], accepted=[...], deferred=[...]`
+- Completion here means no finding remains `OPEN` or `REOPENED`.
+- `💡 Consider running `/compact` before the hand-off step.`
+- Move to hand-off.
+
+---
+
 ## Hand-off
 
-After verify passes, run a two-phase hand-off seed before showing the
-4-option menu. This is per-item reconciliation: re-read §6.2 on every
-hand-off; only `deploy_prerequisites` participate in seeding. `smoke_check`
-is never seeded into §8.
+After the code audit phase completes (either a `code audit passed` marker
+or the zero-diff `code audit: no auditable files in diff; skipping`
+marker has been appended to the Log), run a two-phase hand-off seed
+before showing the 4-option menu. This is per-item reconciliation:
+re-read §6.2 on every hand-off; only `deploy_prerequisites` participate
+in seeding. `smoke_check` is never seeded into §8.
 
 **Phase 1 — compute delta (before the 4-option menu, in memory only)**
 
@@ -513,7 +660,17 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `DRAFT` → Spec not yet approved. Present it to the user and ask for approval. Resume from Step 3 (Get approval).
    - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
-   - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
+   - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — resume flow is Verify → Code audit → Hand-off. Code-audit entry depends on the most recent code-audit Log marker. Four marker kinds plus one no-entry routing branch — five resume paths total (`code audit passed`, `code audit: no auditable files in diff; skipping`, `code audit decisions recorded`, `code audit iteration=N`, plus the no-entry fresh-run branch). Route using the table below (read Log markers chronologically; use the most recent `code audit …` line):
+
+     | Log state (most recent code-audit marker) | Routing decision |
+     |---|---|
+     | `code audit passed` | Skip straight to hand-off. Code audit already complete. |
+     | `code audit: no auditable files in diff; skipping` | Skip to hand-off — deterministic empty-diff skip already applied. |
+     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. |
+     | `code audit iteration=N` (without a later `decisions recorded` or `passed` marker) | Round N findings were returned but triage is pending — **do not** re-spawn the cross-auditor. Re-read the findings file at `<kb>/repos/<project>/<slug>-code-findings.md`, collect the findings whose status is `OPEN` or `REOPENED`, re-present them to the user, and resume the §Code audit triage loop from step 1 with those findings. |
+     | No code-audit Log entry at all | Fresh code-audit run: re-run the verifier first to confirm the baseline is still green (defensive), then spawn `iteration=1` with `previously_fixed=[]` and `accepted_ids=[]`. |
+
+     Malformed or truncated trailing code-audit Log lines are ignored; fall back to the last complete recognized marker above. If the only code-audit entry is unrecognized, treat it as no code-audit Log entry and take the fresh-run branch.
    - `BLOCKED` → Report the unblock condition from the most recent `BLOCKED — waiting on ...` Log entry and ask the banner below. If yes, revert status to the prior state (IN_PROGRESS or AUDIT_PASSED, whichever the Log indicates) and resume. If no, stop.
 
 ---
