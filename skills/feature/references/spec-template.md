@@ -111,6 +111,8 @@ The execution workdoc lives at:
 
 It tracks per-step planned intent and observed evidence. The orchestrator initializes it alongside this spec (planned fields only). The developer fills observed fields during implementation.
 
+Code-audit findings raised by the mandatory code-audit phase (between Verify and Hand-off) persist separately to `<kb>/repos/<project>/security/<spec-slug>-code-findings.md`. They use the standard cross-audit finding state machine (`OPEN | FIXED | VERIFIED | REOPENED | ACCEPTED | DEFERRED`) — note that the feature flow routes false-positive triage through `ACCEPTED` with an explicit rationale rather than an `INVALID` verb, because the cross-auditor wire contract has no `invalid_ids` input slot. On each re-audit round the orchestrator does not manage `next_finding_id` explicitly; the cross-auditor auto-derives it from the highest existing `X<N>` id already recorded in that findings file, so new findings keep monotonically increasing without author bookkeeping.
+
 ### Workdoc step schema
 
 Each checklist step has a corresponding entry in exec.md:
