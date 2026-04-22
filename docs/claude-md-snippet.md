@@ -70,7 +70,8 @@ Ask only when: (a) there is a real fork with distinct outcomes and the user's pr
 1. Research + write spec + exec workdoc  →  user approves spec (HARD GATE)
 2. Spec self-review + cross-audit (Claude + Codex)  →  fix if CRITICAL/HIGH
 3. Baseline test  →  implement step-by-step with compliance checks per step
-4. Verify (full test suite)  →  hand-off (merge / PR / keep / discard)
+4. Verify (full test suite)
+5. Code audit (cross-auditor mode:full on diff — closed gate, per-finding triage)  →  hand-off (merge / PR / keep / discard)
 ```
 
 ### Key facts
