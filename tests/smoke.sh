@@ -3709,9 +3709,26 @@ check_code_audit_resume_decisions_recorded() {
   local next_iter=$((prev_iter + 1))
   local reconstructed_iteration="iteration=${next_iter}"
   local reconstructed_previously_fixed="previously_fixed=${pending_fixed}"
-  # Union pending_accepted ∪ pending_deferred preserving order (accepted first,
-  # deferred appended). Fixture uses [X5] + [X9] → [X5, X9].
-  local reconstructed_accepted_ids="accepted_ids=[X5, X9]"
+  # Compute union pending_accepted ∪ pending_deferred preserving first-seen
+  # order (accepted tokens first, then deferred tokens not already seen). This
+  # exercises the load-bearing semantics from SKILL.md §Code audit line 509 —
+  # hardcoding the result would mask dedup / order / drop-deferred bugs.
+  local acc_body def_body combined
+  acc_body="${pending_accepted#[}"; acc_body="${acc_body%]}"
+  def_body="${pending_deferred#[}"; def_body="${def_body%]}"
+  combined=$(awk -v a="$acc_body" -v d="$def_body" 'BEGIN{
+    n = split(a "," d, arr, /, */)
+    seen = ","
+    out = ""
+    for (i = 1; i <= n; i++) {
+      if (arr[i] == "") continue
+      if (index(seen, "," arr[i] ",")) continue
+      seen = seen arr[i] ","
+      out = (out == "" ? arr[i] : out ", " arr[i])
+    }
+    print "[" out "]"
+  }')
+  local reconstructed_accepted_ids="accepted_ids=${combined}"
   # Verbatim-literal gate: all three reconstructed values must match the
   # expected spec gate literals exactly.
   if [ "$reconstructed_iteration" != "iteration=2" ]; then
