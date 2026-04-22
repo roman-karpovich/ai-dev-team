@@ -440,7 +440,7 @@ first round). For `next_finding_id`, do not keep a separate variable in
 feature-skill state: on re-spawn, the cross-auditor auto-derives it
 from the highest existing `X<N>` ID in the KB findings file.
 
-Spawn `cross-auditor` subagent with:
+Spawn `cross-auditor` with mode: full on the diff (dual-model). Parameters:
 - `scope`: newline-joined auditable paths from Pass 1
 - `mode`: `full`
 - `audit_slug`: `<slug>-code`
