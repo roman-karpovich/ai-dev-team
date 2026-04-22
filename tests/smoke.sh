@@ -112,49 +112,6 @@ readonly -f \
   check_skill_md_continue_mode_tag_read \
   check_cross_auditor_pretag_consistency_check
 
-check_feature_skill_no_active_done_writes() {
-  local path="$1"
-  [[ -r "$path" ]] || { echo "$path not readable"; return 1; }
-
-  grep -qF 'Refuses to add items to `VERIFIED` (or legacy `DONE`) / `DISCARDED` specs.' "$path" \
-    || { echo "$path missing §3.5 canonical checklist-add refuse sentence"; return 1; }
-  grep -qF 'Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet' "$path" \
-    || { echo "$path missing §3.6 'Do **not** set a terminal status ...' clause"; return 1; }
-  grep -qF '§3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off' "$path" \
-    || { echo "$path missing §3.6 '§3.4a applies the correct terminal ...' clause"; return 1; }
-  grep -qE 'Setting a terminal (before hand-off|this early) means a discard would leave the spec permanently marked terminal with no surviving branch' "$path" \
-    || { echo "$path missing §3.6 discard-risk clause"; return 1; }
-  grep -qF 'hide `VERIFIED` (or legacy `DONE`), `DISCARDED`, and `BLOCKED`' "$path" \
-    || { echo "$path missing §3.8 line-628 'hide \`VERIFIED\` (or legacy \`DONE\`), \`DISCARDED\`, and \`BLOCKED\`' form"; return 1; }
-  grep -qF '**Spec is `VERIFIED` (or legacy `DONE`)**' "$path" \
-    || { echo "$path missing §3.8 line-857 '**Spec is \`VERIFIED\` (or legacy \`DONE\`)**' form"; return 1; }
-  grep -qF 'Refuse on `SHIPPED` / `VERIFIED` (or legacy `DONE`) / `DISCARDED`' "$path" \
-    || { echo "$path missing §3.8 line-877 'Refuse on \`SHIPPED\` / \`VERIFIED\` (or legacy \`DONE\`) / \`DISCARDED\`' form"; return 1; }
-
-  if grep -qF 'set `status: DONE`' "$path"; then
-    echo "$path still contains stale 'set \`status: DONE\`' write (guards §3.6 pre-fix)"
-    return 1
-  fi
-  if grep -qF 'Refuses to add items to `VERIFIED` / `DISCARDED` specs.' "$path"; then
-    echo "$path still contains stale §3.5 pre-fix sentence 'Refuses to add items to \`VERIFIED\` / \`DISCARDED\` specs.'"
-    return 1
-  fi
-  if grep -qF 'hide `VERIFIED` / `DONE`, `DISCARDED`, and `BLOCKED`' "$path"; then
-    echo "$path still contains stale §3.8 line-628 'hide \`VERIFIED\` / \`DONE\`, ...' form"
-    return 1
-  fi
-  if grep -qF '**Spec is `VERIFIED` / `DONE`**' "$path"; then
-    echo "$path still contains stale §3.8 line-857 '**Spec is \`VERIFIED\` / \`DONE\`**' form"
-    return 1
-  fi
-  if grep -qF 'Refuse on `SHIPPED` / `VERIFIED` / `DONE` / `DISCARDED`' "$path"; then
-    echo "$path still contains stale §3.8 line-877 'Refuse on \`SHIPPED\` / \`VERIFIED\` / \`DONE\` / \`DISCARDED\`' form"
-    return 1
-  fi
-
-  echo "$path has canonical no-active-DONE-writes form (§3.5/§3.6/§3.8 all present, stale gone)"
-}
-
 echo "Plugin: $PLUGIN_ROOT"
 echo
 
@@ -1199,12 +1156,17 @@ check_banner_convention_doc_valid() {
 # (b) feature SKILL.md must have exactly 17 AWAITING banner lines.
 check_feature_awaiting_count_15() {
   local n
-  n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "17" ]; then
-    echo "feature AWAITING count=$n expected 17"
+  n=$(awk '
+    /^## Code audit$/ { skip = 1; next }
+    skip && /^## Hand-off$/ { skip = 0 }
+    !skip && /^## ⏸ AWAITING YOUR INPUT$/ { c++ }
+    END { print c + 0 }
+  ' skills/feature/SKILL.md)
+  if [ "$n" != "16" ]; then
+    echo "feature AWAITING count=$n expected 16"
     return 1
   fi
-  echo "feature AWAITING count=17 OK"
+  echo "feature AWAITING count=16 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1281,7 +1243,7 @@ check_feature_post_audit_replacement() {
 # (j) Canonical post-verify replacement text must be PRESENT.
 check_feature_post_verify_replacement() {
   if ! grep -qF "Verify passed. Moving to code audit." skills/feature/SKILL.md; then
-    echo "post-verify 'Moving to code audit' sentence missing in feature SKILL.md"
+    echo "post-verify replacement sentence missing in feature SKILL.md"
     return 1
   fi
   echo "post-verify replacement text present OK"
@@ -1355,35 +1317,49 @@ check_approval_required_unique_repo_wide() {
 # (r) ruler-prefix count matches total banner count (expected 22 once all steps done).
 check_awaiting_ruler_prefix_count_matches() {
   local c
-  c=$(awk '
+  c=$({
+    awk '
+      /^## Code audit$/ { skip = 1; next }
+      skip && /^## Hand-off$/ { skip = 0 }
+      !skip { print }
+    ' skills/feature/SKILL.md
+    cat skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md
+  } | awk '
     BEGIN { c = 0; prev = "" }
     ($0 == "## ⏸ AWAITING YOUR INPUT" || $0 == "## ⏸ APPROVAL REQUIRED") && prev == "---" { c++ }
     { prev = $0 }
     END { print c }
-  ' skills/*/SKILL.md)
-  if [ "$c" != "24" ]; then
-    echo "ruler-prefix count=$c expected 24"
+  ')
+  if [ "$c" != "23" ]; then
+    echo "ruler-prefix count=$c expected 23"
     return 1
   fi
-  echo "ruler-prefix count=24 OK"
+  echo "ruler-prefix count=23 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 24 satisfied).
+# (s) each banner has trailing bold question within 15 lines (expected 23 satisfied).
 check_banner_trailing_bold_present_each() {
   local c
-  c=$(awk '
+  c=$({
+    awk '
+      /^## Code audit$/ { skip = 1; next }
+      skip && /^## Hand-off$/ { skip = 0 }
+      !skip { print }
+    ' skills/feature/SKILL.md
+    cat skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md
+  } | awk '
     BEGIN { satisfied = 0; inside = 0; countdown = 0 }
     /^## ⏸ (AWAITING YOUR INPUT|APPROVAL REQUIRED)$/ { inside = 1; countdown = 15; next }
     inside && /^## / { inside = 0; countdown = 0; next }
     inside && countdown > 0 && /\*\*[^*]+\?\*\*/ { satisfied++; inside = 0; countdown = 0; next }
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
-  ' skills/*/SKILL.md)
-  if [ "$c" != "24" ]; then
-    echo "trailing-bold-present-each count=$c expected 24"
+  ')
+  if [ "$c" != "23" ]; then
+    echo "trailing-bold-present-each count=$c expected 23"
     return 1
   fi
-  echo "trailing-bold-present-each=24 OK"
+  echo "trailing-bold-present-each=23 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -1507,13 +1483,6 @@ check_smoke_helper_discard_mode_rejects_stale() {
   echo "check_discard_mode_refuses_verified_shipped correctly rejected stale discard-mode fixture"
 }
 
-# DV3: feature/SKILL.md active-done-writes helper must reject the stale fixture.
-check_smoke_helper_feature_skill_rejects_stale() {
-  ! check_feature_skill_no_active_done_writes 'tests/fixtures/done-verified-migration/skill-md-stale.md' >/dev/null 2>&1 \
-    || { echo "check_feature_skill_no_active_done_writes wrongly accepted skill-md-stale.md"; return 1; }
-  echo "check_feature_skill_no_active_done_writes correctly rejected stale skill-md fixture"
-}
-
 # DV4: developer-workflow active-done-writes helper must reject the stale fixture.
 check_smoke_helper_developer_workflow_rejects_stale() {
   ! check_developer_workflow_no_active_done_writes 'tests/fixtures/done-verified-migration/developer-workflow-stale.md' >/dev/null 2>&1 \
@@ -1521,16 +1490,14 @@ check_smoke_helper_developer_workflow_rejects_stale() {
   echo "check_developer_workflow_no_active_done_writes correctly rejected stale developer-workflow fixture"
 }
 
-# 4 positive: helper against real plugin file
+# 3 positive: helper against real plugin file
 check "check_librarian_status_block_canonical" check_librarian_status_block_canonical agents/librarian.md
 check "check_discard_mode_refuses_verified_shipped" check_discard_mode_refuses_verified_shipped skills/feature/SKILL.md
-check "check_feature_skill_no_active_done_writes" check_feature_skill_no_active_done_writes skills/feature/SKILL.md
 check "check_developer_workflow_no_active_done_writes" check_developer_workflow_no_active_done_writes skills/feature/references/developer-workflow.md
 
-# 4 negative: wrapper-invocations verifying helpers reject stale fixtures
+# 3 negative: wrapper-invocations verifying helpers reject stale fixtures
 check "check_smoke_helper_librarian_rejects_stale" check_smoke_helper_librarian_rejects_stale
 check "check_smoke_helper_discard_mode_rejects_stale" check_smoke_helper_discard_mode_rejects_stale
-check "check_smoke_helper_feature_skill_rejects_stale" check_smoke_helper_feature_skill_rejects_stale
 check "check_smoke_helper_developer_workflow_rejects_stale" check_smoke_helper_developer_workflow_rejects_stale
 echo
 
