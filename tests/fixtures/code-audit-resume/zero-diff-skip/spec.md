@@ -17,11 +17,11 @@ Target state: all implementation steps `[x]`; Log carries the deterministic
 empty-diff skip marker. Expected routing: skip to hand-off (skip already
 applied; no cross-auditor spawn).
 
-## Implementation Checklist
+## 5. Implementation Checklist
 
 - [x] Step 1: synthetic placeholder step (fixture only; does nothing).
 
-## Log
+## 9. Log
 
 ### 2026-04-22
 

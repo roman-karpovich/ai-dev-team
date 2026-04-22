@@ -26,11 +26,11 @@ Expected routing: re-spawn cross-auditor with
 - accepted_ids=[X5] (reconstructed from latest `iteration=` marker;
   no `deferred` union because the pending_deferred on iteration=1 was [])
 
-## Implementation Checklist
+## 5. Implementation Checklist
 
 - [x] Step 1: synthetic placeholder step (fixture only; does nothing).
 
-## Log
+## 9. Log
 
 ### 2026-04-22
 

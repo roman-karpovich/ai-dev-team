@@ -3579,10 +3579,13 @@ echo
 # appear inside these assertion bodies so the step-local gate passes.
 echo "Code-audit Continue-mode resume-routing fixtures:"
 
-# Extract the body of the fixture Log (everything after `## Log`). Used by
-# the resume-routing emulator below. Fixture path is passed as $1.
+# Extract the body of the fixture Log (everything after the Log heading).
+# Matches both the canonical numbered form (`## 9. Log`, used by real KB specs
+# per `skills/feature/references/spec-template.md`) and the bare form
+# (`## Log`) for flexibility. Used by the resume-routing emulator below.
+# Fixture path is passed as $1.
 _fixture_log_body() {
-  awk '!in_s && /^## Log$/ { in_s = 1; next } in_s { print }' "$1"
+  awk '!in_s && /^##[[:space:]]*(9\.[[:space:]]+)?Log[[:space:]]*$/ { in_s = 1; next } in_s { print }' "$1"
 }
 
 # Return the single most-recent code-audit marker line in the Log, or empty

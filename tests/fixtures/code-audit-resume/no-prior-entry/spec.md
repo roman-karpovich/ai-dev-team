@@ -24,11 +24,11 @@ then spawn cross-auditor with
 - previously_fixed=[]
 - accepted_ids=[]
 
-## Implementation Checklist
+## 5. Implementation Checklist
 
 - [x] Step 1: synthetic placeholder step (fixture only; does nothing).
 
-## Log
+## 9. Log
 
 ### 2026-04-22
 

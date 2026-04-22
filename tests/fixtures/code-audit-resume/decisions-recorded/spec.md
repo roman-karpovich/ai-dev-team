@@ -24,11 +24,11 @@ Expected routing: verifier re-run, then re-spawn cross-auditor with
 - previously_fixed=[X3] (= pending_fixed)
 - accepted_ids=[X5, X9] (= pending_accepted ∪ pending_deferred)
 
-## Implementation Checklist
+## 5. Implementation Checklist
 
 - [x] Step 1: synthetic placeholder step (fixture only; does nothing).
 
-## Log
+## 9. Log
 
 ### 2026-04-22
 

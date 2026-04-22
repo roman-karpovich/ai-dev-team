@@ -17,11 +17,11 @@ Target state: all implementation steps `[x]`; Log carries the terminal
 clean-completion code-audit marker. Expected routing: skip to hand-off
 (terminal marker detected, no re-spawn of cross-auditor or verifier).
 
-## Implementation Checklist
+## 5. Implementation Checklist
 
 - [x] Step 1: synthetic placeholder step (fixture only; does nothing).
 
-## Log
+## 9. Log
 
 ### 2026-04-22
 
