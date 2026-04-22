@@ -406,6 +406,125 @@ No test suite was detected and one or more steps lack green captures. Manual sig
 
 ---
 
+## Code audit
+
+After verify passes, run a mandatory code audit before hand-off. This is
+a closed gate: every CRITICAL or HIGH finding must be triaged
+per-finding as `fix`, `accept`, or `defer` before the flow can move on.
+The only automatic bypass is the zero-diff case where the diff filter
+finds no auditable files in diff.
+
+#### Pass 1: Diff filter (orchestrator self-check)
+
+Before calling any agent, resolve the base branch with:
+```bash
+base=$(git branch -r | grep -E 'origin/(master|main)$' | head -1 | sed 's|.*origin/||')
+```
+
+Then compute the candidate audit scope with:
+```bash
+git diff --name-only --diff-filter=AMRCT "origin/${base}...HEAD"
+```
+
+Use the post-filtered destination paths as the audit scope. Exclude
+binary files and submodule gitlinks after the `git diff` call. If the
+filtered result contains no auditable paths, append this Log marker and
+proceed directly to hand-off:
+
+`- YYYY-MM-DD: code audit: no auditable files in diff; skipping`
+
+#### Pass 2: Cross-audit (dual-model)
+Track `code_audit_iteration` (start at 1). Track
+`code_audit_fixed_ids` and `code_audit_accepted_ids` (both empty on the
+first round). For `next_finding_id`, do not keep a separate variable in
+feature-skill state: on re-spawn, the cross-auditor auto-derives it
+from the highest existing `X<N>` ID in the KB findings file.
+
+Spawn `cross-auditor` subagent with:
+- `scope`: newline-joined auditable paths from Pass 1
+- `mode`: `full`
+- `audit_slug`: `<slug>-code`
+- `iteration`: `<code_audit_iteration>`
+- `previously_fixed`: `<code_audit_fixed_ids>`
+- `accepted_ids`: `<code_audit_accepted_ids>`
+- `kb_path`: `<kb_path>`
+- `project`: `<project>`
+- `working_directory`: `<cwd>`
+- `base_branch`: `<base>`
+
+The cross-auditor persists code findings in KB. After the cross-auditor
+returns findings for round `N`, write this Log marker immediately. Do
+not write it before the spawn call:
+
+`- YYYY-MM-DD: code audit iteration=N; fixed_ids=[...]; accepted_ids=[...]`
+
+The first round uses the same marker schema as every later round:
+`fixed_ids=[]` and `accepted_ids=[]`. This post-return timing is
+crash-safe: if the process dies during the spawn, there is no
+`code audit iteration=` marker to mislead resume logic.
+
+**If CRITICAL or HIGH findings with status `OPEN` or `REOPENED`
+exist:**
+1. Present the findings to the user grouped by severity.
+2. Stop for per-finding triage. The user must choose an action for each
+   finding; there is no phase-level bypass here.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Code audit found CRITICAL or HIGH findings. Reply with one action per
+finding using `X<id> -> fix`, `X<id> -> accept: <reason>`, or
+`X<id> -> defer: <reason>; spec=<follow-up-slug>`.
+
+Use `accept` for deliberate risk acceptance and for false positives with
+the rationale `false positive — both auditors erred: <explanation>`.
+
+**Which action should be recorded for each finding?**
+
+3. Apply one transition per finding. A single round may mix `fix`,
+   `accept`, and `defer` across different IDs:
+   - `fix` -> `OPEN|REOPENED -> FIXED`. Spawn the developer using the
+     most recent `last_agent=` from the spec Log as the default (the
+     user may override), with:
+     `task: "rework: fix code-audit finding X<id> in <file>:<line> — <excerpt>. Suggested fix: <fix_suggestion>."`
+     plus `spec_path`, `workdoc_path`, and `project_path`.
+   - `accept` -> `OPEN|REOPENED -> ACCEPTED`. Require a reason note.
+   - `defer` -> `OPEN|REOPENED -> DEFERRED`. Require a reason note plus
+     a follow-up spec slug.
+4. After every finding in the round has a recorded action, append this
+   crash-safe checkpoint marker:
+
+`- YYYY-MM-DD: code audit decisions recorded; iteration=N; pending_fixed=[...]; pending_accepted=[...]; pending_deferred=[...]`
+Treat `pending_accepted` and `pending_deferred` as the carry-forward
+suppression set for the next round. Both sets feed
+`code_audit_accepted_ids` on re-spawn.
+
+5. Re-run the `verifier` subagent.
+   - `PASS`: continue to the next audit round.
+   - `FAIL`: use the Verify FAIL rework loop, then re-run `verifier`.
+     Once it returns `PASS`, continue to the next audit round.
+   - `NO_TESTS`: use the Verify NO_TESTS manual sign-off rules, then
+     continue.
+6. Re-spawn `cross-auditor` with `iteration=N+1`,
+   `previously_fixed=pending_fixed`, and
+   `accepted_ids=(pending_accepted ∪ pending_deferred)`.
+7. After the cross-auditor returns, append:
+`- YYYY-MM-DD: code audit iteration=N+1; fixed_ids=[...]; accepted_ids=[...]`
+
+8. Repeat the loop until no CRITICAL or HIGH findings remain in `OPEN`
+   or `REOPENED`. `FIXED` findings count as clean only after a later
+   audit round verifies them.
+
+**If there are no CRITICAL or HIGH findings, or all such findings have
+been resolved:**
+- Append:
+`- YYYY-MM-DD: code audit passed; iteration=N; verified=[...], accepted=[...], deferred=[...]`
+- Completion here means no finding remains `OPEN` or `REOPENED`.
+- `💡 Consider running `/compact` before hand-off.`
+- Move to hand-off.
+
+---
+
 ## Hand-off
 
 After verify passes, run a two-phase hand-off seed before showing the
