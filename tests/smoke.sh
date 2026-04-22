@@ -112,6 +112,49 @@ readonly -f \
   check_skill_md_continue_mode_tag_read \
   check_cross_auditor_pretag_consistency_check
 
+check_feature_skill_no_active_done_writes() {
+  local path="$1"
+  [[ -r "$path" ]] || { echo "$path not readable"; return 1; }
+
+  grep -qF 'Refuses to add items to `VERIFIED` (or legacy `DONE`) / `DISCARDED` specs.' "$path" \
+    || { echo "$path missing §3.5 canonical checklist-add refuse sentence"; return 1; }
+  grep -qF 'Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet' "$path" \
+    || { echo "$path missing §3.6 'Do **not** set a terminal status ...' clause"; return 1; }
+  grep -qF '§3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off' "$path" \
+    || { echo "$path missing §3.6 '§3.4a applies the correct terminal ...' clause"; return 1; }
+  grep -qE 'Setting a terminal (before hand-off|this early) means a discard would leave the spec permanently marked terminal with no surviving branch' "$path" \
+    || { echo "$path missing §3.6 discard-risk clause"; return 1; }
+  grep -qF 'hide `VERIFIED` (or legacy `DONE`), `DISCARDED`, and `BLOCKED`' "$path" \
+    || { echo "$path missing §3.8 line-628 'hide \`VERIFIED\` (or legacy \`DONE\`), \`DISCARDED\`, and \`BLOCKED\`' form"; return 1; }
+  grep -qF '**Spec is `VERIFIED` (or legacy `DONE`)**' "$path" \
+    || { echo "$path missing §3.8 line-857 '**Spec is \`VERIFIED\` (or legacy \`DONE\`)**' form"; return 1; }
+  grep -qF 'Refuse on `SHIPPED` / `VERIFIED` (or legacy `DONE`) / `DISCARDED`' "$path" \
+    || { echo "$path missing §3.8 line-877 'Refuse on \`SHIPPED\` / \`VERIFIED\` (or legacy \`DONE\`) / \`DISCARDED\`' form"; return 1; }
+
+  if grep -qF 'set `status: DONE`' "$path"; then
+    echo "$path still contains stale 'set \`status: DONE\`' write (guards §3.6 pre-fix)"
+    return 1
+  fi
+  if grep -qF 'Refuses to add items to `VERIFIED` / `DISCARDED` specs.' "$path"; then
+    echo "$path still contains stale §3.5 pre-fix sentence 'Refuses to add items to \`VERIFIED\` / \`DISCARDED\` specs.'"
+    return 1
+  fi
+  if grep -qF 'hide `VERIFIED` / `DONE`, `DISCARDED`, and `BLOCKED`' "$path"; then
+    echo "$path still contains stale §3.8 line-628 'hide \`VERIFIED\` / \`DONE\`, ...' form"
+    return 1
+  fi
+  if grep -qF '**Spec is `VERIFIED` / `DONE`**' "$path"; then
+    echo "$path still contains stale §3.8 line-857 '**Spec is \`VERIFIED\` / \`DONE\`**' form"
+    return 1
+  fi
+  if grep -qF 'Refuse on `SHIPPED` / `VERIFIED` / `DONE` / `DISCARDED`' "$path"; then
+    echo "$path still contains stale §3.8 line-877 'Refuse on \`SHIPPED\` / \`VERIFIED\` / \`DONE\` / \`DISCARDED\`' form"
+    return 1
+  fi
+
+  echo "$path has canonical no-active-DONE-writes form (§3.5/§3.6/§3.8 all present, stale gone)"
+}
+
 echo "Plugin: $PLUGIN_ROOT"
 echo
 
@@ -1153,15 +1196,15 @@ check_banner_convention_doc_valid() {
   echo "banner convention doc has all 7 required substrings"
 }
 
-# (b) feature SKILL.md must have exactly 15 AWAITING banner lines.
+# (b) feature SKILL.md must have exactly 17 AWAITING banner lines.
 check_feature_awaiting_count_15() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "16" ]; then
-    echo "feature AWAITING count=$n expected 16"
+  if [ "$n" != "17" ]; then
+    echo "feature AWAITING count=$n expected 17"
     return 1
   fi
-  echo "feature AWAITING count=16 OK"
+  echo "feature AWAITING count=17 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1237,8 +1280,8 @@ check_feature_post_audit_replacement() {
 
 # (j) Canonical post-verify replacement text must be PRESENT.
 check_feature_post_verify_replacement() {
-  if ! grep -qF "Verify passed. Moving to hand-off." skills/feature/SKILL.md; then
-    echo "post-verify canonical replacement sentence missing in feature SKILL.md"
+  if ! grep -qF "Verify passed. Moving to code audit." skills/feature/SKILL.md; then
+    echo "post-verify 'Moving to code audit' sentence missing in feature SKILL.md"
     return 1
   fi
   echo "post-verify replacement text present OK"
@@ -1318,14 +1361,14 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ' skills/*/SKILL.md)
-  if [ "$c" != "23" ]; then
-    echo "ruler-prefix count=$c expected 23"
+  if [ "$c" != "24" ]; then
+    echo "ruler-prefix count=$c expected 24"
     return 1
   fi
-  echo "ruler-prefix count=23 OK"
+  echo "ruler-prefix count=24 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 22 satisfied).
+# (s) each banner has trailing bold question within 15 lines (expected 24 satisfied).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(awk '
@@ -1336,11 +1379,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ' skills/*/SKILL.md)
-  if [ "$c" != "23" ]; then
-    echo "trailing-bold-present-each count=$c expected 23"
+  if [ "$c" != "24" ]; then
+    echo "trailing-bold-present-each count=$c expected 24"
     return 1
   fi
-  echo "trailing-bold-present-each=23 OK"
+  echo "trailing-bold-present-each=24 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid

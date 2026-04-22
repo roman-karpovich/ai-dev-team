@@ -392,15 +392,14 @@ scope: <list of changed files from spec checklist>
 ```
 
 - **PASS**: All results are captured in the workdoc.
-  > 💡 Consider running `/compact` before hand-off — implementation context is no longer needed.
-  Verify passed. Moving to hand-off. Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet — wait until the user selects a preserving option (merge, push, or keep). §3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off. Setting a terminal before hand-off means a discard would leave the spec permanently marked terminal with no surviving branch.
+  Verify passed. Moving to code audit. Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet — wait until the user selects a preserving option (merge, push, or keep). §3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off. Setting a terminal this early means a discard would leave the spec permanently marked terminal with no surviving branch.
 - **FAIL**: present failures to user. Analyze the verifier report to identify which checklist step(s) are responsible. Spawn the developer with `rework step N: fix test failure: <relevant excerpt>` for each affected step. Re-verify after fix.
-- **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off (see banner below). Log the absence of a project-level test suite.
+- **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off (see banner below). On sign-off, proceed to code audit. Log the absence of a project-level test suite.
 
 ---
 ## ⏸ AWAITING YOUR INPUT
 
-No test suite was detected and one or more steps lack green captures. Manual sign-off is required before hand-off.
+No test suite was detected and one or more steps lack green captures. Manual sign-off is required before code audit.
 
 **Do you confirm implementation is complete?**
 
@@ -408,7 +407,7 @@ No test suite was detected and one or more steps lack green captures. Manual sig
 
 ## Code audit
 
-After verify passes, run a mandatory code audit before hand-off. This is
+After verify passes, run a mandatory code audit prior to hand-off. This is
 a closed gate: every CRITICAL or HIGH finding must be triaged
 per-finding as `fix`, `accept`, or `defer` before the flow can move on.
 The only automatic bypass is the zero-diff case where the diff filter
@@ -520,7 +519,7 @@ been resolved:**
 - Append:
 `- YYYY-MM-DD: code audit passed; iteration=N; verified=[...], accepted=[...], deferred=[...]`
 - Completion here means no finding remains `OPEN` or `REOPENED`.
-- `💡 Consider running `/compact` before hand-off.`
+- `💡 Consider running `/compact` before the hand-off step.`
 - Move to hand-off.
 
 ---
