@@ -29,4 +29,4 @@ clean-completion code-audit marker. Expected routing: skip to hand-off
 - 2026-04-22: code audit iteration=1; fixed_ids=[]; accepted_ids=[]
 - 2026-04-22: code audit decisions recorded; iteration=1; pending_fixed=[X3]; pending_accepted=[X5]; pending_deferred=[X9]
 - 2026-04-22: code audit iteration=2; fixed_ids=[X3]; accepted_ids=[X5, X9]
-- 2026-04-22: code audit passed; iteration=2; verified=[X3]; accepted=[X5]; deferred=[X9]
+- 2026-04-22: code audit passed; iteration=2; verified=[X3], accepted=[X5], deferred=[X9]

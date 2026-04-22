@@ -3597,7 +3597,8 @@ _fixture_latest_code_audit_marker() {
 }
 
 # Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
-# Expected verbatim Log fragment: verified=[X3]; accepted=[X5]; deferred=[X9]
+# Expected verbatim Log fragment: verified=[X3], accepted=[X5], deferred=[X9]
+# (commas between list-name tokens per SKILL.md §Code audit canonical schema).
 check_code_audit_resume_clean_passed() {
   local fx='tests/fixtures/code-audit-resume/clean-passed/spec.md'
   if [ ! -f "$fx" ]; then
@@ -3617,9 +3618,17 @@ check_code_audit_resume_clean_passed() {
       ;;
   esac
   # Verbatim carry-forward contract: the terminal marker carries the full
-  # verified/accepted/deferred tail exactly as spec'd.
-  if ! printf '%s\n' "$marker" | grep -qF "verified=[X3]; accepted=[X5]; deferred=[X9]"; then
-    echo "clean-passed: terminal marker missing verbatim 'verified=[X3]; accepted=[X5]; deferred=[X9]' tail"
+  # verified/accepted/deferred tail exactly as spec'd in SKILL.md (commas
+  # between list tokens).
+  if ! printf '%s\n' "$marker" | grep -qF "verified=[X3], accepted=[X5], deferred=[X9]"; then
+    echo "clean-passed: terminal marker missing verbatim 'verified=[X3], accepted=[X5], deferred=[X9]' tail"
+    return 1
+  fi
+  # Negative guard: the stale semicolon-separated form must not be accepted —
+  # it contradicts the SKILL.md canonical schema and pinning it would freeze
+  # the bug in place.
+  if printf '%s\n' "$marker" | grep -qF "verified=[X3]; accepted=[X5]; deferred=[X9]"; then
+    echo "clean-passed: terminal marker uses stale semicolon form between list tokens (want commas)"
     return 1
   fi
   # Routing outcome assertion: skip to hand-off (no re-spawn, no verifier re-run).
@@ -3628,7 +3637,7 @@ check_code_audit_resume_clean_passed() {
     echo "clean-passed: routing outcome mismatch (expected skip-to-hand-off, got $routing)"
     return 1
   fi
-  echo "clean-passed: terminal 'code audit passed' with 'verified=[X3]; accepted=[X5]; deferred=[X9]' → skip-to-hand-off OK"
+  echo "clean-passed: terminal 'code audit passed' with 'verified=[X3], accepted=[X5], deferred=[X9]' → skip-to-hand-off OK"
 }
 
 # Branch 2: zero-diff-skip — `code audit: no auditable files in diff; skipping`
