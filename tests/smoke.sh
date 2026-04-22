@@ -1153,15 +1153,22 @@ check_banner_convention_doc_valid() {
   echo "banner convention doc has all 7 required substrings"
 }
 
-# (b) feature SKILL.md must have exactly 17 AWAITING banner lines.
+# (b) feature SKILL.md must have exactly 16 AWAITING banner lines outside the Code audit section.
+# Banners inside the Code audit section (between "## Code audit" and "## Hand-off") are owned by
+# later steps of the code-audit-phase spec and must not count here yet.
 check_feature_awaiting_count_15() {
   local n
-  n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "17" ]; then
-    echo "feature AWAITING count=$n expected 17"
+  n=$(awk '
+    /^## Code audit$/ { skip = 1; next }
+    skip && /^## Hand-off$/ { skip = 0 }
+    !skip && /^## ⏸ AWAITING YOUR INPUT$/ { c++ }
+    END { print c + 0 }
+  ' skills/feature/SKILL.md)
+  if [ "$n" != "16" ]; then
+    echo "feature AWAITING count=$n expected 16"
     return 1
   fi
-  echo "feature AWAITING count=17 OK"
+  echo "feature AWAITING count=16 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1309,38 +1316,54 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 24 once all steps done).
+# (r) ruler-prefix count matches total banner count (expected 23 while Code audit section
+# banners remain owned by later spec steps; count rises to 24 once all steps done).
 check_awaiting_ruler_prefix_count_matches() {
   local c
-  c=$(awk '
+  c=$({
+    awk '
+      /^## Code audit$/ { skip = 1; next }
+      skip && /^## Hand-off$/ { skip = 0 }
+      !skip { print }
+    ' skills/feature/SKILL.md
+    cat skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md
+  } | awk '
     BEGIN { c = 0; prev = "" }
     ($0 == "## ⏸ AWAITING YOUR INPUT" || $0 == "## ⏸ APPROVAL REQUIRED") && prev == "---" { c++ }
     { prev = $0 }
     END { print c }
-  ' skills/*/SKILL.md)
-  if [ "$c" != "24" ]; then
-    echo "ruler-prefix count=$c expected 24"
+  ')
+  if [ "$c" != "23" ]; then
+    echo "ruler-prefix count=$c expected 23"
     return 1
   fi
-  echo "ruler-prefix count=24 OK"
+  echo "ruler-prefix count=23 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 24 satisfied).
+# (s) each banner has trailing bold question within 15 lines (expected 23 satisfied while Code
+# audit section banners remain owned by later spec steps; rises to 24 once all steps done).
 check_banner_trailing_bold_present_each() {
   local c
-  c=$(awk '
+  c=$({
+    awk '
+      /^## Code audit$/ { skip = 1; next }
+      skip && /^## Hand-off$/ { skip = 0 }
+      !skip { print }
+    ' skills/feature/SKILL.md
+    cat skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md
+  } | awk '
     BEGIN { satisfied = 0; inside = 0; countdown = 0 }
     /^## ⏸ (AWAITING YOUR INPUT|APPROVAL REQUIRED)$/ { inside = 1; countdown = 15; next }
     inside && /^## / { inside = 0; countdown = 0; next }
     inside && countdown > 0 && /\*\*[^*]+\?\*\*/ { satisfied++; inside = 0; countdown = 0; next }
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
-  ' skills/*/SKILL.md)
-  if [ "$c" != "24" ]; then
-    echo "trailing-bold-present-each count=$c expected 24"
+  ')
+  if [ "$c" != "23" ]; then
+    echo "trailing-bold-present-each count=$c expected 23"
     return 1
   fi
-  echo "trailing-bold-present-each=24 OK"
+  echo "trailing-bold-present-each=23 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -1464,6 +1487,13 @@ check_smoke_helper_discard_mode_rejects_stale() {
   echo "check_discard_mode_refuses_verified_shipped correctly rejected stale discard-mode fixture"
 }
 
+# DV3: feature/SKILL.md active-done-writes helper must reject the stale fixture.
+check_smoke_helper_feature_skill_rejects_stale() {
+  ! check_feature_skill_no_active_done_writes 'tests/fixtures/done-verified-migration/skill-md-stale.md' >/dev/null 2>&1 \
+    || { echo "check_feature_skill_no_active_done_writes wrongly accepted skill-md-stale.md"; return 1; }
+  echo "check_feature_skill_no_active_done_writes correctly rejected stale skill-md fixture"
+}
+
 # DV4: developer-workflow active-done-writes helper must reject the stale fixture.
 check_smoke_helper_developer_workflow_rejects_stale() {
   ! check_developer_workflow_no_active_done_writes 'tests/fixtures/done-verified-migration/developer-workflow-stale.md' >/dev/null 2>&1 \
@@ -1471,14 +1501,16 @@ check_smoke_helper_developer_workflow_rejects_stale() {
   echo "check_developer_workflow_no_active_done_writes correctly rejected stale developer-workflow fixture"
 }
 
-# 3 positive: helper against real plugin file
+# 4 positive: helper against real plugin file
 check "check_librarian_status_block_canonical" check_librarian_status_block_canonical agents/librarian.md
 check "check_discard_mode_refuses_verified_shipped" check_discard_mode_refuses_verified_shipped skills/feature/SKILL.md
+check "check_feature_skill_no_active_done_writes" check_feature_skill_no_active_done_writes skills/feature/SKILL.md
 check "check_developer_workflow_no_active_done_writes" check_developer_workflow_no_active_done_writes skills/feature/references/developer-workflow.md
 
-# 3 negative: wrapper-invocations verifying helpers reject stale fixtures
+# 4 negative: wrapper-invocations verifying helpers reject stale fixtures
 check "check_smoke_helper_librarian_rejects_stale" check_smoke_helper_librarian_rejects_stale
 check "check_smoke_helper_discard_mode_rejects_stale" check_smoke_helper_discard_mode_rejects_stale
+check "check_smoke_helper_feature_skill_rejects_stale" check_smoke_helper_feature_skill_rejects_stale
 check "check_smoke_helper_developer_workflow_rejects_stale" check_smoke_helper_developer_workflow_rejects_stale
 echo
 

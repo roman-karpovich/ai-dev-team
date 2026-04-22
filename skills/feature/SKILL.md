@@ -392,7 +392,7 @@ scope: <list of changed files from spec checklist>
 ```
 
 - **PASS**: All results are captured in the workdoc.
-  Verify passed. Moving to code audit. Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet — wait until the user selects a preserving option (merge, push, or keep). §3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off. Setting a terminal this early means a discard would leave the spec permanently marked terminal with no surviving branch.
+  Verify passed. Moving to code audit. Do **not** set a terminal status (`VERIFIED` or `SHIPPED`) yet — wait until the user selects a preserving option (merge, push, or keep). §3.4a applies the correct terminal (`VERIFIED` or `SHIPPED`) after hand-off. Setting a terminal before hand-off means a discard would leave the spec permanently marked terminal with no surviving branch.
 - **FAIL**: present failures to user. Analyze the verifier report to identify which checklist step(s) are responsible. Spawn the developer with `rework step N: fix test failure: <relevant excerpt>` for each affected step. Re-verify after fix.
 - **NO_TESTS**: no test suite detected. If step-level captures (green_capture + compliance PASS) exist for all steps, treat as PASS. If any step lacks captures, ask the user for manual sign-off (see banner below). On sign-off, proceed to code audit. Log the absence of a project-level test suite.
 
