@@ -1155,7 +1155,7 @@ check_banner_convention_doc_valid() {
 
 # (b) feature SKILL.md must have exactly 17 AWAITING banner lines. The total includes
 # the §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1.
-check_feature_awaiting_count_15() {
+check_feature_awaiting_count_17() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
   if [ "$n" != "17" ]; then
@@ -1347,7 +1347,7 @@ check_banner_trailing_bold_present_each() {
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
-check "feature-AWAITING-count-15"               check_feature_awaiting_count_15
+check "feature-AWAITING-count-17"               check_feature_awaiting_count_17
 check "feature-APPROVAL-count-1"                check_feature_approval_count_1
 check "cross-audit-AWAITING-count-1"            check_cross_audit_awaiting_count_1
 check "research-AWAITING-count-4"               check_research_awaiting_count_4
