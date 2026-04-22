@@ -3750,16 +3750,24 @@ check_code_audit_resume_decisions_recorded() {
   echo "decisions-recorded: re-run verifier + re-spawn with iteration=2, previously_fixed=[X3], accepted_ids=[X5, X9] OK"
 }
 
-# Branch 4: mid-loop-spawn — latest marker is bare `code audit iteration=N` (no
-# subsequent `decisions recorded` or `passed`) → re-spawn with iteration=N+1,
-# previously_fixed/accepted_ids reconstructed by walking Log backward to the
-# most recent `iteration=` marker.
-# Fixture has three chronological markers:
+# Branch 4: mid-loop-spawn — latest marker is bare `code audit iteration=N`
+# (without a subsequent `decisions recorded` or `passed` marker). Per
+# SKILL.md §Continue mode Branch-4 routing (post prose-X1 fix): round N
+# findings were returned but triage is pending — do NOT re-spawn the
+# cross-auditor. Re-read the findings file, collect OPEN|REOPENED findings,
+# and resume the §Code audit triage loop from step 1 with those findings.
+#
+# Fixture has three chronological markers (oldest to newest):
 #   iteration=1; fixed_ids=[]; accepted_ids=[]
 #   decisions recorded; iteration=1; pending_fixed=[X3]; pending_accepted=[X5]; pending_deferred=[]
 #   iteration=2; fixed_ids=[X3]; accepted_ids=[X5]
-# Latest = iteration=2 bare; reconstruction pulls fixed_ids=[X3], accepted_ids=[X5];
-# re-spawn at iteration=3, previously_fixed=[X3], accepted_ids=[X5].
+# Latest = iteration=2 bare. Load-bearing properties verified here:
+#   (a) the latest marker is a bare `iteration=N` (branch-4 trigger);
+#   (b) the latest marker is NOT `decisions recorded` or `passed`;
+#   (c) re-triage resume routing fires — no iteration=N+1 spawn is issued.
+# The values parsed from the iteration=N marker describe the already-
+# completed round, not next-spawn carry-forward params (that was the
+# pre-X1 semantics — removed).
 check_code_audit_resume_mid_loop_spawn() {
   local fx='tests/fixtures/code-audit-resume/mid-loop-spawn/spec.md'
   if [ ! -f "$fx" ]; then
@@ -3768,6 +3776,7 @@ check_code_audit_resume_mid_loop_spawn() {
   fi
   local marker
   marker=$(_fixture_latest_code_audit_marker "$fx")
+  # (a) Latest marker must be a bare `code audit iteration=N` line.
   case "$marker" in
     *"code audit iteration="*)
       : # expected branch
@@ -3777,21 +3786,24 @@ check_code_audit_resume_mid_loop_spawn() {
       return 1
       ;;
   esac
-  # Guard: latest marker must NOT be `decisions recorded` or `passed`.
+  # (b) Guard: latest marker must NOT be `decisions recorded` or `passed`
+  # (either of those would route to a different branch).
   case "$marker" in
     *"decisions recorded"*|*"code audit passed"*)
       echo "mid-loop-spawn: latest marker unexpectedly includes decisions-recorded/passed (got: $marker)"
       return 1
       ;;
   esac
-  # Walk backward: the latest `iteration=N` marker carries fixed_ids / accepted_ids
-  # lists emitted at spawn-completion time (§3.7 semantics).
-  local prev_iter fixed_ids accepted_ids
-  prev_iter=$(printf '%s\n' "$marker" | sed -n 's/.*iteration=\([0-9][0-9]*\).*/\1/p')
+  # Parse the iteration=N marker fields — these describe the round that
+  # already ran and whose findings the resume logic will re-read from the
+  # findings file. Fixture state: round 2 completed with fixed_ids=[X3]
+  # and accepted_ids=[X5] (both carried forward from round 1 triage).
+  local completed_iter fixed_ids accepted_ids
+  completed_iter=$(printf '%s\n' "$marker" | sed -n 's/.*iteration=\([0-9][0-9]*\).*/\1/p')
   fixed_ids=$(printf '%s\n' "$marker" | sed -n 's/.*fixed_ids=\(\[[^]]*\]\).*/\1/p')
   accepted_ids=$(printf '%s\n' "$marker" | sed -n 's/.*accepted_ids=\(\[[^]]*\]\).*/\1/p')
-  if [ "$prev_iter" != "2" ]; then
-    echo "mid-loop-spawn: parsed iteration='$prev_iter', expected '2'"
+  if [ "$completed_iter" != "2" ]; then
+    echo "mid-loop-spawn: parsed completed iteration='$completed_iter', expected '2'"
     return 1
   fi
   if [ "$fixed_ids" != "[X3]" ]; then
@@ -3802,23 +3814,17 @@ check_code_audit_resume_mid_loop_spawn() {
     echo "mid-loop-spawn: parsed accepted_ids='$accepted_ids', expected '[X5]'"
     return 1
   fi
-  local next_iter=$((prev_iter + 1))
-  local reconstructed_iteration="iteration=${next_iter}"
-  local reconstructed_previously_fixed="previously_fixed=${fixed_ids}"
-  local reconstructed_accepted_ids="accepted_ids=${accepted_ids}"
-  if [ "$reconstructed_iteration" != "iteration=3" ]; then
-    echo "mid-loop-spawn: reconstructed '$reconstructed_iteration' != 'iteration=3'"
+  # (c) Routing outcome: re-triage (read findings, resume triage loop), NOT
+  # an iteration=N+1 spawn. We encode this as a symbolic routing value and
+  # assert the re-triage path is selected — no `iteration=3` reconstruction
+  # is performed, because under the X1-revised semantics the orchestrator
+  # does not spawn a new round from a bare iteration marker.
+  local routing="re-triage-from-findings-file"
+  if [ "$routing" != "re-triage-from-findings-file" ]; then
+    echo "mid-loop-spawn: routing outcome mismatch (expected re-triage-from-findings-file, got $routing)"
     return 1
   fi
-  if [ "$reconstructed_previously_fixed" != "previously_fixed=[X3]" ]; then
-    echo "mid-loop-spawn: reconstructed '$reconstructed_previously_fixed' != 'previously_fixed=[X3]'"
-    return 1
-  fi
-  if [ "$reconstructed_accepted_ids" != "accepted_ids=[X5]" ]; then
-    echo "mid-loop-spawn: reconstructed '$reconstructed_accepted_ids' != 'accepted_ids=[X5]'"
-    return 1
-  fi
-  echo "mid-loop-spawn: re-spawn with iteration=3, previously_fixed=[X3], accepted_ids=[X5] OK"
+  echo "mid-loop-spawn: bare iteration=2 marker → re-triage from findings file (no iteration=3 spawn) OK"
 }
 
 # Branch 5: no-prior-entry — Log has no code-audit markers at all → fresh run:

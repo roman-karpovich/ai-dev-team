@@ -17,14 +17,20 @@ Target state: all implementation steps `[x]`; Log has three chronological
 code-audit markers — iteration=1 spawn, decisions recorded for
 iteration=1, then iteration=2 spawn completion — with NO subsequent
 `decisions recorded` or `code audit passed` marker. The most recent
-code-audit marker is `iteration=N` alone (round N executed, triage
-decisions not yet captured).
+code-audit marker is `iteration=N` alone (round N findings returned,
+triage is pending / in-progress).
 
-Expected routing: re-spawn cross-auditor with
-- iteration=3 (N+1 semantics)
-- previously_fixed=[X3] (reconstructed from latest `iteration=` marker)
-- accepted_ids=[X5] (reconstructed from latest `iteration=` marker;
-  no `deferred` union because the pending_deferred on iteration=1 was [])
+Expected routing (post prose-X1 fix): re-read the findings file,
+collect the findings whose status is `OPEN` or `REOPENED`, re-present
+them to the user, and resume the §Code audit triage loop from step 1
+with those findings. The orchestrator does NOT spawn
+cross-auditor with `iteration=N+1` from a bare iteration marker —
+doing so would silently bypass the mandatory per-finding triage
+banner for round N.
+
+The iteration=2 marker's `fixed_ids=[X3]` and `accepted_ids=[X5]`
+describe the already-completed round (carried forward from round 1
+triage), not next-spawn parameters.
 
 ## 5. Implementation Checklist
 
