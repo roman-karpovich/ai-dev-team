@@ -526,10 +526,12 @@ been resolved:**
 
 ## Hand-off
 
-After verify passes, run a two-phase hand-off seed before showing the
-4-option menu. This is per-item reconciliation: re-read §6.2 on every
-hand-off; only `deploy_prerequisites` participate in seeding. `smoke_check`
-is never seeded into §8.
+After the code audit phase completes (either a `code audit passed` marker
+or the zero-diff `code audit: no auditable files in diff; skipping`
+marker has been appended to the Log), run a two-phase hand-off seed
+before showing the 4-option menu. This is per-item reconciliation:
+re-read §6.2 on every hand-off; only `deploy_prerequisites` participate
+in seeding. `smoke_check` is never seeded into §8.
 
 **Phase 1 — compute delta (before the 4-option menu, in memory only)**
 
