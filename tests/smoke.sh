@@ -1156,17 +1156,12 @@ check_banner_convention_doc_valid() {
 # (b) feature SKILL.md must have exactly 17 AWAITING banner lines.
 check_feature_awaiting_count_15() {
   local n
-  n=$(awk '
-    /^## Code audit$/ { skip = 1; next }
-    skip && /^## Hand-off$/ { skip = 0 }
-    !skip && /^## ⏸ AWAITING YOUR INPUT$/ { c++ }
-    END { print c + 0 }
-  ' skills/feature/SKILL.md)
-  if [ "$n" != "16" ]; then
-    echo "feature AWAITING count=$n expected 16"
+  n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
+  if [ "$n" != "17" ]; then
+    echo "feature AWAITING count=$n expected 17"
     return 1
   fi
-  echo "feature AWAITING count=16 OK"
+  echo "feature AWAITING count=17 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1314,52 +1309,38 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 22 once all steps done).
+# (r) ruler-prefix count matches total banner count (expected 24 once all steps done).
 check_awaiting_ruler_prefix_count_matches() {
   local c
-  c=$({
-    awk '
-      /^## Code audit$/ { skip = 1; next }
-      skip && /^## Hand-off$/ { skip = 0 }
-      !skip { print }
-    ' skills/feature/SKILL.md
-    cat skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md
-  } | awk '
+  c=$(awk '
     BEGIN { c = 0; prev = "" }
     ($0 == "## ⏸ AWAITING YOUR INPUT" || $0 == "## ⏸ APPROVAL REQUIRED") && prev == "---" { c++ }
     { prev = $0 }
     END { print c }
-  ')
-  if [ "$c" != "23" ]; then
-    echo "ruler-prefix count=$c expected 23"
+  ' skills/*/SKILL.md)
+  if [ "$c" != "24" ]; then
+    echo "ruler-prefix count=$c expected 24"
     return 1
   fi
-  echo "ruler-prefix count=23 OK"
+  echo "ruler-prefix count=24 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 23 satisfied).
+# (s) each banner has trailing bold question within 15 lines (expected 24 satisfied).
 check_banner_trailing_bold_present_each() {
   local c
-  c=$({
-    awk '
-      /^## Code audit$/ { skip = 1; next }
-      skip && /^## Hand-off$/ { skip = 0 }
-      !skip { print }
-    ' skills/feature/SKILL.md
-    cat skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md
-  } | awk '
+  c=$(awk '
     BEGIN { satisfied = 0; inside = 0; countdown = 0 }
     /^## ⏸ (AWAITING YOUR INPUT|APPROVAL REQUIRED)$/ { inside = 1; countdown = 15; next }
     inside && /^## / { inside = 0; countdown = 0; next }
     inside && countdown > 0 && /\*\*[^*]+\?\*\*/ { satisfied++; inside = 0; countdown = 0; next }
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
-  ')
-  if [ "$c" != "23" ]; then
-    echo "trailing-bold-present-each count=$c expected 23"
+  ' skills/*/SKILL.md)
+  if [ "$c" != "24" ]; then
+    echo "trailing-bold-present-each count=$c expected 24"
     return 1
   fi
-  echo "trailing-bold-present-each=23 OK"
+  echo "trailing-bold-present-each=24 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
