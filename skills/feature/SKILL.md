@@ -631,7 +631,17 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
    - `DRAFT` → Spec not yet approved. Present it to the user and ask for approval. Resume from Step 3 (Get approval).
    - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
    - `AUDIT_PASSED` → Resume from Implement (baseline test → agent selection → implementation).
-   - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — run Verify.
+   - `IN_PROGRESS` → Find the first unchecked `- [ ]` step. Resume from there. Ask which agent to use. If no unchecked step exists (all `[x]`): implementation is complete — resume flow is Verify → Code audit → Hand-off. Code-audit entry depends on the most recent code-audit Log marker; four marker kinds are recognized (`code audit passed`, `code audit no auditable files in diff`, `code audit decisions recorded`, `code audit iteration=N`), plus the no-entry fresh-run branch. Route using the table below (read Log markers chronologically; use the most recent `code audit …` line):
+
+     | Log state (most recent code-audit marker) | Routing decision |
+     |---|---|
+     | `code audit passed` | Skip straight to hand-off. Code audit already complete. |
+     | `code audit: no auditable files in diff; skipping` | Skip to hand-off — deterministic empty-diff skip already applied. |
+     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. |
+     | `code audit iteration=N` (without a later `decisions recorded` or `passed` marker) | Re-spawn `cross-auditor` with `iteration=N+1` (round N already executed; reconstruct `previously_fixed` and `accepted_ids` by walking the Log history backward through prior code-audit markers). |
+     | No code-audit Log entry at all | Fresh code-audit run: re-run the verifier first to confirm the baseline is still green (defensive), then spawn `iteration=1` with `previously_fixed=[]` and `accepted_ids=[]`. |
+
+     Malformed or truncated trailing code-audit Log lines are ignored; fall back to the last complete recognized marker above. If the only code-audit entry is unrecognized, treat it as no code-audit Log entry and take the fresh-run branch.
    - `BLOCKED` → Report the unblock condition from the most recent `BLOCKED — waiting on ...` Log entry and ask the banner below. If yes, revert status to the prior state (IN_PROGRESS or AUDIT_PASSED, whichever the Log indicates) and resume. If no, stop.
 
 ---
