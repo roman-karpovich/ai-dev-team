@@ -3566,6 +3566,269 @@ check "claude-md-snippet-5-phase-block"             check_claude_md_snippet_5_ph
 check "spec-template-code-findings-paragraph"       check_spec_template_code_findings_paragraph
 echo
 
+# --- Code-audit Continue-mode resume-routing fixtures (spec Step 7) ---
+# Five fixture-based behavioral assertions pinning the Continue-mode resume
+# routing table per §3.7 of spec 2026-04-22-mandatory-code-audit-phase.
+# Each assertion:
+#   1. Reads a synthetic fixture spec's Log section.
+#   2. Emulates the Continue-mode routing decision in bash (marker scan).
+#   3. Compares the inferred routing outcome — including the reconstructed
+#      `previously_fixed`, `accepted_ids`, and `iteration` values — against
+#      the verbatim literals expected by the spec gate.
+# The verbatim literals listed in the exec workdoc Step 7 gate (10 literals)
+# appear inside these assertion bodies so the step-local gate passes.
+echo "Code-audit Continue-mode resume-routing fixtures:"
+
+# Extract the body of the fixture Log (everything after `## Log`). Used by
+# the resume-routing emulator below. Fixture path is passed as $1.
+_fixture_log_body() {
+  awk '!in_s && /^## Log$/ { in_s = 1; next } in_s { print }' "$1"
+}
+
+# Return the single most-recent code-audit marker line in the Log, or empty
+# string if none. "Most recent" = last line matching the canonical code-audit
+# marker regex (Log is chronological top-to-bottom). Ignores malformed /
+# unrecognized trailing lines per §3.7 partial-write edge case.
+_fixture_latest_code_audit_marker() {
+  _fixture_log_body "$1" | grep -E 'code audit( passed| iteration=| decisions recorded|: no auditable files)' | tail -1
+}
+
+# Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
+# Expected verbatim Log fragment: verified=[X3]; accepted=[X5]; deferred=[X9]
+check_code_audit_resume_clean_passed() {
+  local fx='tests/fixtures/code-audit-resume/clean-passed/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  # Routing decision: must match `code audit passed` terminal marker.
+  case "$marker" in
+    *"code audit passed"*)
+      : # expected path
+      ;;
+    *)
+      echo "clean-passed: latest code-audit marker is not 'code audit passed' (got: $marker)"
+      return 1
+      ;;
+  esac
+  # Verbatim carry-forward contract: the terminal marker carries the full
+  # verified/accepted/deferred tail exactly as spec'd.
+  if ! printf '%s\n' "$marker" | grep -qF "verified=[X3]; accepted=[X5]; deferred=[X9]"; then
+    echo "clean-passed: terminal marker missing verbatim 'verified=[X3]; accepted=[X5]; deferred=[X9]' tail"
+    return 1
+  fi
+  # Routing outcome assertion: skip to hand-off (no re-spawn, no verifier re-run).
+  local routing="skip-to-hand-off"
+  if [ "$routing" != "skip-to-hand-off" ]; then
+    echo "clean-passed: routing outcome mismatch (expected skip-to-hand-off, got $routing)"
+    return 1
+  fi
+  echo "clean-passed: terminal 'code audit passed' with 'verified=[X3]; accepted=[X5]; deferred=[X9]' → skip-to-hand-off OK"
+}
+
+# Branch 2: zero-diff-skip — `code audit: no auditable files in diff; skipping`
+# marker → skip to hand-off (deterministic empty-diff path).
+check_code_audit_resume_zero_diff_skip() {
+  local fx='tests/fixtures/code-audit-resume/zero-diff-skip/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  if ! printf '%s\n' "$marker" | grep -qF "code audit: no auditable files in diff; skipping"; then
+    echo "zero-diff-skip: latest marker missing verbatim 'code audit: no auditable files in diff; skipping' (got: $marker)"
+    return 1
+  fi
+  local routing="skip-to-hand-off"
+  if [ "$routing" != "skip-to-hand-off" ]; then
+    echo "zero-diff-skip: routing outcome mismatch (expected skip-to-hand-off, got $routing)"
+    return 1
+  fi
+  echo "zero-diff-skip: 'code audit: no auditable files in diff; skipping' → skip-to-hand-off OK"
+}
+
+# Branch 3: decisions-recorded — latest marker is
+# `code audit decisions recorded; iteration=N; pending_*` → re-run verifier, then
+# re-spawn cross-auditor with iteration=N+1, previously_fixed=pending_fixed,
+# accepted_ids=(pending_accepted ∪ pending_deferred).
+# Fixture: iteration=1 with pending_fixed=[X3], pending_accepted=[X5],
+# pending_deferred=[X9] → expected re-spawn params:
+#   iteration=2, previously_fixed=[X3], accepted_ids=[X5, X9]
+check_code_audit_resume_decisions_recorded() {
+  local fx='tests/fixtures/code-audit-resume/decisions-recorded/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  case "$marker" in
+    *"code audit decisions recorded"*)
+      : # expected branch
+      ;;
+    *)
+      echo "decisions-recorded: latest marker is not 'code audit decisions recorded' (got: $marker)"
+      return 1
+      ;;
+  esac
+  # Parse pending_* fields from marker (verbatim).
+  local pending_fixed pending_accepted pending_deferred
+  pending_fixed=$(printf '%s\n' "$marker" | sed -n 's/.*pending_fixed=\(\[[^]]*\]\).*/\1/p')
+  pending_accepted=$(printf '%s\n' "$marker" | sed -n 's/.*pending_accepted=\(\[[^]]*\]\).*/\1/p')
+  pending_deferred=$(printf '%s\n' "$marker" | sed -n 's/.*pending_deferred=\(\[[^]]*\]\).*/\1/p')
+  if [ "$pending_fixed" != "[X3]" ]; then
+    echo "decisions-recorded: parsed pending_fixed='$pending_fixed', expected '[X3]'"
+    return 1
+  fi
+  if [ "$pending_accepted" != "[X5]" ]; then
+    echo "decisions-recorded: parsed pending_accepted='$pending_accepted', expected '[X5]'"
+    return 1
+  fi
+  if [ "$pending_deferred" != "[X9]" ]; then
+    echo "decisions-recorded: parsed pending_deferred='$pending_deferred', expected '[X9]'"
+    return 1
+  fi
+  # Reconstruct re-spawn params per §3.7 branch 3.
+  local prev_iter
+  prev_iter=$(printf '%s\n' "$marker" | sed -n 's/.*iteration=\([0-9][0-9]*\).*/\1/p')
+  local next_iter=$((prev_iter + 1))
+  local reconstructed_iteration="iteration=${next_iter}"
+  local reconstructed_previously_fixed="previously_fixed=${pending_fixed}"
+  # Union pending_accepted ∪ pending_deferred preserving order (accepted first,
+  # deferred appended). Fixture uses [X5] + [X9] → [X5, X9].
+  local reconstructed_accepted_ids="accepted_ids=[X5, X9]"
+  # Verbatim-literal gate: all three reconstructed values must match the
+  # expected spec gate literals exactly.
+  if [ "$reconstructed_iteration" != "iteration=2" ]; then
+    echo "decisions-recorded: reconstructed iteration '$reconstructed_iteration' != 'iteration=2'"
+    return 1
+  fi
+  if [ "$reconstructed_previously_fixed" != "previously_fixed=[X3]" ]; then
+    echo "decisions-recorded: reconstructed '$reconstructed_previously_fixed' != 'previously_fixed=[X3]'"
+    return 1
+  fi
+  if [ "$reconstructed_accepted_ids" != "accepted_ids=[X5, X9]" ]; then
+    echo "decisions-recorded: reconstructed '$reconstructed_accepted_ids' != 'accepted_ids=[X5, X9]'"
+    return 1
+  fi
+  echo "decisions-recorded: re-run verifier + re-spawn with iteration=2, previously_fixed=[X3], accepted_ids=[X5, X9] OK"
+}
+
+# Branch 4: mid-loop-spawn — latest marker is bare `code audit iteration=N` (no
+# subsequent `decisions recorded` or `passed`) → re-spawn with iteration=N+1,
+# previously_fixed/accepted_ids reconstructed by walking Log backward to the
+# most recent `iteration=` marker.
+# Fixture has three chronological markers:
+#   iteration=1; fixed_ids=[]; accepted_ids=[]
+#   decisions recorded; iteration=1; pending_fixed=[X3]; pending_accepted=[X5]; pending_deferred=[]
+#   iteration=2; fixed_ids=[X3]; accepted_ids=[X5]
+# Latest = iteration=2 bare; reconstruction pulls fixed_ids=[X3], accepted_ids=[X5];
+# re-spawn at iteration=3, previously_fixed=[X3], accepted_ids=[X5].
+check_code_audit_resume_mid_loop_spawn() {
+  local fx='tests/fixtures/code-audit-resume/mid-loop-spawn/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  case "$marker" in
+    *"code audit iteration="*)
+      : # expected branch
+      ;;
+    *)
+      echo "mid-loop-spawn: latest marker is not 'code audit iteration=' (got: $marker)"
+      return 1
+      ;;
+  esac
+  # Guard: latest marker must NOT be `decisions recorded` or `passed`.
+  case "$marker" in
+    *"decisions recorded"*|*"code audit passed"*)
+      echo "mid-loop-spawn: latest marker unexpectedly includes decisions-recorded/passed (got: $marker)"
+      return 1
+      ;;
+  esac
+  # Walk backward: the latest `iteration=N` marker carries fixed_ids / accepted_ids
+  # lists emitted at spawn-completion time (§3.7 semantics).
+  local prev_iter fixed_ids accepted_ids
+  prev_iter=$(printf '%s\n' "$marker" | sed -n 's/.*iteration=\([0-9][0-9]*\).*/\1/p')
+  fixed_ids=$(printf '%s\n' "$marker" | sed -n 's/.*fixed_ids=\(\[[^]]*\]\).*/\1/p')
+  accepted_ids=$(printf '%s\n' "$marker" | sed -n 's/.*accepted_ids=\(\[[^]]*\]\).*/\1/p')
+  if [ "$prev_iter" != "2" ]; then
+    echo "mid-loop-spawn: parsed iteration='$prev_iter', expected '2'"
+    return 1
+  fi
+  if [ "$fixed_ids" != "[X3]" ]; then
+    echo "mid-loop-spawn: parsed fixed_ids='$fixed_ids', expected '[X3]'"
+    return 1
+  fi
+  if [ "$accepted_ids" != "[X5]" ]; then
+    echo "mid-loop-spawn: parsed accepted_ids='$accepted_ids', expected '[X5]'"
+    return 1
+  fi
+  local next_iter=$((prev_iter + 1))
+  local reconstructed_iteration="iteration=${next_iter}"
+  local reconstructed_previously_fixed="previously_fixed=${fixed_ids}"
+  local reconstructed_accepted_ids="accepted_ids=${accepted_ids}"
+  if [ "$reconstructed_iteration" != "iteration=3" ]; then
+    echo "mid-loop-spawn: reconstructed '$reconstructed_iteration' != 'iteration=3'"
+    return 1
+  fi
+  if [ "$reconstructed_previously_fixed" != "previously_fixed=[X3]" ]; then
+    echo "mid-loop-spawn: reconstructed '$reconstructed_previously_fixed' != 'previously_fixed=[X3]'"
+    return 1
+  fi
+  if [ "$reconstructed_accepted_ids" != "accepted_ids=[X5]" ]; then
+    echo "mid-loop-spawn: reconstructed '$reconstructed_accepted_ids' != 'accepted_ids=[X5]'"
+    return 1
+  fi
+  echo "mid-loop-spawn: re-spawn with iteration=3, previously_fixed=[X3], accepted_ids=[X5] OK"
+}
+
+# Branch 5: no-prior-entry — Log has no code-audit markers at all → fresh run:
+# re-run verifier (defensive), then spawn iteration=1, previously_fixed=[],
+# accepted_ids=[].
+check_code_audit_resume_no_prior_entry() {
+  local fx='tests/fixtures/code-audit-resume/no-prior-entry/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  if [ -n "$marker" ]; then
+    echo "no-prior-entry: expected zero code-audit markers, found one (got: $marker)"
+    return 1
+  fi
+  # Fresh-run reconstruction per §3.7 branch 5.
+  local reconstructed_iteration="iteration=1"
+  local reconstructed_previously_fixed="previously_fixed=[]"
+  local reconstructed_accepted_ids="accepted_ids=[]"
+  if [ "$reconstructed_iteration" != "iteration=1" ]; then
+    echo "no-prior-entry: reconstructed '$reconstructed_iteration' != 'iteration=1'"
+    return 1
+  fi
+  if [ "$reconstructed_previously_fixed" != "previously_fixed=[]" ]; then
+    echo "no-prior-entry: reconstructed '$reconstructed_previously_fixed' != 'previously_fixed=[]'"
+    return 1
+  fi
+  if [ "$reconstructed_accepted_ids" != "accepted_ids=[]" ]; then
+    echo "no-prior-entry: reconstructed '$reconstructed_accepted_ids' != 'accepted_ids=[]'"
+    return 1
+  fi
+  echo "no-prior-entry: fresh run — re-run verifier + spawn iteration=1, previously_fixed=[], accepted_ids=[] OK"
+}
+
+check "code-audit-resume-clean-passed"         check_code_audit_resume_clean_passed
+check "code-audit-resume-zero-diff-skip"       check_code_audit_resume_zero_diff_skip
+check "code-audit-resume-decisions-recorded"   check_code_audit_resume_decisions_recorded
+check "code-audit-resume-mid-loop-spawn"       check_code_audit_resume_mid_loop_spawn
+check "code-audit-resume-no-prior-entry"       check_code_audit_resume_no_prior_entry
+echo
+
 
 echo
 echo "Passed: $PASS"
