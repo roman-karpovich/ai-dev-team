@@ -1,1 +1,4 @@
 .ai-dev-team.local.yml
+.claude/
+__pycache__/
+*.pyc
