@@ -329,7 +329,7 @@ See `skills/feature/references/agent-routing.md` for routing triggers and the ca
 
 **Which developer should implement this?**
 
-1. **Codex (GPT-5.4 xhigh)** ← default — saves Claude tokens, corporate subscription, use aggressively
+1. **Codex (GPT-5.5 xhigh)** ← default — saves Claude tokens, corporate subscription, use aggressively
 1b. **Codex Fast** — faster/cheaper variant; only shown when `codex.model_fast` is configured.
 2. **Senior (Opus)** — only when Codex falls short: highly ambiguous scope, extensive codebase exploration needed, ultra-complex cross-cutting changes
 3. **Middle (Sonnet)** — quick in-session fixes where spawning Codex is overkill (trivial one-liner changes, typos, small config edits)
