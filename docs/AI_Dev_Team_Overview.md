@@ -20,7 +20,7 @@ The AI dev team solves three problems:
 | **Librarian** | Claude Sonnet | Manages the KB: search on request, create documents with correct format, update MOC indexes |
 | **Developer Senior** | Claude Opus | Complex tasks: new abstractions, Soroban/contracts, ambiguous scope, security-sensitive code |
 | **Developer Middle** | Claude Sonnet | Clear scope following existing patterns: new endpoint, tests, function by example |
-| **Developer Codex** | GPT-5.4 xhigh | **Default.** Saves Claude tokens (corporate subscription). Quality comparable to Senior given a clear spec. Reads files directly by path. |
+| **Developer Codex** | GPT-5.5 xhigh | **Default.** Saves Claude tokens (corporate subscription). Quality comparable to Senior given a clear spec. Reads files directly by path. |
 | **Auditor** | Claude Opus + Codex | Parallel review: two modes × two vendors = 4 independent perspectives |
 | **Verifier** | Claude Haiku | Runs tests, checks for regressions. Never writes code. |
 

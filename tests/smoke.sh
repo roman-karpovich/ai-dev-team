@@ -2353,7 +2353,7 @@ echo
 echo "Codex Fast config surface:"
 
 check "codex.model_fast documented in .ai-dev-team.yml.example" \
-  bash -c "grep -qF -- '#   model_fast: gpt-5.4-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)' .ai-dev-team.yml.example"
+  bash -c "grep -qF -- '#   model_fast: gpt-5.5-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)' .ai-dev-team.yml.example"
 
 check ".ai-dev-team.yml.example documents model_fast precondition" \
   bash -c "grep -qF -- '#   NOTE: when codex.model_fast is set, codex.model must also be set and must differ from codex.model_fast (otherwise cross-auditor would use Fast reasoning).' .ai-dev-team.yml.example"
