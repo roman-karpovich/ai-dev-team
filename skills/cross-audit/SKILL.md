@@ -6,7 +6,7 @@ argument-hint: "<scope description OR path to existing findings doc> [--diff] [-
 
 # Cross-Audit: Background Parallel Review
 
-Cross-audit runs Claude (Opus) and Codex (GPT-5.4) as independent auditors, consolidates their findings into KB documents, then iterates until clean. **Runs in the background** so you can continue working.
+Cross-audit runs Claude (Opus) and Codex (GPT-5.5) as independent auditors, consolidates their findings into KB documents, then iterates until clean. **Runs in the background** so you can continue working.
 
 User-input prompt presentation in this skill follows the banner
 convention in `docs/user-input-banner-convention.md` — the per-finding

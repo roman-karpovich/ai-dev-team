@@ -12,9 +12,9 @@ kb_path: <set-me>
 # Optional: Codex MCP overrides — apply to developer-codex and cross-auditor
 # when they invoke `mcp__codex__codex`. Both fields are optional.
 # codex:
-#   model: gpt-5.4            # omit to use ~/.codex/config.toml default
+#   model: gpt-5.5            # omit to use ~/.codex/config.toml default
 #   reasoning_effort: xhigh   # one of minimal|low|medium|high|xhigh (default: xhigh)
-#   model_fast: gpt-5.4-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)
+#   model_fast: gpt-5.5-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)
 #   NOTE: when codex.model_fast is set, codex.model must also be set and must differ from codex.model_fast (otherwise cross-auditor would use Fast reasoning).
 
 # Optional: Cross-audit probe kill-switch — spec 2026-04-21-cross-audit-probes-foundation §3.4.

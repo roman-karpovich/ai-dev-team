@@ -1,12 +1,12 @@
 ---
 name: investigate
-description: "Multi-provider adversarial investigation. Claude (Opus) and Codex (GPT-5.4) debate through structured rounds. Use for ideation, architecture decisions, risk analysis, or any topic that benefits from adversarial scrutiny before committing to an approach."
+description: "Multi-provider adversarial investigation. Claude (Opus) and Codex (GPT-5.5) debate through structured rounds. Use for ideation, architecture decisions, risk analysis, or any topic that benefits from adversarial scrutiny before committing to an approach."
 argument-hint: "<topic or question to investigate>"
 ---
 
 # Investigate: Adversarial Multi-Provider Debate
 
-Structured debate between Claude (Opus) and Codex (GPT-5.4) where they challenge each other's ideas through multiple rounds. **Runs in background** — you can continue working while the debate happens.
+Structured debate between Claude (Opus) and Codex (GPT-5.5) where they challenge each other's ideas through multiple rounds. **Runs in background** — you can continue working while the debate happens.
 
 User-input prompt presentation in this skill follows the banner
 convention in `docs/user-input-banner-convention.md`. The async-result
@@ -71,7 +71,7 @@ working_directory: [cwd]
 
 Immediately respond:
 > Investigation started in background: **"[topic]"**
-> Claude (Opus) and Codex (GPT-5.4) will debate for up to [N] rounds.
+> Claude (Opus) and Codex (GPT-5.5) will debate for up to [N] rounds.
 > I'll present the convergence report when they finish. You can continue working.
 
 **Then return control.** Do NOT wait.

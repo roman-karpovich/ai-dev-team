@@ -20,7 +20,7 @@ You receive a prompt with:
 - **project_type**: smart_contract | backend | frontend | data_pipeline
 - **mode**: `logic` | `security` | `full` | `spec` (default: `full`; use `spec` to audit the spec document before implementation)
 - **severity_floor**: `high` (default) | `medium+` — minimum severity to collect. `high` is the canonical behavior; `medium+` also includes MEDIUM findings. Propagates into Codex prompts and your own audit.
-- **codex_model** (optional): override the Codex model (e.g. `gpt-5.4`). Populated from `.ai-dev-team.yml` under `codex.model`. If absent, omit the `model` field in the MCP call so Codex uses `~/.codex/config.toml`.
+- **codex_model** (optional): override the Codex model (e.g. `gpt-5.5`). Populated from `.ai-dev-team.yml` under `codex.model`. If absent, omit the `model` field in the MCP call so Codex uses `~/.codex/config.toml`.
 - **codex_reasoning_effort** (optional): override reasoning effort (`minimal|low|medium|high|xhigh`). Populated from `.ai-dev-team.yml` under `codex.reasoning_effort`. Defaults to `xhigh` when absent.
 - **workdoc_path** (spec mode only, optional): absolute path to the execution workdoc (`exec.md`) — if provided, Codex will also review it for completeness, coherence with the spec, and sound sequencing
 - **kb_path**: absolute path to the Knowledge Base root (Obsidian vault)

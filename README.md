@@ -37,7 +37,7 @@ claude mcp add codex -s user -- codex mcp-server
 
 Model and reasoning effort come from `~/.codex/config.toml`:
 ```toml
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
 ```
 
@@ -187,7 +187,7 @@ Confidence levels in findings:
 /investigate should we use optimistic locking or a queue for concurrent order updates?
 ```
 
-Runs in the **background**. Claude (Opus) and Codex (GPT-5.4) debate through up to 3 rounds, challenging each other's positions. Returns a convergence report with key agreements, unresolved tensions, and a synthesized recommendation.
+Runs in the **background**. Claude (Opus) and Codex (GPT-5.5) debate through up to 3 rounds, challenging each other's positions. Returns a convergence report with key agreements, unresolved tensions, and a synthesized recommendation.
 
 Use this before committing to a non-obvious design decision.
 
