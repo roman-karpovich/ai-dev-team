@@ -765,6 +765,51 @@ check_session_start_dormant_in_orthogonal() {
   echo "session-start dormant in orthogonal CWD emits {}"
 }
 
+check_session_start_active_yml_arm() {
+  local tmpdir out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  touch "$tmpdir/.ai-dev-team.yml" || { rm -rf "$tmpdir"; echo "touch failed: $tmpdir/.ai-dev-team.yml"; return 1; }
+
+  out=$(cd "$tmpdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed"; printf '%s\n' "$out"; return 1; }
+  printf '%s' "$out" | grep -qF 'Skill trigger map' || { echo "inject missing 'Skill trigger map'; got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start active via yml arm: inject contains Skill trigger map"
+}
+
+check_session_start_active_memory_arm() {
+  local tmpdir raw_tmpdir sanitized out status
+  raw_tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  tmpdir=$(cd "$raw_tmpdir" && pwd -P) || { rm -rf "$raw_tmpdir"; echo "pwd failed"; return 1; }
+  sanitized=$(printf '%s' "$tmpdir" | tr '/' '-')
+  mkdir -p "$tmpdir/.claude/projects/${sanitized}/memory" || { rm -rf "$tmpdir"; echo "mkdir failed: $tmpdir/.claude/projects/${sanitized}/memory"; return 1; }
+  touch "$tmpdir/.claude/projects/${sanitized}/memory/reference_kb_test.md" || { rm -rf "$tmpdir"; echo "touch failed: $tmpdir/.claude/projects/${sanitized}/memory/reference_kb_test.md"; return 1; }
+
+  out=$(cd "$tmpdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed"; printf '%s\n' "$out"; return 1; }
+  printf '%s' "$out" | grep -qF 'Skill trigger map' || { echo "inject missing 'Skill trigger map'; got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start active via memory arm: inject contains Skill trigger map"
+}
+
+check_session_start_active_claude_md_arm() {
+  local tmpdir out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  printf '%s\n' '/feature' > "$tmpdir/CLAUDE.md" || { rm -rf "$tmpdir"; echo "write failed: $tmpdir/CLAUDE.md"; return 1; }
+
+  out=$(cd "$tmpdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed"; printf '%s\n' "$out"; return 1; }
+  printf '%s' "$out" | grep -qF 'Skill trigger map' || { echo "inject missing 'Skill trigger map'; got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start active via CLAUDE.md arm: inject contains Skill trigger map"
+}
+
 # --- Trigger-map dedupe (spec 2026-04-20-trigger-map-dedupe) ---
 # Self-contained helpers: each does inline awk/grep extraction, does NOT rely
 # on extract_md_section from the caller. Each accepts $1 = path (real plugin

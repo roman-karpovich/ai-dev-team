@@ -258,7 +258,14 @@ check "session-start (default) valid+triggers" check_session_start  default
 check "session-start (claude) key"             check_session_start_key claude  hookSpecificOutput
 check "session-start (cursor) key"             check_session_start_key cursor  additional_context
 check "session-start (default) key"            check_session_start_key default additionalContext
-check "session-start dormant in orthogonal CWD" check_session_start_dormant_in_orthogonal
+echo
+
+# --- SessionStart conditional activation ---
+echo "SessionStart conditional activation:"
+check "session_start_dormant_in_orthogonal PASS"  check_session_start_dormant_in_orthogonal
+check "session_start_active_yml_arm PASS"         check_session_start_active_yml_arm
+check "session_start_active_memory_arm PASS"      check_session_start_active_memory_arm
+check "session_start_active_claude_md_arm PASS"   check_session_start_active_claude_md_arm
 echo
 
 # --- post-edit-lint hook ---
