@@ -3933,6 +3933,43 @@ check "compliance_checker_r3_in_verdict_template"   check_compliance_checker_r3_
 check "compliance_checker_r3_in_rules"              check_compliance_checker_r3_in_rules               "$COMPLIANCE_CHECKER"
 echo
 
+# --- R3 weak-phrase compliance check — fixture-based behavioral assertions ---
+echo "R3 weak-phrase compliance check — fixture-based behavioral assertions:"
+
+# X1-a: verdict-template helper must reject the wrong-section fixture.
+check_smoke_helper_compliance_checker_r3_verdict_rejects_wrong_section() {
+  ! check_compliance_checker_r3_in_verdict_template 'tests/fixtures/smoke-helpers/spec-compliance-checker-r3-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_compliance_checker_r3_in_verdict_template wrongly accepted tests/fixtures/smoke-helpers/spec-compliance-checker-r3-wrong-section.md"; return 1; }
+  echo "check_compliance_checker_r3_in_verdict_template correctly rejected wrong-section fixture"
+}
+
+# X1-b: rules helper must reject the wrong-section fixture.
+check_smoke_helper_compliance_checker_r3_rules_rejects_wrong_section() {
+  ! check_compliance_checker_r3_in_rules 'tests/fixtures/smoke-helpers/spec-compliance-checker-r3-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_compliance_checker_r3_in_rules wrongly accepted tests/fixtures/smoke-helpers/spec-compliance-checker-r3-wrong-section.md"; return 1; }
+  echo "check_compliance_checker_r3_in_rules correctly rejected wrong-section fixture"
+}
+
+# X2-a: assertisnotnone helper must reject the wrong-section fixture.
+check_smoke_helper_compliance_checker_r3_assertisnotnone_rejects_wrong_section() {
+  ! check_compliance_checker_r3_lists_assertisnotnone 'tests/fixtures/smoke-helpers/spec-compliance-checker-r3-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_compliance_checker_r3_lists_assertisnotnone wrongly accepted tests/fixtures/smoke-helpers/spec-compliance-checker-r3-wrong-section.md"; return 1; }
+  echo "check_compliance_checker_r3_lists_assertisnotnone correctly rejected wrong-section fixture"
+}
+
+# X2-b: call-count helper must reject the wrong-section fixture.
+check_smoke_helper_compliance_checker_r3_call_count_rejects_wrong_section() {
+  ! check_compliance_checker_r3_lists_call_count 'tests/fixtures/smoke-helpers/spec-compliance-checker-r3-wrong-section.md' >/dev/null 2>&1 \
+    || { echo "check_compliance_checker_r3_lists_call_count wrongly accepted tests/fixtures/smoke-helpers/spec-compliance-checker-r3-wrong-section.md"; return 1; }
+  echo "check_compliance_checker_r3_lists_call_count correctly rejected wrong-section fixture"
+}
+
+check "smoke-helper-compliance-checker-r3-verdict-rejects-wrong-section"         check_smoke_helper_compliance_checker_r3_verdict_rejects_wrong_section
+check "smoke-helper-compliance-checker-r3-rules-rejects-wrong-section"           check_smoke_helper_compliance_checker_r3_rules_rejects_wrong_section
+check "smoke-helper-compliance-checker-r3-assertisnotnone-rejects-wrong-section" check_smoke_helper_compliance_checker_r3_assertisnotnone_rejects_wrong_section
+check "smoke-helper-compliance-checker-r3-call-count-rejects-wrong-section"      check_smoke_helper_compliance_checker_r3_call_count_rejects_wrong_section
+echo
+
 
 echo
 echo "Passed: $PASS"
