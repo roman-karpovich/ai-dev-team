@@ -748,6 +748,104 @@ check_overview_git_references_canonical() {
   echo "$path §Git conventions for developers has canonical short reference to developer-workflow.md §Git Workflow (master-or-main, no drift, no bullets)"
 }
 
+# --- SessionStart conditional activation ---
+
+check_session_start_dormant_in_orthogonal() {
+  local tmpdir workdir out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  workdir="$tmpdir/orthogonal"
+  mkdir -p "$workdir" || { rm -rf "$tmpdir"; echo "mkdir failed: $workdir"; return 1; }
+
+  out=$(cd "$workdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed in orthogonal CWD"; printf '%s\n' "$out"; return 1; }
+  [ "$out" = "{}" ] || { echo "expected dormant '{}', got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start dormant in orthogonal CWD emits {}"
+}
+
+check_session_start_active_yml_arm() {
+  local tmpdir out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  touch "$tmpdir/.ai-dev-team.yml" || { rm -rf "$tmpdir"; echo "touch failed: $tmpdir/.ai-dev-team.yml"; return 1; }
+
+  out=$(cd "$tmpdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed"; printf '%s\n' "$out"; return 1; }
+  printf '%s' "$out" | grep -qF 'Skill trigger map' || { echo "inject missing 'Skill trigger map'; got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start active via yml arm: inject contains Skill trigger map"
+}
+
+check_session_start_active_memory_arm() {
+  local tmpdir raw_tmpdir sanitized out status
+  raw_tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  tmpdir=$(cd "$raw_tmpdir" && pwd -P) || { rm -rf "$raw_tmpdir"; echo "pwd failed"; return 1; }
+  sanitized=$(printf '%s' "$tmpdir" | tr '/' '-')
+  mkdir -p "$tmpdir/.claude/projects/${sanitized}/memory" || { rm -rf "$tmpdir"; echo "mkdir failed: $tmpdir/.claude/projects/${sanitized}/memory"; return 1; }
+  touch "$tmpdir/.claude/projects/${sanitized}/memory/reference_kb_test.md" || { rm -rf "$tmpdir"; echo "touch failed: $tmpdir/.claude/projects/${sanitized}/memory/reference_kb_test.md"; return 1; }
+
+  out=$(cd "$tmpdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed"; printf '%s\n' "$out"; return 1; }
+  printf '%s' "$out" | grep -qF 'Skill trigger map' || { echo "inject missing 'Skill trigger map'; got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start active via memory arm: inject contains Skill trigger map"
+}
+
+check_session_start_active_claude_md_arm() {
+  local tmpdir out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  printf '%s\n' '/feature' > "$tmpdir/CLAUDE.md" || { rm -rf "$tmpdir"; echo "write failed: $tmpdir/CLAUDE.md"; return 1; }
+
+  out=$(cd "$tmpdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed"; printf '%s\n' "$out"; return 1; }
+  printf '%s' "$out" | grep -qF 'Skill trigger map' || { echo "inject missing 'Skill trigger map'; got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start active via CLAUDE.md arm: inject contains Skill trigger map"
+}
+
+check_session_start_dormant_under_nullglob() {
+  local tmpdir workdir bash_env_file out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  workdir="$tmpdir/orthogonal"
+  mkdir -p "$workdir" || { rm -rf "$tmpdir"; echo "mkdir failed: $workdir"; return 1; }
+  bash_env_file="$tmpdir/bash_env_nullglob.sh"
+  printf '%s\n' 'shopt -s nullglob' > "$bash_env_file"
+
+  out=$(cd "$workdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" BASH_ENV="$bash_env_file" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed under nullglob BASH_ENV"; printf '%s\n' "$out"; return 1; }
+  out_stripped="${out%$'\n'}"
+  [ "$out_stripped" = "{}" ] || [ "$out" = "{}" ] || { echo "expected dormant '{}' under nullglob, got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start dormant under nullglob BASH_ENV emits {}"
+}
+
+check_session_start_dormant_under_failglob() {
+  local tmpdir workdir bash_env_file out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  workdir="$tmpdir/orthogonal"
+  mkdir -p "$workdir" || { rm -rf "$tmpdir"; echo "mkdir failed: $workdir"; return 1; }
+  bash_env_file="$tmpdir/bash_env_failglob.sh"
+  printf '%s\n' 'shopt -s failglob' > "$bash_env_file"
+
+  out=$(cd "$workdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" BASH_ENV="$bash_env_file" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed (non-zero exit) under failglob BASH_ENV"; printf '%s\n' "$out"; return 1; }
+  out_stripped="${out%$'\n'}"
+  [ "$out_stripped" = "{}" ] || [ "$out" = "{}" ] || { echo "expected dormant '{}' under failglob, got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start dormant under failglob BASH_ENV emits {}"
+}
+
 # --- Trigger-map dedupe (spec 2026-04-20-trigger-map-dedupe) ---
 # Self-contained helpers: each does inline awk/grep extraction, does NOT rely
 # on extract_md_section from the caller. Each accepts $1 = path (real plugin
