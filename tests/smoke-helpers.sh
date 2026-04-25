@@ -3316,3 +3316,58 @@ check_probe_f_detector_alias_coverage() {
   [ "$enclosing" = "alpha" ] || { echo "fixture 12 expected enclosing_function=alpha, got $enclosing"; return 1; }
   echo "fixture 12 alias coverage: .paginate fires + pagination_token param discipline + perf_budget keyword discipline"
 }
+
+check_compliance_checker_r3_heading() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  grep -qF '#### R3 — Test strength / weak-phrase regex check' "$path" \
+    || { echo "$path missing '#### R3 — Test strength / weak-phrase regex check' subheading"; return 1; }
+  echo "R3 weak-phrase enforcement heading present in $path"
+}
+
+check_compliance_checker_r3_lists_assertisnotnone() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local R3
+  R3=$(awk '
+    $0 == "#### R3 — Test strength / weak-phrase regex check" { in_s = 1; print; next }
+    in_s && (/^#### / || /^### /) { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$R3" | grep -qF '\bassertIsNotNone\b' \
+    || { echo "$path R3 subsection missing byte-exact '\bassertIsNotNone\b' regex anchor"; return 1; }
+  echo "R3 subsection lists byte-exact assertIsNotNone regex anchor in $path"
+}
+
+check_compliance_checker_r3_lists_call_count() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local R3
+  R3=$(awk '
+    $0 == "#### R3 — Test strength / weak-phrase regex check" { in_s = 1; print; next }
+    in_s && (/^#### / || /^### /) { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$R3" | grep -qF '\bcall_count\s*==' \
+    || { echo "$path R3 subsection missing byte-exact '\bcall_count\s*==' regex anchor"; return 1; }
+  echo "R3 subsection lists byte-exact call_count regex anchor in $path"
+}
+
+check_compliance_checker_r3_in_verdict_template() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local SECT6
+  SECT6=$(awk '
+    $0 == "### 6. Return verdict" { in_s = 1; print; next }
+    in_s && $0 == "## Rules" { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$SECT6" | grep -qF -- '- R3 (weak-phrase fresh tests):' \
+    || { echo "$path ### 6. Return verdict section missing byte-exact R3 weak-phrase verdict-template line"; return 1; }
+  echo "R3 weak-phrase line present in verdict template ### Code quality block in $path"
+}
+
+check_compliance_checker_r3_in_rules() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local RULES
+  RULES=$(extract_md_section "$path" '## Rules')
+  printf '%s\n' "$RULES" | grep -qF -- '- Code quality R3 violations are DRIFT' \
+    || { echo "$path ## Rules section missing byte-exact R3 DRIFT enforcement bullet opening"; return 1; }
+  echo "## Rules has R3 DRIFT weak-phrase enforcement bullet in $path"
+}
