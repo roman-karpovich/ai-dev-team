@@ -770,14 +770,15 @@ check_publish_md_tokens() {
   echo "publish.md contains all required tokens"
 }
 
-# 12. hooks/session-start AND docs/claude-md-snippet.md both mention `publish|fix|accept|defer`
+# 12. hooks/session-prompt.md AND docs/claude-md-snippet.md both mention `publish|fix|accept|defer`
+# (session-prompt.md is the inject body extracted from hooks/session-start sibling, refactor 2026-04-26)
 check_hooks_docs_phase3_exemption() {
-  grep -q 'publish|fix|accept|defer' hooks/session-start \
-    || { echo "hooks/session-start missing Phase 3 exemption clause (publish|fix|accept|defer)"; return 1; }
+  grep -q 'publish|fix|accept|defer' hooks/session-prompt.md \
+    || { echo "hooks/session-prompt.md missing Phase 3 exemption clause (publish|fix|accept|defer)"; return 1; }
   grep -q 'publish|fix|accept|defer' docs/claude-md-snippet.md \
     || { echo "docs/claude-md-snippet.md missing Phase 3 exemption clause (publish|fix|accept|defer)"; return 1; }
-  grep -q 'pass-through' hooks/session-start \
-    || { echo "hooks/session-start missing 'pass-through' exemption wording"; return 1; }
+  grep -q 'pass-through' hooks/session-prompt.md \
+    || { echo "hooks/session-prompt.md missing 'pass-through' exemption wording"; return 1; }
   grep -q 'pass-through' docs/claude-md-snippet.md \
     || { echo "docs/claude-md-snippet.md missing 'pass-through' exemption wording"; return 1; }
   echo "hooks/docs exempt Phase 3 decision keywords"
@@ -2934,7 +2935,7 @@ check_smoke_helper_trigger_map_snippet_pointer_inside_fence_rejected() {
 }
 
 # Positive invocations — 3 rows per spec §3.4.
-check "check_session_start_trigger_map_complete" check_session_start_trigger_map_complete hooks/session-start
+check "check_session_start_trigger_map_complete" check_session_start_trigger_map_complete hooks/session-prompt.md
 check "check_claude_md_snippet_points_to_hook" check_claude_md_snippet_points_to_hook docs/claude-md-snippet.md
 check "check_readme_ambient_workflow_references_sources" check_readme_ambient_workflow_references_sources README.md
 # Negative invocations — 3 original + 2 audit (X1/X2) rows.
@@ -3057,7 +3058,7 @@ check_smoke_helper_p3_agent_routing_no_codex_action_rejected() {
 # Positive invocations — 8 per spec §3.4.
 check "check_spec_template_codex_fast_rationale" check_spec_template_codex_fast_rationale skills/feature/references/spec-template.md
 check "check_agent_routing_codex_fast_rationale" check_agent_routing_codex_fast_rationale skills/feature/references/agent-routing.md
-check "check_trigger_map_investigate_research_clarifier (hook)" check_trigger_map_investigate_research_clarifier hooks/session-start
+check "check_trigger_map_investigate_research_clarifier (hook)" check_trigger_map_investigate_research_clarifier hooks/session-prompt.md
 check "check_trigger_map_investigate_research_clarifier (snippet)" check_trigger_map_investigate_research_clarifier docs/claude-md-snippet.md
 check "check_research_skill_competitive_analysis_points_to_investigate" check_research_skill_competitive_analysis_points_to_investigate skills/research/SKILL.md
 check "check_branch_frontmatter_ref_lowercase (README)" check_branch_frontmatter_ref_lowercase README.md
@@ -3496,11 +3497,12 @@ check_continue_mode_five_resume_branches() {
   echo "Continue-mode has all 5 resume branches OK"
 }
 
-# Item 16 (composite): hooks/session-start 5-phase block integrity — contains
+# Item 16 (composite): hooks/session-prompt.md 5-phase block integrity — contains
 # literal '5. Code audit' AND '4. Verify', AND does NOT match
 # '^4\. Verify.*hand-off' (stale pre-Code-audit inline arrow absent).
+# (session-prompt.md is the inject body extracted from hooks/session-start sibling, refactor 2026-04-26)
 check_session_start_5_phase_block() {
-  local f='hooks/session-start'
+  local f='hooks/session-prompt.md'
   if ! grep -qF "5. Code audit" "$f"; then
     echo "$f missing '5. Code audit' literal"
     return 1
