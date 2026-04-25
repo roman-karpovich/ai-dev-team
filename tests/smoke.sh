@@ -3970,6 +3970,14 @@ check "smoke-helper-compliance-checker-r3-assertisnotnone-rejects-wrong-section"
 check "smoke-helper-compliance-checker-r3-call-count-rejects-wrong-section"      check_smoke_helper_compliance_checker_r3_call_count_rejects_wrong_section
 echo
 
+# --- Librarian narrow-framing (BACKLOG #44 — actual-vs-declared role review, mode B) ---
+echo "Librarian narrow-framing pins:"
+
+check "librarian_optional_helper_framing"               check_librarian_optional_helper_framing
+check "librarian_no_mandatory_only_claim"               check_librarian_no_mandatory_only_claim
+check "overview_kb_access_orchestrator_writes_directly" check_overview_kb_access_orchestrator_writes_directly
+echo
+
 
 echo
 echo "Passed: $PASS"

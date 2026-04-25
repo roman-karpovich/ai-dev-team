@@ -6,7 +6,7 @@ argument-hint: "new <title> | continue [path] | status [--all] | conclude [path]
 
 # Research Skill
 
-Research notes are free-form exploration documents. Unlike `/feature`, there is no implementation checklist and no audit — just KB-backed notes that persist across sessions. This skill is the driver for creating and managing them; the Librarian handles the actual writes.
+Research notes are free-form exploration documents. Unlike `/feature`, there is no implementation checklist and no audit — just KB-backed notes that persist across sessions. This skill is the driver for creating and managing them; the orchestrator writes the file directly (the Librarian is an optional helper, not a mandatory gateway — see `agents/librarian.md` for when it's actually useful).
 
 User-input prompt presentation in this skill follows the banner
 convention in `docs/user-input-banner-convention.md`. Each real decision
