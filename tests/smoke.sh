@@ -258,6 +258,7 @@ check "session-start (default) valid+triggers" check_session_start  default
 check "session-start (claude) key"             check_session_start_key claude  hookSpecificOutput
 check "session-start (cursor) key"             check_session_start_key cursor  additional_context
 check "session-start (default) key"            check_session_start_key default additionalContext
+check "session-start dormant in orthogonal CWD" check_session_start_dormant_in_orthogonal
 echo
 
 # --- post-edit-lint hook ---

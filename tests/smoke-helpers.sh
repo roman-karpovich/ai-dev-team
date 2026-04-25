@@ -748,6 +748,23 @@ check_overview_git_references_canonical() {
   echo "$path §Git conventions for developers has canonical short reference to developer-workflow.md §Git Workflow (master-or-main, no drift, no bullets)"
 }
 
+# --- SessionStart conditional activation ---
+
+check_session_start_dormant_in_orthogonal() {
+  local tmpdir workdir out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  workdir="$tmpdir/orthogonal"
+  mkdir -p "$workdir" || { rm -rf "$tmpdir"; echo "mkdir failed: $workdir"; return 1; }
+
+  out=$(cd "$workdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed in orthogonal CWD"; printf '%s\n' "$out"; return 1; }
+  [ "$out" = "{}" ] || { echo "expected dormant '{}', got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start dormant in orthogonal CWD emits {}"
+}
+
 # --- Trigger-map dedupe (spec 2026-04-20-trigger-map-dedupe) ---
 # Self-contained helpers: each does inline awk/grep extraction, does NOT rely
 # on extract_md_section from the caller. Each accepts $1 = path (real plugin
