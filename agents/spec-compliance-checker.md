@@ -117,6 +117,22 @@ A green capture on fresh tests is consistency evidence, not intent evidence. Cor
 4. If `observed.green_capture` asserts pass on a suite that contains newly-added fresh tests, add an **advisory** line to the report: "Fresh tests in green capture: `<list>`. Per R2, these are consistency evidence only — intent must be judged against spec §1/§3/§6." This is informational; it does not change the verdict on its own.
 5. If core tests are failing in `observed.green_capture`, that is always FAIL regardless of fresh-test noise.
 
+#### R3 — Test strength / weak-phrase regex check
+
+v1 covers two regex-detectable shapes from the R3 anti-pattern list in `code-quality-rules.md` (the two with the highest signal-to-noise ratio); the other shapes (tautological, setter-getter, type-checker-duplication) require deeper analysis and are deferred. Anti-pattern enforcement list is a floor, not a ceiling — append-only growth as evidence accrues.
+
+**How to apply**:
+
+1. Identify fresh test files in the diff range (reuse R2 step 1–2 base-branch + classification logic).
+2. For each fresh test file, grep the added (`+`) lines for the v1 regex set:
+   - `\bassertIsNotNone\b` OR `\bassert\s+\S+\s+is\s+not\s+None\b` (Python idiom; JS / TS deferred).
+   - `\bcall_count\s*==` OR `\bassert_called_once\s*\(\s*\)` OR `\bassert_called_with\s*\(`.
+3. For each regex hit, identify the enclosing test function (`def test_*` heuristic; AST optional) and read the body.
+4. **Verdict per hit**:
+   - If the matched pattern is the **sole assertion** in the function (no other `assertEqual`/`assertNotEqual`/`==`/`!=`/`is True`/`is False`/`in` membership/observable-effect comparison) → flag **DRIFT — R3**: `"Test <file>:<func> has only a <pattern> assertion. Per R3, name the regression it catches in observed.notes or strengthen the assertion."`
+   - Otherwise → no flag (advisory in report only).
+5. Anti-pattern list is a floor; v1 covers 2 shapes. Future iterations may add more (tautological, setter-getter, type-checker-duplication) — append-only, do not mutate v1.
+
 ### 6. Return verdict
 
 ```markdown
@@ -148,6 +164,7 @@ A green capture on fresh tests is consistency evidence, not intent evidence. Cor
 ### Code quality
 - R1 (dead-code cleanup): <clean | DRIFT — list helpers>
 - R2 (fresh tests in green capture): <none | advisory — list test files>
+- R3 (weak-phrase fresh tests): <clean | DRIFT — list test functions with sole weak-phrase assertion>
 
 ### Recommendation (if integration probe absent)
 <if applicable>
@@ -169,5 +186,6 @@ A green capture on fresh tests is consistency evidence, not intent evidence. Cor
 - Scope violations are DRIFT (not FAIL) unless they touch security-sensitive or unrelated subsystems.
 - Code quality R1 violations are DRIFT — developer must delete the orphaned helper + its tests, or add a public-API note to the spec Log, before proceeding.
 - Code quality R2 has two modes: (a) new fresh tests in the green capture is advisory only and never the sole reason for DRIFT; (b) a modified core test without spec §3 backing + Log entry is always DRIFT — core assertion changes are load-bearing and must be traceable to the spec's declared behaviour change.
+- Code quality R3 violations are DRIFT — flag a fresh test whose sole assertion matches a v1 weak-phrase regex (`assertIsNotNone` family or `call_count` / `assert_called_once` / `assert_called_with` family) and whose function body has no observable-effect assertion. Sole-assertion judgment is LLM-side; never auto-FAIL on regex hit alone.
 - Be specific. Every issue must name the file, the deviation, and what was expected.
 - Do not soften findings. A partial implementation is not a "good start" — it's DRIFT.
