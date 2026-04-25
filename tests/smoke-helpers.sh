@@ -810,6 +810,42 @@ check_session_start_active_claude_md_arm() {
   echo "session-start active via CLAUDE.md arm: inject contains Skill trigger map"
 }
 
+check_session_start_dormant_under_nullglob() {
+  local tmpdir workdir bash_env_file out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  workdir="$tmpdir/orthogonal"
+  mkdir -p "$workdir" || { rm -rf "$tmpdir"; echo "mkdir failed: $workdir"; return 1; }
+  bash_env_file="$tmpdir/bash_env_nullglob.sh"
+  printf '%s\n' 'shopt -s nullglob' > "$bash_env_file"
+
+  out=$(cd "$workdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" BASH_ENV="$bash_env_file" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed under nullglob BASH_ENV"; printf '%s\n' "$out"; return 1; }
+  out_stripped="${out%$'\n'}"
+  [ "$out_stripped" = "{}" ] || [ "$out" = "{}" ] || { echo "expected dormant '{}' under nullglob, got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start dormant under nullglob BASH_ENV emits {}"
+}
+
+check_session_start_dormant_under_failglob() {
+  local tmpdir workdir bash_env_file out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  workdir="$tmpdir/orthogonal"
+  mkdir -p "$workdir" || { rm -rf "$tmpdir"; echo "mkdir failed: $workdir"; return 1; }
+  bash_env_file="$tmpdir/bash_env_failglob.sh"
+  printf '%s\n' 'shopt -s failglob' > "$bash_env_file"
+
+  out=$(cd "$workdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" BASH_ENV="$bash_env_file" bash "$PLUGIN_ROOT/hooks/session-start" 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+
+  [ "$status" -eq 0 ] || { echo "session-start failed (non-zero exit) under failglob BASH_ENV"; printf '%s\n' "$out"; return 1; }
+  out_stripped="${out%$'\n'}"
+  [ "$out_stripped" = "{}" ] || [ "$out" = "{}" ] || { echo "expected dormant '{}' under failglob, got:"; printf '%s\n' "$out"; return 1; }
+  echo "session-start dormant under failglob BASH_ENV emits {}"
+}
+
 # --- Trigger-map dedupe (spec 2026-04-20-trigger-map-dedupe) ---
 # Self-contained helpers: each does inline awk/grep extraction, does NOT rely
 # on extract_md_section from the caller. Each accepts $1 = path (real plugin

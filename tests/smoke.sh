@@ -266,6 +266,8 @@ check "session_start_dormant_in_orthogonal PASS"  check_session_start_dormant_in
 check "session_start_active_yml_arm PASS"         check_session_start_active_yml_arm
 check "session_start_active_memory_arm PASS"      check_session_start_active_memory_arm
 check "session_start_active_claude_md_arm PASS"   check_session_start_active_claude_md_arm
+check "session_start_dormant_under_nullglob PASS" check_session_start_dormant_under_nullglob
+check "session_start_dormant_under_failglob PASS" check_session_start_dormant_under_failglob
 echo
 
 # --- post-edit-lint hook ---

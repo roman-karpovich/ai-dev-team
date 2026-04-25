@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 detect_ai_dev_team_signal() {
+    shopt -u nullglob failglob 2>/dev/null || true
     if [ -f ".ai-dev-team.yml" ] || [ -f ".ai-dev-team.local.yml" ]; then
         return 0
     fi
@@ -15,7 +16,7 @@ detect_ai_dev_team_signal() {
     if [ -n "${HOME:-}" ]; then
         local sanitized_cwd
         sanitized_cwd="${PWD//\//-}"
-        if ls "${HOME}/.claude/projects/${sanitized_cwd}/memory/reference_kb_"*.md >/dev/null 2>&1; then
+        if compgen -G "${HOME}/.claude/projects/${sanitized_cwd}/memory/reference_kb_*.md" >/dev/null 2>&1; then
             return 0
         fi
     fi
