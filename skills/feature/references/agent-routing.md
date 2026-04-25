@@ -63,7 +63,7 @@ Use `T-S0` when none of Codex's or Codex Fast's triggers matched (the fallback).
 `notes=<short>` is optional and carries a one-phrase human-readable reason
 (e.g. `notes=spec paths explicit but domain unusual`).
 
-Historical Log entries with `last_agent=middle` or `rationale=T-M*` are accepted as read-only legacy values; new entries MUST use the current enum. Continue-mode normalises a stale `middle` default to `codex` per SKILL.md §Continue mode banner-default rule.
+Historical Log entries with `last_agent=middle` or `rationale=T-M*` are accepted as read-only legacy values; new entries MUST use the current enum. Continue-mode normalises a stale `middle` default to `codex` per SKILL.md §Continue mode (Legacy `last_agent=middle` normalisation paragraph).
 
 ## Escalation
 
