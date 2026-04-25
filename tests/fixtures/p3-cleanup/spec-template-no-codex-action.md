@@ -2,7 +2,7 @@
 
 ## 5. Implementation Checklist
 
-**Agent pre-tag (optional).** Each step may carry an optional `@<agent>` suffix — accepted tokens are `@codex`, `@senior`, and `@middle`.
+**Agent pre-tag (optional).** Each step may carry an optional `@<agent>` suffix — accepted tokens are `@codex` and `@senior`.
 
 **Why not `@codex-fast`?** Fast is an orchestrator-time dispatch choice driven by `codex.model_fast` in user config, not a step property. The orchestrator can decide at runtime.
 

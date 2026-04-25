@@ -353,10 +353,11 @@ check_codex_implement_not_present() {
 }
 
 check "shared reference exists" check_dev_workflow_exists
-for agent in agents/developer-codex.md agents/developer-senior.md agents/developer-middle.md; do
+for agent in agents/developer-codex.md agents/developer-senior.md; do
   check "agent links shared workflow: $agent" check_agent_refs_dev_workflow "$agent"
 done
 check "check_codex_implement_not_present" check_codex_implement_not_present
+check "developer-middle.md absent" check_developer_middle_not_present
 echo
 
 # --- Broken-link guard ---
@@ -1500,17 +1501,17 @@ echo "Agent routing (2026-04-18):"
 AGENT_ROUTING='skills/feature/references/agent-routing.md'
 
 check_matrix_h2_sections() {
-  # (i.a) All five byte-exact H2 headings present in agent-routing.md.
+  # (i.a) All four byte-exact H2 headings present in agent-routing.md.
   test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
   local h
-  for h in '## Codex (default)' '## Senior' '## Middle' '## Rationale logging' '## Escalation'; do
+  for h in '## Codex (default)' '## Senior' '## Rationale logging' '## Escalation'; do
     grep -qF "$h" "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing heading: $h"; return 1; }
   done
-  echo "agent-routing.md has all 5 H2 sections"
+  echo "agent-routing.md has all 4 H2 sections"
 }
 
 check_matrix_triggers_per_agent() {
-  # (i.b) Each of Codex/Senior/Middle sections has >=2 '- **T-[CSM]#**:' bullets (Senior >=3).
+  # (i.b) Each of Codex/Senior sections has >=2 '- **T-[CSM]#**:' bullets (Senior >=3).
   test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
   local sec count
   sec=$(extract_md_section "$AGENT_ROUTING" '## Codex (default)')
@@ -1519,17 +1520,14 @@ check_matrix_triggers_per_agent() {
   sec=$(extract_md_section "$AGENT_ROUTING" '## Senior')
   count=$(printf '%s\n' "$sec" | grep -cE '^- \*\*T-[CSM][0-9]+\*\*:')
   [ "$count" -ge 3 ] || { echo "Senior triggers count=$count (need >=3)"; return 1; }
-  sec=$(extract_md_section "$AGENT_ROUTING" '## Middle')
-  count=$(printf '%s\n' "$sec" | grep -cE '^- \*\*T-[CSM][0-9]+\*\*:')
-  [ "$count" -ge 2 ] || { echo "Middle triggers count=$count (need >=2)"; return 1; }
   echo "agent-routing.md has >=2 triggers per agent (Senior >=3)"
 }
 
 check_matrix_anti_triggers_per_agent() {
-  # (i.c) Each of Codex/Senior/Middle sections has '**Anti-triggers**' line with a following '- ' bullet.
+  # (i.c) Each of Codex/Senior sections has '**Anti-triggers**' line with a following '- ' bullet.
   test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
   local a sec
-  for a in '## Codex (default)' '## Senior' '## Middle'; do
+  for a in '## Codex (default)' '## Senior'; do
     sec=$(extract_md_section "$AGENT_ROUTING" "$a")
     printf '%s\n' "$sec" | awk '
       /\*\*Anti-triggers\*\*/ { found=1; next }
@@ -1546,7 +1544,7 @@ check_matrix_rationale_log_format() {
   test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
   local sec
   sec=$(extract_md_section "$AGENT_ROUTING" '## Rationale logging')
-  printf '%s\n' "$sec" | grep -qF 'last_agent=<codex|senior|middle>; rationale=<T-X#>[; notes=<short>]' \
+  printf '%s\n' "$sec" | grep -qF 'last_agent=<codex|senior>; rationale=<T-X#>[; notes=<short>]' \
     || { echo "## Rationale logging missing canonical Log format line"; return 1; }
   echo "agent-routing.md Rationale logging has canonical format"
 }
@@ -1568,11 +1566,10 @@ check_skill_agent_selection_pointer() {
 check_when_to_pick_matches_frontmatter() {
   # (iii) For each agent, frontmatter `when_to_pick:` scalar matches matrix `**When to pick**: ...` line byte-exact.
   local agent heading fm matrix sec
-  for agent in codex senior middle; do
+  for agent in codex senior; do
     case "$agent" in
       codex)  heading='## Codex (default)';;
       senior) heading='## Senior';;
-      middle) heading='## Middle';;
     esac
     fm=$(awk '/^when_to_pick: /{sub(/^when_to_pick: /, ""); print; exit}' "agents/developer-$agent.md")
     if [ -z "$fm" ]; then
@@ -1591,18 +1588,18 @@ check_when_to_pick_matches_frontmatter() {
       return 1
     fi
   done
-  echo "when_to_pick matches matrix for codex/senior/middle"
+  echo "when_to_pick matches matrix for codex/senior"
 }
 
 check_matrix_escalation_per_agent_tuples() {
-  # (iv) '## Escalation' section has ### Codex, ### Middle, ### Senior subsections, each with condition/action/target/outcome tuples.
+  # (iv) '## Escalation' section has ### Codex, ### Senior subsections, each with condition/action/target/outcome tuples.
   test -f "$AGENT_ROUTING" || { echo "$AGENT_ROUTING missing"; return 1; }
   local esc sub h k
   esc=$(extract_md_section "$AGENT_ROUTING" '## Escalation')
-  for h in '### Codex' '### Middle' '### Senior'; do
+  for h in '### Codex' '### Senior'; do
     printf '%s\n' "$esc" | grep -qF "$h" || { echo "## Escalation missing subheading: $h"; return 1; }
   done
-  for h in 'Codex' 'Middle' 'Senior'; do
+  for h in 'Codex' 'Senior'; do
     sub=$(printf '%s\n' "$esc" | awk -v hdr="### $h" '
       !in_s && $0 == hdr { in_s = 1; next }
       in_s && /^### / { exit }
@@ -1619,8 +1616,8 @@ check_matrix_escalation_per_agent_tuples() {
 check_skill_resume_flow_uses_canonical_rationale() {
   # (v) Positive: byte-exact canonical literal present in SKILL.md.
   #     Negative: no bare 'last_agent=<...>' form without 'rationale=' on the same line.
-  grep -qF 'last_agent=<codex|senior|middle>; rationale=<T-X#>' skills/feature/SKILL.md \
-    || { echo "SKILL.md missing canonical last_agent=<codex|senior|middle>; rationale=<T-X#> literal"; return 1; }
+  grep -qF 'last_agent=<codex|senior>; rationale=<T-X#>' skills/feature/SKILL.md \
+    || { echo "SKILL.md missing canonical last_agent=<codex|senior>; rationale=<T-X#> literal"; return 1; }
   local bad
   bad=$(grep -E 'last_agent=<[^>]+>' skills/feature/SKILL.md | grep -v 'rationale=' || true)
   if [ -n "$bad" ]; then
@@ -1639,6 +1636,8 @@ check "skill-agent-selection-pointer"                    check_skill_agent_selec
 check "when-to-pick-matches-frontmatter"                 check_when_to_pick_matches_frontmatter
 check "matrix-escalation-per-agent-tuples"               check_matrix_escalation_per_agent_tuples
 check "skill-resume-flow-uses-canonical-rationale"       check_skill_resume_flow_uses_canonical_rationale
+check "Continue-mode normalises legacy last_agent=middle to codex" check_continue_mode_legacy_middle_normalisation
+check "legacy last_agent=middle fixture present"         check_legacy_last_agent_fixture_present
 echo
 
 # --- Branch prefix (#15) ---
@@ -2406,17 +2405,17 @@ assert_codex_fast_anti_triggers() {
 }
 check "Anti-triggers block with 3 tokens in Codex Fast section" assert_codex_fast_anti_triggers
 
-assert_rationale_logging_four_sections() {
+assert_rationale_logging_three_sections() {
   local sec
   sec=$(extract_md_section skills/feature/references/agent-routing.md "## Rationale logging")
-  printf '%s\n' "$sec" | grep -qF -- '`rationale=` MUST be a trigger ID from one of the four agent sections above (including `Codex Fast`).' \
-    || { echo "## Rationale logging missing updated 'four agent sections' sentence"; return 1; }
-  echo "Rationale logging sentence updated to four agent sections"
+  printf '%s\n' "$sec" | grep -qF -- '`rationale=` MUST be a trigger ID from one of the three agent sections above (including `Codex Fast`).' \
+    || { echo "## Rationale logging missing updated 'three agent sections' sentence"; return 1; }
+  echo "Rationale logging sentence updated to three agent sections"
 }
-check "Rationale logging mentions four agent sections" assert_rationale_logging_four_sections
+check "Rationale logging mentions three agent sections" assert_rationale_logging_three_sections
 
 check "agent-routing preamble lists T-CF# as valid" \
-  bash -c "grep -qF -- 'Trigger IDs below (\`T-C#\`, \`T-S#\`, \`T-M#\`, \`T-CF#\`) are the only valid \`rationale=\` values in \`last_agent=\` Log entries.' skills/feature/references/agent-routing.md"
+  bash -c "grep -qF -- 'Trigger IDs below (\`T-C#\`, \`T-S#\`, \`T-CF#\`) are the only valid \`rationale=\` values in \`last_agent=\` Log entries.' skills/feature/references/agent-routing.md"
 echo
 
 # --- Codex Fast agent-selection menu ---
@@ -2436,7 +2435,7 @@ assert_skill_option_1b_wiring() {
 check "SKILL.md Option 1b subsection wires codex.model_fast" assert_skill_option_1b_wiring
 
 check "SKILL.md renders Option 1b conditionally on codex.model_fast" \
-  bash -c "grep -qF -- 'Render option 1b and the \"#### Option 1b: Codex Fast (developer-codex agent)\" subsection only when \`codex.model_fast\` resolved in Phase 0; when it is unset, omit both entirely (the menu reverts to three options).' skills/feature/SKILL.md"
+  bash -c "grep -qF -- 'Render option 1b and the \"#### Option 1b: Codex Fast (developer-codex agent)\" subsection only when \`codex.model_fast\` resolved in Phase 0; when it is unset, omit both entirely (the menu reverts to two options).' skills/feature/SKILL.md"
 echo
 
 # --- Codex Fast cross-auditor ban ---

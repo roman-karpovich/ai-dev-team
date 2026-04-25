@@ -1,6 +1,6 @@
 # Code Quality Rules
 
-Rules every developer agent (`developer-codex`, `developer-middle`, `developer-senior`) must
+Rules every developer agent (`developer-codex`, `developer-senior`) must
 follow, and which `spec-compliance-checker` enforces. This file is append-only as new rules
 land — keep existing rules stable so the compliance checker and developers stay in sync.
 

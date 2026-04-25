@@ -228,7 +228,6 @@ Research notes live at `<kb>/repos/<project>/research/YYYY-MM-DD-<slug>.md`. Sub
 | `librarian` | Sonnet | KB management — search, create documents, update MOC indexes |
 | `developer-codex` | Sonnet + Codex | **Default developer.** Delegates to Codex via MCP. Saves Claude tokens. |
 | `developer-senior` | Opus | Complex tasks: ambiguous scope, new abstractions, security-sensitive code |
-| `developer-middle` | Sonnet | Clear-scope tasks following existing patterns: endpoints, tests, functions by example |
 | `spec-compliance-checker` | Sonnet | Runs after each implementation step. Verifies observed matches planned intent. Blocks on FAIL/DRIFT. |
 | `verifier` | Haiku | Runs test suite and build checks. Never writes source code. |
 | `cross-auditor` | Opus + Codex | Parallel Claude + Codex audit. Consolidates findings into KB. |
@@ -236,8 +235,8 @@ Research notes live at `<kb>/repos/<project>/research/YYYY-MM-DD-<slug>.md`. Sub
 
 **Choosing a developer:**
 ```
-Codex           ← default; spec has explicit file paths and clear requirements
-developer-middle ← Codex overhead not worth it (small in-session edit)
+Codex            ← default; spec has explicit file paths and clear requirements
+Codex Fast       ← opt-in dispatch variant for mechanical content-floor edits and pattern-following clones (both Codex and Fast are dispatched subagents)
 developer-senior ← wide codebase exploration needed, or genuinely ambiguous scope
 ```
 
