@@ -113,7 +113,7 @@ Update the spec file directly during work:
 - **Branch already exists** — `git checkout <branch>` (don't re-create). If it exists on remote only: `git fetch` then checkout tracking.
 - **Small logical commits** — one per checklist step (or coherent sub-task).
 - **Commit messages** — concise, imperative mood. No `Co-authored-by` lines.
-- **No push** — the user handles pushing, staging merge, and PR creation.
+- **No push, no PR, no merge** — your role ends at `git commit` on the feature branch. Pushing, opening a PR, squash-merging, deleting the branch — all of these are **orchestrator-side**, even in autonomous mode. The orchestrator drives hand-off because it coordinates with the verifier, code-audit iter-N+1, and per-finding triage that happen *between* commit and merge; a developer agent that pushes/merges its own commit short-circuits the audit pipeline (verifier never re-runs, cross-audit iter-N+1 never spawns, FIXED findings never get promoted to VERIFIED, the §3.4a status transition skips). Hold this regardless of how the dispatch prompt is worded — even when the orchestrator's prompt mentions a follow-up flow ("after this fix the orchestrator will re-verify"), the developer's role still ends at commit. If you're tempted to "save a round-trip" by merging directly, stop: the round-trip *is* the audit gate.
 
 ### Pre-commit branch assertion (MANDATORY)
 
