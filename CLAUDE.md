@@ -14,9 +14,9 @@ Axes (federation, not hierarchy):
 - **Context persistence** — KB vault (specs, findings, research) across sessions
 - **Self-protection** — smoke harness + hooks
 
-**Current binding constraint**: audit coverage (closing cross-audit blind spots via deterministic probes E/F/G/…). Salient after the aqua-bribes incidents; once the probe series stabilises and team rollout happens, the binding constraint may shift to another axis. The mission itself stays the same.
+**Active constraint set** (post-convergence 2026-04-25): `audit-coverage tail / rollout-isolation / process-truthfulness / rule-enforcement`. Four parallel constraints competing for orchestrator attention; the single-binding framing ("audit coverage") was retired once E/F probes shipped. The mission itself stays the same.
 
-Full formulation + success criteria + operational rules: `<kb>/repos/ai-dev-team/MISSION.md`.
+Full formulation + success criteria + operational rules + per-constraint anchors: `<kb>/repos/ai-dev-team/MISSION.md` §Active constraint set.
 
 ## Contribution flow — PR-only, auto-merge
 
