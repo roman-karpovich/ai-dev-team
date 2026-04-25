@@ -357,6 +357,7 @@ for agent in agents/developer-codex.md agents/developer-senior.md agents/develop
   check "agent links shared workflow: $agent" check_agent_refs_dev_workflow "$agent"
 done
 check "check_codex_implement_not_present" check_codex_implement_not_present
+check "developer-middle.md absent" check_developer_middle_not_present
 echo
 
 # --- Broken-link guard ---

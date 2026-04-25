@@ -2,6 +2,29 @@
 # Parameterized section-scoped checks for the R3 block.
 # Depends on extract_md_section being defined in the caller.
 
+check_developer_middle_not_present() {
+  # (1) File-existence guard.
+  if [ -e agents/developer-middle.md ]; then
+    echo "agents/developer-middle.md still present"
+    return 1
+  fi
+
+  # (2) Operational-token grep. ERE alternation uses bare `|` (NOT escaped `\|`).
+  # X10 fix: the original spec used `\|` under `-E` which is a literal pipe
+  # under ERE and makes the whole grep a no-op. Bare `|` is correct.
+  local hits
+  hits=$(grep -rEln \
+    'developer-middle|Developer Middle|## Middle|### Middle|Middle \(Sonnet\)|Option 3: Middle|for agent in codex senior middle' \
+    agents/ skills/ docs/ hooks/ README.md CLAUDE.md 2>/dev/null || true)
+  if [ -n "$hits" ]; then
+    echo "operational developer-middle references still present:"
+    printf '  %s\n' "$hits"
+    return 1
+  fi
+
+  echo "developer-middle correctly absent (file deleted, no operational references)"
+}
+
 check_r3_rule_heading_present() {
   # $1 = path to code-quality-rules.md (or a fixture)
   local path="$1"
