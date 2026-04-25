@@ -2,6 +2,28 @@
 # Parameterized section-scoped checks for the R3 block.
 # Depends on extract_md_section being defined in the caller.
 
+check_continue_mode_legacy_middle_normalisation() {
+  # Two short byte-exact anchors from the SKILL.md Continue-mode normalisation
+  # paragraph (spec §3.4a verbatim insert). Pinning two short anchors instead of
+  # one long body-pin keeps the test robust to future word-smithing of the
+  # paragraph body. Both must be present.
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  grep -qF -- '**Legacy `last_agent=middle` normalisation (Log default).** If the most recent Log `last_agent=` value is `middle`' "$skill" \
+    || { echo "$skill missing legacy last_agent=middle normalisation paragraph header anchor"; return 1; }
+  grep -qF -- 'Note: spec Log says `last_agent=middle`, but the Middle developer agent was retired on 2026-04-25' "$skill" \
+    || { echo "$skill missing legacy last_agent=middle normalisation preamble anchor"; return 1; }
+  echo "SKILL.md Continue-mode legacy last_agent=middle normalisation anchors present"
+}
+
+check_legacy_last_agent_fixture_present() {
+  local fixture='tests/fixtures/legacy-last-agent/spec.md'
+  test -f "$fixture" || { echo "$fixture missing"; return 1; }
+  grep -qF -- '- 2026-04-20: last_agent=middle; rationale=T-M1' "$fixture" \
+    || { echo "$fixture missing canonical legacy Log line"; return 1; }
+  echo "legacy last_agent fixture $fixture present with canonical Log line"
+}
+
 check_developer_middle_not_present() {
   # (1) File-existence guard.
   if [ -e agents/developer-middle.md ]; then
@@ -98,8 +120,6 @@ check_spec_template_agent_pretag_grammar() {
     || { echo "$path §5 missing byte-exact example line '- [ ] Step 1: description @codex'"; return 1; }
   printf '%s\n' "$section" | grep -qF -- '- [ ] Step 2: description @senior' \
     || { echo "$path §5 missing byte-exact example line '- [ ] Step 2: description @senior'"; return 1; }
-  printf '%s\n' "$section" | grep -qF -- '- [ ] Step 3: description @middle' \
-    || { echo "$path §5 missing byte-exact example line '- [ ] Step 3: description @middle'"; return 1; }
   printf '%s\n' "$section" | grep -qF -- '- [ ] Step 4: description' \
     || { echo "$path §5 missing byte-exact example line '- [ ] Step 4: description'"; return 1; }
   local marker_count
@@ -151,8 +171,6 @@ check_skill_md_agent_selection_tag_read() {
     || { echo "$path Agent-selection range missing byte-exact Codex rationale-ID enumeration"; return 1; }
   printf '%s\n' "$range" | grep -qF -- 'one of `T-S1` / `T-S2` / `T-S3` / `T-S4` for `@senior`' \
     || { echo "$path Agent-selection range missing byte-exact Senior rationale-ID enumeration"; return 1; }
-  printf '%s\n' "$range" | grep -qF -- 'one of `T-M1` / `T-M2` for `@middle`' \
-    || { echo "$path Agent-selection range missing byte-exact Middle rationale-ID enumeration"; return 1; }
   printf '%s\n' "$range" | grep -qF -- 'never `T-S0`' \
     || { echo "$path Agent-selection range missing 'never \`T-S0\`' clause"; return 1; }
   printf '%s\n' "$range" | grep -qF -- 'notes=pre-tagged by spec author' \
@@ -425,15 +443,13 @@ check_cross_auditor_pretag_consistency_check() {
     || { echo "$path §\`spec\` mode missing byte-exact (a)+(b) consistency rule incl. 'of the tagged agent'"; return 1; }
   printf '%s\n' "$section" | grep -qF -- 'A step tagged `@codex` but described as "ambiguous scope" / "cross-cutting refactor" / "broad live filesystem exploration" fails (b) → HIGH.' \
     || { echo "$path §\`spec\` mode missing byte-exact Codex example sentence"; return 1; }
-  printf '%s\n' "$section" | grep -qF -- 'Malformed tags — unknown token, wrong spacing, or any suffix form other than `@codex` / `@senior` / `@middle` — are flagged HIGH regardless of trigger analysis' \
+  printf '%s\n' "$section" | grep -qF -- 'Malformed tags — unknown token, wrong spacing, or any suffix form other than `@codex` / `@senior` — are flagged HIGH regardless of trigger analysis' \
     || { echo "$path §\`spec\` mode missing byte-exact malformed-tags HIGH clause"; return 1; }
   printf '%s\n' "$section" | grep -qF -- 'A step tagged `@senior` but described as "trivial one-liner" fails both (a) and (b) — Senior has no positive trigger that fits trivial work and "trivial one-liner" is explicitly in Senior'"'"'s anti-trigger list → HIGH.' \
     || { echo "$path §\`spec\` mode missing byte-exact Senior example sentence"; return 1; }
-  printf '%s\n' "$section" | grep -qF -- 'A step tagged `@middle` described as "new abstraction" / "design judgment required" fails (b) — both phrases match Middle'"'"'s anti-trigger list → HIGH.' \
-    || { echo "$path §\`spec\` mode missing byte-exact Middle example sentence"; return 1; }
   printf '%s\n' "$section" | grep -qF -- 'Untagged steps → no check.' \
     || { echo "$path §\`spec\` mode missing byte-exact closing 'Untagged steps → no check.' sentence"; return 1; }
-  echo "$path §\`spec\` mode has Agent pre-tag consistency bullet (label + (a)+(b) + 3 examples + Malformed + Untagged-closing)"
+  echo "$path §\`spec\` mode has Agent pre-tag consistency bullet (label + (a)+(b) + 2 examples + Malformed + Untagged-closing)"
 }
 
 # --- Shared Phase 0 / KB discovery (spec 2026-04-20-shared-phase0) ---
