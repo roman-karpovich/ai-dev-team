@@ -3371,3 +3371,38 @@ check_compliance_checker_r3_in_rules() {
     || { echo "$path ## Rules section missing byte-exact R3 DRIFT enforcement bullet opening"; return 1; }
   echo "## Rules has R3 DRIFT weak-phrase enforcement bullet in $path"
 }
+
+# --- Librarian narrow-framing pins (BACKLOG #44 — actual-vs-declared role review, mode B) ---
+
+check_librarian_optional_helper_framing() {
+  local path="${1:-agents/librarian.md}"
+  grep -qF 'Optional helper for KB layout discovery and MOC index maintenance' "$path" \
+    || { echo "$path frontmatter missing 'Optional helper for KB layout discovery and MOC index maintenance' framing"; return 1; }
+  grep -qF 'NOT a mandatory gateway' "$path" \
+    || { echo "$path frontmatter missing 'NOT a mandatory gateway' clarifier"; return 1; }
+  echo "librarian.md describes itself as optional helper, not mandatory gateway"
+}
+
+check_librarian_no_mandatory_only_claim() {
+  local path="${1:-agents/librarian.md}"
+  if grep -qF 'The only agent that creates new KB documents' "$path"; then
+    echo "$path still claims 'The only agent that creates new KB documents' — drift back to mode A framing detected"
+    return 1
+  fi
+  if grep -qF 'single point of authority for creating new KB documents' "$path"; then
+    echo "$path still claims 'single point of authority for creating new KB documents' — drift back detected"
+    return 1
+  fi
+  echo "librarian.md does not claim mandatory-gateway role (mode B framing intact)"
+}
+
+check_overview_kb_access_orchestrator_writes_directly() {
+  local path="${1:-docs/AI_Dev_Team_Overview.md}"
+  grep -qF 'Orchestrator writes KB files directly' "$path" \
+    || { echo "$path KB access division missing 'Orchestrator writes KB files directly' framing"; return 1; }
+  if grep -qF 'Only Librarian creates new KB documents' "$path"; then
+    echo "$path KB access division still claims 'Only Librarian creates new KB documents' — drift back detected"
+    return 1
+  fi
+  echo "$path KB access division reflects mode B (orchestrator-direct-writes)"
+}
