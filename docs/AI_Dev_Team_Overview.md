@@ -35,7 +35,7 @@ The more detailed the spec (with explicit file paths), the closer Codex performs
 
 ### KB access division
 
-- **Only Librarian creates new KB documents** and updates MOC indexes
+- **Orchestrator writes KB files directly** for the routine case (specs, workdocs, research notes). The **Librarian is an optional helper** for read-many-then-write cases (MOC rebuild) and layout discovery in unfamiliar regions — not a mandatory gateway.
 - Other agents **read KB directly** via known paths
 - Developer **updates the spec checklist directly** during implementation
 - Auditor writes findings directly to KB (two output files per audit)
