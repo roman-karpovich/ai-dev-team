@@ -1,6 +1,6 @@
 # Developer Workflow (shared)
 
-This reference defines the common workflow that every developer agent in this plugin (`developer-codex`, `developer-middle`, `developer-senior`) must follow. Each agent file describes only *when* to pick that agent and the *agent-specific* rules. The step-by-step protocol, evidence captures, test quality, spec updates, git workflow, and common rules live here so they stay in sync.
+This reference defines the common workflow that every developer agent in this plugin (`developer-codex`, `developer-senior`) must follow. Each agent file describes only *when* to pick that agent and the *agent-specific* rules. The step-by-step protocol, evidence captures, test quality, spec updates, git workflow, and common rules live here so they stay in sync.
 
 ---
 
