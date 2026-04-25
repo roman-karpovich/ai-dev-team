@@ -3316,3 +3316,50 @@ check_probe_f_detector_alias_coverage() {
   [ "$enclosing" = "alpha" ] || { echo "fixture 12 expected enclosing_function=alpha, got $enclosing"; return 1; }
   echo "fixture 12 alias coverage: .paginate fires + pagination_token param discipline + perf_budget keyword discipline"
 }
+
+check_compliance_checker_r3_heading() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  grep -qF '#### R3 — Test strength / weak-phrase regex check' "$path" \
+    || { echo "$path missing '#### R3 — Test strength / weak-phrase regex check' subheading"; return 1; }
+  echo "R3 weak-phrase enforcement heading present in $path"
+}
+
+check_compliance_checker_r3_lists_assertisnotnone() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local R3
+  R3=$(awk '
+    $0 == "#### R3 — Test strength / weak-phrase regex check" { in_s = 1; print; next }
+    in_s && (/^#### / || /^### /) { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$R3" | grep -qF 'assertIsNotNone' || printf '%s\n' "$R3" | grep -qF 'is not None' \
+    || { echo "$path R3 subsection missing 'assertIsNotNone' / 'is not None' token"; return 1; }
+  echo "R3 subsection lists assertIsNotNone/is-not-None token in $path"
+}
+
+check_compliance_checker_r3_lists_call_count() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local R3
+  R3=$(awk '
+    $0 == "#### R3 — Test strength / weak-phrase regex check" { in_s = 1; print; next }
+    in_s && (/^#### / || /^### /) { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$R3" | grep -qF 'call_count' || printf '%s\n' "$R3" | grep -qF 'assert_called_once' || printf '%s\n' "$R3" | grep -qF 'assert_called_with' \
+    || { echo "$path R3 subsection missing 'call_count' / 'assert_called_once' / 'assert_called_with' token"; return 1; }
+  echo "R3 subsection lists call_count/assert_called_once/assert_called_with token in $path"
+}
+
+check_compliance_checker_r3_in_verdict_template() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  grep -qE 'R3.*(weak-phrase|weak phrase)' "$path" \
+    || { echo "$path verdict template missing R3 weak-phrase line in ### Code quality block"; return 1; }
+  echo "R3 weak-phrase line present in verdict template ### Code quality block in $path"
+}
+
+check_compliance_checker_r3_in_rules() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  awk '/R3/ && /DRIFT/ && /weak-phrase/ { found = 1; exit } END { exit found ? 0 : 1 }' "$path" \
+    || { echo "$path ## Rules section missing R3 DRIFT weak-phrase enforcement bullet"; return 1; }
+  echo "## Rules has R3 DRIFT weak-phrase enforcement bullet in $path"
+}

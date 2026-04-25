@@ -3921,6 +3921,18 @@ check "code-audit-resume-no-prior-entry"       check_code_audit_resume_no_prior_
 check "code-audit-resume-malformed-trailing"   check_code_audit_resume_malformed_trailing
 echo
 
+# --- R3 weak-phrase compliance check (spec 2026-04-25-r3-weak-phrase-compliance-check) ---
+echo "R3 weak-phrase compliance check:"
+
+COMPLIANCE_CHECKER='agents/spec-compliance-checker.md'
+
+check "compliance_checker_r3_heading"               check_compliance_checker_r3_heading               "$COMPLIANCE_CHECKER"
+check "compliance_checker_r3_lists_assertisnotnone" check_compliance_checker_r3_lists_assertisnotnone  "$COMPLIANCE_CHECKER"
+check "compliance_checker_r3_lists_call_count"      check_compliance_checker_r3_lists_call_count       "$COMPLIANCE_CHECKER"
+check "compliance_checker_r3_in_verdict_template"   check_compliance_checker_r3_in_verdict_template    "$COMPLIANCE_CHECKER"
+check "compliance_checker_r3_in_rules"              check_compliance_checker_r3_in_rules               "$COMPLIANCE_CHECKER"
+echo
+
 
 echo
 echo "Passed: $PASS"
