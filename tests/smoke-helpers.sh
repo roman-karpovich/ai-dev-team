@@ -3553,7 +3553,13 @@ check_cross_audit_skill_parses_ref_range() {
     || { echo "$skill missing 'range_spec' parameter in Phase 1-2 Step 1"; return 1; }
   grep -qF 'rev-parse' "$skill" \
     || { echo "$skill missing 'rev-parse' in Ref-range detection rule"; return 1; }
-  echo "SKILL.md Ref-range detection section, --materialize=worktree flag, range_spec parameter, and rev-parse rule all present"
+  # range_spec must appear in the params list AND the dispatch template (>= 2 occurrences)
+  local count
+  count=$(grep -cF 'range_spec' "$skill")
+  [ "$count" -ge 2 ] || { echo "$skill has only $count occurrence(s) of 'range_spec' (expected >= 2: params list + dispatch template)"; return 1; }
+  grep -qF 'materialize_mode' "$skill" \
+    || { echo "$skill missing 'materialize_mode' parameter wiring"; return 1; }
+  echo "SKILL.md Ref-range detection section, --materialize=worktree flag, range_spec wiring (count=$count), materialize_mode parameter, and rev-parse rule all present"
 }
 
 check_cross_audit_agent_handles_range_spec() {
