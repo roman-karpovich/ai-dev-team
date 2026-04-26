@@ -3608,6 +3608,25 @@ check_feature_skill_step2_forbids_ambiguity() {
   echo "feature SKILL Step 2 forbids repo-convention ambiguity tokens"
 }
 
+check_cross_auditor_spec_mode_repo_convention_rule() {
+  local agent='agents/cross-auditor.md'
+  local section
+  section=$(awk '/^### `spec` mode/{flag=1} /^## Severity Ladder/{if (flag) exit} flag{print}' "$agent")
+  echo "$section" | grep -qF 'Repo-convention enforcement' \
+    || { echo "$agent spec mode missing Repo-convention enforcement rule"; return 1; }
+  echo "$section" | grep -qF "at developer's discretion" \
+    || { echo "$agent spec mode missing at developer's discretion ambiguity token"; return 1; }
+  echo "$section" | grep -qF "developer's call" \
+    || { echo "$agent spec mode missing developer's call ambiguity token"; return 1; }
+  echo "$section" | grep -qF 'as you see fit' \
+    || { echo "$agent spec mode missing as you see fit ambiguity token"; return 1; }
+  echo "$section" | grep -qF 'at agent discretion' \
+    || { echo "$agent spec mode missing at agent discretion ambiguity token"; return 1; }
+  echo "$section" | grep -qF 'AGENTS.md' \
+    || { echo "$agent spec mode missing AGENTS.md convention-file reference"; return 1; }
+  echo "cross-auditor spec mode pins Repo-convention enforcement rule"
+}
+
 check_r5_step1_reads_directive_files() {
   local rules='skills/feature/references/code-quality-rules.md'
   grep -qF 'AGENTS.md' "$rules" \
