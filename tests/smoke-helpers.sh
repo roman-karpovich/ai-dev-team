@@ -3576,6 +3576,44 @@ check_cross_audit_agent_handles_range_spec() {
   echo "agents/cross-auditor.md range_spec parameter (count=$count) and diff-mode wording both present"
 }
 
+check_codex_audit_dispatch_helper_positive() {
+  local tmpdir tmpout stdout
+  tmpdir=$(mktemp -d)
+  tmpout=$(mktemp)
+  rm -f "$tmpout"
+
+  stdout=$(echo "test prompt" | CODEX_BIN="$PLUGIN_ROOT/tests/fixtures/codex-audit-dispatch/mock_codex.sh" bash hooks/lib/codex_audit_dispatch.sh "$tmpdir" "$tmpout" gpt-5.5 xhigh) \
+    || { echo "codex_audit_dispatch expected exit 0"; rm -rf "$tmpdir" "$tmpout"; return 1; }
+  test -f "$tmpout" || { echo "expected output file to be created: $tmpout"; rm -rf "$tmpdir" "$tmpout"; return 1; }
+  grep -qF 'ok-mock-response' "$tmpout" || { echo "expected ok-mock-response in output file"; rm -rf "$tmpdir" "$tmpout"; return 1; }
+  echo "$stdout" | grep -qF 'task_started' || { echo "expected task_started in stdout: $stdout"; rm -rf "$tmpdir" "$tmpout"; return 1; }
+
+  rm -rf "$tmpdir" "$tmpout"
+  echo "codex_audit_dispatch positive: mock stdout and output file present"
+}
+
+check_codex_audit_dispatch_helper_propagates_exit_code() {
+  local tmpstderr rc
+  tmpstderr=$(mktemp)
+  rc=0
+  CODEX_BIN="$PLUGIN_ROOT/tests/fixtures/codex-audit-dispatch/mock_codex_fail.sh" bash hooks/lib/codex_audit_dispatch.sh /tmp /tmp/codex-noop.txt gpt-5.5 xhigh < /dev/null 2>"$tmpstderr" || rc=$?
+  [ "$rc" = "2" ] || { echo "expected exit code 2, got $rc"; rm -f "$tmpstderr"; return 1; }
+  grep -qF 'ERROR: codex unavailable' "$tmpstderr" || { echo "expected mock codex error in stderr"; rm -f "$tmpstderr"; return 1; }
+  rm -f "$tmpstderr"
+  echo "codex_audit_dispatch propagates mock codex exit code 2 and stderr"
+}
+
+check_codex_audit_dispatch_helper_arg_validation() {
+  local tmpstderr rc
+  tmpstderr=$(mktemp)
+  rc=0
+  bash hooks/lib/codex_audit_dispatch.sh 2>"$tmpstderr" || rc=$?
+  [ "$rc" -ne 0 ] || { echo "expected non-zero exit"; rm -f "$tmpstderr"; return 1; }
+  grep -qF 'ERROR:' "$tmpstderr" || { echo "expected ERROR: in stderr"; rm -f "$tmpstderr"; return 1; }
+  rm -f "$tmpstderr"
+  echo "codex_audit_dispatch arg validation rejects missing args"
+}
+
 check_feature_skill_step1_reads_repo_conventions() {
   local skill='skills/feature/SKILL.md'
   local section
@@ -3645,4 +3683,57 @@ check_r5_step1_reads_directive_files() {
   [ "$agents_line" -lt "$grep_line" ] \
     || { echo "$rules directive-file check must appear before grep heuristic (AGENTS.md@$agents_line grep@$grep_line)"; return 1; }
   echo "R5 step 1 reads directive files before grep heuristic"
+}
+
+check_cross_auditor_uses_async_codex_dispatch() {
+  local agent='agents/cross-auditor.md'
+  local tools_line step1 count line5
+
+  test -f "$agent" || { echo "$agent missing"; return 1; }
+
+  tools_line=$(grep -F 'tools:' "$agent" | head -1)
+  echo "$tools_line" | grep -qF 'BashOutput' \
+    || { echo "$agent tools frontmatter missing BashOutput"; return 1; }
+  echo "$tools_line" | grep -qF 'KillShell' \
+    || { echo "$agent tools frontmatter missing KillShell"; return 1; }
+  if echo "$tools_line" | grep -qF 'mcp__codex__codex'; then
+    echo "$agent tools frontmatter still contains mcp__codex__codex"
+    return 1
+  fi
+
+  count=$(grep -cF '## Codex dispatch (background CLI + polling)' "$agent")
+  [ "$count" -ge 1 ] \
+    || { echo "$agent missing Codex dispatch background CLI section"; return 1; }
+
+  step1=$(awk '/^## Step 1:/{flag=1} /^## Step 2:/{if (flag) exit} flag{print}' "$agent")
+  echo "$step1" | grep -qF 'codex_audit_dispatch.sh' \
+    || { echo "$agent Step 1 missing codex_audit_dispatch.sh"; return 1; }
+  echo "$step1" | grep -qF 'run_in_background' \
+    || { echo "$agent Step 1 missing run_in_background"; return 1; }
+
+  count=$(grep -cF 'BashOutput' "$agent")
+  [ "$count" -ge 2 ] \
+    || { echo "$agent missing BashOutput in body (count=$count, expected >= 2 including frontmatter)"; return 1; }
+
+  line5=$(sed -n '5p' "$agent")
+  [ "$line5" = 'effort: xhigh' ] \
+    || { echo "$agent line 5 must be 'effort: xhigh' (got '$line5')"; return 1; }
+
+  count=$(grep -cF 'codex_audit_dispatch.sh exits non-zero' "$agent")
+  [ "$count" -ge 1 ] \
+    || { echo "$agent fail-open wording missing codex_audit_dispatch.sh exits non-zero"; return 1; }
+
+  if grep -qF 'mcp__codex__codex' "$agent"; then
+    echo "$agent still contains mcp__codex__codex"
+    return 1
+  fi
+
+  echo "cross-auditor uses async Codex dispatch with BashOutput/KillShell and no MCP dispatch"
+}
+
+check_cross_auditor_codex_effort_default_xhigh_kept() {
+  local agent='agents/cross-auditor.md'
+  grep -qF 'Defaults to `xhigh` when absent' "$agent" \
+    || { echo "$agent missing codex_reasoning_effort xhigh default docstring"; return 1; }
+  echo "cross-auditor preserves codex_reasoning_effort default xhigh docstring"
 }
