@@ -3990,6 +3990,17 @@ check "session_prompt_kb_persistence_kept"          check_session_prompt_kb_pers
 check "inject_coexistence_section"                  check_inject_coexistence_section
 echo
 
+# --- Cross-audit ref-to-ref scope (BACKLOG #45) ---
+echo "Cross-audit ref-to-ref scope pins:"
+
+check "cross_audit_resolve_range_positive"     check_cross_audit_resolve_range_positive
+check "cross_audit_resolve_range_invalid_ref"  check_cross_audit_resolve_range_invalid_ref
+check "cross_audit_resolve_range_empty_diff"   check_cross_audit_resolve_range_empty_diff
+check "cross_audit_resolve_range_path_filter"  check_cross_audit_resolve_range_path_filter
+check "cross_audit_skill_parses_ref_range"      check_cross_audit_skill_parses_ref_range
+check "cross_audit_agent_handles_range_spec"    check_cross_audit_agent_handles_range_spec
+echo
+
 
 echo
 echo "Passed: $PASS"

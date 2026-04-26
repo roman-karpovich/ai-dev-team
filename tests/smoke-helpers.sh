@@ -3500,3 +3500,78 @@ check_session_prompt_kb_persistence_kept() {
     || { echo "$path missing KB-persistence bullet ('KB path is saved in Claude memory after first session — not asked again')"; return 1; }
   echo "$path retains KB-persistence Key fact"
 }
+
+check_cross_audit_resolve_range_positive() {
+  bash "$PLUGIN_ROOT/tests/fixtures/cross-audit-ref-range/setup.sh"
+  local out
+  out=$(cd "$PLUGIN_ROOT/tests/fixtures/cross-audit-ref-range/repo" && bash "$PLUGIN_ROOT/hooks/lib/cross_audit_resolve_range.sh" "v0.1..v0.2")
+  echo "$out" | grep -qF 'refA=v0.1'      || { echo "missing refA=v0.1 in: $out"; return 1; }
+  echo "$out" | grep -qF 'refB=v0.2'      || { echo "missing refB=v0.2 in: $out"; return 1; }
+  echo "$out" | grep -qF 'op=..'          || { echo "missing op=.. in: $out"; return 1; }
+  echo "$out" | grep -qF 'slug_pair=v0.1__v0.2' || { echo "missing slug_pair=v0.1__v0.2 in: $out"; return 1; }
+  echo "cross_audit_resolve_range positive: refA=v0.1 refB=v0.2 op=.. slug_pair=v0.1__v0.2 all present"
+}
+
+check_cross_audit_resolve_range_invalid_ref() {
+  bash "$PLUGIN_ROOT/tests/fixtures/cross-audit-ref-range/setup.sh"
+  local err
+  err=$(cd "$PLUGIN_ROOT/tests/fixtures/cross-audit-ref-range/repo" && bash "$PLUGIN_ROOT/hooks/lib/cross_audit_resolve_range.sh" "v0.1..nonexistent" 2>&1 >/dev/null) && { echo "expected exit 1 but got 0"; return 1; } || true
+  # Capture stderr separately
+  local rc=0
+  err=$(cd "$PLUGIN_ROOT/tests/fixtures/cross-audit-ref-range/repo" && bash "$PLUGIN_ROOT/hooks/lib/cross_audit_resolve_range.sh" "v0.1..nonexistent" 2>&1 1>/dev/null) || rc=$?
+  [ "$rc" -ne 0 ] || { echo "expected non-zero exit"; return 1; }
+  echo "$err" | grep -qF 'ref does not exist' || { echo "expected 'ref does not exist' in stderr: $err"; return 1; }
+  echo "cross_audit_resolve_range invalid_ref: correctly exits non-zero with 'ref does not exist'"
+}
+
+check_cross_audit_resolve_range_empty_diff() {
+  bash "$PLUGIN_ROOT/tests/fixtures/cross-audit-ref-range/setup.sh"
+  local rc=0
+  local err
+  err=$(cd "$PLUGIN_ROOT/tests/fixtures/cross-audit-ref-range/repo" && bash "$PLUGIN_ROOT/hooks/lib/cross_audit_resolve_range.sh" "v0.2..v0.2" 2>&1 1>/dev/null) || rc=$?
+  [ "$rc" -ne 0 ] || { echo "expected non-zero exit for same-ref"; return 1; }
+  echo "$err" | grep -qF 'no changes between refs' || { echo "expected 'no changes between refs' in stderr: $err"; return 1; }
+  echo "cross_audit_resolve_range empty_diff: correctly exits non-zero with 'no changes between refs'"
+}
+
+check_cross_audit_resolve_range_path_filter() {
+  bash "$PLUGIN_ROOT/tests/fixtures/cross-audit-ref-range/setup.sh"
+  local out
+  out=$(cd "$PLUGIN_ROOT/tests/fixtures/cross-audit-ref-range/repo" && bash "$PLUGIN_ROOT/hooks/lib/cross_audit_resolve_range.sh" "v0.1..v0.2 -- foo.txt")
+  echo "$out" | grep -qF 'path_filter=foo.txt' || { echo "expected path_filter=foo.txt in: $out"; return 1; }
+  echo "cross_audit_resolve_range path_filter: path_filter=foo.txt preserved correctly"
+}
+
+check_cross_audit_skill_parses_ref_range() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  grep -qF 'Ref-range detection' "$skill" \
+    || { echo "$skill missing 'Ref-range detection' section heading"; return 1; }
+  grep -qF -- '--materialize=worktree' "$skill" \
+    || { echo "$skill missing '--materialize=worktree' flag documentation"; return 1; }
+  grep -qF 'range_spec' "$skill" \
+    || { echo "$skill missing 'range_spec' parameter in Phase 1-2 Step 1"; return 1; }
+  grep -qF 'rev-parse' "$skill" \
+    || { echo "$skill missing 'rev-parse' in Ref-range detection rule"; return 1; }
+  # range_spec must appear in the params list AND the dispatch template (>= 2 occurrences)
+  local count
+  count=$(grep -cF 'range_spec' "$skill")
+  [ "$count" -ge 2 ] || { echo "$skill has only $count occurrence(s) of 'range_spec' (expected >= 2: params list + dispatch template)"; return 1; }
+  grep -qF 'materialize_mode' "$skill" \
+    || { echo "$skill missing 'materialize_mode' parameter wiring"; return 1; }
+  echo "SKILL.md Ref-range detection section, --materialize=worktree flag, range_spec wiring (count=$count), materialize_mode parameter, and rev-parse rule all present"
+}
+
+check_cross_audit_agent_handles_range_spec() {
+  local agent='agents/cross-auditor.md'
+  test -f "$agent" || { echo "$agent missing"; return 1; }
+  grep -qF 'range_spec' "$agent" \
+    || { echo "$agent missing 'range_spec' parameter declaration"; return 1; }
+  grep -qF 'git diff --name-only <range_spec>' "$agent" \
+    || { echo "$agent missing updated diff-mode wording with range_spec"; return 1; }
+  # Verify range_spec appears at least twice (parameter declaration + diff-mode wording)
+  local count
+  count=$(grep -cF 'range_spec' "$agent")
+  [ "$count" -ge 2 ] || { echo "$agent has only $count occurrence(s) of 'range_spec' (expected >= 2)"; return 1; }
+  echo "agents/cross-auditor.md range_spec parameter (count=$count) and diff-mode wording both present"
+}

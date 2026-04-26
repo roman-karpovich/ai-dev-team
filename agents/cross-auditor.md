@@ -30,6 +30,7 @@ You receive a prompt with:
 - **gh_token_env** (PR mode only, optional): env var name holding the GitHub token for the resolved account. When absent OR empty, agent uses ambient `gh auth` — the `gh pr checkout` command is rendered bare (see F10).
 - **gh_host** (PR mode only, optional): host for `GH_HOST` (e.g. `github.company.com`). When absent OR empty, defaults to implicit ambient behaviour (same bare rendering as F10).
 - **base_branch**: branch to diff against (optional, for change-based audits)
+- **range_spec** (optional): formatted git diff range, e.g. `v1.7.0...v2.0.2` or `v1.7.0..v2.0.2 -- subdir/`. When set, drives the diff command directly; takes precedence over `base_branch...HEAD`. Mutually exclusive with PR mode (`pr_number` set).
 - **previously_fixed**: list of finding IDs that were FIXED in prior iterations — skip re-reporting these (do NOT include ACCEPTED or DEFERRED items here)
 - **accepted_ids**: list of finding IDs the user marked ACCEPTED — preserve their status, do not re-report, do not flip to FIXED
 - **iteration**: iteration number (default: 1)
@@ -297,8 +298,8 @@ Focus areas: completeness, clarity, sequencing, correctness, dependency mapping,
 For each finding: spec section/step reference, description, concrete fix suggestion.
 ```
 
-For **diff mode** (when base_branch is set): scope the audit to changed files only.
-Determine changed files: `git diff --name-only <base_branch>...HEAD`
+For **diff mode**: scope the audit to changed files only.
+When `range_spec` is set, run `git diff --name-only <range_spec>` (single shell-quoted string; may include `-- <path>` suffix). Otherwise when `base_branch` is set, run `git diff --name-only <base_branch>...HEAD` (legacy behavior).
 Pass the resulting file list as "Files to audit" in the prompt above — same MCP call, no separate CLI.
 
 **If `mcp__codex__codex` returns an error**: capture the error message, mark Codex status FAILED in the workdoc header, proceed with Claude-only audit. Prepend to the consolidated findings: `⚠️ WARNING: Codex audit unavailable (<error reason>). All findings are single-source (Claude only). Re-run when Codex MCP is restored.`
