@@ -3684,3 +3684,56 @@ check_r5_step1_reads_directive_files() {
     || { echo "$rules directive-file check must appear before grep heuristic (AGENTS.md@$agents_line grep@$grep_line)"; return 1; }
   echo "R5 step 1 reads directive files before grep heuristic"
 }
+
+check_cross_auditor_uses_async_codex_dispatch() {
+  local agent='agents/cross-auditor.md'
+  local tools_line step1 count line5
+
+  test -f "$agent" || { echo "$agent missing"; return 1; }
+
+  tools_line=$(grep -F 'tools:' "$agent" | head -1)
+  echo "$tools_line" | grep -qF 'BashOutput' \
+    || { echo "$agent tools frontmatter missing BashOutput"; return 1; }
+  echo "$tools_line" | grep -qF 'KillShell' \
+    || { echo "$agent tools frontmatter missing KillShell"; return 1; }
+  if echo "$tools_line" | grep -qF 'mcp__codex__codex'; then
+    echo "$agent tools frontmatter still contains mcp__codex__codex"
+    return 1
+  fi
+
+  count=$(grep -cF '## Codex dispatch (background CLI + polling)' "$agent")
+  [ "$count" -ge 1 ] \
+    || { echo "$agent missing Codex dispatch background CLI section"; return 1; }
+
+  step1=$(awk '/^## Step 1:/{flag=1} /^## Step 2:/{if (flag) exit} flag{print}' "$agent")
+  echo "$step1" | grep -qF 'codex_audit_dispatch.sh' \
+    || { echo "$agent Step 1 missing codex_audit_dispatch.sh"; return 1; }
+  echo "$step1" | grep -qF 'run_in_background' \
+    || { echo "$agent Step 1 missing run_in_background"; return 1; }
+
+  count=$(grep -cF 'BashOutput' "$agent")
+  [ "$count" -ge 2 ] \
+    || { echo "$agent missing BashOutput in body (count=$count, expected >= 2 including frontmatter)"; return 1; }
+
+  line5=$(sed -n '5p' "$agent")
+  [ "$line5" = 'effort: xhigh' ] \
+    || { echo "$agent line 5 must be 'effort: xhigh' (got '$line5')"; return 1; }
+
+  count=$(grep -cF 'codex_audit_dispatch.sh exits non-zero' "$agent")
+  [ "$count" -ge 1 ] \
+    || { echo "$agent fail-open wording missing codex_audit_dispatch.sh exits non-zero"; return 1; }
+
+  if grep -qF 'mcp__codex__codex' "$agent"; then
+    echo "$agent still contains mcp__codex__codex"
+    return 1
+  fi
+
+  echo "cross-auditor uses async Codex dispatch with BashOutput/KillShell and no MCP dispatch"
+}
+
+check_cross_auditor_codex_effort_default_xhigh_kept() {
+  local agent='agents/cross-auditor.md'
+  grep -qF 'Defaults to `xhigh` when absent' "$agent" \
+    || { echo "$agent missing codex_reasoning_effort xhigh default docstring"; return 1; }
+  echo "cross-auditor preserves codex_reasoning_effort default xhigh docstring"
+}
