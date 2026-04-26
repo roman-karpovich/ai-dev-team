@@ -296,6 +296,27 @@ When user invokes `/cross-audit <findings-doc-path>`:
 
 ---
 
+## Audit findings handling
+
+If the user's request references an audit-findings document (a file under `<kb>/repos/<project>/security/`, or mentions specific finding IDs like "X3", "H1", "починим N из findings", "fix audit item N"), do NOT dive into the code directly. First ask: "оформить как spec через `/feature new` или чинить напрямую?" — and wait for the answer. If the user chooses spec, invoke `/feature new` citing the finding. If they choose direct fix, proceed without the flow.
+
+Rationale: the spec-driven flow adds a baseline red test and compliance checks that catch the exact class of bug where a findings doc claims "FIXED" but the code is not. Cheap one line fixes do not need this overhead, but the user should decide — not Claude.
+
+Exception: lines starting with a decision keyword matching `publish|fix|accept|defer` (e.g. `publish X1 X3`, `fix H2`, `accept L4`, `defer M1`) inside an active `/cross-audit` Phase 3 loop are pass-through. Do NOT prompt "spec or direct fix?" in that case; the keyword-prefixed form is an in-flow decision, not a user-initiated finding reference.
+
+## Confirmation cadence
+
+Once the user agrees to a direction, drive the task to completion without re-asking at each intermediate step. Do NOT ask mid-flow questions like "ok to commit?", "shall I push?", "ready to open the PR?", "continue with X?", "go with Y?" — if the user already said yes to the plan, just do it and report results.
+
+Ask only when:
+- there is a real fork with distinct outcomes (A vs B vs C, or the decision is non-obvious and the user's preference matters)
+- the action is destructive or irreversible outside the local repo (force-push to main, `rm -rf`, deleting remote branches, sending messages to external systems, modifying shared infra)
+- something genuinely changes during execution (scope balloons, an unexpected fork appears, surprising state on disk)
+
+Status updates during execution are fine and encouraged — just do not turn them into yes/no questions.
+
+---
+
 ## Iteration Loop
 
 ```

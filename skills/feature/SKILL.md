@@ -40,6 +40,37 @@ Parse `$ARGUMENTS` to determine the mode:
 
 ---
 
+## Workflow phases overview
+
+```
+1. Research + write spec + exec workdoc  →  user approves spec (HARD GATE)
+2. Spec self-review + cross-audit (Claude + Codex)  →  fix if CRITICAL/HIGH
+3. Baseline test  →  implement step-by-step with compliance checks per step
+4. Verify (full test suite)
+5. Code audit (cross-auditor mode:full on diff — closed gate, per-finding triage)  →  hand-off (merge / PR / keep / discard)
+```
+
+## Confirmation cadence
+
+Once the user agrees to a direction, drive the task to completion without re-asking at each intermediate step. Do NOT ask mid-flow questions like "ok to commit?", "shall I push?", "ready to open the PR?", "continue with X?", "go with Y?" — if the user already said yes to the plan, just do it and report results.
+
+Ask only when:
+- there is a real fork with distinct outcomes (A vs B vs C, or the decision is non-obvious and the user's preference matters)
+- the action is destructive or irreversible outside the local repo (force-push to main, `rm -rf`, deleting remote branches, sending messages to external systems, modifying shared infra)
+- something genuinely changes during execution (scope balloons, an unexpected fork appears, surprising state on disk)
+
+Status updates during execution are fine and encouraged — just do not turn them into yes/no questions.
+
+## Session resume — KB scan
+
+At the beginning of any development session, before doing anything else:
+1. Check Claude memory for the KB path for this project
+2. If found: scan `<kb>/repos/<project>/design/` for specs with status IN_PROGRESS or AUDIT_PASSED
+3. If in-progress work exists: summarise it (feature name, current phase, next step) and ask whether to continue or start something new
+4. If nothing in progress: ask what the user wants to work on
+
+Do this proactively — do not wait for the user to ask.
+
 ## Phase 0: KB Discovery
 
 KB discovery algorithm (resolving `kb_path` and `project` via `.ai-dev-team.local.yml → .ai-dev-team.yml → memory → sibling → ask`) follows `docs/kb-discovery.md` — single source of truth.
