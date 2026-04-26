@@ -3406,3 +3406,29 @@ check_overview_kb_access_orchestrator_writes_directly() {
   fi
   echo "$path KB access division reflects mode B (orchestrator-direct-writes)"
 }
+
+check_session_prompt_compressed_size_cap() {
+  local path="${1:-hooks/session-prompt.md}"
+  local cap="${2:-25}"
+  local lc
+  lc=$(wc -l < "$path")
+  if [ "$lc" -gt "$cap" ]; then
+    echo "$path is $lc lines, exceeds compression cap of $cap (regression: inject inflated)"
+    return 1
+  fi
+  echo "$path size $lc <= $cap (compression cap respected)"
+}
+
+check_skill_bodies_have_migrated_content() {
+  # Verify skills/feature/SKILL.md still contains the workflow-phases tokens
+  grep -qF '5. Code audit' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing migrated '5. Code audit' phase token"; return 1; }
+  grep -qF '4. Verify' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing migrated '4. Verify' phase token"; return 1; }
+  # Verify skills/cross-audit/SKILL.md still contains the audit-findings-handling tokens
+  grep -q 'publish|fix|accept|defer' skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing migrated 'publish|fix|accept|defer' decision-keyword exception"; return 1; }
+  grep -qF 'pass-through' skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing migrated 'pass-through' wording"; return 1; }
+  echo "skill bodies retain migrated workflow-phases + audit-findings-handling tokens"
+}
