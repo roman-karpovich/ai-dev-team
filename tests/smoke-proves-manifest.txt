@@ -1,0 +1,90 @@
+# smoke-proves-manifest.txt
+#
+# Purpose:
+#   Maps smoke helper function names to the primary class of evidence they
+#   provide. Helpers absent from this manifest are counted as unclassified in
+#   the smoke summary.
+#
+# Format:
+#   <helper_name> <class>
+#
+# Classes:
+#   behavioral  - executes code, hooks, scripts, or fixtures and checks runtime behavior
+#   schema      - validates structured file format or required structural keys
+#   prompt-text - pins literal prose or prompt text
+#
+# Blank lines and lines starting with "#" are ignored.
+#
+# Runtime:
+#   The canonical smoke harness uses Bash 4+ associative arrays
+#   (`declare -A PROVES_MAP`) to load this manifest.
+
+# Manifest integrity
+validate_plugin_json schema
+validate_marketplace_json schema
+
+# SessionStart hook and conditional activation
+check_session_start_hook_registered behavioral
+check_session_start_hook_syntax_ok behavioral
+check_session_start_hook_json_output behavioral
+check_session_start_dormant_in_orthogonal behavioral
+check_session_start_dormant_by_skill behavioral
+check_session_start_dormant_no_project behavioral
+check_session_start_active_in_feature behavioral
+check_session_start_active_resume behavioral
+check_session_start_active_cross_audit behavioral
+
+# Current harness SessionStart helper names
+check_session_start behavioral
+check_session_start_key behavioral
+check_session_start_active_yml_arm behavioral
+check_session_start_active_memory_arm behavioral
+check_session_start_active_claude_md_arm behavioral
+check_session_start_dormant_under_nullglob behavioral
+check_session_start_dormant_under_failglob behavioral
+
+# post-edit-lint hook
+check_lint_hook_registered behavioral
+check_lint_hook_syntax_ok behavioral
+check_lint_hook_runs_on_bash behavioral
+check_lint_empty_stdin behavioral
+check_lint_non_edit_tool behavioral
+check_lint_missing_file behavioral
+check_no_shell_true behavioral
+
+# stop-check hook
+check_stop_check_hook_registered behavioral
+check_stop_check_syntax_ok behavioral
+check_stop_check_session_not_marked behavioral
+check_stop_check_exists behavioral
+check_stop_check_no_shell_true behavioral
+check_stop_check_silent_outside_repo behavioral
+check_stop_hook_registered behavioral
+
+# Thin session prompt and recent feature pins
+check_skill_bodies_have_migrated_content prompt-text
+check_inject_coexistence_section prompt-text
+check_session_prompt_compressed_size_cap behavioral
+check_session_prompt_kb_persistence_kept prompt-text
+check_confirmation_cadence_shared_doc_canonical prompt-text
+
+# Cross-audit ref-to-ref scope
+check_cross_audit_resolve_range_positive behavioral
+check_cross_audit_resolve_range_invalid_ref behavioral
+check_cross_audit_resolve_range_empty_diff behavioral
+check_cross_audit_resolve_range_path_filter behavioral
+check_cross_audit_skill_parses_ref_range prompt-text
+check_cross_audit_agent_handles_range_spec prompt-text
+
+# AGENTS.md proactive-read and repo-convention pins
+check_feature_skill_step1_reads_repo_conventions prompt-text
+check_feature_skill_step2_forbids_ambiguity prompt-text
+check_cross_auditor_spec_mode_repo_convention_rule prompt-text
+check_r5_step1_reads_directive_files prompt-text
+
+# Async Codex dispatch watchdog mitigation
+check_codex_audit_dispatch_helper_positive behavioral
+check_codex_audit_dispatch_helper_propagates_exit_code behavioral
+check_codex_audit_dispatch_helper_arg_validation behavioral
+check_cross_auditor_uses_async_codex_dispatch prompt-text
+check_cross_auditor_codex_effort_default_xhigh_kept prompt-text

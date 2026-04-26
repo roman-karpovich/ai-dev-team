@@ -1,9 +1,10 @@
 ---
 name: spec-compliance-checker
 description: >
-  Semantic spec compliance reviewer. Runs after each task-level step during implementation.
-  Reads spec + execution workdoc + git diff, reasons about whether observed matches planned intent.
-  Has authority to BLOCK step completion. Fresh context per invocation — never inherits session history.
+  Compliance reviewer for R1, R2, R3, the workdoc DONE rule, branch convention, and git workflow.
+  R4-R7 are convention-text references in `code-quality-rules.md`, not gated here.
+  Runs after each task-level step during implementation. Has authority to BLOCK step completion.
+  Fresh context per invocation — never inherits session history.
 model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
