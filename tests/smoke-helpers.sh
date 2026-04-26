@@ -3784,3 +3784,51 @@ check_agent_claims_doc_exists_and_classified() {
   grep -qwF 'self-policed' "$doc" || { echo "doc missing 'self-policed' class token"; return 1; }
   echo "agent-claims-vs-runtime.md: all 3 class tokens present, >=10 rows"
 }
+
+check_spec_compliance_checker_description_narrow() {
+  local agent="agents/spec-compliance-checker.md"
+  test -f "$agent" || { echo "$agent missing"; return 1; }
+  # Positive: must contain narrow scope markers
+  grep -qF 'R1, R2, R3' "$agent" \
+    || { echo "$agent missing 'R1, R2, R3' in description"; return 1; }
+  grep -qF 'R4-R7 are convention-text' "$agent" \
+    || { echo "$agent missing 'R4-R7 are convention-text' in description"; return 1; }
+  # Negative: must NOT contain legacy broad phrasing (anti-regression)
+  if grep -qF 'reasons about whether observed matches planned intent' "$agent"; then
+    echo "$agent still contains legacy broad phrasing 'reasons about whether observed matches planned intent'"
+    return 1
+  fi
+  echo "spec-compliance-checker.md description is narrow and legacy phrase absent"
+}
+
+check_mission_r_enforcement_claim_narrow() {
+  # Locate MISSION.md: try KB_PATH env var, then sibling path, then plugin root.
+  local mission_path=""
+  if [ -n "${KB_PATH:-}" ] && [ -f "${KB_PATH}/repos/ai-dev-team/MISSION.md" ]; then
+    mission_path="${KB_PATH}/repos/ai-dev-team/MISSION.md"
+  elif [ -f "../../finance-learning/repos/ai-dev-team/MISSION.md" ]; then
+    mission_path="../../finance-learning/repos/ai-dev-team/MISSION.md"
+  elif [ -f "MISSION.md" ]; then
+    mission_path="MISSION.md"
+  fi
+
+  if [ -z "$mission_path" ]; then
+    echo "MISSION.md not found in plugin source tree (lives in KB) — skipped"
+    return 0
+  fi
+
+  # Assert narrow R-enforcement claim (Russian or English phrasing)
+  if ! grep -qF 'R1, R2 и R3' "$mission_path" && ! grep -qF 'R1, R2, R3' "$mission_path"; then
+    echo "MISSION.md missing narrow R1/R2/R3 enforcement claim"
+    return 1
+  fi
+
+  # Assert R4-R7 queued (various phrasings)
+  if ! grep -qF 'enforcement queued' "$mission_path" && \
+     ! { grep -qF 'R4-R7 enforcement' "$mission_path" && grep -qE 'queued|pending|TODO' "$mission_path"; }; then
+    echo "MISSION.md missing R4-R7 enforcement queued claim"
+    return 1
+  fi
+
+  echo "MISSION.md R-enforcement claims are narrow and R4-R7 queued present"
+}
