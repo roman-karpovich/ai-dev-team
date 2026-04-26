@@ -3409,7 +3409,7 @@ check_overview_kb_access_orchestrator_writes_directly() {
 
 check_session_prompt_compressed_size_cap() {
   local path="${1:-hooks/session-prompt.md}"
-  local cap="${2:-25}"
+  local cap="${2:-30}"
   local lc
   lc=$(wc -l < "$path")
   if [ "$lc" -gt "$cap" ]; then
@@ -3434,6 +3434,23 @@ check_confirmation_cadence_shared_doc_canonical() {
   grep -qF 'ok to commit?' "$path" \
     || { echo "$path missing confirmation-cadence example phrase"; return 1; }
   echo "$path contains canonical Confirmation cadence scope, conditions, and examples"
+}
+
+check_inject_coexistence_section() {
+  local path="${1:-hooks/session-prompt.md}"
+  grep -qF '### Coexistence' "$path" \
+    || { echo "$path missing Coexistence section heading"; return 1; }
+  grep -qF "user's CLAUDE.md" "$path" \
+    || { echo "$path missing priority-order token user's CLAUDE.md"; return 1; }
+  grep -qF 'other plugins' "$path" \
+    || { echo "$path missing priority-order token other plugins"; return 1; }
+  grep -qF 'ai-dev-team' "$path" \
+    || { echo "$path missing priority-order token ai-dev-team"; return 1; }
+  grep -qF 'default' "$path" \
+    || { echo "$path missing priority-order token default"; return 1; }
+  grep -qF 'complements' "$path" \
+    || { echo "$path missing coexistence-note keyword complements"; return 1; }
+  echo "$path contains Coexistence section with priority order and complement note"
 }
 
 check_skill_bodies_have_migrated_content() {
