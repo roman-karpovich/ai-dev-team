@@ -8,6 +8,8 @@ argument-hint: "<topic or question to investigate>"
 
 Structured debate between Claude (Opus) and Codex (GPT-5.5) where they challenge each other's ideas through multiple rounds. **Runs in background** — you can continue working while the debate happens.
 
+/investigate runs in background — adversarial Claude + Codex debate, returns convergence report
+
 User-input prompt presentation in this skill follows the banner
 convention in `docs/user-input-banner-convention.md`. The async-result
 follow-up fork in "When Results Arrive" carries the `AWAITING YOUR INPUT`
