@@ -3446,8 +3446,8 @@ check_inject_coexistence_section() {
     || { echo "$path missing priority-order token other plugins"; return 1; }
   grep -qF 'ai-dev-team' "$path" \
     || { echo "$path missing priority-order token ai-dev-team"; return 1; }
-  grep -qF 'default' "$path" \
-    || { echo "$path missing priority-order token default"; return 1; }
+  grep -qF 'default Claude behavior' "$path" \
+    || { echo "$path missing priority-order tail token 'default Claude behavior'"; return 1; }
   grep -qF 'complements' "$path" \
     || { echo "$path missing coexistence-note keyword complements"; return 1; }
   echo "$path contains Coexistence section with priority order and complement note"
