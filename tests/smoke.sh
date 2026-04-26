@@ -4001,6 +4001,14 @@ check "cross_audit_skill_parses_ref_range"      check_cross_audit_skill_parses_r
 check "cross_audit_agent_handles_range_spec"    check_cross_audit_agent_handles_range_spec
 echo
 
+# --- AGENTS.md proactive-read in /feature Research (BACKLOG #37) ---
+echo "AGENTS.md proactive-read in /feature Research pins:"
+
+check "feature_skill_step1_reads_repo_conventions" check_feature_skill_step1_reads_repo_conventions
+check "feature_skill_step2_forbids_ambiguity"      check_feature_skill_step2_forbids_ambiguity
+check "r5_step1_reads_directive_files"             check_r5_step1_reads_directive_files
+echo
+
 
 echo
 echo "Passed: $PASS"
