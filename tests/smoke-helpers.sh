@@ -3737,3 +3737,98 @@ check_cross_auditor_codex_effort_default_xhigh_kept() {
     || { echo "$agent missing codex_reasoning_effort xhigh default docstring"; return 1; }
   echo "cross-auditor preserves codex_reasoning_effort default xhigh docstring"
 }
+
+check_smoke_proves_manifest_canonical() {
+  local manifest="tests/smoke-proves-manifest.txt"
+  # (a) file exists
+  test -f "$manifest" || { echo "manifest $manifest missing"; return 1; }
+  # (b) at least 30 non-comment non-empty lines
+  local count
+  count=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' "$manifest" || true)
+  [ "$count" -ge 30 ] || { echo "manifest has only $count non-comment lines (need >=30)"; return 1; }
+  # (c) every non-comment non-empty line matches well-formed entry regex
+  local bad
+  bad=$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$manifest" | grep -cvE '^[a-zA-Z0-9_]+[[:space:]]+(behavioral|schema|prompt-text)[[:space:]]*$' || true)
+  [ "$bad" -eq 0 ] || { echo "$bad malformed entries in manifest"; return 1; }
+  # (d) at least 1 entry per class
+  grep -qE '^[a-zA-Z0-9_]+[[:space:]]+behavioral' "$manifest" || { echo "no behavioral entries in manifest"; return 1; }
+  grep -qE '^[a-zA-Z0-9_]+[[:space:]]+schema' "$manifest" || { echo "no schema entries in manifest"; return 1; }
+  grep -qE '^[a-zA-Z0-9_]+[[:space:]]+prompt-text' "$manifest" || { echo "no prompt-text entries in manifest"; return 1; }
+  echo "smoke-proves-manifest.txt canonical: $count entries, all 3 classes present"
+}
+
+check_smoke_summary_breaks_down_by_class() {
+  [ "${SMOKE_NESTED:-}" = "1" ] && { echo "nested run — skipping recursive check"; return 0; }
+  local out
+  out=$(SMOKE_NESTED=1 bash tests/smoke.sh 2>&1 | tail -10)
+  echo "$out" | grep -qF 'Behavioral:' || { echo "suite tail missing 'Behavioral:' line"; return 1; }
+  echo "$out" | grep -qF 'Schema:' || { echo "suite tail missing 'Schema:' line"; return 1; }
+  echo "$out" | grep -qF 'Prompt-text:' || { echo "suite tail missing 'Prompt-text:' line"; return 1; }
+  echo "$out" | grep -qF 'Unclassified:' || { echo "suite tail missing 'Unclassified:' line"; return 1; }
+  echo "smoke suite tail contains all 4 class breakdown lines"
+}
+
+check_agent_claims_doc_exists_and_classified() {
+  local doc="docs/agent-claims-vs-runtime.md"
+  # (a) file exists
+  test -f "$doc" || { echo "doc $doc missing"; return 1; }
+  # (b) contains markdown table column header with Class
+  grep -qF '| Class |' "$doc" || { echo "doc missing '| Class |' column header"; return 1; }
+  # (c) table body has >=10 rows (lines starting with | but not the separator line)
+  local rows
+  rows=$(grep -cE '^\| [^-]' "$doc" || true)
+  [ "$rows" -ge 11 ] || { echo "doc has only $((rows-1)) body rows (need >=10, found $rows pipe-lines including header)"; return 1; }
+  # (d) all 3 class tokens appear in the body
+  grep -qwF 'enforced' "$doc" || { echo "doc missing 'enforced' class token"; return 1; }
+  grep -qwF 'convention' "$doc" || { echo "doc missing 'convention' class token"; return 1; }
+  grep -qwF 'self-policed' "$doc" || { echo "doc missing 'self-policed' class token"; return 1; }
+  echo "agent-claims-vs-runtime.md: all 3 class tokens present, >=10 rows"
+}
+
+check_spec_compliance_checker_description_narrow() {
+  local agent="agents/spec-compliance-checker.md"
+  test -f "$agent" || { echo "$agent missing"; return 1; }
+  # Positive: must contain narrow scope markers
+  grep -qF 'R1, R2, R3' "$agent" \
+    || { echo "$agent missing 'R1, R2, R3' in description"; return 1; }
+  grep -qF 'R4-R7 are convention-text' "$agent" \
+    || { echo "$agent missing 'R4-R7 are convention-text' in description"; return 1; }
+  # Negative: must NOT contain legacy broad phrasing (anti-regression)
+  if grep -qF 'reasons about whether observed matches planned intent' "$agent"; then
+    echo "$agent still contains legacy broad phrasing 'reasons about whether observed matches planned intent'"
+    return 1
+  fi
+  echo "spec-compliance-checker.md description is narrow and legacy phrase absent"
+}
+
+check_mission_r_enforcement_claim_narrow() {
+  # Locate MISSION.md: try KB_PATH env var, then sibling path, then plugin root.
+  local mission_path=""
+  if [ -n "${KB_PATH:-}" ] && [ -f "${KB_PATH}/repos/ai-dev-team/MISSION.md" ]; then
+    mission_path="${KB_PATH}/repos/ai-dev-team/MISSION.md"
+  elif [ -f "../../finance-learning/repos/ai-dev-team/MISSION.md" ]; then
+    mission_path="../../finance-learning/repos/ai-dev-team/MISSION.md"
+  elif [ -f "MISSION.md" ]; then
+    mission_path="MISSION.md"
+  fi
+
+  if [ -z "$mission_path" ]; then
+    echo "MISSION.md not found in plugin source tree (lives in KB) — skipped"
+    return 0
+  fi
+
+  # Assert narrow R-enforcement claim (Russian or English phrasing)
+  if ! grep -qF 'R1, R2 и R3' "$mission_path" && ! grep -qF 'R1, R2, R3' "$mission_path"; then
+    echo "MISSION.md missing narrow R1/R2/R3 enforcement claim"
+    return 1
+  fi
+
+  # Assert R4-R7 queued (various phrasings)
+  if ! grep -qF 'enforcement queued' "$mission_path" && \
+     ! { grep -qF 'R4-R7 enforcement' "$mission_path" && grep -qE 'queued|pending|TODO' "$mission_path"; }; then
+    echo "MISSION.md missing R4-R7 enforcement queued claim"
+    return 1
+  fi
+
+  echo "MISSION.md R-enforcement claims are narrow and R4-R7 queued present"
+}
