@@ -3737,3 +3737,33 @@ check_cross_auditor_codex_effort_default_xhigh_kept() {
     || { echo "$agent missing codex_reasoning_effort xhigh default docstring"; return 1; }
   echo "cross-auditor preserves codex_reasoning_effort default xhigh docstring"
 }
+
+check_smoke_proves_manifest_canonical() {
+  local manifest="tests/smoke-proves-manifest.txt"
+  # (a) file exists
+  test -f "$manifest" || { echo "manifest $manifest missing"; return 1; }
+  # (b) at least 30 non-comment non-empty lines
+  local count
+  count=$(grep -cvE '^[[:space:]]*#|^[[:space:]]*$' "$manifest" || true)
+  [ "$count" -ge 30 ] || { echo "manifest has only $count non-comment lines (need >=30)"; return 1; }
+  # (c) every non-comment non-empty line matches well-formed entry regex
+  local bad
+  bad=$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$manifest" | grep -cvE '^[a-zA-Z0-9_]+[[:space:]]+(behavioral|schema|prompt-text)[[:space:]]*$' || true)
+  [ "$bad" -eq 0 ] || { echo "$bad malformed entries in manifest"; return 1; }
+  # (d) at least 1 entry per class
+  grep -qE '^[a-zA-Z0-9_]+[[:space:]]+behavioral' "$manifest" || { echo "no behavioral entries in manifest"; return 1; }
+  grep -qE '^[a-zA-Z0-9_]+[[:space:]]+schema' "$manifest" || { echo "no schema entries in manifest"; return 1; }
+  grep -qE '^[a-zA-Z0-9_]+[[:space:]]+prompt-text' "$manifest" || { echo "no prompt-text entries in manifest"; return 1; }
+  echo "smoke-proves-manifest.txt canonical: $count entries, all 3 classes present"
+}
+
+check_smoke_summary_breaks_down_by_class() {
+  [ "${SMOKE_NESTED:-}" = "1" ] && { echo "nested run — skipping recursive check"; return 0; }
+  local out
+  out=$(SMOKE_NESTED=1 bash tests/smoke.sh 2>&1 | tail -10)
+  echo "$out" | grep -qF 'Behavioral:' || { echo "suite tail missing 'Behavioral:' line"; return 1; }
+  echo "$out" | grep -qF 'Schema:' || { echo "suite tail missing 'Schema:' line"; return 1; }
+  echo "$out" | grep -qF 'Prompt-text:' || { echo "suite tail missing 'Prompt-text:' line"; return 1; }
+  echo "$out" | grep -qF 'Unclassified:' || { echo "suite tail missing 'Unclassified:' line"; return 1; }
+  echo "smoke suite tail contains all 4 class breakdown lines"
+}

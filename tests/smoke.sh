@@ -27,9 +27,69 @@ export PROBE_F_CORPUS_ROOT
 PASS=0
 FAIL=0
 FAILURES=()
+BEHAVIORAL_COUNT=0
+SCHEMA_COUNT=0
+PROMPT_TEXT_COUNT=0
+UNCLASSIFIED_COUNT=0
+PROVES_MAP_SUPPORTS_ASSOC=0
+PROVES_MAP_KEYS=()
+PROVES_MAP_CLASSES=()
+if [ "${BASH_VERSINFO[0]:-0}" -ge 4 ]; then
+  PROVES_MAP_SUPPORTS_ASSOC=1
+  declare -A PROVES_MAP
+fi
+
+proves_map_put() {
+  local helper="$1"
+  local class="$2"
+  if [ "$PROVES_MAP_SUPPORTS_ASSOC" = "1" ]; then
+    PROVES_MAP["$helper"]="$class"
+    return 0
+  fi
+  PROVES_MAP_KEYS+=("$helper")
+  PROVES_MAP_CLASSES+=("$class")
+}
+
+proves_map_get() {
+  local helper_name="$1"
+  if [ "$PROVES_MAP_SUPPORTS_ASSOC" = "1" ]; then
+    printf '%s\n' "${PROVES_MAP[$helper_name]:-}"
+    return 0
+  fi
+  local i
+  for ((i = 0; i < ${#PROVES_MAP_KEYS[@]}; i++)); do
+    if [ "${PROVES_MAP_KEYS[$i]}" = "$helper_name" ]; then
+      printf '%s\n' "${PROVES_MAP_CLASSES[$i]}"
+      return 0
+    fi
+  done
+  printf '\n'
+}
+
+load_proves_manifest() {
+  local manifest="$PLUGIN_ROOT/tests/smoke-proves-manifest.txt"
+  if [ ! -f "$manifest" ]; then
+    echo "WARNING: smoke-proves-manifest.txt not found" >&2
+    return 0
+  fi
+  while IFS= read -r line; do
+    # Skip comments and empty lines
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    local helper class
+    helper=$(printf '%s\n' "$line" | awk '{print $1}')
+    class=$(printf '%s\n' "$line" | awk '{print $2}')
+    if [ -z "$helper" ] || [ -z "$class" ]; then
+      echo "WARNING: malformed manifest line: $line" >&2
+      continue
+    fi
+    proves_map_put "$helper" "$class"
+  done < "$manifest"
+}
 
 check() {
   local name="$1"; shift
+  local helper_name="$1"
   if "$@" >/tmp/smoke-out.$$ 2>&1; then
     echo "  PASS  $name"
     PASS=$((PASS + 1))
@@ -39,6 +99,14 @@ check() {
     sed 's/^/        /' /tmp/smoke-out.$$
     FAIL=$((FAIL + 1))
   fi
+  local cls
+  cls=$(proves_map_get "$helper_name")
+  case "$cls" in
+    behavioral)   BEHAVIORAL_COUNT=$((BEHAVIORAL_COUNT + 1)) ;;
+    schema)       SCHEMA_COUNT=$((SCHEMA_COUNT + 1)) ;;
+    prompt-text)  PROMPT_TEXT_COUNT=$((PROMPT_TEXT_COUNT + 1)) ;;
+    *)            UNCLASSIFIED_COUNT=$((UNCLASSIFIED_COUNT + 1)) ;;
+  esac
   rm -f /tmp/smoke-out.$$
 }
 
@@ -111,6 +179,8 @@ readonly -f \
   check_skill_md_agent_selection_tag_read \
   check_skill_md_continue_mode_tag_read \
   check_cross_auditor_pretag_consistency_check
+
+load_proves_manifest
 
 echo "Plugin: $PLUGIN_ROOT"
 echo
@@ -4021,10 +4091,20 @@ check "r5_step1_reads_directive_files"             check_r5_step1_reads_directiv
 check "cross_auditor_spec_mode_repo_convention_rule" check_cross_auditor_spec_mode_repo_convention_rule
 echo
 
+# --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
+echo "Plugin claims-vs-runtime audit pins:"
+check "smoke_proves_manifest_canonical"       check_smoke_proves_manifest_canonical
+check "smoke_summary_breaks_down_by_class"    check_smoke_summary_breaks_down_by_class
+echo
+
 
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"
+echo "Behavioral: $BEHAVIORAL_COUNT"
+echo "Schema: $SCHEMA_COUNT"
+echo "Prompt-text: $PROMPT_TEXT_COUNT"
+echo "Unclassified: $UNCLASSIFIED_COUNT"
 if [ "$FAIL" -ne 0 ]; then
   echo "Failures:"
   for f in "${FAILURES[@]}"; do
