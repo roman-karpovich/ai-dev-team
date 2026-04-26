@@ -25,6 +25,8 @@ decision fork in Phase 3 carries the `AWAITING YOUR INPUT` banner.
 
 **Standalone publish**: `/cross-audit publish <slug> <ids>` is a second entry point that invokes the `publish` action against an existing findings doc resolved from `<slug>` (e.g. `2026-04-14-webhooks`). Skips Phases 0.5 / 1-2 / 3-fix; jumps straight into publish using the `pr_files` / `pr_head_oid` / `pr_url` persisted in findings frontmatter. See `references/publish.md` for the full recipe. Publish is orthogonal to the status state machine — it does NOT flip OPEN→FIXED.
 
+**Ref-range detection**: if `$ARGUMENTS` contains `..` (literal two-dot) or `...` (literal three-dot) forming a `<refA>..<refB>` or `<refA>...<refB>` pattern AND both `<refA>` and `<refB>` resolve via `git rev-parse --verify <ref>` AND neither half is empty → **ref-range mode**. Optional path filter suffix `-- <path>` is preserved verbatim. Detection uses the literal `..` substring; disambiguation from path scopes containing `..` (e.g. `../sibling/`) relies on the rev-parse preflight — such paths fail to resolve and fall through to legacy scope parsing. Hard-stops: invalid ref (either half fails `git rev-parse --verify`) → error "ref does not exist: <ref>"; refA and refB resolve to the same SHA → error "no changes between refs". Two-dot (`..`) and three-dot (`...`) semantics follow `git diff` conventions — the operator is passed through verbatim. The ref-range resolver helper (`hooks/lib/cross_audit_resolve_range.sh`) is the single source of parsing + validation logic; call it in this branch and hard-stop on non-zero exit.
+
 **Flags** (orthogonal to each other):
 - `--diff` → scope the audit to files changed since `base_branch` (default: auto-detected repo default, falls back to `main`). Can combine with any mode: e.g. `--diff --mode logic` audits only changed files using logic focus areas.
 - `--mode logic|security|full` → audit mode (default: `full`)
@@ -33,6 +35,7 @@ decision fork in Phase 3 carries the `AWAITING YOUR INPUT` banner.
 - `--force-publish-stale` → (publish only) bypasses the force-push preflight when the current PR `headRefOid` has diverged from the audit-time `pr_head_oid`. Records the stale OID in `head_oid_at_publish` for audit trail. See `references/publish.md`.
 - `--republish <ids>` → (publish only) forces re-posting IDs already present in a `published_to` record for the same PR URL. Adds a new record.
 - `--probe-downgrade <id>=<mode>` → **downgrade-only** per-run override for a single cross-audit probe's effective mode (spec 2026-04-21-cross-audit-probes-foundation §3.4). Multiple `--probe-downgrade` flags allowed on one invocation (e.g. `--probe-downgrade e=shadow --probe-downgrade f=off`). Allowed direction: `block → warn → shadow → off`; any upgrade is refused with a one-line warning and the probe continues at its YAML-resolved mode. **`off` is the lower bound (X9 rule)**: when the effective YAML mode for a probe is `off` — INCLUDING the absent-key default (when `cross_audit.probes` is absent or a given probe id is missing under it) — any `--probe-downgrade <id>=<mode>` with `mode != off` is treated as an upgrade and refused with the same one-line warning. Only `--probe-downgrade <id>=off` is a legal no-op against an already-off probe. Rationale: absent-key default is a user-declared floor, not a synthesized gap; emergency override bypasses the graduation-evidence gate by design and must never escalate past the user's declared posture.
+- `--materialize=worktree` → (ref-range mode only) create a temporary worktree at `refB` (`git worktree add /tmp/cross-audit-<audit_slug> <refB>`) so the cross-auditor reads file content from `refB` rather than the current working tree. Cleanup: `git worktree remove --force` + `rm -rf` at audit end (best-effort). Default off (no materialization). Anti-combinations: PR mode + `--materialize` → hard-stop ("PR mode already materializes via `gh pr checkout`; `--materialize` is for ref-range only"); non-ref-range scope + `--materialize` → warn ("`--materialize` is a no-op outside ref-range mode") and proceed; `--account` + ref-range → hard-stop ("ref-range mode does not authenticate; `--account` is for PR mode only").
 
 ---
 
@@ -168,12 +171,14 @@ From `$ARGUMENTS` derive:
 - **mode**: `logic` | `security` | `full`
 - **severity_floor**: `high` (default) | `medium+` — from `--severity` flag
 - **base_branch**: for diff mode (default: auto-detected via `git symbolic-ref refs/remotes/origin/HEAD`, falls back to `main`)
+- **range_spec**: for ref-range mode — the full diff range string passed verbatim to `git diff --name-only`, e.g. `v1.7.0...v2.0.2` or `v1.7.0..v2.0.2 -- subdir/`. Formatted by joining `<op>` with refA/refB: `<refA><op><refB>` (then appending ` -- <path_filter>` if path_filter is non-empty).
+- **materialize_mode**: `worktree` when `--materialize=worktree` was given; unset otherwise.
 - **previously_fixed**: if re-audit, extract from existing findings doc
 - **project_type**: detect from codebase (smart_contract, backend, frontend, data_pipeline)
 - **iteration**: 1 for new audit, N+1 for re-audit
 - **kb_path**: from discovery above
 - **project**: project name
-- **audit_slug**: `YYYY-MM-DD-<scope-slug>` (new audit) or extracted from the existing findings filename (re-audit — see Phase 0)
+- **audit_slug**: `YYYY-MM-DD-<scope-slug>` (new audit) or extracted from the existing findings filename (re-audit — see Phase 0). For ref-range mode: `YYYY-MM-DD-range-<sanitized-refA>__<sanitized-refB>` where sanitization replaces `[^a-zA-Z0-9._-]` with `-` and caps each half at 60 chars (produced by `cross_audit_resolve_range.sh`'s `slug_pair` output).
 
 ### Step 2: Launch cross-auditor agent in background
 
@@ -191,6 +196,7 @@ project: [project]
 audit_slug: [audit_slug]
 iteration: [N]
 base_branch: [branch, if diff mode]
+range_spec: [range_spec, if ref-range mode]
 previously_fixed: [list of IDs, if re-audit]
 working_directory: [cwd]
 
@@ -213,6 +219,8 @@ probe_modes: [dict mapping probe id → effective mode after YAML + CLI override
 ```
 
 When no account resolved, both fields are OMITTED from the dispatch (not present as empty strings). This is mandatory — an empty-string value would leak into the agent as a literal, triggering an I2 violation.
+
+**Ref-range materialization** (when `materialize_mode == worktree`): before dispatching, create the worktree: `git worktree add /tmp/cross-audit-<audit_slug> <refB>`. Pass `working_directory: /tmp/cross-audit-<audit_slug>` to the cross-auditor. Register cleanup: after audit completion (or on error), run `git worktree remove --force /tmp/cross-audit-<audit_slug>` then `rm -rf /tmp/cross-audit-<audit_slug>` (best-effort — failure is logged, not fatal). When `materialize_mode` is unset and neither refA nor refB equals HEAD, emit one warning line before dispatch: "⚠️ Reading file content from current working tree (not from <refB>). Use `--materialize=worktree` for precise content at refB."
 
 ### Step 3: Inform the user
 

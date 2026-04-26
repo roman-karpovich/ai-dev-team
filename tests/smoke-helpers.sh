@@ -3541,3 +3541,31 @@ check_cross_audit_resolve_range_path_filter() {
   echo "$out" | grep -qF 'path_filter=foo.txt' || { echo "expected path_filter=foo.txt in: $out"; return 1; }
   echo "cross_audit_resolve_range path_filter: path_filter=foo.txt preserved correctly"
 }
+
+check_cross_audit_skill_parses_ref_range() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  grep -qF 'Ref-range detection' "$skill" \
+    || { echo "$skill missing 'Ref-range detection' section heading"; return 1; }
+  grep -qF -- '--materialize=worktree' "$skill" \
+    || { echo "$skill missing '--materialize=worktree' flag documentation"; return 1; }
+  grep -qF 'range_spec' "$skill" \
+    || { echo "$skill missing 'range_spec' parameter in Phase 1-2 Step 1"; return 1; }
+  grep -qF 'rev-parse' "$skill" \
+    || { echo "$skill missing 'rev-parse' in Ref-range detection rule"; return 1; }
+  echo "SKILL.md Ref-range detection section, --materialize=worktree flag, range_spec parameter, and rev-parse rule all present"
+}
+
+check_cross_audit_agent_handles_range_spec() {
+  local agent='agents/cross-auditor.md'
+  test -f "$agent" || { echo "$agent missing"; return 1; }
+  grep -qF 'range_spec' "$agent" \
+    || { echo "$agent missing 'range_spec' parameter declaration"; return 1; }
+  grep -qF 'git diff --name-only <range_spec>' "$agent" \
+    || { echo "$agent missing updated diff-mode wording with range_spec"; return 1; }
+  # Verify range_spec appears at least twice (parameter declaration + diff-mode wording)
+  local count
+  count=$(grep -cF 'range_spec' "$agent")
+  [ "$count" -ge 2 ] || { echo "$agent has only $count occurrence(s) of 'range_spec' (expected >= 2)"; return 1; }
+  echo "agents/cross-auditor.md range_spec parameter (count=$count) and diff-mode wording both present"
+}

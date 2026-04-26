@@ -3997,6 +3997,8 @@ check "cross_audit_resolve_range_positive"     check_cross_audit_resolve_range_p
 check "cross_audit_resolve_range_invalid_ref"  check_cross_audit_resolve_range_invalid_ref
 check "cross_audit_resolve_range_empty_diff"   check_cross_audit_resolve_range_empty_diff
 check "cross_audit_resolve_range_path_filter"  check_cross_audit_resolve_range_path_filter
+check "cross_audit_skill_parses_ref_range"      check_cross_audit_skill_parses_ref_range
+check "cross_audit_agent_handles_range_spec"    check_cross_audit_agent_handles_range_spec
 echo
 
 
