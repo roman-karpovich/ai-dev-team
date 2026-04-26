@@ -3983,9 +3983,10 @@ echo
 # --- Thin session-prompt + skill-body migration pins (BACKLOG #42b-B) ---
 echo "Thin session-prompt migration pins:"
 
-check "session_prompt_compressed_size_cap"    check_session_prompt_compressed_size_cap
-check "skill_bodies_have_migrated_content"    check_skill_bodies_have_migrated_content
-check "session_prompt_kb_persistence_kept"    check_session_prompt_kb_persistence_kept
+check "session_prompt_compressed_size_cap"          check_session_prompt_compressed_size_cap
+check "confirmation_cadence_shared_doc_canonical"  check_confirmation_cadence_shared_doc_canonical
+check "skill_bodies_have_migrated_content"          check_skill_bodies_have_migrated_content
+check "session_prompt_kb_persistence_kept"          check_session_prompt_kb_persistence_kept
 echo
 
 
