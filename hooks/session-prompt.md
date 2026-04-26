@@ -18,3 +18,7 @@ Recognise these intents and invoke the matching skill automatically — do not w
 | "blocker N выполнен", "деплой залит", "action item done", "soak started" | `/feature checklist <done\|start-soak> <spec> <n>` |
 
 Disambiguation: "compare / which is better / tradeoffs" → `/investigate` (adversarial Claude+Codex debate, single-session, convergence report with a recommendation). Use `/research new competitive-analysis` only when the user wants free-form notes accumulated over multiple sessions, not a decision.
+
+### Key fact
+
+- KB path is saved in Claude memory after first session — not asked again

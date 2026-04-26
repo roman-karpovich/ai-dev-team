@@ -8,6 +8,8 @@ argument-hint: "<scope description OR path to existing findings doc> [--diff] [-
 
 Cross-audit runs Claude (Opus) and Codex (GPT-5.5) as independent auditors, consolidates their findings into KB documents, then iterates until clean. **Runs in the background** so you can continue working.
 
+/cross-audit runs in background — you can keep working while it runs
+
 User-input prompt presentation in this skill follows the banner
 convention in `docs/user-input-banner-convention.md` — the per-finding
 decision fork in Phase 3 carries the `AWAITING YOUR INPUT` banner.

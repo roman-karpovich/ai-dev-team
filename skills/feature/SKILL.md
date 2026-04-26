@@ -171,6 +171,10 @@ notes: ""
 
 Leave all `observed` fields empty — the developer fills them during implementation.
 
+Quick facts for implementation steps:
+- Each implementation step requires evidence captures (failing test → implement → passing test → compliance check)
+- A step is not done until green_capture exists and matches expected_pass_pattern
+
 **Agent pre-tag (optional).** For each step in §5, optionally tag the recommended agent inline using the `@<agent>` suffix defined in `references/spec-template.md` §5 — leave untagged if the step's nature doesn't clearly match a single routing trigger.
 
 **Change-type prompt.** Before the Prerequisites prompt, resolve the spec's `change_type`. Infer from the user's description (case-insensitive, first match wins; evaluate in this order):
@@ -674,6 +678,8 @@ delta with no spec mutation.
 ---
 
 ## Continue mode
+
+/feature continue resumes from the last incomplete step — no context recovery needed
 
 When resuming (`/feature continue` or `/feature <spec-path>`):
 
