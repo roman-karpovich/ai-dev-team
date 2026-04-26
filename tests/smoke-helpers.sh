@@ -3576,6 +3576,44 @@ check_cross_audit_agent_handles_range_spec() {
   echo "agents/cross-auditor.md range_spec parameter (count=$count) and diff-mode wording both present"
 }
 
+check_codex_audit_dispatch_helper_positive() {
+  local tmpdir tmpout stdout
+  tmpdir=$(mktemp -d)
+  tmpout=$(mktemp)
+  rm -f "$tmpout"
+
+  stdout=$(echo "test prompt" | CODEX_BIN="$PLUGIN_ROOT/tests/fixtures/codex-audit-dispatch/mock_codex.sh" bash hooks/lib/codex_audit_dispatch.sh "$tmpdir" "$tmpout" gpt-5.5 xhigh) \
+    || { echo "codex_audit_dispatch expected exit 0"; rm -rf "$tmpdir" "$tmpout"; return 1; }
+  test -f "$tmpout" || { echo "expected output file to be created: $tmpout"; rm -rf "$tmpdir" "$tmpout"; return 1; }
+  grep -qF 'ok-mock-response' "$tmpout" || { echo "expected ok-mock-response in output file"; rm -rf "$tmpdir" "$tmpout"; return 1; }
+  echo "$stdout" | grep -qF 'task_started' || { echo "expected task_started in stdout: $stdout"; rm -rf "$tmpdir" "$tmpout"; return 1; }
+
+  rm -rf "$tmpdir" "$tmpout"
+  echo "codex_audit_dispatch positive: mock stdout and output file present"
+}
+
+check_codex_audit_dispatch_helper_propagates_exit_code() {
+  local tmpstderr rc
+  tmpstderr=$(mktemp)
+  rc=0
+  CODEX_BIN="$PLUGIN_ROOT/tests/fixtures/codex-audit-dispatch/mock_codex_fail.sh" bash hooks/lib/codex_audit_dispatch.sh /tmp /tmp/codex-noop.txt gpt-5.5 xhigh < /dev/null 2>"$tmpstderr" || rc=$?
+  [ "$rc" = "2" ] || { echo "expected exit code 2, got $rc"; rm -f "$tmpstderr"; return 1; }
+  grep -qF 'ERROR: codex unavailable' "$tmpstderr" || { echo "expected mock codex error in stderr"; rm -f "$tmpstderr"; return 1; }
+  rm -f "$tmpstderr"
+  echo "codex_audit_dispatch propagates mock codex exit code 2 and stderr"
+}
+
+check_codex_audit_dispatch_helper_arg_validation() {
+  local tmpstderr rc
+  tmpstderr=$(mktemp)
+  rc=0
+  bash hooks/lib/codex_audit_dispatch.sh 2>"$tmpstderr" || rc=$?
+  [ "$rc" -ne 0 ] || { echo "expected non-zero exit"; rm -f "$tmpstderr"; return 1; }
+  grep -qF 'ERROR:' "$tmpstderr" || { echo "expected ERROR: in stderr"; rm -f "$tmpstderr"; return 1; }
+  rm -f "$tmpstderr"
+  echo "codex_audit_dispatch arg validation rejects missing args"
+}
+
 check_feature_skill_step1_reads_repo_conventions() {
   local skill='skills/feature/SKILL.md'
   local section

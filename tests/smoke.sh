@@ -4001,6 +4001,13 @@ check "cross_audit_skill_parses_ref_range"      check_cross_audit_skill_parses_r
 check "cross_audit_agent_handles_range_spec"    check_cross_audit_agent_handles_range_spec
 echo
 
+# --- cross-auditor async Codex dispatch (watchdog mitigation) ---
+echo "cross-auditor async Codex dispatch pins:"
+check "codex_audit_dispatch_helper_positive"             check_codex_audit_dispatch_helper_positive
+check "codex_audit_dispatch_helper_propagates_exit_code" check_codex_audit_dispatch_helper_propagates_exit_code
+check "codex_audit_dispatch_helper_arg_validation"       check_codex_audit_dispatch_helper_arg_validation
+echo
+
 # --- AGENTS.md proactive-read in /feature Research (BACKLOG #37) ---
 echo "AGENTS.md proactive-read in /feature Research pins:"
 
