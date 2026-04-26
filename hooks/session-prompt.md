@@ -22,3 +22,8 @@ Disambiguation: "compare / which is better / tradeoffs" → `/investigate` (adve
 ### Key fact
 
 - KB path is saved in Claude memory after first session — not asked again
+
+### Coexistence
+
+Priority when multiple plugins' rules apply: user's CLAUDE.md > other plugins' rules > ai-dev-team rules > default Claude behavior.
+ai-dev-team's intent→skill mapping (above) complements other skill-system plugins' generic "use skills" guidance — it does not duplicate or override.

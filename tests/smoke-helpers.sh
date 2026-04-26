@@ -3409,7 +3409,7 @@ check_overview_kb_access_orchestrator_writes_directly() {
 
 check_session_prompt_compressed_size_cap() {
   local path="${1:-hooks/session-prompt.md}"
-  local cap="${2:-25}"
+  local cap="${2:-30}"
   local lc
   lc=$(wc -l < "$path")
   if [ "$lc" -gt "$cap" ]; then
@@ -3417,6 +3417,40 @@ check_session_prompt_compressed_size_cap() {
     return 1
   fi
   echo "$path size $lc <= $cap (compression cap respected)"
+}
+
+check_confirmation_cadence_shared_doc_canonical() {
+  local path="${1:-docs/confirmation-cadence.md}"
+  [ -f "$path" ] \
+    || { echo "$path missing shared Confirmation cadence doc"; return 1; }
+  grep -qF 'Inside an active' "$path" \
+    || { echo "$path missing active-flow scope opening token"; return 1; }
+  grep -qF 'distinct outcomes' "$path" \
+    || { echo "$path missing distinct-outcomes ask-only condition"; return 1; }
+  grep -qF 'destructive or irreversible' "$path" \
+    || { echo "$path missing destructive-or-irreversible ask-only condition"; return 1; }
+  grep -qF 'genuinely changes' "$path" \
+    || { echo "$path missing genuinely-changes ask-only condition"; return 1; }
+  grep -qF 'ok to commit?' "$path" \
+    || { echo "$path missing confirmation-cadence example phrase"; return 1; }
+  echo "$path contains canonical Confirmation cadence scope, conditions, and examples"
+}
+
+check_inject_coexistence_section() {
+  local path="${1:-hooks/session-prompt.md}"
+  grep -qF '### Coexistence' "$path" \
+    || { echo "$path missing Coexistence section heading"; return 1; }
+  grep -qF "user's CLAUDE.md" "$path" \
+    || { echo "$path missing priority-order token user's CLAUDE.md"; return 1; }
+  grep -qF 'other plugins' "$path" \
+    || { echo "$path missing priority-order token other plugins"; return 1; }
+  grep -qF 'ai-dev-team' "$path" \
+    || { echo "$path missing priority-order token ai-dev-team"; return 1; }
+  grep -qF 'default Claude behavior' "$path" \
+    || { echo "$path missing priority-order tail token 'default Claude behavior'"; return 1; }
+  grep -qF 'complements' "$path" \
+    || { echo "$path missing coexistence-note keyword complements"; return 1; }
+  echo "$path contains Coexistence section with priority order and complement note"
 }
 
 check_skill_bodies_have_migrated_content() {
@@ -3428,8 +3462,8 @@ check_skill_bodies_have_migrated_content() {
   # feature SKILL: confirmation-cadence (NEW per X2)
   grep -qF '## Confirmation cadence' skills/feature/SKILL.md \
     || { echo "skills/feature/SKILL.md missing migrated '## Confirmation cadence' heading"; return 1; }
-  grep -qF "ok to commit?" skills/feature/SKILL.md \
-    || { echo "skills/feature/SKILL.md missing migrated confirmation-cadence example phrase"; return 1; }
+  grep -qF 'docs/confirmation-cadence.md' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing shared confirmation-cadence doc link"; return 1; }
   # feature SKILL: session-resume-KB-scan (NEW per X2)
   grep -qF '## Session resume — KB scan' skills/feature/SKILL.md \
     || { echo "skills/feature/SKILL.md missing migrated '## Session resume — KB scan' heading"; return 1; }
@@ -3449,8 +3483,8 @@ check_skill_bodies_have_migrated_content() {
   # cross-audit SKILL: confirmation-cadence (NEW per X2)
   grep -qF '## Confirmation cadence' skills/cross-audit/SKILL.md \
     || { echo "skills/cross-audit/SKILL.md missing migrated '## Confirmation cadence' heading"; return 1; }
-  grep -qF "ok to commit?" skills/cross-audit/SKILL.md \
-    || { echo "skills/cross-audit/SKILL.md missing migrated confirmation-cadence example phrase"; return 1; }
+  grep -qF 'docs/confirmation-cadence.md' skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing shared confirmation-cadence doc link"; return 1; }
   # cross-audit SKILL: runs in background (NEW per X1 fix)
   grep -qF 'runs in background' skills/cross-audit/SKILL.md \
     || { echo "skills/cross-audit/SKILL.md missing X1-migrated 'runs in background' bullet"; return 1; }

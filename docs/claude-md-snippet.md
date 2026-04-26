@@ -60,7 +60,7 @@ Exception: lines starting with a decision keyword matching `publish|fix|accept|d
 
 ### Confirmation cadence
 
-Once the user agrees to a direction, drive the task to completion without re-asking at each intermediate step. Do NOT ask mid-flow questions like "ok to commit?", "shall I push?", "ready to open the PR?", "continue with X?" — if the user already said yes to the plan, just do it and report results.
+Inside an active `/feature` or `/cross-audit` flow: once the user agrees to a direction, drive the task to completion without re-asking at each intermediate step. Do NOT ask mid-flow questions like "ok to commit?", "shall I push?", "ready to open the PR?", "continue with X?", "go with Y?" — if the user already said yes to the plan, just do it and report results.
 
 Ask only when: (a) there is a real fork with distinct outcomes and the user's preference matters; (b) the action is destructive or irreversible outside the local repo (force-push to main, `rm -rf`, deleting remote branches, messaging external systems, modifying shared infra); (c) something genuinely changes during execution (scope balloons, unexpected fork, surprising state on disk). Status updates during execution are fine — just don't turn them into yes/no questions.
 
@@ -82,4 +82,3 @@ Ask only when: (a) there is a real fork with distinct outcomes and the user's pr
 - `/cross-audit` runs in background — you can keep working while it runs
 - `/investigate` runs in background — adversarial Claude + Codex debate, returns convergence report
 ```
-
