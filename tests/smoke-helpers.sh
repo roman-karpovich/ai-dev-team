@@ -3406,3 +3406,63 @@ check_overview_kb_access_orchestrator_writes_directly() {
   fi
   echo "$path KB access division reflects mode B (orchestrator-direct-writes)"
 }
+
+check_session_prompt_compressed_size_cap() {
+  local path="${1:-hooks/session-prompt.md}"
+  local cap="${2:-25}"
+  local lc
+  lc=$(wc -l < "$path")
+  if [ "$lc" -gt "$cap" ]; then
+    echo "$path is $lc lines, exceeds compression cap of $cap (regression: inject inflated)"
+    return 1
+  fi
+  echo "$path size $lc <= $cap (compression cap respected)"
+}
+
+check_skill_bodies_have_migrated_content() {
+  # feature SKILL: workflow-phases (already pinned)
+  grep -qF '5. Code audit' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing migrated '5. Code audit' phase token"; return 1; }
+  grep -qF '4. Verify' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing migrated '4. Verify' phase token"; return 1; }
+  # feature SKILL: confirmation-cadence (NEW per X2)
+  grep -qF '## Confirmation cadence' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing migrated '## Confirmation cadence' heading"; return 1; }
+  grep -qF "ok to commit?" skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing migrated confirmation-cadence example phrase"; return 1; }
+  # feature SKILL: session-resume-KB-scan (NEW per X2)
+  grep -qF '## Session resume — KB scan' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing migrated '## Session resume — KB scan' heading"; return 1; }
+  grep -qF 'IN_PROGRESS or AUDIT_PASSED' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing migrated session-resume status token"; return 1; }
+  # feature SKILL: evidence-captures contract (NEW per X1 fix)
+  grep -qF 'A step is not done until' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing X1-migrated 'A step is not done until ...' evidence-captures contract"; return 1; }
+  # feature SKILL: continue resumes from last step (NEW per X1 fix)
+  grep -qF 'last incomplete step' skills/feature/SKILL.md \
+    || { echo "skills/feature/SKILL.md missing X1-migrated continue-resume bullet ('last incomplete step')"; return 1; }
+  # cross-audit SKILL: audit-findings-handling (already pinned)
+  grep -q 'publish|fix|accept|defer' skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing migrated 'publish|fix|accept|defer' decision-keyword exception"; return 1; }
+  grep -qF 'pass-through' skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing migrated 'pass-through' wording"; return 1; }
+  # cross-audit SKILL: confirmation-cadence (NEW per X2)
+  grep -qF '## Confirmation cadence' skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing migrated '## Confirmation cadence' heading"; return 1; }
+  grep -qF "ok to commit?" skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing migrated confirmation-cadence example phrase"; return 1; }
+  # cross-audit SKILL: runs in background (NEW per X1 fix)
+  grep -qF 'runs in background' skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing X1-migrated 'runs in background' bullet"; return 1; }
+  # investigate SKILL: runs in background (NEW per X1 fix)
+  grep -qF 'runs in background' skills/investigate/SKILL.md \
+    || { echo "skills/investigate/SKILL.md missing X1-migrated 'runs in background' bullet"; return 1; }
+  echo "skill bodies retain all 5 migrated sections + X1 key-fact bullets"
+}
+
+check_session_prompt_kb_persistence_kept() {
+  local path="${1:-hooks/session-prompt.md}"
+  grep -qF 'KB path is saved in Claude memory' "$path" \
+    || { echo "$path missing KB-persistence bullet ('KB path is saved in Claude memory after first session — not asked again')"; return 1; }
+  echo "$path retains KB-persistence Key fact"
+}

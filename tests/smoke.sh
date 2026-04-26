@@ -770,18 +770,18 @@ check_publish_md_tokens() {
   echo "publish.md contains all required tokens"
 }
 
-# 12. hooks/session-prompt.md AND docs/claude-md-snippet.md both mention `publish|fix|accept|defer`
-# (session-prompt.md is the inject body extracted from hooks/session-start sibling, refactor 2026-04-26)
+# 12. skills/cross-audit/SKILL.md AND docs/claude-md-snippet.md both mention `publish|fix|accept|defer`
+# (cross-audit skill body holds migrated Phase 3 exemption wording, refactor 2026-04-26)
 check_hooks_docs_phase3_exemption() {
-  grep -q 'publish|fix|accept|defer' hooks/session-prompt.md \
-    || { echo "hooks/session-prompt.md missing Phase 3 exemption clause (publish|fix|accept|defer)"; return 1; }
+  grep -q 'publish|fix|accept|defer' skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing Phase 3 exemption clause (publish|fix|accept|defer)"; return 1; }
   grep -q 'publish|fix|accept|defer' docs/claude-md-snippet.md \
     || { echo "docs/claude-md-snippet.md missing Phase 3 exemption clause (publish|fix|accept|defer)"; return 1; }
-  grep -q 'pass-through' hooks/session-prompt.md \
-    || { echo "hooks/session-prompt.md missing 'pass-through' exemption wording"; return 1; }
+  grep -q 'pass-through' skills/cross-audit/SKILL.md \
+    || { echo "skills/cross-audit/SKILL.md missing 'pass-through' exemption wording"; return 1; }
   grep -q 'pass-through' docs/claude-md-snippet.md \
     || { echo "docs/claude-md-snippet.md missing 'pass-through' exemption wording"; return 1; }
-  echo "hooks/docs exempt Phase 3 decision keywords"
+  echo "cross-audit skill/docs exempt Phase 3 decision keywords"
 }
 
 # 13. README.md contains `cross-audit pr` usage example
@@ -3497,12 +3497,12 @@ check_continue_mode_five_resume_branches() {
   echo "Continue-mode has all 5 resume branches OK"
 }
 
-# Item 16 (composite): hooks/session-prompt.md 5-phase block integrity — contains
+# Item 16 (composite): skills/feature/SKILL.md 5-phase block integrity — contains
 # literal '5. Code audit' AND '4. Verify', AND does NOT match
 # '^4\. Verify.*hand-off' (stale pre-Code-audit inline arrow absent).
-# (session-prompt.md is the inject body extracted from hooks/session-start sibling, refactor 2026-04-26)
+# (feature skill body holds migrated workflow phases wording, refactor 2026-04-26)
 check_session_start_5_phase_block() {
-  local f='hooks/session-prompt.md'
+  local f='skills/feature/SKILL.md'
   if ! grep -qF "5. Code audit" "$f"; then
     echo "$f missing '5. Code audit' literal"
     return 1
@@ -3978,6 +3978,14 @@ echo "Librarian narrow-framing pins:"
 check "librarian_optional_helper_framing"               check_librarian_optional_helper_framing
 check "librarian_no_mandatory_only_claim"               check_librarian_no_mandatory_only_claim
 check "overview_kb_access_orchestrator_writes_directly" check_overview_kb_access_orchestrator_writes_directly
+echo
+
+# --- Thin session-prompt + skill-body migration pins (BACKLOG #42b-B) ---
+echo "Thin session-prompt migration pins:"
+
+check "session_prompt_compressed_size_cap"    check_session_prompt_compressed_size_cap
+check "skill_bodies_have_migrated_content"    check_skill_bodies_have_migrated_content
+check "session_prompt_kb_persistence_kept"    check_session_prompt_kb_persistence_kept
 echo
 
 
