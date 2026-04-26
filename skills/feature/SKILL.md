@@ -84,6 +84,7 @@ Read both KB and codebase before writing anything:
 2. Read any relevant KB docs: domain context, related project docs, glossary
 3. Explore source code in the project directory: understand architecture, existing patterns, files that will change
 4. Identify: reusable patterns, files to change, dependencies, risks, what already exists
+5. Read AGENTS.md, CLAUDE.md, .github/CONTRIBUTING.md, and README.md §Development/§Contributing/§Testing in the target repo if they exist. Lift any directive placement / naming / layout / branch-style rules verbatim into spec §2 Current State as a 'Repo conventions' subsection (`### 2.X Repo conventions`).
 
 #### Step 1a — Ingest `--from-investigation` (only if flag present)
 
@@ -122,6 +123,8 @@ You (the feature skill orchestrator) write both artifacts directly.
 - **Implementation Checklist** — ordered, concrete steps (each is a reviewable behavioral unit)
 - **Verification** — how to test end-to-end
 - **Log** — append-only decisions and progress
+
+**Repo-convention enforcement in §5**: if §2 lists a Repo conventions subsection that constrains a checklist step's decision (test placement, file layout, branch naming, commit style, linter format, language version), the corresponding §5 Implementation Checklist step MUST specify the exact placement/value — never 'developer's call' / 'at developer's discretion' / 'as you see fit' / 'at agent discretion'. Spec-mode cross-audit (see `agents/cross-auditor.md` §spec mode) flags such ambiguity as HIGH.
 
 YAML frontmatter:
 ```yaml

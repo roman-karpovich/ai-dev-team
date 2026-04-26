@@ -3575,3 +3575,74 @@ check_cross_audit_agent_handles_range_spec() {
   [ "$count" -ge 2 ] || { echo "$agent has only $count occurrence(s) of 'range_spec' (expected >= 2)"; return 1; }
   echo "agents/cross-auditor.md range_spec parameter (count=$count) and diff-mode wording both present"
 }
+
+check_feature_skill_step1_reads_repo_conventions() {
+  local skill='skills/feature/SKILL.md'
+  local section
+  section=$(awk '/^### Step 1 — Research/{flag=1} /^#### Step 1a —/{if (flag) exit} flag{print}' "$skill")
+  echo "$section" | grep -qF 'AGENTS.md' \
+    || { echo "$skill Step 1 missing AGENTS.md repo-convention read"; return 1; }
+  echo "$section" | grep -qF 'CLAUDE.md' \
+    || { echo "$skill Step 1 missing CLAUDE.md repo-convention read"; return 1; }
+  echo "$section" | grep -qF '.github/CONTRIBUTING.md' \
+    || { echo "$skill Step 1 missing .github/CONTRIBUTING.md repo-convention read"; return 1; }
+  echo "$section" | grep -qF 'Repo conventions' \
+    || { echo "$skill Step 1 missing Repo conventions lift target"; return 1; }
+  echo "feature SKILL Step 1 reads repo convention files and lifts Repo conventions"
+}
+
+check_feature_skill_step2_forbids_ambiguity() {
+  local skill='skills/feature/SKILL.md'
+  local section
+  section=$(awk '/^### Step 2 —/{flag=1} /^### Step 3 —/{if (flag) exit} flag{print}' "$skill")
+  echo "$section" | grep -qF 'MUST specify the exact placement/value' \
+    || { echo "$skill Step 2 missing exact placement/value requirement"; return 1; }
+  echo "$section" | grep -qF "developer's call" \
+    || { echo "$skill Step 2 missing developer's call ambiguity token"; return 1; }
+  echo "$section" | grep -qF "at developer's discretion" \
+    || { echo "$skill Step 2 missing at developer's discretion ambiguity token"; return 1; }
+  echo "$section" | grep -qF 'as you see fit' \
+    || { echo "$skill Step 2 missing as you see fit ambiguity token"; return 1; }
+  echo "$section" | grep -qF 'at agent discretion' \
+    || { echo "$skill Step 2 missing at agent discretion ambiguity token"; return 1; }
+  echo "feature SKILL Step 2 forbids repo-convention ambiguity tokens"
+}
+
+check_cross_auditor_spec_mode_repo_convention_rule() {
+  local agent='agents/cross-auditor.md'
+  local section
+  section=$(awk '/^### `spec` mode/{flag=1} /^## Severity Ladder/{if (flag) exit} flag{print}' "$agent")
+  echo "$section" | grep -qF 'Repo-convention enforcement' \
+    || { echo "$agent spec mode missing Repo-convention enforcement rule"; return 1; }
+  echo "$section" | grep -qF "at developer's discretion" \
+    || { echo "$agent spec mode missing at developer's discretion ambiguity token"; return 1; }
+  echo "$section" | grep -qF "developer's call" \
+    || { echo "$agent spec mode missing developer's call ambiguity token"; return 1; }
+  echo "$section" | grep -qF 'as you see fit' \
+    || { echo "$agent spec mode missing as you see fit ambiguity token"; return 1; }
+  echo "$section" | grep -qF 'at agent discretion' \
+    || { echo "$agent spec mode missing at agent discretion ambiguity token"; return 1; }
+  echo "$section" | grep -qF 'AGENTS.md' \
+    || { echo "$agent spec mode missing AGENTS.md convention-file reference"; return 1; }
+  echo "cross-auditor spec mode pins Repo-convention enforcement rule"
+}
+
+check_r5_step1_reads_directive_files() {
+  local rules='skills/feature/references/code-quality-rules.md'
+  grep -qF 'AGENTS.md' "$rules" \
+    || { echo "$rules missing AGENTS.md directive-file precedence check"; return 1; }
+  grep -qF 'CLAUDE.md' "$rules" \
+    || { echo "$rules missing CLAUDE.md directive-file precedence check"; return 1; }
+  grep -qF 'directive' "$rules" \
+    || { echo "$rules missing directive precedence keyword"; return 1; }
+
+  local agents_line
+  local grep_line
+  agents_line=$(grep -nF 'AGENTS.md' "$rules" | head -1 | cut -d: -f1)
+  grep_line=$(grep -nF 'grep -R "#[cfg(test)]" src/' "$rules" | head -1 | cut -d: -f1)
+  [ -n "$agents_line" ] || { echo "$rules missing AGENTS.md line"; return 1; }
+  [ -n "$grep_line" ] || { echo "$rules missing grep -R test-layout heuristic"; return 1; }
+  [ "$agents_line" -lt "$grep_line" ] \
+    || { echo "$rules directive-file check must appear before grep heuristic (AGENTS.md@$agents_line grep@$grep_line)"; return 1; }
+  echo "R5 step 1 reads directive files before grep heuristic"
+}
