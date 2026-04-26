@@ -5,7 +5,7 @@ model: opus
 effort: xhigh
 background: true
 isolation: worktree
-tools: Read, Grep, Glob, Bash, mcp__codex__codex
+tools: Read, Grep, Glob, Bash, BashOutput, KillShell
 maxTurns: 50
 ---
 
@@ -262,17 +262,31 @@ for probe_id, mode in probe_modes.items():
 
 **Fail-open coverage** (spec 2026-04-21-probe-e-diff-scope-leak §3.5): six classes explicitly handled as distinct branches — probe-script-missing, TimeoutError, NonZeroExit (subsumes uncaught Python exceptions — the interpreter exits non-zero), JSONDecodeError, schema validation failure, receipt-write IOError/OSError (class 6 lives later in Step 3 stage 4.5). Each class synthesizes a `probe_failures_seed[]` entry with a populated `probe_id` / `failure_reason` / `failure_remediation` triple. The renderer's existing hard-stop on malformed `probe_failures[]` (Foundation §3.3 X10) is the backstop — Step 0.5 MUST emit fully-populated string triples.
 
-## Step 1: Launch Codex (before your own deep review)
+## Codex dispatch (background CLI + polling)
 
-**IMPORTANT**: Launch Codex FIRST so both audits run in parallel.
+Codex audits run via the `hooks/lib/codex_audit_dispatch.sh` helper invoked through `Bash(run_in_background: true)`. This bypasses the Claude Code 600s stream watchdog (hardcoded, not configurable) that caused recurring stalls when using the blocking Codex MCP tool — Codex on `xhigh` reasoning takes 8-15 minutes wall-clock, exceeding the 600s window. Background bash launch returns a `shell_id_codex` immediately; polling `BashOutput(shell_id_codex)` resets the watchdog on each call while Codex thinks in the background.
 
-Use `mcp__codex__codex` with:
-- **prompt**: build from the template below
-- **sandbox**: "read-only"
-- **model**: if `codex_model` is provided, pass it; otherwise omit — Codex uses `~/.codex/config.toml`
-- **config**: `{"reasoning": {"effort": <codex_reasoning_effort if provided, else "xhigh">}}`
-- **cwd**: in **PR mode** (`pr_number` set), pass the absolute path of this agent's isolated worktree post-`gh pr checkout` — NOT the inherited `working_directory`. Both Claude and Codex must audit the PR-materialized worktree (not the caller's cwd), otherwise fork-PR content is invisible to Codex. In non-PR mode, pass `working_directory` as before.
-- **developer-instructions**: for `spec` mode use: "You are an independent spec reviewer. Be adversarial. Focus on spec quality: completeness, clarity, sequencing, correctness, verification coverage. Every finding must reference the specific section/step of the spec and include a concrete suggestion. Report [allowed_severities] only." For code modes use: "You are an independent code auditor. Be adversarial. Focus on [mode focus areas]. Every finding must have a concrete file:line reference and a specific fix suggestion. [Severity ladder for mode — see above]. Report [allowed_severities] only." Substitute `[allowed_severities]` based on `severity_floor` before dispatching.
+**Polling discipline**: after launching Codex in background, proceed to Step 2 (Claude's own audit). Each Read/Grep/Glob/Bash tool call during Step 2 is itself a stream event that resets the watchdog, so the watchdog is naturally kept alive during active audit work. To be safe, call `BashOutput(shell_id_codex)` explicitly between significant blocks of Step 2 work and at the start of Step 3 Consolidation to flush any Codex output and confirm the shell is still running. Do NOT wait to poll only at the very end — if Codex finishes early, an explicit BashOutput poll between Step 2 sub-tasks lets you detect completion sooner.
+
+**Fail-open**: if `codex_audit_dispatch.sh exits non-zero` (BashOutput status `failed` or non-zero exit code), capture the captured stderr as the error message, mark Codex status FAILED in the workdoc header, call `KillShell(shell_id_codex)` to clean up, then proceed with Claude-only audit.
+
+**xhigh reasoning preserved** per user directive 2026-04-26: do NOT lower `codex_reasoning_effort`.
+
+## Step 1: Launch Codex (background CLI dispatch — before your own deep review)
+
+**IMPORTANT**: Launch Codex FIRST in the background so both audits run in parallel.
+
+**Step 1a — Build the prompt text** using the appropriate template below (substitute all `[placeholders]`). For diff mode, first run `git diff --name-only <range_spec>` (or `<base_branch>...HEAD`) and include the resulting file list.
+
+**Step 1b — Write prompt to a temp file and launch Codex in background**:
+1. Write the prompt text to a temp file via `Bash`: `PROMPT_FILE=$(mktemp) && cat > "$PROMPT_FILE" << 'CODEX_PROMPT_EOF' ... CODEX_PROMPT_EOF`
+2. Set `CODEX_MODEL` (from `codex_model` input if provided, else `gpt-5.5`) and `CODEX_EFFORT` (from `codex_reasoning_effort` if provided, else `xhigh`).
+3. In **PR mode** (`pr_number` set), use the absolute path of this agent's isolated worktree post-`gh pr checkout` as `CODEX_WD`. In non-PR mode, use `working_directory`.
+4. Set `OUTPUT_FILE` to a temp path: `OUTPUT_FILE=$(mktemp)`.
+5. Launch via `Bash(run_in_background: true)`: `bash hooks/lib/codex_audit_dispatch.sh "$CODEX_WD" "$OUTPUT_FILE" "$CODEX_MODEL" "$CODEX_EFFORT" < "$PROMPT_FILE"`
+6. Save the returned `shell_id` as `shell_id_codex`.
+
+**Step 1c — Proceed to Step 2**: Codex is now running in the background. Do NOT wait. Proceed immediately to your own audit (Step 2). Poll `BashOutput(shell_id_codex)` between significant blocks of Step 2 work and at the start of Step 3 to keep the watchdog alive and check progress.
 
 **Code mode** Codex prompt template:
 ```
@@ -301,9 +315,9 @@ For each finding: spec section/step reference, description, concrete fix suggest
 
 For **diff mode**: scope the audit to changed files only.
 When `range_spec` is set, run `git diff --name-only <range_spec>` (single shell-quoted string; may include `-- <path>` suffix). Otherwise when `base_branch` is set, run `git diff --name-only <base_branch>...HEAD` (legacy behavior).
-Pass the resulting file list as "Files to audit" in the prompt above — same MCP call, no separate CLI.
+Include the resulting file list as "Files to audit" in the prompt template above before writing the prompt to `$PROMPT_FILE`.
 
-**If `mcp__codex__codex` returns an error**: capture the error message, mark Codex status FAILED in the workdoc header, proceed with Claude-only audit. Prepend to the consolidated findings: `⚠️ WARNING: Codex audit unavailable (<error reason>). All findings are single-source (Claude only). Re-run when Codex MCP is restored.`
+**Step 1 result at Step 3**: at the start of Step 3 Consolidation, poll `BashOutput(shell_id_codex)` until status is `completed`, `failed`, or `killed`. On `completed`: read `$OUTPUT_FILE` for Codex's final response. **If `codex_audit_dispatch.sh exits non-zero` (BashOutput status `failed` or non-zero exit code from polling)**: capture the stderr output, call `KillShell(shell_id_codex)`, mark Codex status FAILED in the workdoc header, proceed with Claude-only audit. Prepend to the consolidated findings: `⚠️ WARNING: Codex audit unavailable (<error reason>). All findings are single-source (Claude only). Re-run when Codex CLI dispatch is restored.`
 
 ## Step 2: Claude Audit (you)
 

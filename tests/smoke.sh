@@ -731,20 +731,21 @@ check_cross_auditor_gh_pr_checkout() {
   echo "cross-auditor.md uses gh pr checkout"
 }
 
-# 10. cross-auditor.md: within 10 lines of `mcp__codex__codex` token, contains `cwd` AND `worktree`.
+# 10. cross-auditor.md: near the async Codex helper launch, contains `CODEX_WD` AND `worktree`.
 check_cross_auditor_codex_cwd_proximity() {
   python3 - <<'PY'
 import re, sys
 lines = open('agents/cross-auditor.md').read().splitlines()
 ok = False
 for i, line in enumerate(lines):
-    if 'mcp__codex__codex' in line:
-        window = '\n'.join(lines[i:i+11])
-        if 'cwd' in window and 'worktree' in window:
+    if 'codex_audit_dispatch.sh' in line:
+        start = max(0, i - 6)
+        window = '\n'.join(lines[start:i+7])
+        if 'CODEX_WD' in window and 'worktree' in window:
             ok = True
             break
 if not ok:
-    print("cross-auditor.md: no 'mcp__codex__codex' occurrence has both 'cwd' and 'worktree' within 10 lines")
+    print("cross-auditor.md: no codex_audit_dispatch.sh launch has both CODEX_WD and worktree nearby")
     sys.exit(1)
 print("cross-auditor.md Codex cwd override proximity OK")
 PY
@@ -3999,6 +4000,16 @@ check "cross_audit_resolve_range_empty_diff"   check_cross_audit_resolve_range_e
 check "cross_audit_resolve_range_path_filter"  check_cross_audit_resolve_range_path_filter
 check "cross_audit_skill_parses_ref_range"      check_cross_audit_skill_parses_ref_range
 check "cross_audit_agent_handles_range_spec"    check_cross_audit_agent_handles_range_spec
+echo
+
+# --- cross-auditor async Codex dispatch (watchdog mitigation) ---
+echo "cross-auditor async Codex dispatch pins:"
+check "codex_audit_dispatch_helper_positive"             check_codex_audit_dispatch_helper_positive
+check "codex_audit_dispatch_helper_propagates_exit_code" check_codex_audit_dispatch_helper_propagates_exit_code
+check "codex_audit_dispatch_helper_arg_validation"       check_codex_audit_dispatch_helper_arg_validation
+check "cross_auditor_uses_async_codex_dispatch"           check_cross_auditor_uses_async_codex_dispatch
+check "cross_auditor_codex_effort_default_xhigh_kept"     check_cross_auditor_codex_effort_default_xhigh_kept
+check "cross_auditor_codex_cwd_override_async_dispatch"   check_cross_auditor_codex_cwd_proximity
 echo
 
 # --- AGENTS.md proactive-read in /feature Research (BACKLOG #37) ---
