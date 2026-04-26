@@ -4095,6 +4095,7 @@ echo
 echo "Plugin claims-vs-runtime audit pins:"
 check "smoke_proves_manifest_canonical"       check_smoke_proves_manifest_canonical
 check "smoke_summary_breaks_down_by_class"    check_smoke_summary_breaks_down_by_class
+check "agent_claims_doc_exists_and_classified" check_agent_claims_doc_exists_and_classified
 echo
 
 

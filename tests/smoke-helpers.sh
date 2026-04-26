@@ -3767,3 +3767,20 @@ check_smoke_summary_breaks_down_by_class() {
   echo "$out" | grep -qF 'Unclassified:' || { echo "suite tail missing 'Unclassified:' line"; return 1; }
   echo "smoke suite tail contains all 4 class breakdown lines"
 }
+
+check_agent_claims_doc_exists_and_classified() {
+  local doc="docs/agent-claims-vs-runtime.md"
+  # (a) file exists
+  test -f "$doc" || { echo "doc $doc missing"; return 1; }
+  # (b) contains markdown table column header with Class
+  grep -qF '| Class |' "$doc" || { echo "doc missing '| Class |' column header"; return 1; }
+  # (c) table body has >=10 rows (lines starting with | but not the separator line)
+  local rows
+  rows=$(grep -cE '^\| [^-]' "$doc" || true)
+  [ "$rows" -ge 11 ] || { echo "doc has only $((rows-1)) body rows (need >=10, found $rows pipe-lines including header)"; return 1; }
+  # (d) all 3 class tokens appear in the body
+  grep -qwF 'enforced' "$doc" || { echo "doc missing 'enforced' class token"; return 1; }
+  grep -qwF 'convention' "$doc" || { echo "doc missing 'convention' class token"; return 1; }
+  grep -qwF 'self-policed' "$doc" || { echo "doc missing 'self-policed' class token"; return 1; }
+  echo "agent-claims-vs-runtime.md: all 3 class tokens present, >=10 rows"
+}
