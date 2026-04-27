@@ -12,8 +12,6 @@ shipped_at: null
 # Points at the prior spec relative to <kb_path>/repos/<project>/, e.g.
 #   follows_up: design/2026-03-10-claim-fees-event.md
 follows_up: null
-# Optional: populated automatically when /feature new is called with --from-investigation
-# investigation_source: research/YYYY-MM-DD-<topic>.md
 tags: [spec, {project-name}]
 ---
 
@@ -49,11 +47,7 @@ New or modified endpoints, contract interfaces.
 
 New env vars, settings, or constants.
 
-### 3.6 Risks (from investigation)
-
-Only present when the spec was seeded with `--from-investigation`. Holds the
-`## Risk Register` table from the convergence report. Remove this section if
-no investigation is linked.
+### 3.6 Risks
 
 | Risk | Source | Severity | Mitigation |
 |------|--------|----------|------------|
