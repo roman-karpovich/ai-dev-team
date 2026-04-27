@@ -3862,10 +3862,37 @@ check_skill_audit_evidence_populated_at_terminal_sites() {
     fi
     return 0
   }
+  # Anchor-uniqueness check first (symmetric across all 6 anchors), then field-pair check.
+  # Future drift creating duplicates would otherwise silently mask field-pair violations.
+  local skip_anchor='If the user chooses **Skip**:'
+  local mid_anchor='**Mid-flow skip**:'
+  local skip_count mid_count
+  skip_count=$(grep -cF "$skip_anchor" "$f")
+  if [ "$skip_count" -ne 1 ]; then
+    echo "Skip-button anchor non-unique (count=$skip_count, expected 1)"
+    fail=1
+  fi
+  mid_count=$(grep -cF "$mid_anchor" "$f")
+  if [ "$mid_count" -ne 1 ]; then
+    echo "Mid-flow-skip anchor non-unique (count=$mid_count, expected 1)"
+    fail=1
+  fi
+  # The two awk-range start anchors are BOL-anchored regexes; uniqueness verified via grep -cE.
+  local loop_start_count nofind_start_count
+  loop_start_count=$(grep -cE '^7\. Set spec' "$f")
+  if [ "$loop_start_count" -ne 1 ]; then
+    echo "iter-loop-terminator start anchor non-unique (count=$loop_start_count, expected 1)"
+    fail=1
+  fi
+  nofind_start_count=$(grep -cE '^Set spec `status: AUDIT_PASSED`\.' "$f")
+  if [ "$nofind_start_count" -ne 1 ]; then
+    echo "no-findings-success start anchor non-unique (count=$nofind_start_count, expected 1)"
+    fail=1
+  fi
   local skip_win mid_win loop_win nofind_win
-  skip_win=$(grep -B10 -A10 -F 'If the user chooses **Skip**:' "$f")
+  skip_win=$(grep -B10 -A10 -F "$skip_anchor" "$f")
   _ae_check_pair 'Skip-button' 'spec_audit_evidence:' 'spec_audit_blockers:' "$skip_win" || fail=1
-  mid_win=$(grep -B10 -A10 -F '**Mid-flow skip**:' "$f")
+  mid_win=$(grep -B10 -A10 -F "$mid_anchor" "$f")
   _ae_check_pair 'Mid-flow-skip' 'spec_audit_evidence:' 'spec_audit_blockers:' "$mid_win" || fail=1
   loop_win=$(awk '/^7\. Set spec/,/^\*\*If no CRITICAL/' "$f")
   _ae_check_pair 'iter-loop-terminator' 'spec_audit_evidence:' 'spec_audit_blockers:' "$loop_win" || fail=1
