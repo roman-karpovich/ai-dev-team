@@ -50,7 +50,7 @@ Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved c
 
 Phase 0 also reads the optional `cross_audit.probes` block from the resolved config. Each probe id (`e`, `f`, `g`, and any future id) carries a four-mode kill-switch — `off | shadow | warn | block`. The resolved `probe_modes` dict (probe id → effective mode) is threaded into the cross-auditor dispatch in Phase 1-2.
 
-- **Default off**: when `cross_audit.probes` is absent from the resolved config, OR a given probe id is missing under `cross_audit.probes`, the effective mode defaults to `off`. Absence is a user-declared floor, not a synthesized gap (per §3.4 X9 resolution — the absent-key default is treated identically to an explicit `off` for CLI-override refusal purposes).
+- **Default off**: when `cross_audit.probes` is absent from the resolved config, OR a given probe id is missing under `cross_audit.probes`, the effective mode defaults to `off`. Absence is a user-declared floor, not a synthesized gap (per §3.4 X9 resolution).
 - **Unknown probe id → warning, not hard-stop**: when the YAML names a probe id the plugin does not recognize (e.g. `h: { mode: shadow }`), emit a one-line warning `cross_audit.probes.<id>: unknown probe id, treated as off — ignored for this run` and continue. Probes are a forward-looking enum; new ids arrive in follow-up specs without needing a Foundation re-release. Unknown-id emissions never hard-stop Phase 0.
 - **Mode enumeration**: the four allowed values are `off|shadow|warn|block`. Any other string emits the same one-line warning and falls back to `off`.
 
@@ -198,7 +198,7 @@ gh_token_env: <resolved token_env or omitted>
 gh_host: <resolved host or omitted>
 
 [Probe plumbing — populated from Phase 0:]
-probe_modes: [dict mapping probe id → effective mode after YAML + CLI override; empty dict when no probe configured]
+probe_modes: [dict mapping probe id → effective mode resolved from the cross_audit.probes YAML kill-switch; empty dict when no probe configured]
 # probe_receipts is NO LONGER threaded by the skill — probe dispatch happens
 # inside the cross-auditor agent at Step 0.5 (spec 2026-04-21-probe-e-diff-
 # scope-leak §3.5 / X2); receipts are produced there.

@@ -1928,8 +1928,8 @@ check_skill_md_phase3_advisory_section_footer() {
 
 check_cross_auditor_probe_modes_input_declared() {
   # agents/cross-auditor.md input-surface declares a new `probe_modes` input
-  # field (dict mapping probe id → effective mode after YAML + CLI override).
-  # Empty dict when no probe is configured.
+  # field (dict mapping probe id → effective mode resolved from the
+  # cross_audit.probes YAML kill-switch). Empty dict when no probe is configured.
   local path="agents/cross-auditor.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qE '\*\*probe_modes\*\*|`probe_modes`' "$path" \

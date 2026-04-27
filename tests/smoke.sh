@@ -3255,8 +3255,8 @@ check "check_probe_e_detector_ineligible_no_additions" check_probe_e_detector_in
 check "check_probe_e_detector_ineligible_collection_too_small" check_probe_e_detector_ineligible_collection_too_small
 check "check_probe_e_receipt_rerun_stable" check_probe_e_receipt_rerun_stable
 check "check_probe_e_changed_test_file_skipped" check_probe_e_changed_test_file_skipped
-# Step 3 — agent Step 0.5 + skill + dedupe merge_pair swap (7 spec-listed
-# helpers per §3.2 + 1 supplementary closing the §6.1 arithmetic gap).
+# Step 3 — agent Step 0.5 + skill + dedupe merge_pair swap (5 spec-listed
+# helpers post-2026-04-26 cut + 1 supplementary).
 check "check_cross_auditor_step05_probe_dispatch" check_cross_auditor_step05_probe_dispatch
 check "check_probe_e_fail_open_banner" check_probe_e_fail_open_banner
 check "check_probe_e_fail_open_schema_invalid_body" check_probe_e_fail_open_schema_invalid_body
