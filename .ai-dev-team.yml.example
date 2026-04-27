@@ -33,16 +33,3 @@ kb_path: <set-me>
 #                           # lacking cursor-discipline parameters or cardinality
 #                           # docstring keywords.
 #     g: { mode: off }      # G = test-set redundancy detector (follow-up spec)
-
-# Optional: Multi-GitHub-account config — put this block in `.ai-dev-team.local.yml`
-# (NOT the team-shared `.ai-dev-team.yml`). Account identities and token env var
-# names are personal, not team-shared. When this block is absent, `/cross-audit pr`
-# runs every `gh` call under the ambient `gh auth` context (backwards-compat).
-# github:
-#   default_account: personal
-#   accounts:
-#     personal:
-#       token_env: GH_TOKEN_PERSONAL
-#     corp:
-#       token_env: GH_TOKEN_CORP
-#       host: github.company.com
