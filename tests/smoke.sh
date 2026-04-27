@@ -3415,8 +3415,21 @@ _fixture_log_body() {
 # the trailing group is optional. The other two alternatives (`iteration=N;
 # fixed_ids=...; accepted_ids=...` and `decisions recorded; iteration=N;
 # pending_*`) are unchanged — per spec they have no evidence suffix.
+#
+# Iter-3 X6: the blocker-list inner pattern is `\[.*\]` (NOT `\[[^]]*\]`).
+# `[^]]*` rejects bracketed text inside a single-quoted blocker reason — e.g.
+# canonical Codex fail-open markers like:
+#   blockers=['codex audit unavailable: [Errno 61] Connection refused']
+# (Python errno-style stderr is the most common fail-open shape per
+# cross-auditor.md L389-396 sanitization rule, which normalizes newlines /
+# quotes / length but NOT brackets.) `.*` is safe here because the whole
+# expression is line-anchored (`^...$`) — `.*` is bounded by the trailing
+# `\]` plus end-of-line; greedy match locks onto the final `]` on the line.
+# Other list patterns (`verified=`, `accepted=`, `deferred=`, `fixed_ids=`,
+# `accepted_ids=`, `pending_*`) keep `[^]]*` because they carry only X-IDs
+# (`X1, X2, ...`) which never contain `]`.
 _fixture_latest_code_audit_marker() {
-  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?)$' | tail -1
+  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$' | tail -1
 }
 
 # Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
@@ -3712,7 +3725,9 @@ check_code_audit_resume_malformed_trailing() {
   # extended alternatives. If this guard's regex ever drifts from the helper
   # regex, the negative guard could let an extended-form trailing line slip
   # through and the test would degenerate. Both regexes patched together.
-  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?)$'; then
+  # Iter-3 X6: same `\[.*\]` patch applied symmetrically — see the helper's
+  # comment block at L3418-3431 for rationale.
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$'; then
     echo "malformed-trailing: trailing line is a complete canonical marker (fixture invalid)"
     return 1
   fi
@@ -4135,7 +4150,7 @@ check_code_audit_marker_recognition_symmetry() {
     # extracts everything after the `## Log` heading; supplying it through
     # a heredoc fixture-file substitute would over-couple. Instead, call
     # the same regex as the production helper directly via process subst.
-    if ! printf '%s\n' "$line" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?)$'; then
+    if ! printf '%s\n' "$line" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$'; then
       echo "regex MUST match $label: '$line'"
       return 1
     fi
@@ -4148,6 +4163,14 @@ check_code_audit_marker_recognition_symmetry() {
     '- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=[codex_unavailable]' || fail=1
   _ae_recognize 'extended zero-diff-skip (skipped)' \
     '- 2026-04-27: code audit: no auditable files in diff; skipping; evidence=skipped; blockers=[no_auditable_files]' || fail=1
+  # Iter-3 X6: bracketed blocker text — Codex stderr realistically contains
+  # `[Errno NN]`, `[ERROR]` log prefixes etc. cross-auditor.md L389-396
+  # sanitization rule normalizes newlines/quotes/length but NOT brackets, so
+  # canonical `single_model` markers can carry `]` inside the quoted reason.
+  # Lock in regression coverage so a future regex tightening can't reintroduce
+  # the negated-character-class fragility (`\[[^]]*\]` → `\[.*\]` patch).
+  _ae_recognize 'extended clean-passed (single_model + bracketed blocker reason)' \
+    "- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=['codex audit unavailable: [Errno 61] Connection refused']" || fail=1
   # Backward compat: legacy shapes (pre-enum) still accepted.
   _ae_recognize 'legacy clean-passed (no evidence suffix)' \
     '- 2026-04-22: code audit passed; iteration=2; verified=[X3], accepted=[X5], deferred=[X9]' || fail=1
