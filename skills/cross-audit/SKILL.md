@@ -31,10 +31,9 @@ decision fork in Phase 3 carries the `AWAITING YOUR INPUT` banner.
 - `--diff` → scope the audit to files changed since `base_branch` (default: auto-detected repo default, falls back to `main`). Can combine with any mode: e.g. `--diff --mode logic` audits only changed files using logic focus areas.
 - `--mode logic|security|full` → audit mode (default: `full`)
 - `--severity high|medium+` → severity floor (default: `high`). `high` collects only CRITICAL/HIGH (current behavior). `medium+` also includes MEDIUM — useful for small features where serious findings are unlikely but nitpick-level review is still valuable.
-- `--account <name>` → (multi-account mode) explicit account override for the PR-audit auth context; names an entry under `github.accounts` in `.ai-dev-team.local.yml`. Takes precedence over URL-host auto-routing and `default_account`. See Phase 0.5 hard-stop matrix (§3.7b) below for conflict semantics. Also accepted on `/cross-audit publish` where it overrides the findings-frontmatter `gh_account_context:` value.
 - `--force-publish-stale` → (publish only) bypasses the force-push preflight when the current PR `headRefOid` has diverged from the audit-time `pr_head_oid`. Records the stale OID in `head_oid_at_publish` for audit trail. See `references/publish.md`.
 - `--republish <ids>` → (publish only) forces re-posting IDs already present in a `published_to` record for the same PR URL. Adds a new record.
-- `--materialize=worktree` → (ref-range mode only) create a temporary worktree at `refB` (`git worktree add /tmp/cross-audit-<audit_slug> <refB>`) so the cross-auditor reads file content from `refB` rather than the current working tree. Cleanup: `git worktree remove --force` + `rm -rf` at audit end (best-effort). Default off (no materialization). Anti-combinations: PR mode + `--materialize` → hard-stop ("PR mode already materializes via `gh pr checkout`; `--materialize` is for ref-range only"); non-ref-range scope + `--materialize` → warn ("`--materialize` is a no-op outside ref-range mode") and proceed; `--account` + ref-range → hard-stop ("ref-range mode does not authenticate; `--account` is for PR mode only").
+- `--materialize=worktree` → (ref-range mode only) create a temporary worktree at `refB` (`git worktree add /tmp/cross-audit-<audit_slug> <refB>`) so the cross-auditor reads file content from `refB` rather than the current working tree. Cleanup: `git worktree remove --force` + `rm -rf` at audit end (best-effort). Default off (no materialization). Anti-combinations: PR mode + `--materialize` → hard-stop ("PR mode already materializes via `gh pr checkout`; `--materialize` is for ref-range only"); non-ref-range scope + `--materialize` → warn ("`--materialize` is a no-op outside ref-range mode") and proceed.
 
 ---
 
@@ -44,7 +43,7 @@ KB discovery algorithm (resolving `kb_path` and `project` via `.ai-dev-team.loca
 
 ### Cross-audit extensions
 
-Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch. Also reads the optional `github:` block from `.ai-dev-team.local.yml` for multi-account PR auth; see `docs/kb-discovery.md` for the YAML schema and Phase 0.5 below for the full account-resolution ladder.
+Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch.
 
 #### `cross_audit.probes.<id>.mode` read (probes kill-switch)
 
@@ -65,58 +64,23 @@ See `docs/kb-discovery.md` for the canonical YAML schema and `docs/kb-discovery.
 
 Runs only when `$ARGUMENTS` selected the `pr <N>` / `pr owner/repo#<N>` / `pr <url>` form. Produces the five fields (`pr_number`, `pr_repo`, `pr_url`, `pr_head_oid`, `pr_changed_files`) that Phase 1-2 threads into the cross-auditor dispatch. Skipped entirely for non-PR audits — they still use the legacy `<scope>` path.
 
-### Account resolution (multi-account mode)
-
-When the `github:` block (see Phase 0) is present in `.ai-dev-team.local.yml`, Phase 0.5 resolves exactly one account before running any of the downstream `gh` calls below. The resolution ladder is:
-
-```
-precedence: --account flag → URL host match → default_account → ambient gh auth
-```
-
-- **`--account <name>`** (highest precedence): must name an existing key under `accounts:`. When the arg is `pr <url>`, the resolved account's `host` must match the URL host.
-- **URL host match** (only when arg is `pr <url>`): extract the host from the URL, match against `accounts[*].host` (accounts without `host:` implicitly match `github.com`). Zero matches → hard-stop; multiple matches → hard-stop (disambiguate with `--account`).
-- **`default_account`**: fallback for bare `pr <N>` / `pr owner/repo#<N>` forms. Required when `github:` is present, so this path always resolves unless `default_account` itself names a non-existent account (case (g) below).
-- **Ambient `gh auth`**: terminal fallback — only when the `github:` block is absent entirely (case (f) below).
-
-Once an account is resolved, bind two shell-level values for the rest of Phase 0.5 and for the dispatch into Phase 1-2:
-- `<token_env>` = `github.accounts.<resolved>.token_env` (env var name, e.g. `GH_TOKEN_PERSONAL`).
-- `<host>` = `github.accounts.<resolved>.host` if set, else `github.com`.
-
-Every downstream `gh` call in this section (all five of preflight 2, preflight 3, the bare-`pr <N>` resolver `gh repo view`, `gh pr view`, `gh api /pulls/<N>/files`) is rendered with the literal prefix `GH_TOKEN="${<token_env>}" GH_HOST="<host>"` leading the command. gh auth status (preflight 1) is the ONLY unprefixed Phase 0.5 call — it probes ambient auth; all five other Phase 0.5 gh calls run under the resolved prefix when a github: account was resolved.
-
-When .ai-dev-team.local.yml contains no github: block, Phase 0.5 skips account resolution entirely; every gh call runs without the env prefix, preserving current single-account behaviour.
-
-#### §3.7b hard-stop matrix (mirror of spec §3.7b)
-
-| Case | Trigger | Outcome |
-|------|---------|---------|
-| (a) | `--account <name>` names a non-existent account under `accounts:` | Hard-stop. Remediation: `Account '<name>' not defined under github.accounts (configured: <comma-separated list of keys>). Choose one or remove --account.` |
-| (b) | `--account <name>` is set AND arg is a URL AND the resolved account's `host` ≠ URL host | Hard-stop. Remediation: `--account <name> points at host <account.host>, but URL is on <url-host>. Remove --account or choose an account whose host matches.` |
-| (c) | URL arg AND `accounts[*].host` matches ≥2 accounts (including accounts without `host:` that implicitly match `github.com`) | Hard-stop. Remediation: `URL host <url-host> matches multiple accounts: <comma-separated list>. Re-run with --account <name> to disambiguate.` |
-| (d) | URL arg AND `accounts[*].host` matches 0 accounts | Hard-stop. Remediation: `URL host <url-host> has no matching account (configured hosts: <comma-separated list or "github.com (default) only">).` |
-| (e) | bare `pr <N>` OR `pr owner/repo#<N>` AND `github:` block present AND `default_account` absent (config invariant violation) | Hard-stop. Remediation: `default_account is required when github: block is present. Add default_account: <name> or remove the github: block.` |
-| (f) | `github:` block absent entirely AND `--account` flag NOT set | Skip account resolution; run every `gh` call bare (backwards-compat per F11). Not a hard-stop. |
-| (g) | **PR mode only.** `default_account: <name>` is set but `<name>` is not a key under `accounts:` (config-invariant violation; surfaces on bare `pr <N>` / `pr owner/repo#<N>`). Publish never consults `default_account` — the publish-mode stale-account case is handled by F15 sentence 1, not by case (g). | Hard-stop. Remediation: `default_account '<name>' not defined under github.accounts (configured: <comma-separated list of keys>). Fix .ai-dev-team.local.yml.` |
-| (h) | `github:` block absent entirely AND `--account <name>` flag is set (in any mode: `/cross-audit pr` or `/cross-audit publish`). Resolves the (a)/(f) overlap that would otherwise be ambiguous. | Hard-stop. Remediation: `--account <name> requires a github: block in .ai-dev-team.local.yml. Add the block with the named account or remove --account.` |
-
 ### Preflights (hard-stop on failure — never silent fallback)
 
-1. **`gh` authentication**: `gh auth status`. Absent or unauthenticated → stop with remediation `gh auth login` / `gh auth refresh -s repo`. Never pretend the audit ran. **This preflight is intentionally unprefixed — it probes ambient auth.**
-2. **token env resolves to non-empty** (multi-account mode only): the resolved account's `token_env` must name an env var that is currently exported and non-empty. If empty or unset, stop with remediation naming the missing var — e.g. `export GH_TOKEN_PERSONAL=<token_with_pull_requests:write_on_pr_repo>`. Never silently fall back to ambient auth.
-3. **REST rate budget**: `GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh api rate_limit -q '.rate.remaining'`. If `remaining < 50`, stop with the output of `gh api rate_limit` (reset time included). Audit + publish together consume ≈3-5 REST calls.
-4. **cwd-repo matches pr_repo**: once `pr_repo` is resolved (see below), run `GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh repo view --json nameWithOwner -q '.nameWithOwner'` inside the caller's cwd. If that value ≠ `pr_repo`, stop with remediation "Run `/cross-audit pr <N>` from a clone of `<pr_repo>` (currently in `<cwd_repo>`)". Rationale: the cross-auditor's isolated worktree is derived from caller's cwd; `gh pr checkout` only succeeds when the local repo targets `pr_repo`.
+1. **`gh` authentication**: `gh auth status`. Absent or unauthenticated → stop with remediation `gh auth login` / `gh auth refresh -s repo`. Never pretend the audit ran.
+2. **REST rate budget**: `gh api rate_limit -q '.rate.remaining'`. If `remaining < 50`, stop with the output of `gh api rate_limit` (reset time included). Audit + publish together consume ≈3-5 REST calls.
+3. **cwd-repo matches pr_repo**: once `pr_repo` is resolved (see below), run `gh repo view --json nameWithOwner -q '.nameWithOwner'` inside the caller's cwd. If that value ≠ `pr_repo`, stop with remediation "Run `/cross-audit pr <N>` from a clone of `<pr_repo>` (currently in `<cwd_repo>`)". Rationale: the cross-auditor's isolated worktree is derived from caller's cwd; `gh pr checkout` only succeeds when the local repo targets `pr_repo`.
 
 ### Resolve pr_number / pr_repo / pr_url / headRefOid
 
 Parse the argument form:
-- `pr <N>`: `pr_number = N`. Run `GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh repo view --json nameWithOwner -q '.nameWithOwner'` in cwd → `pr_repo`. If cwd is not a gh-known repo, stop.
+- `pr <N>`: `pr_number = N`. Run `gh repo view --json nameWithOwner -q '.nameWithOwner'` in cwd → `pr_repo`. If cwd is not a gh-known repo, stop.
 - `pr owner/repo#<N>`: split on `#` → `pr_repo`, `pr_number`.
 - `pr <url>`: parse `https://github.com/<owner>/<repo>/pull/<N>` → `pr_repo`, `pr_number`.
 
 Then fetch PR metadata and capture `headRefOid`:
 
 ```
-GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh pr view <pr_number> --repo <pr_repo> \
+gh pr view <pr_number> --repo <pr_repo> \
   --json number,url,baseRefName,headRefName,headRefOid,headRepositoryOwner,headRepository,baseRepository
 ```
 
@@ -128,7 +92,7 @@ GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh pr view <pr_number> --repo <pr_rep
 GitHub's `/pulls/{N}/files` endpoint caps at 100 without pagination; `gh pr view --json files` silently truncates at 100. Always use the paginated REST endpoint with an explicit jq projection that preserves `status`, `previous_filename`, and `patch_present` (the raw `patch` text is stripped — `is_submodule` is resolved in the worktree, see `agents/cross-auditor.md`):
 
 ```
-GH_TOKEN="${<token_env>}" GH_HOST="<host>" gh api "repos/<pr_repo>/pulls/<pr_number>/files" \
+gh api "repos/<pr_repo>/pulls/<pr_number>/files" \
   --paginate \
   --jq '.[] | {filename, status, previous_filename, patch_present: (.patch != null)}'
 ```
@@ -194,8 +158,6 @@ pr_repo: [owner/repo]
 pr_url: [https://github.com/.../pull/N]
 pr_head_oid: [headRefOid sha]
 pr_changed_files: [ {filename, status, previous_filename, patch_present}, ... ]
-gh_token_env: <resolved token_env or omitted>
-gh_host: <resolved host or omitted>
 
 [Probe plumbing — populated from Phase 0:]
 probe_modes: [dict mapping probe id → effective mode resolved from the cross_audit.probes YAML kill-switch; empty dict when no probe configured]
@@ -205,8 +167,6 @@ probe_modes: [dict mapping probe id → effective mode resolved from the cross_a
 
 [If re-audit: include the current findings doc path for context]
 ```
-
-When no account resolved, both fields are OMITTED from the dispatch (not present as empty strings). This is mandatory — an empty-string value would leak into the agent as a literal, triggering an I2 violation.
 
 **Ref-range materialization** (when `materialize_mode == worktree`): before dispatching, create the worktree: `git worktree add /tmp/cross-audit-<audit_slug> <refB>`. Pass `working_directory: /tmp/cross-audit-<audit_slug>` to the cross-auditor. Register cleanup: after audit completion (or on error), run `git worktree remove --force /tmp/cross-audit-<audit_slug>` then `rm -rf /tmp/cross-audit-<audit_slug>` (best-effort — failure is logged, not fatal). When `materialize_mode` is unset and neither refA nor refB equals HEAD, emit one warning line before dispatch: "⚠️ Reading file content from current working tree (not from <refB>). Use `--materialize=worktree` for precise content at refB."
 
