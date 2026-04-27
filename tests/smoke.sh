@@ -3817,6 +3817,225 @@ check "r5_step1_reads_directive_files"             check_r5_step1_reads_directiv
 check "cross_auditor_spec_mode_repo_convention_rule" check_cross_auditor_spec_mode_repo_convention_rule
 echo
 
+# --- Audit-evidence enum (spec 2026-04-27-audit-evidence-enum) ---
+
+# (a) spec-template carries the 4 paired frontmatter fields + a comment listing
+# all 4 canonical enum values + the legacy_unknown literal.
+check_spec_template_audit_evidence_schema() {
+  local f='skills/feature/references/spec-template.md'
+  local n v l
+  n=$(grep -cE '^(spec|code)_audit_(evidence|blockers):' "$f")
+  v=$(grep -cE 'dual_model|single_model|self_fallback|skipped' "$f")
+  l=$(grep -cF 'legacy_unknown' "$f")
+  if [ "$n" -ne 4 ]; then
+    echo "spec-template: expected 4 frontmatter field lines (spec_audit_evidence/blockers + code_audit_evidence/blockers); got $n"
+    return 1
+  fi
+  if [ "$v" -lt 4 ]; then
+    echo "spec-template: comment block must list all 4 enum values; got $v lines"
+    return 1
+  fi
+  if [ "$l" -lt 1 ]; then
+    echo "spec-template: missing 'legacy_unknown' reader-semantics literal"
+    return 1
+  fi
+  return 0
+}
+
+# (b) SKILL.md populates BOTH paired fields (evidence + blockers) within ±10
+# lines of each of the six audit-terminal anchors. Anchor-uniqueness check
+# precedes the field-pair check (per spec iter-8 X29 — the bare zero-diff
+# substring is non-unique; only the full Log-template form with leading
+# backtick + `- YYYY-MM-DD:` prefix is safe).
+check_skill_audit_evidence_populated_at_terminal_sites() {
+  local f='skills/feature/SKILL.md'
+  local fail=0
+  _ae_check_pair() {
+    local name="$1" ev="$2" bl="$3" win="$4"
+    if ! printf '%s' "$win" | grep -qF "$ev"; then
+      echo "missing $ev within ±10 lines of $name anchor"
+      return 1
+    fi
+    if ! printf '%s' "$win" | grep -qF "$bl"; then
+      echo "missing $bl within ±10 lines of $name anchor"
+      return 1
+    fi
+    return 0
+  }
+  local skip_win mid_win loop_win nofind_win
+  skip_win=$(grep -B10 -A10 -F 'If the user chooses **Skip**:' "$f")
+  _ae_check_pair 'Skip-button' 'spec_audit_evidence:' 'spec_audit_blockers:' "$skip_win" || fail=1
+  mid_win=$(grep -B10 -A10 -F '**Mid-flow skip**:' "$f")
+  _ae_check_pair 'Mid-flow-skip' 'spec_audit_evidence:' 'spec_audit_blockers:' "$mid_win" || fail=1
+  loop_win=$(awk '/^7\. Set spec/,/^\*\*If no CRITICAL/' "$f")
+  _ae_check_pair 'iter-loop-terminator' 'spec_audit_evidence:' 'spec_audit_blockers:' "$loop_win" || fail=1
+  nofind_win=$(awk '/^Set spec `status: AUDIT_PASSED`\./,/^\*\*Mid-flow/' "$f")
+  _ae_check_pair 'no-findings-success' 'spec_audit_evidence:' 'spec_audit_blockers:' "$nofind_win" || fail=1
+  local passed_anchor='`- YYYY-MM-DD: code audit passed; iteration='
+  local passed_count
+  passed_count=$(grep -cF "$passed_anchor" "$f")
+  if [ "$passed_count" -ne 1 ]; then
+    echo "code-audit-passed anchor non-unique (count=$passed_count, expected 1)"
+    fail=1
+  fi
+  local passed_win
+  passed_win=$(grep -B10 -A10 -F "$passed_anchor" "$f")
+  _ae_check_pair 'code-audit-passed' 'code_audit_evidence:' 'code_audit_blockers:' "$passed_win" || fail=1
+  local zero_anchor='`- YYYY-MM-DD: code audit: no auditable files in diff; skipping`'
+  local zero_count
+  zero_count=$(grep -cF "$zero_anchor" "$f")
+  if [ "$zero_count" -ne 1 ]; then
+    echo "zero-diff anchor non-unique (count=$zero_count, expected 1)"
+    fail=1
+  fi
+  local zero_win
+  zero_win=$(grep -B10 -A10 -F "$zero_anchor" "$f")
+  _ae_check_pair 'zero-diff' 'code_audit_evidence:' 'code_audit_blockers:' "$zero_win" || fail=1
+  local pmtxt ztxt
+  pmtxt=$(grep -cE 'code audit passed.*evidence=.*blockers=' "$f")
+  ztxt=$(grep -cE 'no auditable files in diff.*skipping.*evidence=.*blockers=' "$f")
+  if [ "$pmtxt" -lt 1 ] || [ "$ztxt" -lt 1 ]; then
+    echo "missing extended Log marker template (evidence=+blockers= literals): pmtxt=$pmtxt ztxt=$ztxt"
+    fail=1
+  fi
+  return $fail
+}
+
+# (c) cross-auditor.md findings.md template carries BOTH evidence_class:
+# AND evidence_blockers: as YAML-frontmatter scalars, anchored under the
+# `### findings.md` heading (NOT in the agent's own top-of-file frontmatter
+# at L1-L10; NOT as body bullets).
+check_cross_auditor_evidence_class_in_yaml_frontmatter() {
+  local f='agents/cross-auditor.md'
+  local region ec eb
+  region=$(awk '/^### findings\.md/{tpl=1; next} tpl && /^---$/{c++; next} tpl && c==1' "$f")
+  ec=$(printf '%s' "$region" | grep -cF 'evidence_class:')
+  eb=$(printf '%s' "$region" | grep -cF 'evidence_blockers:')
+  if [ "$ec" -lt 1 ]; then
+    echo "missing evidence_class: in findings.md template YAML frontmatter (anchored under ### findings.md)"
+    return 1
+  fi
+  if [ "$eb" -lt 1 ]; then
+    echo "missing evidence_blockers: in findings.md template YAML frontmatter (anchored under ### findings.md)"
+    return 1
+  fi
+  return 0
+}
+
+# (d) Spec-mode return contract: cross-auditor.md AND SKILL.md §3.5b both
+# name the two-adjacent-final-lines `evidence_class:` + `evidence_blockers:`
+# return-text contract.
+check_cross_auditor_spec_mode_return_contract() {
+  local agent='agents/cross-auditor.md'
+  local skill='skills/feature/SKILL.md'
+  local agent_hits skill_hits
+  agent_hits=$(grep -ciE 'evidence_class.{0,80}evidence_blockers|two.{0,40}final.{0,40}lines|adjacent.{0,40}final.{0,40}lines' "$agent")
+  skill_hits=$(grep -ciE 'evidence_class.{0,80}evidence_blockers|two.{0,40}final.{0,40}lines|adjacent.{0,40}final.{0,40}lines' "$skill")
+  if [ "$agent_hits" -lt 1 ]; then
+    echo "cross-auditor.md does not name the two-adjacent-final-lines return contract for spec mode"
+    return 1
+  fi
+  if [ "$skill_hits" -lt 1 ]; then
+    echo "SKILL.md §3.5b does not name the two-adjacent-final-lines return contract for spec mode"
+    return 1
+  fi
+  return 0
+}
+
+# (e) All enum-bearing tokens across SKILL.md, spec-template.md,
+# cross-auditor.md, AI_Dev_Team_Overview.md belong to the canonical set
+# {null, dual_model, single_model, self_fallback, skipped}. Three key
+# patterns covered: `*_audit_evidence:`, `evidence_class:`, and the
+# Log-marker form `evidence=<token>;`.
+check_audit_evidence_enum_values_canonical() {
+  local files='skills/feature/SKILL.md skills/feature/references/spec-template.md agents/cross-auditor.md docs/AI_Dev_Team_Overview.md'
+  local tokens
+  # Extract right-hand-side tokens for each pattern. The character class
+  # [A-Za-z_<>] keeps angle-bracket placeholder tokens (`<value>`, `<token>`)
+  # intact so the case match below can whitelist them as documentation
+  # placeholders rather than flagging them as non-canonical.
+  tokens=$(
+    {
+      grep -hE '^(spec|code)_audit_evidence:[[:space:]]+[A-Za-z_<>]+' $files 2>/dev/null \
+        | sed -E 's/^[a-z]+_audit_evidence:[[:space:]]+([A-Za-z_<>]+).*/\1/'
+      grep -hE '(^|[^A-Za-z_])evidence_class:[[:space:]]+[A-Za-z_<>]+' $files 2>/dev/null \
+        | sed -E 's/.*evidence_class:[[:space:]]+([A-Za-z_<>]+).*/\1/'
+      grep -hoE 'evidence=[A-Za-z_<>]+;' $files 2>/dev/null \
+        | sed -E 's/evidence=([A-Za-z_<>]+);/\1/'
+    }
+  )
+  local bad=0
+  while IFS= read -r tok; do
+    [ -z "$tok" ] && continue
+    case "$tok" in
+      null|dual_model|single_model|self_fallback|skipped) ;;
+      '<value>'|'<token>') ;;
+      *)
+        echo "non-canonical enum token: '$tok'"
+        bad=1
+        ;;
+    esac
+  done <<<"$tokens"
+  return $bad
+}
+
+# (f) SKILL.md §3.5b literally documents `null = legacy_unknown` AND uses the
+# inclusive predicate `∈ {single_model, self_fallback, skipped}` — never the
+# inverse `!= dual_model` form (which would flag every legacy spec forever).
+check_skill_legacy_null_reader_semantics() {
+  local f='skills/feature/SKILL.md'
+  if ! grep -qF 'legacy_unknown' "$f"; then
+    echo "SKILL.md missing 'legacy_unknown' literal"
+    return 1
+  fi
+  if ! grep -qF '∈ {single_model, self_fallback, skipped}' "$f"; then
+    echo "SKILL.md missing inclusive degraded-flag predicate '∈ {single_model, self_fallback, skipped}'"
+    return 1
+  fi
+  if grep -qF '!= dual_model' "$f"; then
+    echo "SKILL.md contains forbidden inverse predicate '!= dual_model' (would flag every legacy spec)"
+    return 1
+  fi
+  return 0
+}
+
+# (g) Status-mode region (NOT just §3.5b prose) literally contains BOTH
+# `spec_audit_evidence` AND `code_audit_evidence` (NOT just bare
+# `audit_evidence` — the both-field assertion is load-bearing per §3.1
+# two-field design). The region also contains the inclusive predicate.
+# Continue mode is NOT checked — it has no row renderer.
+check_skill_renderer_evidence_flag_wired() {
+  local f='skills/feature/SKILL.md'
+  local region status_spec status_code status_inclusive
+  region=$(awk '/^## Status mode/{flag=1; next} flag && /^## /{exit} flag' "$f")
+  status_spec=$(printf '%s' "$region" | grep -cF 'spec_audit_evidence')
+  status_code=$(printf '%s' "$region" | grep -cF 'code_audit_evidence')
+  status_inclusive=$(printf '%s' "$region" | grep -cE 'single_model.*self_fallback.*skipped|∈ \{single_model')
+  if [ "$status_spec" -lt 1 ]; then
+    echo "Status-mode region missing 'spec_audit_evidence' field reference"
+    return 1
+  fi
+  if [ "$status_code" -lt 1 ]; then
+    echo "Status-mode region missing 'code_audit_evidence' field reference"
+    return 1
+  fi
+  if [ "$status_inclusive" -lt 1 ]; then
+    echo "Status-mode region missing inclusive degraded-flag predicate"
+    return 1
+  fi
+  return 0
+}
+
+echo "Audit-evidence enum pins:"
+check "audit-evidence-spec-template-schema"                check_spec_template_audit_evidence_schema
+check "audit-evidence-skill-populated-at-terminal-sites"   check_skill_audit_evidence_populated_at_terminal_sites
+check "audit-evidence-cross-auditor-yaml-frontmatter"      check_cross_auditor_evidence_class_in_yaml_frontmatter
+check "audit-evidence-cross-auditor-spec-mode-contract"    check_cross_auditor_spec_mode_return_contract
+check "audit-evidence-enum-values-canonical"               check_audit_evidence_enum_values_canonical
+check "audit-evidence-skill-legacy-null-reader-semantics"  check_skill_legacy_null_reader_semantics
+check "audit-evidence-skill-renderer-flag-wired"           check_skill_renderer_evidence_flag_wired
+echo
+
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
 echo "Plugin claims-vs-runtime audit pins:"
 check "smoke_proves_manifest_canonical"       check_smoke_proves_manifest_canonical
