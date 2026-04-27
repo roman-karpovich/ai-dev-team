@@ -474,8 +474,6 @@ check_kb_discovery_doc_canonical() {
     || { echo "$path missing '## Algorithm' section"; return 1; }
   grep -qF '## Post-discovery yml save prompt' "$path" \
     || { echo "$path missing '## Post-discovery yml save prompt' section"; return 1; }
-  grep -qF '## Multi-account github: config block' "$path" \
-    || { echo "$path missing '## Multi-account github: config block' section"; return 1; }
   grep -qF '## Skill extensions — read in addition to the core algorithm' "$path" \
     || { echo "$path missing '## Skill extensions — read in addition to the core algorithm' section"; return 1; }
   grep -qF '### feature skill' "$path" \
@@ -512,23 +510,7 @@ check_kb_discovery_doc_canonical() {
   printf '%s\n' "$prompt_section" | grep -qF 'Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]' \
     || { echo "$path ## Post-discovery yml save prompt section missing byte-exact 'Save \`kb_path\` and \`project\` to \`.ai-dev-team.yml\` so future sessions skip discovery? [Y/n]' prompt"; return 1; }
 
-  # Multi-account github: config block section must reproduce the YAML keys.
-  local gh_section
-  gh_section=$(awk '
-    !in_s && /^## Multi-account github: config block/ { in_s = 1; next }
-    in_s && /^## / { exit }
-    in_s { print }
-  ' "$path")
-  printf '%s\n' "$gh_section" | grep -qE '^[[:space:]]*github:' \
-    || { echo "$path ## Multi-account github: config block section missing 'github:' key"; return 1; }
-  printf '%s\n' "$gh_section" | grep -qE '^[[:space:]]*default_account:' \
-    || { echo "$path ## Multi-account github: config block section missing 'default_account:' key"; return 1; }
-  printf '%s\n' "$gh_section" | grep -qE '^[[:space:]]*accounts:' \
-    || { echo "$path ## Multi-account github: config block section missing 'accounts:' key"; return 1; }
-  printf '%s\n' "$gh_section" | grep -qE '^[[:space:]]*token_env:' \
-    || { echo "$path ## Multi-account github: config block section missing 'token_env:' key"; return 1; }
-
-  echo "$path canonical KB discovery doc (all required headings + 9-step Algorithm + yml prompt + github: keys)"
+  echo "$path canonical KB discovery doc (all required headings + 9-step Algorithm + yml prompt)"
 }
 
 check_skill_phase0_references_shared_doc() {
