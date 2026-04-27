@@ -46,27 +46,6 @@ If no valid config resolved `kb_path` and a sibling KB is auto-discovered, confi
 
 After legacy discovery succeeds (step 9 resolved via memory / sibling / ask), if `.ai-dev-team.yml` does not exist in the repo root, prompt: **"Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]"**. On yes: write a file containing the resolved `kb_path` and `project` fields (copy-and-substitute from `.ai-dev-team.yml.example` if present). If the file exists but lacks one of these fields, print a one-line warning with the value to add — never overwrite user config automatically.
 
-## Multi-account github: config block (cross-audit only, reference)
-
-Cross-audit reads an optional `github:` block from `.ai-dev-team.local.yml` (account identities are personal, not team-shared — so this block lives in the local override file, not the team-shared `.ai-dev-team.yml`). Shape:
-
-```yaml
-github:
-  default_account: personal
-  accounts:
-    personal:
-      token_env: GH_TOKEN_PERSONAL
-    corp:
-      token_env: GH_TOKEN_CORP
-      host: github.company.com
-```
-
-The block is optional. When present, it enables multi-account auth routing for PR-mode audits and publish: Phase 0.5 resolves one account per invocation and every subsequent `gh` call in the PR-audit surface is prefixed with `GH_TOKEN="${<token_env>}" GH_HOST="<host>"` so the credential is scoped to that subprocess without mutating global `gh auth` state. Resolution precedence (see cross-audit/SKILL.md Phase 0.5 for the full matrix):
-
-`precedence: --account flag → URL host match → default_account → ambient gh auth`
-
-When the `github:` block is absent, Phase 0.5 skips account resolution entirely and every `gh` call runs bare — existing single-account users are unaffected.
-
 ## Skill extensions — read in addition to the core algorithm
 
 ### feature skill
@@ -75,7 +54,7 @@ Feature skill reads `codex.model` and `codex.reasoning_effort` from the resolved
 
 ### cross-audit skill
 
-Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch. Also reads the optional `github:` block from `.ai-dev-team.local.yml` for multi-account PR auth; see the "Multi-account github: config block" section above for the YAML schema and cross-audit/SKILL.md Phase 0.5 for the full account-resolution ladder.
+Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch.
 
 #### `cross_audit.probes.<id>.mode` kill-switch
 
