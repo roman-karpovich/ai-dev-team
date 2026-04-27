@@ -3983,8 +3983,11 @@ check_audit_evidence_enum_values_canonical() {
   # placeholders rather than flagging them as non-canonical.
   tokens=$(
     {
-      grep -hE '^(spec|code)_audit_evidence:[[:space:]]+[A-Za-z_<>]+' $files 2>/dev/null \
-        | sed -E 's/^[a-z]+_audit_evidence:[[:space:]]+([A-Za-z_<>]+).*/\1/'
+      # Non-BOL form catches inline backticked usages too (e.g. SKILL.md
+      # `set \`spec_audit_evidence: skipped\``). Asymmetric BOL anchoring
+      # would let inline drift (e.g. inline `pending`) slip past.
+      grep -hoE '(spec|code)_audit_evidence:[[:space:]]+[A-Za-z_<>]+' $files 2>/dev/null \
+        | sed -E 's/.*_audit_evidence:[[:space:]]+([A-Za-z_<>]+).*/\1/'
       grep -hE '(^|[^A-Za-z_])evidence_class:[[:space:]]+[A-Za-z_<>]+' $files 2>/dev/null \
         | sed -E 's/.*evidence_class:[[:space:]]+([A-Za-z_<>]+).*/\1/'
       grep -hoE 'evidence=[A-Za-z_<>]+;' $files 2>/dev/null \
