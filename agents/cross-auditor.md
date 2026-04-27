@@ -27,8 +27,6 @@ You receive a prompt with:
 - **project**: project name used for KB path construction (e.g. `stellar-arbiter`)
 - **audit_slug**: slug for naming the output documents (e.g. `2026-04-14-mta-refactor`)
 - **working_directory**: absolute path Codex should use as its cwd (required — typically the caller's cwd). If omitted, fall back to process cwd and log a warning to the workdoc header.
-- **gh_token_env** (PR mode only, optional): env var name holding the GitHub token for the resolved account. When absent OR empty, agent uses ambient `gh auth` — the `gh pr checkout` command is rendered bare (see F10).
-- **gh_host** (PR mode only, optional): host for `GH_HOST` (e.g. `github.company.com`). When absent OR empty, defaults to implicit ambient behaviour (same bare rendering as F10).
 - **base_branch**: branch to diff against (optional, for change-based audits)
 - **range_spec** (optional): formatted git diff range, e.g. `v1.7.0...v2.0.2` or `v1.7.0..v2.0.2 -- subdir/`. When set, drives the diff command directly; takes precedence over `base_branch...HEAD`. Mutually exclusive with PR mode (`pr_number` set).
 - **previously_fixed**: list of finding IDs that were FIXED in prior iterations — skip re-reporting these (do NOT include ACCEPTED or DEFERRED items here)
@@ -139,16 +137,8 @@ Runs only when `pr_number` is set. Skip entirely otherwise.
 
 The caller's cwd is **not** a safe source of audit content — it may be on a different branch, have uncommitted work, or (for fork PRs) lack the fork head commits entirely. All PR audit content lives in this agent's isolated worktree.
 
-1. Inside the isolated worktree, before any file read, run `gh pr checkout` in one of TWO forms depending on whether the dispatch supplied multi-account env inputs.
+1. Inside the isolated worktree, before any file read, run `gh pr checkout`:
 
-   When gh_token_env and gh_host are absent from the agent input, the gh pr checkout command is rendered without the env prefix (bare gh pr checkout <pr_number> --force --repo <pr_repo>) — never as GH_TOKEN="" GH_HOST="" gh pr checkout ....
-
-   Multi-account form (used when both `gh_token_env` and `gh_host` input fields are present AND non-empty):
-   ```
-   GH_TOKEN="${<gh_token_env>}" GH_HOST="<gh_host>" gh pr checkout <pr_number> --force --repo <pr_repo>
-   ```
-
-   Single-account form (used when either `gh_token_env` or `gh_host` is absent OR empty):
    ```
    gh pr checkout <pr_number> --force --repo <pr_repo>
    ```
@@ -405,8 +395,6 @@ If the findings file already exists (re-audit): read it, preserve all existing e
 - Append new findings with new IDs continuing the monotonic sequence
 
 **PR mode only**: write `pr_number:` / `pr_repo:` / `pr_url:` / `pr_head_oid:` (all scalars) and the `pr_files:` list into the findings frontmatter on every audit iteration. These fields are the single source of truth for the publish action (`skills/cross-audit/references/publish.md`) and for the standalone `/cross-audit publish <slug> <ids>` entry point — publish runs in caller cwd (not a worktree) and never re-fetches them. `pr_files` is produced by `hooks/lib/build_pr_files.sh` from the `pr_changed_files` input plus in-worktree `git ls-tree HEAD` output. On re-audit, overwrite these fields with the current audit's values (not append) — they describe the PR head at this iteration's audit time.
-
-PR mode only: write gh_account_context: <resolved_account_name_or_null> into findings frontmatter on every audit iteration. Publish reads this field to re-derive the env prefix on standalone invocations (see skills/cross-audit/references/publish.md §1). The value is the account name resolved in Phase 0.5 (e.g. `personal`, `corp`) when the `gh_token_env` / `gh_host` inputs were supplied, otherwise literal `null` (single-account mode). Re-audit iterations overwrite the field with the current resolution.
 
 ```markdown
 ---
