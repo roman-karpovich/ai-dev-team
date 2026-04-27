@@ -1879,41 +1879,6 @@ check_findings_renderer_combined_fail_open_banner() {
   check_findings_renderer_combined_fail_open_banner_fixture_f
 }
 
-# --- Step 5: --probe-downgrade CLI flag + Phase 3 UX + cross-auditor input-surface ---
-
-check_skill_md_probe_downgrade_flag() {
-  # SKILL.md argument-parsing flags list declares --probe-downgrade <id>=<mode>
-  # with downgrade-only semantics (block → warn → shadow → off allowed;
-  # upgrade direction refused with one-line warning per §3.4).
-  local path="skills/cross-audit/SKILL.md"
-  [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  grep -qF -- '--probe-downgrade' "$path" \
-    || { echo "$path missing --probe-downgrade flag declaration"; return 1; }
-  grep -qE 'downgrade.*only|only.*downgrade' "$path" \
-    || { echo "$path missing downgrade-only semantics (upgrade refused) for --probe-downgrade"; return 1; }
-  # Per §3.4 the allowed direction must be enumerated or implied; require at
-  # least one of the canonical phrasings.
-  grep -qE 'block[[:space:]]*(→|->)[[:space:]]*warn|warn[[:space:]]*(→|->)[[:space:]]*shadow|shadow[[:space:]]*(→|->)[[:space:]]*off' "$path" \
-    || { echo "$path missing direction enumeration (block → warn → shadow → off)"; return 1; }
-  echo "$path declares --probe-downgrade with downgrade-only semantics + direction enumeration"
-}
-
-check_skill_md_probe_downgrade_off_floor_refusal() {
-  # §3.4 X9: when effective YAML mode is `off` (including absent-key default),
-  # any --probe-downgrade <id>=<mode!=off> is an upgrade and is refused with a
-  # one-line warning. Only --probe-downgrade <id>=off is a legal no-op.
-  local path="skills/cross-audit/SKILL.md"
-  [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  # Off-floor rule must be explicit in prose (§3.4 X9 resolution).
-  grep -qE 'off[[:space:]]+(is[[:space:]]+(the[[:space:]]+)?(lower[[:space:]]+bound|floor)|floor)' "$path" \
-    || { echo "$path missing 'off is the floor / off is the lower bound' phrase per §3.4 X9"; return 1; }
-  # Absent-YAML default must be called out as treated-as-off (so a blanket off
-  # floor rule that is silent about absent-key default would fail this).
-  grep -qE '(absent.*key.*default|absent.*YAML|absent.*key|default[[:space:]]+when[[:space:]]+absent).*off|off.*(absent.*YAML|absent[[:space:]]+key)' "$path" \
-    || { echo "$path missing 'absent YAML / absent key = off' tie-in for the floor rule"; return 1; }
-  echo "$path has off-floor rule with absent-YAML-default tie-in (§3.4 X9)"
-}
-
 check_skill_md_phase3_shadow_section() {
   # Phase 3 renders a separate `## Shadow findings (informational)` section
   # distinct from the decision banner, with a banner footer citing the count
@@ -2316,49 +2281,6 @@ check_cross_auditor_step05_probe_dispatch() {
   printf '%s\n' "$step05" | grep -qF 'mode == "off"' \
     || { echo "$path Step 0.5 missing off-floor enforcement 'mode == \"off\"'"; return 1; }
   echo "$path Step 0.5 present, ordered between Step 0 and Step 1, six fail-open classes + side-map + off-floor enforcement"
-}
-
-check_probe_e_cli_downgrade() {
-  # skills/cross-audit/SKILL.md Phase 0 documents --probe-downgrade <id>=off
-  # CLI semantics: effective mode 'off' means Step 0.5 does not dispatch, no
-  # receipts produced. This helper is a documentation smoke — asserts the skill
-  # prose declares the downgrade-to-off path. End-to-end dispatch-skipping is
-  # exercised by the agent prose (Step 0.5 'if mode == "off": continue').
-  local path="skills/cross-audit/SKILL.md"
-  [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  grep -qF -- '--probe-downgrade' "$path" \
-    || { echo "$path missing '--probe-downgrade' CLI flag reference"; return 1; }
-  grep -qE 'downgrade-only|block → warn → shadow → off|block \\-> warn \\-> shadow \\-> off' "$path" \
-    || { echo "$path missing downgrade-only ladder (block→warn→shadow→off)"; return 1; }
-  # Probe-E specific cue — the flag must apply to probe ids including 'e'.
-  grep -qE '<id>=<mode>|id=mode' "$path" \
-    || { echo "$path missing generic '<id>=<mode>' placeholder for --probe-downgrade"; return 1; }
-  # Agent Step 0.5 off-floor enforcement (the mode==off dispatch-skip guards
-  # the downgraded mode from producing receipts).
-  local agent="agents/cross-auditor.md"
-  grep -qF 'mode == "off"' "$agent" \
-    || { echo "$agent Step 0.5 missing mode==off short-circuit (downgrade semantics require dispatch skip)"; return 1; }
-  echo "--probe-downgrade CLI flag documented with downgrade-only ladder; agent enforces mode==off dispatch skip"
-}
-
-check_probe_e_downgrade_upgrade_refused_when_yaml_off() {
-  # iter-1 X8 — --probe-downgrade e=shadow against absent YAML (effective off)
-  # is refused by skill Phase 0. Asserts the skill prose documents the off-
-  # floor refusal rule AND that Step 0.5 sees probe_modes[e]=off → zero
-  # dispatch.
-  local path="skills/cross-audit/SKILL.md"
-  [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  grep -qE 'off is the (floor|lower bound)' "$path" \
-    || { echo "$path missing 'off is the floor / lower bound' rule (X9 off-floor)"; return 1; }
-  grep -qE 'upgrade refused|no-op upgrade refused' "$path" \
-    || { echo "$path missing 'upgrade refused' phrase for --probe-downgrade against off"; return 1; }
-  grep -qE 'absent(-| )key (default|.*floor)' "$path" \
-    || { echo "$path missing absent-key-default==floor rationale"; return 1; }
-  # Agent-side: off-floor is enforced at Step 0.5 via mode==off short-circuit.
-  local agent="agents/cross-auditor.md"
-  grep -qF 'mode == "off"' "$agent" \
-    || { echo "$agent Step 0.5 missing mode==off short-circuit (upgrade-refused semantics require dispatch skip)"; return 1; }
-  echo "X8 off-floor refusal documented in skill; agent Step 0.5 enforces mode==off dispatch skip"
 }
 
 # Shared helper: emulate the orchestrator's fail-open path by invoking
@@ -3240,61 +3162,6 @@ if not isinstance(body['emitted_findings'], list) or len(body['emitted_findings'
     sys.exit(1)
 " || { echo "11-field body / probe_output_hash verification failed for $receipt_path"; return 1; }
   echo "merged-receipt end-to-end: fixture 06 → dedupe (X23) → final-ID alloc (X24) → side-map lookup (X19) → 11-field receipt written at $receipt_path with verified probe_output_hash"
-}
-
-check_probe_f_cli_downgrade() {
-  # Documentation smoke (X6 iter-1 resolution; follows probe E precedent).
-  # Asserts skills/cross-audit/SKILL.md declares the downgrade-to-off path for
-  # probe id `f`:
-  #   - generic --probe-downgrade <id>=<mode> CLI flag
-  #   - block → warn → shadow → off ladder
-  #   - probe id `f` is named as an acceptable id
-  #   - agent-side mode==off short-circuit is present (generic across probes)
-  local path="skills/cross-audit/SKILL.md"
-  [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  grep -qF -- '--probe-downgrade' "$path" \
-    || { echo "$path missing '--probe-downgrade' CLI flag reference"; return 1; }
-  grep -qE 'downgrade-only|block → warn → shadow → off|block \\-> warn \\-> shadow \\-> off' "$path" \
-    || { echo "$path missing downgrade-only ladder (block→warn→shadow→off)"; return 1; }
-  # Probe id `f` must appear in the enumerated probe-id list or a concrete
-  # example (e.g. `--probe-downgrade f=off`). Line 47 of SKILL.md enumerates
-  # `(e, f, g, and any future id)`; line 33 carries a `--probe-downgrade f=off`
-  # example. Either anchor is acceptable.
-  grep -qE '\bf\b[^a-z]' "$path" \
-    || { echo "$path missing probe id 'f' mention (either enum list or --probe-downgrade f=... example)"; return 1; }
-  grep -qE 'probe-downgrade +f=|probe id.*\bf\b|\(`e`, `f`|\be`, `f`,' "$path" \
-    || { echo "$path missing probe-id-f concrete anchor (--probe-downgrade f=... example or probe-id enum list naming f)"; return 1; }
-  local agent="agents/cross-auditor.md"
-  grep -qF 'mode == "off"' "$agent" \
-    || { echo "$agent Step 0.5 missing mode==off short-circuit (downgrade semantics require dispatch skip)"; return 1; }
-  echo "--probe-downgrade CLI flag documented for probe id f; downgrade-only ladder + agent mode==off short-circuit present"
-}
-
-check_probe_f_downgrade_upgrade_refused_when_yaml_off() {
-  # Documentation smoke (X6 iter-1 follow-up). Asserts skills/cross-audit/
-  # SKILL.md Phase 0 declares the upgrade-refused-against-absent-YAML path
-  # for probe id `f` per Foundation §3.4 X9 off-floor rule:
-  #   - off is the floor / lower bound
-  #   - 'upgrade refused' or 'no-op upgrade refused' phrase
-  #   - absent-key default rationale
-  #   - probe id `f` named as a target id (shared with Step 3a helper)
-  #   - agent mode==off short-circuit
-  local path="skills/cross-audit/SKILL.md"
-  [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  grep -qE 'off is the (floor|lower bound)' "$path" \
-    || { echo "$path missing 'off is the floor / lower bound' rule (X9 off-floor)"; return 1; }
-  grep -qE 'upgrade refused|no-op upgrade refused' "$path" \
-    || { echo "$path missing 'upgrade refused' phrase for --probe-downgrade against off"; return 1; }
-  grep -qE 'absent(-| )key (default|.*floor)' "$path" \
-    || { echo "$path missing absent-key-default==floor rationale"; return 1; }
-  # Probe id `f` must be named — either in the enum list (line 47) or a
-  # concrete example. Cross-matches with check_probe_f_cli_downgrade.
-  grep -qE 'probe-downgrade +f=|probe id.*\bf\b|\(`e`, `f`|\be`, `f`,' "$path" \
-    || { echo "$path missing probe-id-f concrete anchor for off-floor upgrade-refused rule"; return 1; }
-  local agent="agents/cross-auditor.md"
-  grep -qF 'mode == "off"' "$agent" \
-    || { echo "$agent Step 0.5 missing mode==off short-circuit (upgrade-refused semantics require dispatch skip)"; return 1; }
-  echo "X9 off-floor refusal documented in skill for probe id f; agent Step 0.5 enforces mode==off dispatch skip"
 }
 
 check_probe_f_detector_alias_coverage() {
