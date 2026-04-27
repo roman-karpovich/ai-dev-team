@@ -248,7 +248,7 @@ Run spec audit before implementation?
 
 **Run spec audit?**
 
-If the user chooses **Skip**: set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`, proceed directly to Implement. (Setting AUDIT_PASSED rather than keeping APPROVED ensures continue mode does not re-enter the audit loop on resume.)
+If the user chooses **Skip**: set `status: AUDIT_PASSED`, set `spec_audit_evidence: skipped` and `spec_audit_blockers: ['spec audit skipped by user']`, append to Log: `"spec audit skipped by user"`, proceed directly to Implement. (Setting AUDIT_PASSED rather than keeping APPROVED ensures continue mode does not re-enter the audit loop on resume.)
 
 If the user chooses **Yes** (or gives no explicit answer): run both passes below.
 
@@ -295,15 +295,15 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 5. Increment `spec_audit_iteration`
 5. Re-run Pass 1 self-review, then re-spawn cross-auditor with updated `iteration` and `previously_fixed`
 6. Repeat until no CRITICAL/HIGH remain
-7. Set spec `status: AUDIT_PASSED`
+7. Set spec `status: AUDIT_PASSED`. Populate `spec_audit_evidence:` from the cross-auditor's final-iteration return signal per §3.5b READ path (spec-mode parses two adjacent final lines `evidence_class:` + `evidence_blockers:` from the inline return text). Copy `evidence_blockers:` verbatim into `spec_audit_blockers:` (parse-failure → `self_fallback` per §3.5b).
 
 **If no CRITICAL or HIGH findings:**
 > Spec review passed — the spec is saved to KB. Moving to implementation.
 > 💡 Consider running `/compact` before implementation to trim conversation history.
 
-Set spec `status: AUDIT_PASSED`.
+Set spec `status: AUDIT_PASSED`. Populate `spec_audit_evidence:` from the cross-auditor's final-iteration return signal per §3.5b READ path. Copy `evidence_blockers:` verbatim into `spec_audit_blockers:` (parse-failure → `self_fallback` per §3.5b).
 
-**Mid-flow skip**: if the user says "skip" or "proceed anyway" at any point during the audit — stop, set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`.
+**Mid-flow skip**: if the user says "skip" or "proceed anyway" at any point during the audit — stop, set `status: AUDIT_PASSED`, set `spec_audit_evidence: skipped` and `spec_audit_blockers: ['spec audit skipped by user']`, append to Log: `"spec audit skipped by user"`.
 
 ### 3.5b Audit evidence
 
@@ -438,9 +438,17 @@ git diff --name-only --diff-filter=AMRCT "origin/${base}...HEAD"
 Use the post-filtered destination paths as the audit scope. Exclude
 binary files and submodule gitlinks after the `git diff` call. If the
 filtered result contains no auditable paths, append this Log marker and
-proceed directly to hand-off:
+write the matching spec frontmatter, then proceed directly to hand-off.
+
+Log marker base form (anchor):
 
 `- YYYY-MM-DD: code audit: no auditable files in diff; skipping`
+
+Log marker extended template (per §3.5b — append `evidence=<value>; blockers=[...]` literals to the base form). For zero-diff this is always `evidence=skipped; blockers=['no auditable files in diff']`:
+
+> `- YYYY-MM-DD: code audit: no auditable files in diff; skipping; evidence=skipped; blockers=['no auditable files in diff']`
+
+Spec frontmatter write (immediately adjacent to the marker append): set `code_audit_evidence: skipped` and `code_audit_blockers: ['no auditable files in diff']`. Per §3.5b: zero-diff is folded into `skipped` because no audit ran against findings.
 
 #### Pass 2: Cross-audit (dual-model)
 Track `code_audit_iteration` (start at 1). Track
@@ -553,8 +561,9 @@ the rationale `false positive — both auditors erred: <explanation>`.
 
 **If there are no CRITICAL or HIGH findings, or all such findings have
 been resolved:**
-- Append:
-`- YYYY-MM-DD: code audit passed; iteration=N; verified=[...], accepted=[...], deferred=[...]`
+- Append the Log marker (extended template — `evidence=<value>; blockers=[...]`):
+`- YYYY-MM-DD: code audit passed; iteration=N; verified=[...], accepted=[...], deferred=[...]; evidence=<value>; blockers=[...]`
+- Spec frontmatter write (immediately adjacent to the marker append): set `code_audit_evidence:` from the cross-auditor's final-iteration return signal per §3.5b READ path (code/full mode parses both `evidence_class:` and `evidence_blockers:` from the leading top-of-file YAML frontmatter of the produced `<slug>-code-findings.md`). Copy `evidence_blockers:` verbatim into `code_audit_blockers:` (parse-failure → `self_fallback` per §3.5b).
 - Completion here means no finding remains `OPEN` or `REOPENED`.
 - `💡 Consider running `/compact` before the hand-off step.`
 - Move to hand-off.
