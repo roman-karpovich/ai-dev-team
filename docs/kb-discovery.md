@@ -71,11 +71,11 @@ When the `github:` block is absent, Phase 0.5 skips account resolution entirely 
 
 ### feature skill
 
-Feature skill reads `codex.model`, `codex.model_fast`, and `codex.reasoning_effort` from the resolved config and passes them through to `developer-codex` / `cross-auditor`. `codex.model_fast` is forwarded as `codex_model` only when the user picks "Codex Fast" from the agent-selection menu; `cross-auditor` never receives `codex.model_fast`.
+Feature skill reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them through to `developer-codex` / `cross-auditor`.
 
 ### cross-audit skill
 
-Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch. Never reads `codex.model_fast` — audit reasoning depth is non-negotiable, Fast is developer-codex-only. Also reads the optional `github:` block from `.ai-dev-team.local.yml` for multi-account PR auth; see the "Multi-account github: config block" section above for the YAML schema and cross-audit/SKILL.md Phase 0.5 for the full account-resolution ladder.
+Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch. Also reads the optional `github:` block from `.ai-dev-team.local.yml` for multi-account PR auth; see the "Multi-account github: config block" section above for the YAML schema and cross-audit/SKILL.md Phase 0.5 for the full account-resolution ladder.
 
 #### `cross_audit.probes.<id>.mode` kill-switch
 

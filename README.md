@@ -236,7 +236,6 @@ Research notes live at `<kb>/repos/<project>/research/YYYY-MM-DD-<slug>.md`. Sub
 **Choosing a developer:**
 ```
 Codex            ← default; spec has explicit file paths and clear requirements
-Codex Fast       ← opt-in dispatch variant for mechanical content-floor edits and pattern-following clones (both Codex and Fast are dispatched subagents)
 developer-senior ← wide codebase exploration needed, or genuinely ambiguous scope
 ```
 

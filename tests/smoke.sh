@@ -2452,101 +2452,63 @@ check "khorikov-tq-no-flaky-tests-tag"                    check_khorikov_tq_no_f
 check "khorikov-tq-pillar-tag-count-exact-4"              check_khorikov_tq_pillar_tag_count_exact_4
 echo
 
-# --- Codex Fast config surface ---
-echo "Codex Fast config surface:"
+# --- Fast-mode routing-variant retirement (absence guard) ---
+echo "Fast-mode retirement guard:"
 
-check "codex.model_fast documented in .ai-dev-team.yml.example" \
-  bash -c "grep -qF -- '#   model_fast: gpt-5.5-fast    # optional — per-task opt-in for developer-codex only (ignored by cross-auditor)' .ai-dev-team.yml.example"
-
-check ".ai-dev-team.yml.example documents model_fast precondition" \
-  bash -c "grep -qF -- '#   NOTE: when codex.model_fast is set, codex.model must also be set and must differ from codex.model_fast (otherwise cross-auditor would use Fast reasoning).' .ai-dev-team.yml.example"
-echo
-
-# --- Codex Fast routing ---
-echo "Codex Fast routing:"
-
-assert_codex_fast_section_present() {
-  local sec
-  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
-  [ -n "$sec" ] || { echo "## Codex Fast (opt-in) section missing"; return 1; }
-  echo "## Codex Fast (opt-in) section present"
+check_codex_fast_absent() {
+  # Single absence-asserting helper for the retired T-CF Codex Fast routing
+  # variant (PR A-3). 8 assertions per spec §3.6. Self-reference safety: this
+  # body and the registration line use Fast-mode (hyphenated) and Codex-Fast
+  # (hyphenated) compounds, byte-distinct from banned literals 'Codex Fast'
+  # (space), 'model_fast' (underscore), and 'T-CF' (with hyphen + suffix).
+  # 1. No `Codex Fast` literal in live skill prose / docs / agents / config.
+  ! grep -rqF 'Codex Fast' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+    || { echo "absence #1 FAIL: 'Codex Fast' literal still present in live source"; return 1; }
+  # 2. No `model_fast` literal in live source.
+  ! grep -rqF 'model_fast' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+    || { echo "absence #2 FAIL: 'model_fast' literal still present in live source"; return 1; }
+  # 3. No `T-CF` literal in live source.
+  ! grep -rqE 'T-CF' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+    || { echo "absence #3 FAIL: 'T-CF' literal still present in live source"; return 1; }
+  # 4. No retired check-helper definitions in tests/smoke-helpers.sh.
+  ! grep -qE '^check_(cross_audit_phase0_bans_model_fast|spec_template_codex_fast_rationale|agent_routing_codex_fast_rationale)\(\)' tests/smoke-helpers.sh \
+    || { echo "absence #4 FAIL: retired helper-fn def still present in tests/smoke-helpers.sh"; return 1; }
+  # 5. No retired check invocations or wrapper definitions in tests/smoke.sh
+  #    (anchored to ^check "..." registrations and ^<wrapper>() definitions).
+  ! grep -qE '^check "(check_(cross_audit_phase0_bans_model_fast|spec_template_codex_fast_rationale|agent_routing_codex_fast_rationale))"' tests/smoke.sh \
+    || { echo "absence #5a FAIL: retired check registration still present in tests/smoke.sh"; return 1; }
+  ! grep -qE '^check_smoke_helper_(phase0_cross_audit_rejected|p3_spec_template_no_codex_action_rejected|p3_agent_routing_no_codex_action_rejected)\(\)' tests/smoke.sh \
+    || { echo "absence #5b FAIL: retired wrapper-fn def still present in tests/smoke.sh"; return 1; }
+  ! grep -qE '^check "check_smoke_helper_(phase0_cross_audit_rejected|p3_spec_template_no_codex_action_rejected|p3_agent_routing_no_codex_action_rejected)"' tests/smoke.sh \
+    || { echo "absence #5c FAIL: retired wrapper-rejection registration still present in tests/smoke.sh"; return 1; }
+  # 6. No stale section-header comments containing the retired-variant literals.
+  ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke.sh \
+    || { echo "absence #6a FAIL: stale section-header comment with banned literal in tests/smoke.sh"; return 1; }
+  ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke-helpers.sh \
+    || { echo "absence #6b FAIL: stale section-header comment with banned literal in tests/smoke-helpers.sh"; return 1; }
+  # 7. Positive overcut guards (adjacent live surface survives).
+  grep -qF '#### Option 1: Codex (developer-codex agent)' skills/feature/SKILL.md \
+    || { echo "absence #7a FAIL: Option 1 menu subsection missing from skills/feature/SKILL.md"; return 1; }
+  grep -qF '#### Option 2: Senior (developer-senior agent)' skills/feature/SKILL.md \
+    || { echo "absence #7b FAIL: Option 2 menu subsection missing from skills/feature/SKILL.md"; return 1; }
+  grep -qF '## Codex (default)' skills/feature/references/agent-routing.md \
+    || { echo "absence #7c FAIL: ## Codex (default) section missing from agent-routing.md"; return 1; }
+  grep -qF '## Senior' skills/feature/references/agent-routing.md \
+    || { echo "absence #7d FAIL: ## Senior section missing from agent-routing.md"; return 1; }
+  grep -qF '## Rationale logging' skills/feature/references/agent-routing.md \
+    || { echo "absence #7e FAIL: ## Rationale logging section missing from agent-routing.md"; return 1; }
+  grep -qF 'codex_model' agents/developer-codex.md \
+    || { echo "absence #7f FAIL: codex_model agent input parameter missing from agents/developer-codex.md"; return 1; }
+  grep -qF 'codex_model' agents/cross-auditor.md \
+    || { echo "absence #7g FAIL: codex_model agent input parameter missing from agents/cross-auditor.md"; return 1; }
+  # 8. Smoke-helpers integrity (trimmed helper survives + success-echo updated).
+  grep -qF 'check_feature_phase0_mentions_codex_keys' tests/smoke-helpers.sh \
+    || { echo "absence #8a FAIL: trimmed helper check_feature_phase0_mentions_codex_keys missing"; return 1; }
+  grep -qF "Phase 0 extensions mention both codex.model and codex.reasoning_effort keys" tests/smoke-helpers.sh \
+    || { echo "absence #8b FAIL: success-echo update from Step 5 missing"; return 1; }
+  echo "check_codex_fast_absent: all 8 assertions OK"
 }
-check "Codex Fast routing section present" assert_codex_fast_section_present
-
-assert_codex_fast_triggers_bulletform() {
-  local sec
-  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
-  printf '%s\n' "$sec" | grep -qE '^- \*\*T-CF1\*\*:' || { echo "- **T-CF1**: bullet missing"; return 1; }
-  printf '%s\n' "$sec" | grep -qE '^- \*\*T-CF2\*\*:' || { echo "- **T-CF2**: bullet missing"; return 1; }
-  echo "T-CF1/T-CF2 bullets present in Codex Fast section"
-}
-check "T-CF bullets defined in Codex Fast section" assert_codex_fast_triggers_bulletform
-
-assert_codex_fast_ban_line() {
-  local sec
-  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
-  printf '%s\n' "$sec" | grep -qF -- '**Cross-auditor never consumes `codex.model_fast`.** Audit reasoning depth is non-negotiable; Fast is developer-codex-only.' \
-    || { echo "cross-auditor ban line missing from Codex Fast section"; return 1; }
-  echo "cross-auditor ban line present"
-}
-check "cross-auditor ban line in Codex Fast section" assert_codex_fast_ban_line
-
-assert_codex_fast_anti_triggers() {
-  local sec
-  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Codex Fast (opt-in)")
-  # F8: **Anti-triggers** label followed by at least one '- ' bullet (skip blanks)
-  printf '%s\n' "$sec" | awk '
-    /\*\*Anti-triggers\*\*/ { found=1; next }
-    found && /^[[:space:]]*$/ { next }
-    found { if (/^- /) { ok=1; exit } else { exit } }
-    END { exit(ok?0:1) }
-  ' || { echo "**Anti-triggers** label + bullet missing in Codex Fast section"; return 1; }
-  # F9: all 3 tokens must appear within the section
-  printf '%s\n' "$sec" | grep -qF -- 'security-sensitive' || { echo "token security-sensitive missing"; return 1; }
-  printf '%s\n' "$sec" | grep -qF -- 'cross-cutting'      || { echo "token cross-cutting missing"; return 1; }
-  printf '%s\n' "$sec" | grep -qF -- 'new-abstraction'    || { echo "token new-abstraction missing"; return 1; }
-  echo "Anti-triggers + 3 category tokens present"
-}
-check "Anti-triggers block with 3 tokens in Codex Fast section" assert_codex_fast_anti_triggers
-
-assert_rationale_logging_three_sections() {
-  local sec
-  sec=$(extract_md_section skills/feature/references/agent-routing.md "## Rationale logging")
-  printf '%s\n' "$sec" | grep -qF -- '`rationale=` MUST be a trigger ID from one of the three agent sections above (including `Codex Fast`).' \
-    || { echo "## Rationale logging missing updated 'three agent sections' sentence"; return 1; }
-  echo "Rationale logging sentence updated to three agent sections"
-}
-check "Rationale logging mentions three agent sections" assert_rationale_logging_three_sections
-
-check "agent-routing preamble lists T-CF# as valid" \
-  bash -c "grep -qF -- 'Trigger IDs below (\`T-C#\`, \`T-S#\`, \`T-CF#\`) are the only valid \`rationale=\` values in \`last_agent=\` Log entries.' skills/feature/references/agent-routing.md"
-echo
-
-# --- Codex Fast agent-selection menu ---
-echo "Codex Fast agent-selection menu:"
-
-check "SKILL.md agent-selection lists Codex Fast" \
-  bash -c "grep -qF -- '1b. **Codex Fast** — faster/cheaper variant; only shown when \`codex.model_fast\` is configured.' skills/feature/SKILL.md"
-
-assert_skill_option_1b_wiring() {
-  local sec
-  sec=$(extract_md_section skills/feature/SKILL.md '#### Option 1b: Codex Fast (developer-codex agent)')
-  [ -n "$sec" ] || { echo '#### Option 1b: Codex Fast (developer-codex agent) subsection missing'; return 1; }
-  printf '%s\n' "$sec" | grep -qF -- '- `codex_model`: the value of `codex.model_fast` from config (not `codex.model`)' \
-    || { echo 'Option 1b missing dispatch-wiring line (codex_model ← codex.model_fast)'; return 1; }
-  echo 'Option 1b subsection wires codex.model_fast → codex_model'
-}
-check "SKILL.md Option 1b subsection wires codex.model_fast" assert_skill_option_1b_wiring
-
-check "SKILL.md renders Option 1b conditionally on codex.model_fast" \
-  bash -c "grep -qF -- 'Render option 1b and the \"#### Option 1b: Codex Fast (developer-codex agent)\" subsection only when \`codex.model_fast\` resolved in Phase 0; when it is unset, omit both entirely (the menu reverts to two options).' skills/feature/SKILL.md"
-echo
-
-# --- Codex Fast cross-auditor ban ---
-echo "Codex Fast cross-auditor ban:"
-
-check "cross-auditor.md bans codex.model_fast" \
-  bash -c "grep -qF -- '- **Never** read \`codex.model_fast\`. Cross-audit always uses \`codex.model\` (normal) or the Codex default; Fast is developer-codex-only.' agents/cross-auditor.md"
+check "Codex-Fast routing variant absent" check_codex_fast_absent
 echo
 
 # --- Multi-GitHub-account (2026-04-18) ---
@@ -2882,16 +2844,7 @@ check_smoke_helper_phase0_investigate_rejected() {
   return 1
 }
 
-check_smoke_helper_phase0_cross_audit_rejected() {
-  if ! check_cross_audit_phase0_bans_model_fast 'tests/fixtures/shared-phase0/cross-audit-no-ban.md' >/dev/null 2>&1; then
-    echo "check_cross_audit_phase0_bans_model_fast correctly rejected stale cross-audit-no-ban fixture"
-    return 0
-  fi
-  echo "check_cross_audit_phase0_bans_model_fast wrongly accepted cross-audit-no-ban.md"
-  return 1
-}
-
-# Positive invocations — 13 rows per spec §6.1 invocation matrix.
+# Positive invocations — 12 rows per spec §6.1 invocation matrix.
 check "check_kb_discovery_doc_canonical" check_kb_discovery_doc_canonical docs/kb-discovery.md
 check "check_skill_phase0_references_shared_doc" check_skill_phase0_references_shared_doc skills/feature/SKILL.md
 check "check_skill_phase0_references_shared_doc" check_skill_phase0_references_shared_doc skills/cross-audit/SKILL.md
@@ -2903,13 +2856,11 @@ check "check_skill_phase0_no_inline_algorithm" check_skill_phase0_no_inline_algo
 check "check_skill_phase0_no_inline_algorithm" check_skill_phase0_no_inline_algorithm skills/cross-audit/SKILL.md
 check "check_skill_phase0_no_inline_algorithm" check_skill_phase0_no_inline_algorithm skills/research/SKILL.md
 check "check_feature_phase0_mentions_codex_keys" check_feature_phase0_mentions_codex_keys skills/feature/SKILL.md
-check "check_cross_audit_phase0_bans_model_fast" check_cross_audit_phase0_bans_model_fast skills/cross-audit/SKILL.md
 check "check_investigate_no_phase0" check_investigate_no_phase0 skills/investigate/SKILL.md
-# Negative invocations — 4 rows per spec §6.1 invocation matrix.
+# Negative invocations — 3 rows per spec §6.1 invocation matrix.
 check "check_smoke_helper_phase0_append_rejected" check_smoke_helper_phase0_append_rejected
 check "check_smoke_helper_phase0_inline_rejected" check_smoke_helper_phase0_inline_rejected
 check "check_smoke_helper_phase0_investigate_rejected" check_smoke_helper_phase0_investigate_rejected
-check "check_smoke_helper_phase0_cross_audit_rejected" check_smoke_helper_phase0_cross_audit_rejected
 echo
 
 # --- Git conventions dedupe (spec 2026-04-20-git-conventions-dedupe) ---
@@ -3130,40 +3081,18 @@ check_smoke_helper_p3_branch_bold_uppercase_rejected() {
   return 1
 }
 
-check_smoke_helper_p3_spec_template_no_codex_action_rejected() {
-  if ! check_spec_template_codex_fast_rationale 'tests/fixtures/p3-cleanup/spec-template-no-codex-action.md' >/dev/null 2>&1; then
-    echo "check_spec_template_codex_fast_rationale correctly rejected no-actionable-instruction fixture"
-    return 0
-  fi
-  echo "check_spec_template_codex_fast_rationale wrongly accepted spec-template-no-codex-action.md"
-  return 1
-}
-
-check_smoke_helper_p3_agent_routing_no_codex_action_rejected() {
-  if ! check_agent_routing_codex_fast_rationale 'tests/fixtures/p3-cleanup/agent-routing-no-codex-action.md' >/dev/null 2>&1; then
-    echo "check_agent_routing_codex_fast_rationale correctly rejected no-actionable-instruction fixture"
-    return 0
-  fi
-  echo "check_agent_routing_codex_fast_rationale wrongly accepted agent-routing-no-codex-action.md"
-  return 1
-}
-
-# Positive invocations — 8 per spec §3.4.
-check "check_spec_template_codex_fast_rationale" check_spec_template_codex_fast_rationale skills/feature/references/spec-template.md
-check "check_agent_routing_codex_fast_rationale" check_agent_routing_codex_fast_rationale skills/feature/references/agent-routing.md
+# Positive invocations — 6 per spec §3.4.
 check "check_trigger_map_investigate_research_clarifier (hook)" check_trigger_map_investigate_research_clarifier hooks/session-prompt.md
 check "check_trigger_map_investigate_research_clarifier (snippet)" check_trigger_map_investigate_research_clarifier docs/claude-md-snippet.md
 check "check_research_skill_competitive_analysis_points_to_investigate" check_research_skill_competitive_analysis_points_to_investigate skills/research/SKILL.md
 check "check_branch_frontmatter_ref_lowercase (README)" check_branch_frontmatter_ref_lowercase README.md
 check "check_branch_frontmatter_ref_lowercase (feature/SKILL.md)" check_branch_frontmatter_ref_lowercase skills/feature/SKILL.md
 check "check_readme_no_audit_migration_note" check_readme_no_audit_migration_note README.md
-# Negative invocations — 1 original + 5 audit (X1/X2/X5/X6) rows.
+# Negative invocations — 1 original + 3 audit (X1/X2/X5) rows.
 check "check_smoke_helper_p3_readme_audit_migration_rejected" check_smoke_helper_p3_readme_audit_migration_rejected
 check "check_smoke_helper_p3_session_start_clarifier_masks_missing_row_rejected" check_smoke_helper_p3_session_start_clarifier_masks_missing_row_rejected
 check "check_smoke_helper_p3_snippet_clarifier_masks_missing_row_rejected" check_smoke_helper_p3_snippet_clarifier_masks_missing_row_rejected
 check "check_smoke_helper_p3_branch_bold_uppercase_rejected" check_smoke_helper_p3_branch_bold_uppercase_rejected
-check "check_smoke_helper_p3_spec_template_no_codex_action_rejected" check_smoke_helper_p3_spec_template_no_codex_action_rejected
-check "check_smoke_helper_p3_agent_routing_no_codex_action_rejected" check_smoke_helper_p3_agent_routing_no_codex_action_rejected
 echo
 
 # --- Cross-audit probes foundation (spec 2026-04-21-cross-audit-probes-foundation) ---

@@ -41,7 +41,6 @@ exceptions noted above.
 | cross-auditor.md | "Step 0.5 MUST emit fully-populated string triples" | `agents/cross-auditor.md:263` | enforced | `hooks/lib/render_findings.sh` hard-stops on malformed `probe_failures[]`; renderer smoke pins cover malformed input |
 | cross-auditor.md | "orchestrator MUST emit all three required fields as non-empty strings" | `agents/cross-auditor.md:380` | enforced | `hooks/lib/render_findings.sh` schema hard-stop plus `check_probe_failures_schema_hard_stop` |
 | cross-auditor.md | "do NOT lower `codex_reasoning_effort`" | `agents/cross-auditor.md:273` | enforced | smoke pins keep `effort: xhigh` and the `Defaults to xhigh` prompt text |
-| cross-auditor.md | "**Never** read `codex.model_fast`" | `agents/cross-auditor.md:508` | enforced | smoke pins in `tests/smoke.sh` and `check_cross_audit_phase0_bans_model_fast` |
 | cross-auditor.md | "`spec` mode exception: do NOT write files" | `agents/cross-auditor.md:386` | convention | none — convention only |
 | developer-codex.md | "Rust: `cargo fmt` always" | `agents/developer-codex.md:75` | convention | none — convention only |
 | developer-codex.md | "stage only files directly related to this step — never `git add -A`" | `agents/developer-codex.md:82` | convention | none — convention only |

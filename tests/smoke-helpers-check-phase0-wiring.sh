@@ -4,10 +4,10 @@
 # Bash-3.2 compatible (macOS default). Exits 0 on success (prints
 # STEP_PHASE0_OK), 1 with diagnostic on any inconsistency.
 #
-# Asserts the 17-row (check-name, target-path) invocation matrix from spec
+# Asserts the 15-row (check-name, target-path) invocation matrix from spec
 # §6.1 appears in tests/smoke.sh exactly once per row. A mis-wiring (e.g.
 # duplicated SKILL.md path for helper #3 while missing another) fails even
-# when the total stays at 17.
+# when the total stays at 15.
 
 set -euo pipefail
 
@@ -15,7 +15,7 @@ PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PLUGIN_ROOT"
 S=tests/smoke.sh
 
-# Assertion 1: 17-row invocation matrix (per spec §6.1). Each row asserts
+# Assertion 1: 15-row invocation matrix (per spec §6.1). Each row asserts
 # `grep -cF "check \"<name>\" <name> <path>"` equals exactly 1 (positive
 # invocations with a path argument) OR `grep -cF "check \"<name>\" <name>"`
 # equals exactly 1 with no trailing path (negative wrappers).
@@ -33,7 +33,7 @@ assert_row() {
   [ "$n" -eq 1 ] || { echo "FAIL: expected exactly 1 invocation '$needle', got $n"; exit 1; }
 }
 
-# Positive invocations (13 rows).
+# Positive invocations (12 rows).
 assert_row check_kb_discovery_doc_canonical             docs/kb-discovery.md
 assert_row check_skill_phase0_references_shared_doc     skills/feature/SKILL.md
 assert_row check_skill_phase0_references_shared_doc     skills/cross-audit/SKILL.md
@@ -45,17 +45,15 @@ assert_row check_skill_phase0_no_inline_algorithm       skills/feature/SKILL.md
 assert_row check_skill_phase0_no_inline_algorithm       skills/cross-audit/SKILL.md
 assert_row check_skill_phase0_no_inline_algorithm       skills/research/SKILL.md
 assert_row check_feature_phase0_mentions_codex_keys     skills/feature/SKILL.md
-assert_row check_cross_audit_phase0_bans_model_fast     skills/cross-audit/SKILL.md
 assert_row check_investigate_no_phase0                  skills/investigate/SKILL.md
-# Negative wrappers (4 rows — no path arg).
+# Negative wrappers (3 rows — no path arg).
 assert_row check_smoke_helper_phase0_append_rejected      ""
 assert_row check_smoke_helper_phase0_inline_rejected      ""
 assert_row check_smoke_helper_phase0_investigate_rejected ""
-assert_row check_smoke_helper_phase0_cross_audit_rejected ""
 
 # Assertion 2: each of the 4 negative wrapper function definitions exists
 # exactly once.
-for w in append inline investigate cross_audit; do
+for w in append inline investigate; do
   n=$(grep -cE "^check_smoke_helper_phase0_${w}_rejected\\(\\)" "$S" || true)
   [ "$n" -eq 1 ] || { echo "FAIL: expected 1 def 'check_smoke_helper_phase0_${w}_rejected()', got $n"; exit 1; }
 done
@@ -91,19 +89,14 @@ assert_wrapper_body \
   check_investigate_no_phase0 \
   tests/fixtures/shared-phase0/investigate-with-phase0.md \
   investigate-with-phase0.md
-assert_wrapper_body \
-  check_smoke_helper_phase0_cross_audit_rejected \
-  check_cross_audit_phase0_bans_model_fast \
-  tests/fixtures/shared-phase0/cross-audit-no-ban.md \
-  cross-audit-no-ban.md
 
-# Assertion 4: actual smoke run passes with exactly 17 new PASS lines for
+# Assertion 4: actual smoke run passes with exactly 15 new PASS lines for
 # the shared-phase0 check names and Failed: 0. Guard against set -e
 # swallowing the non-zero exit before rc capture.
 if bash tests/smoke.sh > /tmp/smoke-phase0.out 2>&1; then rc=0; else rc=$?; fi
-passes=$(grep -cE '^  PASS  (check_kb_discovery_doc_canonical|check_skill_phase0_references_shared_doc|check_skill_phase0_extensions_present|check_skill_phase0_no_inline_algorithm|check_investigate_no_phase0|check_feature_phase0_mentions_codex_keys|check_cross_audit_phase0_bans_model_fast|check_smoke_helper_phase0_append_rejected|check_smoke_helper_phase0_inline_rejected|check_smoke_helper_phase0_investigate_rejected|check_smoke_helper_phase0_cross_audit_rejected)$' /tmp/smoke-phase0.out || true)
+passes=$(grep -cE '^  PASS  (check_kb_discovery_doc_canonical|check_skill_phase0_references_shared_doc|check_skill_phase0_extensions_present|check_skill_phase0_no_inline_algorithm|check_investigate_no_phase0|check_feature_phase0_mentions_codex_keys|check_smoke_helper_phase0_append_rejected|check_smoke_helper_phase0_inline_rejected|check_smoke_helper_phase0_investigate_rejected)$' /tmp/smoke-phase0.out || true)
 failed_count=$(grep '^Failed: ' /tmp/smoke-phase0.out | head -1 | awk '{print $2}')
-if [ "$rc" -ne 0 ] || [ "$passes" -ne 17 ] || [ "$failed_count" != "0" ]; then
+if [ "$rc" -ne 0 ] || [ "$passes" -ne 15 ] || [ "$failed_count" != "0" ]; then
   echo "FAIL: smoke run rc=$rc passes=$passes failed=$failed_count"
   tail -40 /tmp/smoke-phase0.out
   exit 1
