@@ -30,17 +30,4 @@ Links to KB pages, external references, screenshots — anything useful.
 
 ## Next steps
 
-<!--
-Optional — checklist of follow-ups.
-If this note is on track to seed a feature, add:
-
-## Recommended Approach
-<!-- 2–4 sentences: the shape of the solution you'd propose -->
-
-## Risk Register
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| ... | low/med/high | low/med/high | ... |
-
-Then bridge with `/feature new <title> --from-investigation <this note path>`.
--->
+<!-- Optional — checklist of follow-ups. -->

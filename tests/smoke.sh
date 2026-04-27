@@ -612,24 +612,46 @@ check "compliance-checker SHA fallback"     check_compliance_sha_validation
 check "dev-workflow commit_message_grep"    check_dev_workflow_amend_note
 echo
 
-# --- /feature --from-investigation bridge ---
-echo "Feature skill --from-investigation:"
+# --- /feature investigation-bridge retirement (absence guard) ---
+echo "Feature investigation-bridge retirement guard:"
 
-check_feature_from_investigation_flag() {
-  grep -q -- "--from-investigation" skills/feature/SKILL.md \
-    || { echo "SKILL.md missing --from-investigation flag"; return 1; }
-  echo "feature SKILL.md documents --from-investigation"
+check_feature_from_investigation_absent() {
+  if grep -rqF -- '--from-investigation' skills/; then
+    echo "assertion 1 FAIL: --from-investigation literal present in skills/"
+    return 1
+  fi
+  if grep -rqF 'investigation_source' skills/; then
+    echo "assertion 2 FAIL: investigation_source literal present in skills/"
+    return 1
+  fi
+  if grep -qE '^check_feature_(from_investigation_flag|investigation_source_field)\(\)' tests/smoke.sh; then
+    echo "assertion 3 FAIL: retired check-function definition present in tests/smoke.sh"
+    return 1
+  fi
+  if grep -qE 'check_feature_(from_investigation_flag|investigation_source_field)' tests/smoke.sh; then
+    echo "assertion 4 FAIL: retired check-function reference present in tests/smoke.sh"
+    return 1
+  fi
+  if ! grep -qF '/research' skills/research/SKILL.md; then
+    echo "assertion 5 FAIL: /research entry-point missing from skills/research/SKILL.md"
+    return 1
+  fi
+  if ! grep -qF '/feature new' skills/feature/SKILL.md; then
+    echo "assertion 5 FAIL: /feature new entry-point missing from skills/feature/SKILL.md"
+    return 1
+  fi
+  if grep -qE '^# .*--from-investigation' tests/smoke.sh; then
+    echo "assertion 6 FAIL: stale section-header comment in tests/smoke.sh contains retired-bridge literal"
+    return 1
+  fi
+  if grep -qE '^# .*--from-investigation' tests/smoke-helpers.sh; then
+    echo "assertion 6 FAIL: stale section-header comment in tests/smoke-helpers.sh contains retired-bridge literal"
+    return 1
+  fi
+  echo "check_feature_from_investigation_absent: all 6 assertions OK"
 }
 
-check_feature_investigation_source_field() {
-  grep -q "investigation_source" skills/feature/SKILL.md \
-    && grep -q "investigation_source" skills/feature/references/spec-template.md \
-    || { echo "investigation_source missing in SKILL.md or spec-template.md"; return 1; }
-  echo "investigation_source documented in skill and template"
-}
-
-check "feature --from-investigation flag"    check_feature_from_investigation_flag
-check "feature investigation_source"         check_feature_investigation_source_field
+check "feature --from-investigation absent" check_feature_from_investigation_absent
 echo
 
 # --- /research skill ---

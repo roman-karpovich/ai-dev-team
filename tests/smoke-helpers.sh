@@ -3484,7 +3484,7 @@ check_codex_audit_dispatch_helper_arg_validation() {
 check_feature_skill_step1_reads_repo_conventions() {
   local skill='skills/feature/SKILL.md'
   local section
-  section=$(awk '/^### Step 1 — Research/{flag=1} /^#### Step 1a —/{if (flag) exit} flag{print}' "$skill")
+  section=$(awk '/^### Step 1 — Research/{flag=1} /^### Step 2 —/{if (flag) exit} flag{print}' "$skill")
   echo "$section" | grep -qF 'AGENTS.md' \
     || { echo "$skill Step 1 missing AGENTS.md repo-convention read"; return 1; }
   echo "$section" | grep -qF 'CLAUDE.md' \
