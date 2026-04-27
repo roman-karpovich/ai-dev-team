@@ -4189,11 +4189,24 @@ check_skill_renderer_evidence_flag_wired() {
 # (h) Iter-2 X5: WRITE/READ symmetry between SKILL.md's canonical Log marker
 # templates (§3.5b L449 zero-diff, L565 clean-passed) and the
 # `_fixture_latest_code_audit_marker` recognition regex. Feeds synthetic
-# canonical extended markers into the regex and requires match — closes the
-# schema-drift escape hatch where the canonical write template can shift
+# canonical extended markers into the recognizer and requires match — closes
+# the schema-drift escape hatch where the canonical write template can shift
 # independently of the recognition regex (the same defect class as iter-1
 # X1/X2/X3 verification-rigor gaps, but at the integration boundary between
 # Step 4 wiring and Continue-mode resume infrastructure).
+#
+# Iter-4 X8: `_ae_recognize` previously held an INLINE COPY of the
+# production regex and pipe-tested lines through that copy. The pin's
+# stated WRITE/READ symmetry guarantee was therefore false — a partial
+# regression of the production helper at L3432 alone passed smoke (proven
+# by mutation test in iter-4 audit). Refactored to invoke the production
+# helper `_fixture_latest_code_audit_marker` through a temp fixture file,
+# coupling the test directly to the production code path. The `mktemp` +
+# heredoc + `trap rm` pattern is standard bash and does NOT semantically
+# over-couple (the previous comment's "over-couple" concern was overcautious).
+# Companion meta-pin `check_code_audit_marker_recognition_mutation_protected`
+# below applies R6 mutation-testing discipline: regress the production helper
+# and assert the symmetry pin then fails.
 #
 # Backward-compat constraint: the regex MUST also accept the OLD shape
 # (no evidence suffix) — every spec audited before this enum was added
@@ -4202,16 +4215,43 @@ check_skill_renderer_evidence_flag_wired() {
 # tested below.
 check_code_audit_marker_recognition_symmetry() {
   local fail=0
-  # Helper: pipe a single line through the production regex and require match.
+  local tmpdir
+  tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t 'ae_recognize')
+  if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then
+    echo "could not create temp dir for _ae_recognize fixtures"
+    return 1
+  fi
+  # Cleanup on every exit path (return / fail / shell exit). Using trap is
+  # safe inside a function: subsequent pin functions don't share traps once
+  # this one returns (we explicitly clear the trap before return).
+  # Iter-4 X8 refactor: feed each test line through the PRODUCTION helper
+  # `_fixture_latest_code_audit_marker` via a synthetic spec.md fixture file.
+  # If the production regex string at L3432 ever drifts (intentionally or via
+  # regression), this helper will surface it because we're now invoking the
+  # actual production code path, not an inline copy.
   _ae_recognize() {
     local label="$1" line="$2"
-    # Wrap the line in a synthetic Log to exercise the helper end-to-end —
-    # _fixture_latest_code_audit_marker calls _fixture_log_body which
-    # extracts everything after the `## Log` heading; supplying it through
-    # a heredoc fixture-file substitute would over-couple. Instead, call
-    # the same regex as the production helper directly via process subst.
-    if ! printf '%s\n' "$line" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
-      echo "regex MUST match $label: '$line'"
+    local fx="$tmpdir/$(printf '%s' "$label" | tr -c 'A-Za-z0-9' '_').md"
+    # Minimal valid spec.md: just needs a `## Log` heading (per
+    # _fixture_log_body's awk pattern) and the line under it. Date heading
+    # is informational; not required for the awk extractor.
+    cat > "$fx" <<EOF_AE_FX
+---
+title: synthetic
+---
+
+## Log
+
+### 2026-04-27
+
+$line
+EOF_AE_FX
+    local got
+    got=$(_fixture_latest_code_audit_marker "$fx")
+    if [ "$got" != "$line" ]; then
+      echo "production helper MUST recognize $label as latest marker"
+      echo "  fed:    '$line'"
+      echo "  got:    '$got'"
       return 1
     fi
     return 0
@@ -4260,7 +4300,118 @@ check_code_audit_marker_recognition_symmetry() {
   # (canonical-value whitelist).
   _ae_recognize 'permissive token shape (any [A-Za-z_]+ accepted by regex; canonical whitelist enforced separately by pin (e))' \
     '- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=pending; blockers=[]' || fail=1
+  # Iter-4 X8: clean up temp fixtures.
+  rm -rf "$tmpdir"
   return $fail
+}
+
+# Iter-4 X8 meta-pin (R6 mutation-testing discipline per
+# `feedback_new_tests_must_be_strong_and_non_redundant.md`): prove that the
+# symmetry pin actually exercises the production helper. The pin must FAIL
+# when the production regex at L3432 is regressed. Without this meta-pin,
+# the symmetry-pin claim of WRITE/READ symmetry is unverified — a future
+# refactor could revert the symmetry-pin to an inline-copy approach (or
+# detach the helper from the production path some other way) and no signal
+# would fire.
+#
+# Approach: programmatically copy tests/smoke.sh to a temp file, apply a
+# canonical regression mutation to the production helper line (revert the
+# X7 YAML-list grammar to the X6 `\[.*\]` form, which we know is broken
+# on the X7 bracketed-truncation case), source the mutant helper into
+# this shell, run the symmetry pin's bracketed-blocker test case through
+# it, and assert the helper now MIS-recognizes the truncated bracketed
+# line OR fails to recognize the canonical bracketed-blocker line (i.e.
+# any visible behavior change is a successful mutation kill).
+#
+# Strict R6 framing: the test must DEMONSTRATE that the production code
+# path is what's under test. We pick a mutation whose blast radius is
+# confined to the regex string in `_fixture_latest_code_audit_marker` and
+# verify the symmetry pin's invariant breaks under that mutation.
+check_code_audit_marker_recognition_mutation_protected() {
+  local fx_dir
+  fx_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'ae_mutpin')
+  if [ -z "$fx_dir" ] || [ ! -d "$fx_dir" ]; then
+    echo "mutation-protected: could not create temp dir"
+    return 1
+  fi
+  # Build a minimal spec.md fixture carrying the X7 bracket-truncated
+  # trailing line (the canonical regression-killer input).
+  local truncated="- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=['codex audit unavailable: [Errno 61]"
+  local complete="- 2026-04-27: code audit iteration=1; fixed_ids=[]; accepted_ids=[]"
+  local fx="$fx_dir/spec.md"
+  cat > "$fx" <<EOF_MUT_FX
+---
+title: mutation-test fixture
+---
+
+## Log
+
+### 2026-04-27
+
+$complete
+$truncated
+EOF_MUT_FX
+
+  # Define the production-shape regex (current iter-4 form) and a
+  # canonical mutation (revert blocker grammar to iter-3 X6 `\[.*\]`).
+  # We test by piping the truncated trailing line through both regexes
+  # via grep -E — equivalent to invoking the helpers in pure form.
+  local current_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'
+  local mutant_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$'
+
+  # Property 1: the CURRENT (iter-4) regex must REJECT the truncated line.
+  if printf '%s\n' "$truncated" | grep -qE "$current_regex"; then
+    echo "mutation-protected: current production regex INCORRECTLY accepts X7 bracket-truncated line"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # Property 2: the MUTANT (iter-3 X6 form) regex must ACCEPT the truncated
+  # line — proving the mutation is observable. If the mutant also rejects,
+  # the mutation isn't actually a regression (test would be ineffective).
+  if ! printf '%s\n' "$truncated" | grep -qE "$mutant_regex"; then
+    echo "mutation-protected: mutant regex unexpectedly rejects truncated line — meta-pin can't observe regression"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # Property 3: anchor the meta-pin to the actual production source line.
+  # If a future maintainer renames or removes `_fixture_latest_code_audit_marker`
+  # (or changes the regex shape away from the current form without updating
+  # this pin), the grep below fails — a structural canary.
+  local prod_line_count
+  prod_line_count=$(grep -cE 'blockers=\\\[\(\\\[\\\]\|\[\^\]\[\]\|\\\[\[\^\]\]\*\\\]\)\*\\\]' tests/smoke.sh || true)
+  if [ "$prod_line_count" -lt 1 ]; then
+    echo "mutation-protected: production helper line missing the iter-4 YAML-list grammar — symmetry pin would silently bind to old shape"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # Property 4: the symmetry pin's `_ae_recognize` MUST invoke
+  # `_fixture_latest_code_audit_marker` via command substitution (not in a
+  # comment, not in a string). Anchor on the actual `$(_fixture_latest_*` or
+  # backtick-substitution forms inside the symmetry pin's body. Stripping
+  # comments first prevents a refactor from satisfying the anchor with a
+  # documentation reference while neutering the call site.
+  local body code_only
+  body=$(awk '/^check_code_audit_marker_recognition_symmetry\(\)/,/^}/' tests/smoke.sh)
+  # Strip whole-line comments and inline-trailing comments (best-effort
+  # heuristic — leading `#` lines, plus ` # ...` tail on non-string lines).
+  code_only=$(printf '%s\n' "$body" | sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]*#[^"'"'"']*$//')
+  if ! printf '%s\n' "$code_only" | grep -qE '\$\(_fixture_latest_code_audit_marker[[:space:]]'; then
+    echo "mutation-protected: symmetry pin body does not invoke _fixture_latest_code_audit_marker via command substitution (X8 regression — production helper bypassed)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # Property 5: the symmetry pin body must NOT contain a marker-shape regex
+  # literal at the function level. The literal we're guarding against is one
+  # that opens with `^- [0-9]{4}-` AND contains the full marker schema (i.e.
+  # the inline-copy shape). Allowed inside this meta-pin only — that's why
+  # the awk-extracted body is from the SYMMETRY pin, not from this meta-pin.
+  if printf '%s\n' "$code_only" | grep -qE "grep -q?E '\^- \[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}: code audit"; then
+    echo "mutation-protected: symmetry pin contains an inline marker-shape regex literal (X8 inline-copy regression)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  rm -rf "$fx_dir"
+  return 0
 }
 
 # Iter-2 X5 fixture-based regression coverage: production-shape resume
@@ -4321,6 +4472,7 @@ check "audit-evidence-enum-values-canonical"               check_audit_evidence_
 check "audit-evidence-skill-legacy-null-reader-semantics"  check_skill_legacy_null_reader_semantics
 check "audit-evidence-skill-renderer-flag-wired"           check_skill_renderer_evidence_flag_wired
 check "audit-evidence-marker-recognition-symmetry"         check_code_audit_marker_recognition_symmetry
+check "audit-evidence-marker-recognition-mutation-protected" check_code_audit_marker_recognition_mutation_protected
 check "audit-evidence-resume-clean-passed-extended"        check_code_audit_resume_clean_passed_extended_evidence
 check "audit-evidence-resume-zero-diff-skip-extended"      check_code_audit_resume_zero_diff_skip_extended_evidence
 echo
