@@ -12,6 +12,17 @@ shipped_at: null
 # Points at the prior spec relative to <kb_path>/repos/<project>/, e.g.
 #   follows_up: design/2026-03-10-claim-fees-event.md
 follows_up: null
+# Audit evidence enum — populated at audit-terminal sites (see SKILL.md §3.5b).
+# Canonical enum values:
+#   dual_model     — both Claude and Codex halves of the cross-auditor returned (gold standard)
+#   single_model   — one half failed; orchestrator proceeded under fail-open rule
+#   self_fallback  — cross-auditor itself could not complete; orchestrator self-verified
+#   skipped        — user skipped the audit OR code-audit zero-diff branch fired
+# null = legacy_unknown (pre-enum specs); not flagged
+spec_audit_evidence: null
+spec_audit_blockers: []
+code_audit_evidence: null
+code_audit_blockers: []
 tags: [spec, {project-name}]
 ---
 
