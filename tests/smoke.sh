@@ -3934,7 +3934,7 @@ check_skill_audit_evidence_populated_at_terminal_sites() {
 # at L1-L10; NOT as body bullets).
 check_cross_auditor_evidence_class_in_yaml_frontmatter() {
   local f='agents/cross-auditor.md'
-  local region ec eb
+  local region ec eb ec_placeholder eb_placeholder
   region=$(awk '/^### findings\.md/{tpl=1; next} tpl && /^---$/{c++; next} tpl && c==1' "$f")
   ec=$(printf '%s' "$region" | grep -cF 'evidence_class:')
   eb=$(printf '%s' "$region" | grep -cF 'evidence_blockers:')
@@ -3944,6 +3944,23 @@ check_cross_auditor_evidence_class_in_yaml_frontmatter() {
   fi
   if [ "$eb" -lt 1 ]; then
     echo "missing evidence_blockers: in findings.md template YAML frontmatter (anchored under ### findings.md)"
+    return 1
+  fi
+  # Iter-2 X4: the WRITE-side template specimen MUST use placeholder forms
+  # (`<value>` / `<YAML-list>`) symmetric with all other YAML fields in the
+  # template (`<scope>`, `<project>`, `<mode>`, `N`, `YYYY-MM-DD`) and with
+  # the spec-mode footer specimen at the §"Spec-mode return contract" block.
+  # Hard-coded `dual_model`/`[]` would let a cargo-cult byte-for-byte copy
+  # record a `single_model` audit as gold-standard. Same defect class as
+  # iter-1 X3 (literal-vs-placeholder asymmetry) at a parallel surface.
+  ec_placeholder=$(printf '%s' "$region" | grep -cF 'evidence_class: <value>')
+  eb_placeholder=$(printf '%s' "$region" | grep -cF 'evidence_blockers: <YAML-list>')
+  if [ "$ec_placeholder" -lt 1 ]; then
+    echo "findings.md template uses concrete value for evidence_class — must be 'evidence_class: <value>' placeholder"
+    return 1
+  fi
+  if [ "$eb_placeholder" -lt 1 ]; then
+    echo "findings.md template uses concrete value for evidence_blockers — must be 'evidence_blockers: <YAML-list>' placeholder"
     return 1
   fi
   return 0

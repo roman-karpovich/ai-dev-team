@@ -453,8 +453,8 @@ type: audit-findings
 mode: <logic|security|full>
 iteration: N
 created: YYYY-MM-DD
-evidence_class: dual_model
-evidence_blockers: []
+evidence_class: <value>
+evidence_blockers: <YAML-list>
 tags: [audit, <project>]
 ---
 
