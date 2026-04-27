@@ -44,7 +44,7 @@ KB discovery algorithm (resolving `kb_path` and `project` via `.ai-dev-team.loca
 
 ### Cross-audit extensions
 
-Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch. **Never reads `codex.model_fast`** — audit reasoning depth is non-negotiable, Fast is developer-codex-only. Also reads the optional `github:` block from `.ai-dev-team.local.yml` for multi-account PR auth; see `docs/kb-discovery.md` for the YAML schema and Phase 0.5 below for the full account-resolution ladder.
+Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved config and passes them into the cross-auditor dispatch. Also reads the optional `github:` block from `.ai-dev-team.local.yml` for multi-account PR auth; see `docs/kb-discovery.md` for the YAML schema and Phase 0.5 below for the full account-resolution ladder.
 
 #### `cross_audit.probes.<id>.mode` read (probes kill-switch)
 
