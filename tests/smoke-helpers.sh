@@ -617,28 +617,9 @@ check_feature_phase0_mentions_codex_keys() {
   [ -n "$section" ] || { echo "$path missing '## Phase 0:' section"; return 1; }
   printf '%s\n' "$section" | grep -qF 'codex.model' \
     || { echo "$path ## Phase 0 extensions missing substring 'codex.model'"; return 1; }
-  printf '%s\n' "$section" | grep -qF 'codex.model_fast' \
-    || { echo "$path ## Phase 0 extensions missing substring 'codex.model_fast'"; return 1; }
   printf '%s\n' "$section" | grep -qF 'codex.reasoning_effort' \
     || { echo "$path ## Phase 0 extensions missing substring 'codex.reasoning_effort'"; return 1; }
-  echo "$path Phase 0 extensions mention all three codex.* keys"
-}
-
-check_cross_audit_phase0_bans_model_fast() {
-  # Helper #7 per spec §3.5 invariant 7: cross-audit/SKILL.md must contain the
-  # byte-exact ban on codex.model_fast within its Phase 0 section.
-  local path="$1"
-  [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  local section
-  section=$(awk '
-    !in_s && /^## Phase 0:/ { in_s = 1; next }
-    in_s && /^## / { exit }
-    in_s { print }
-  ' "$path")
-  [ -n "$section" ] || { echo "$path missing '## Phase 0:' section"; return 1; }
-  printf '%s\n' "$section" | grep -qF 'Never reads `codex.model_fast`' \
-    || { echo "$path ## Phase 0 section missing byte-exact ban 'Never reads \`codex.model_fast\`'"; return 1; }
-  echo "$path Phase 0 has byte-exact 'Never reads \`codex.model_fast\`' ban"
+  echo "$path Phase 0 extensions mention both codex.model and codex.reasoning_effort keys"
 }
 
 # --- Git conventions dedupe (spec 2026-04-20-git-conventions-dedupe) ---
@@ -1038,51 +1019,6 @@ check_cross_audit_skill_focus_areas_references_canonical() {
 }
 
 # --- P3 cleanup bundle (spec 2026-04-20-p3-cleanup-bundle) ---
-
-check_spec_template_codex_fast_rationale() {
-  local path="$1"
-  [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  local section
-  section=$(awk '
-    !in_s && $0 == "## 5. Implementation Checklist" { in_s = 1; next }
-    in_s && /^## / { exit }
-    in_s { print }
-  ' "$path")
-  [ -n "$section" ] || { echo "$path missing '## 5. Implementation Checklist' section"; return 1; }
-  printf '%s\n' "$section" | grep -qF '**Why not `@codex-fast`?**' \
-    || { echo "$path §5 missing byte-exact '**Why not \`@codex-fast\`?**' marker"; return 1; }
-  printf '%s\n' "$section" | grep -qF 'Fast is an orchestrator-time dispatch choice driven by `codex.model_fast` in user config, not a step property.' \
-    || { echo "$path §5 missing byte-exact orchestrator-time rationale sentence"; return 1; }
-  printf '%s\n' "$section" | grep -qF 'the orchestrator routes it to Fast only when the user selects option 1b at the agent-selection banner' \
-    || { echo "$path §5 missing byte-exact 'orchestrator routes it to Fast only when the user selects option 1b' clause"; return 1; }
-  # p3-cleanup audit X6: pin the actionable instruction "still tagged `@codex`"
-  # so a future edit can't quietly remove the practical guidance while the
-  # explanatory clauses stay intact.
-  printf '%s\n' "$section" | grep -qF 'A step that would benefit from Fast is still tagged `@codex`' \
-    || { echo "$path §5 missing byte-exact actionable instruction 'A step that would benefit from Fast is still tagged \`@codex\`'"; return 1; }
-  echo "$path §5 has @codex-fast rationale paragraph (4 byte-exact pins incl. actionable instruction)"
-}
-
-check_agent_routing_codex_fast_rationale() {
-  local path="$1"
-  [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  local section
-  section=$(awk '
-    !in_s && $0 == "## Codex Fast (opt-in)" { in_s = 1; next }
-    in_s && /^## / { exit }
-    in_s { print }
-  ' "$path")
-  [ -n "$section" ] || { echo "$path missing '## Codex Fast (opt-in)' section"; return 1; }
-  printf '%s\n' "$section" | grep -qF '`@codex-fast` is intentionally not a valid spec pre-tag' \
-    || { echo "$path §Codex Fast missing byte-exact '\`@codex-fast\` is intentionally not a valid spec pre-tag' sentence"; return 1; }
-  printf '%s\n' "$section" | grep -qF 'Fast is orchestrator-time dispatch driven by user config, not a step property' \
-    || { echo "$path §Codex Fast missing byte-exact 'Fast is orchestrator-time dispatch driven by user config, not a step property' clause"; return 1; }
-  # p3-cleanup audit X6: pin the actionable instruction "Tag `@codex`" so the
-  # practical guidance cannot be removed while the explanatory clauses stay.
-  printf '%s\n' "$section" | grep -qF 'Tag `@codex`; the orchestrator picks Fast at the agent-selection banner.' \
-    || { echo "$path §Codex Fast missing byte-exact actionable instruction 'Tag \`@codex\`; the orchestrator picks Fast at the agent-selection banner.'"; return 1; }
-  echo "$path §Codex Fast has @codex-fast rationale sentence (3 byte-exact pins incl. actionable instruction)"
-}
 
 check_trigger_map_investigate_research_clarifier() {
   local path="$1"
