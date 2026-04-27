@@ -27,7 +27,6 @@ The AI dev team solves three problems:
 
 ```
 Codex           ← default; spec is explicit and file paths are listed
-Codex Fast       ← opt-in dispatch variant for mechanical edits / pattern-following clones
 Developer Senior ← wide codebase exploration needed, or ambiguous scope
 ```
 
