@@ -3416,20 +3416,38 @@ _fixture_log_body() {
 # fixed_ids=...; accepted_ids=...` and `decisions recorded; iteration=N;
 # pending_*`) are unchanged — per spec they have no evidence suffix.
 #
-# Iter-3 X6: the blocker-list inner pattern is `\[.*\]` (NOT `\[[^]]*\]`).
-# `[^]]*` rejects bracketed text inside a single-quoted blocker reason — e.g.
-# canonical Codex fail-open markers like:
+# Iter-3 X6 → Iter-4 X7: the blocker-list inner pattern accepts bracketed text
+# inside a single-quoted blocker reason — e.g. canonical Codex fail-open markers
+# like:
 #   blockers=['codex audit unavailable: [Errno 61] Connection refused']
 # (Python errno-style stderr is the most common fail-open shape per
 # cross-auditor.md L389-396 sanitization rule, which normalizes newlines /
-# quotes / length but NOT brackets.) `.*` is safe here because the whole
-# expression is line-anchored (`^...$`) — `.*` is bounded by the trailing
-# `\]` plus end-of-line; greedy match locks onto the final `]` on the line.
-# Other list patterns (`verified=`, `accepted=`, `deferred=`, `fixed_ids=`,
-# `accepted_ids=`, `pending_*`) keep `[^]]*` because they carry only X-IDs
-# (`X1, X2, ...`) which never contain `]`.
+# quotes / length but NOT brackets.) Iter-3 used `\[.*\]` here, which was
+# correct for the X6 case but silently misroutes crash-truncated lines whose
+# bracketed-blocker reason ends mid-quote with an internal `]` followed by
+# EOL — the internal `]` from `[Errno 61]` satisfies `\]$` even when the
+# outer `blockers=[...]` list never closes. That violates SKILL.md §3.7
+# partial-write rule.
+#
+# Iter-4 X7: the blocker-list inner pattern is now `\[(\[\]|[^][]|\[[^]]*\])*\]`
+# — a true YAML-list grammar in ERE. Reading inside-out:
+#   - The outer `\[ ... \]` requires the OUTER brackets of `blockers=[...]`
+#     to actually open and close on this line.
+#   - The inner alternation `(\[\]|[^][]|\[[^]]*\])*` matches list-body
+#     content as a sequence of: empty `[]` tokens, plain non-bracket
+#     characters, or single-level nested `[...]` (e.g. `[Errno 61]`).
+#   - The character class `[^][]` is "neither `]` nor `[`" — required to
+#     prevent the alternation from spanning an internal `]` and silently
+#     accepting a truncated line.
+# Edge case: 3-level nesting (`[outer [mid [inner]]]`) is REJECTED. Acceptable:
+# cross-auditor.md sanitization caps reasons at 200 chars and escapes quotes,
+# and realistic YAML reasons carry at most one level of bracket nesting
+# (errno tokens, log-level prefixes, etc.). Other list patterns (`verified=`,
+# `accepted=`, `deferred=`, `fixed_ids=`, `accepted_ids=`, `pending_*`)
+# keep `[^]]*` because they carry only X-IDs (`X1, X2, ...`) which never
+# contain `]`.
 _fixture_latest_code_audit_marker() {
-  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$' | tail -1
+  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$' | tail -1
 }
 
 # Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
@@ -3725,9 +3743,9 @@ check_code_audit_resume_malformed_trailing() {
   # extended alternatives. If this guard's regex ever drifts from the helper
   # regex, the negative guard could let an extended-form trailing line slip
   # through and the test would degenerate. Both regexes patched together.
-  # Iter-3 X6: same `\[.*\]` patch applied symmetrically — see the helper's
-  # comment block at L3418-3431 for rationale.
-  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$'; then
+  # Iter-3 X6 → Iter-4 X7: same blocker-list inner-pattern evolution applied
+  # symmetrically — see the helper's comment block above for rationale.
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
     echo "malformed-trailing: trailing line is a complete canonical marker (fixture invalid)"
     return 1
   fi
@@ -3743,12 +3761,54 @@ check_code_audit_resume_malformed_trailing() {
   echo "malformed-trailing: helper skipped truncated trailing line and fell back to iteration=1 marker OK"
 }
 
+# Iter-4 X7: §3.7 partial-write rule for the BRACKET-truncation shape (sibling
+# of malformed-trailing's text-truncation shape). The fixture's trailing line
+# is a single_model marker whose bracketed-blocker reason ends mid-quote with
+# an internal `]` from `[Errno 61]` — no closing `]` for the outer
+# `blockers=[...]` list. The pre-iter-4 regex `blockers=\[.*\]` would
+# silently accept this as a complete marker (the internal `]` satisfies
+# `\]$`). The iter-4 YAML-list grammar regex
+# `blockers=\[(\[\]|[^][]|\[[^]]*\])*\]` correctly rejects it; helper falls
+# back to the prior complete `iteration=1` marker.
+check_code_audit_resume_malformed_trailing_bracketed() {
+  local fx='tests/fixtures/code-audit-resume/malformed-trailing-bracketed/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  # Sanity: the fixture really contains the bracket-truncated trailing line
+  # (otherwise the test degenerates into a happy-path repeat).
+  if ! _fixture_log_body "$fx" | grep -qF -- "blockers=['codex audit unavailable: [Errno 61]"; then
+    echo "malformed-trailing-bracketed: fixture missing the bracket-truncated trailing line"
+    return 1
+  fi
+  # Negative guard symmetric with malformed-trailing: the trailing line must
+  # NOT be a complete canonical marker under the production regex.
+  local trailing
+  trailing=$(_fixture_log_body "$fx" | tail -1)
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
+    echo "malformed-trailing-bracketed: trailing line is a complete canonical marker under iter-4 regex (fixture or regex broken)"
+    return 1
+  fi
+  # Load-bearing property: helper falls back past the bracket-truncated line
+  # to the prior complete `iteration=1` marker.
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  local expected="- 2026-04-27: code audit iteration=1; fixed_ids=[]; accepted_ids=[]"
+  if [ "$marker" != "$expected" ]; then
+    echo "malformed-trailing-bracketed: helper returned '$marker', expected '$expected' (did not fall back past bracket-truncated line)"
+    return 1
+  fi
+  echo "malformed-trailing-bracketed: helper skipped bracket-truncated trailing line and fell back to iteration=1 marker OK"
+}
+
 check "code-audit-resume-clean-passed"         check_code_audit_resume_clean_passed
 check "code-audit-resume-zero-diff-skip"       check_code_audit_resume_zero_diff_skip
 check "code-audit-resume-decisions-recorded"   check_code_audit_resume_decisions_recorded
 check "code-audit-resume-mid-loop-spawn"       check_code_audit_resume_mid_loop_spawn
 check "code-audit-resume-no-prior-entry"       check_code_audit_resume_no_prior_entry
 check "code-audit-resume-malformed-trailing"   check_code_audit_resume_malformed_trailing
+check "code-audit-resume-malformed-trailing-bracketed" check_code_audit_resume_malformed_trailing_bracketed
 echo
 
 # --- R3 weak-phrase compliance check (spec 2026-04-25-r3-weak-phrase-compliance-check) ---
@@ -4150,7 +4210,7 @@ check_code_audit_marker_recognition_symmetry() {
     # extracts everything after the `## Log` heading; supplying it through
     # a heredoc fixture-file substitute would over-couple. Instead, call
     # the same regex as the production helper directly via process subst.
-    if ! printf '%s\n' "$line" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$'; then
+    if ! printf '%s\n' "$line" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
       echo "regex MUST match $label: '$line'"
       return 1
     fi
