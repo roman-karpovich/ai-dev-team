@@ -3404,8 +3404,19 @@ _fixture_log_body() {
 # partial-write edge case ("fall back to the last complete recognized
 # marker above"). Each pattern is anchored to the `- YYYY-MM-DD:` Log bullet
 # prefix and requires the full field schema for its marker kind.
+#
+# Iter-2 X5: SKILL.md §3.5b (per spec 2026-04-27-audit-evidence-enum Step 4)
+# extended the canonical `code audit passed` and zero-diff `skipping` marker
+# templates with an `; evidence=<value>; blockers=[...]` suffix (SKILL.md
+# L449 zero-diff, L565 clean-passed). The regex below accepts BOTH shapes
+# on those two alternatives via an OPTIONAL trailing group:
+#   (; evidence=<word>; blockers=\[<list-body>\])?
+# Backward compat: the old shape (no evidence suffix) still matches because
+# the trailing group is optional. The other two alternatives (`iteration=N;
+# fixed_ids=...; accepted_ids=...` and `decisions recorded; iteration=N;
+# pending_*`) are unchanged — per spec they have no evidence suffix.
 _fixture_latest_code_audit_marker() {
-  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\]| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping)$' | tail -1
+  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?)$' | tail -1
 }
 
 # Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
@@ -3696,7 +3707,12 @@ check_code_audit_resume_malformed_trailing() {
   # marker (otherwise the test is not exercising the fall-back rule).
   local trailing
   trailing=$(_fixture_log_body "$fx" | tail -1)
-  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\]| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping)$'; then
+  # Iter-2 X5: regex shape kept symmetric with _fixture_latest_code_audit_marker
+  # — same optional `(; evidence=...; blockers=[...])?` suffix on the two
+  # extended alternatives. If this guard's regex ever drifts from the helper
+  # regex, the negative guard could let an extended-form trailing line slip
+  # through and the test would degenerate. Both regexes patched together.
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?)$'; then
     echo "malformed-trailing: trailing line is a complete canonical marker (fixture invalid)"
     return 1
   fi
@@ -4095,6 +4111,124 @@ check_skill_renderer_evidence_flag_wired() {
   return 0
 }
 
+# (h) Iter-2 X5: WRITE/READ symmetry between SKILL.md's canonical Log marker
+# templates (§3.5b L449 zero-diff, L565 clean-passed) and the
+# `_fixture_latest_code_audit_marker` recognition regex. Feeds synthetic
+# canonical extended markers into the regex and requires match — closes the
+# schema-drift escape hatch where the canonical write template can shift
+# independently of the recognition regex (the same defect class as iter-1
+# X1/X2/X3 verification-rigor gaps, but at the integration boundary between
+# Step 4 wiring and Continue-mode resume infrastructure).
+#
+# Backward-compat constraint: the regex MUST also accept the OLD shape
+# (no evidence suffix) — every spec audited before this enum was added
+# carries the legacy form, including the iter-1 marker on this very spec
+# (`code audit iteration=1; fixed_ids=[]; accepted_ids=[]`). Both shapes
+# tested below.
+check_code_audit_marker_recognition_symmetry() {
+  local fail=0
+  # Helper: pipe a single line through the production regex and require match.
+  _ae_recognize() {
+    local label="$1" line="$2"
+    # Wrap the line in a synthetic Log to exercise the helper end-to-end —
+    # _fixture_latest_code_audit_marker calls _fixture_log_body which
+    # extracts everything after the `## Log` heading; supplying it through
+    # a heredoc fixture-file substitute would over-couple. Instead, call
+    # the same regex as the production helper directly via process subst.
+    if ! printf '%s\n' "$line" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[[^]]*\])?)$'; then
+      echo "regex MUST match $label: '$line'"
+      return 1
+    fi
+    return 0
+  }
+  # Forward compat: extended canonical forms per SKILL.md §3.5b L449/L565.
+  _ae_recognize 'extended clean-passed (dual_model)' \
+    '- 2026-04-27: code audit passed; iteration=2; verified=[X3], accepted=[X5], deferred=[X9]; evidence=dual_model; blockers=[]' || fail=1
+  _ae_recognize 'extended clean-passed (single_model + blocker)' \
+    '- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=[codex_unavailable]' || fail=1
+  _ae_recognize 'extended zero-diff-skip (skipped)' \
+    '- 2026-04-27: code audit: no auditable files in diff; skipping; evidence=skipped; blockers=[no_auditable_files]' || fail=1
+  # Backward compat: legacy shapes (pre-enum) still accepted.
+  _ae_recognize 'legacy clean-passed (no evidence suffix)' \
+    '- 2026-04-22: code audit passed; iteration=2; verified=[X3], accepted=[X5], deferred=[X9]' || fail=1
+  _ae_recognize 'legacy zero-diff-skip (no evidence suffix)' \
+    '- 2026-04-22: code audit: no auditable files in diff; skipping' || fail=1
+  _ae_recognize 'legacy iteration marker (this spec iter-1, user-mandated backward compat)' \
+    '- 2026-04-27: code audit iteration=1; fixed_ids=[]; accepted_ids=[]' || fail=1
+  _ae_recognize 'legacy decisions-recorded marker' \
+    '- 2026-04-27: code audit decisions recorded; iteration=1; pending_fixed=[X3]; pending_accepted=[X5]; pending_deferred=[]' || fail=1
+  # WRITE side: SKILL.md actually contains the canonical extended templates.
+  # This couples the recognition test to the documented templates so that if
+  # SKILL.md drops the `evidence=`/`blockers=` literals (or alters them in a
+  # way that breaks the regex shape), this pin fails.
+  local skill='skills/feature/SKILL.md'
+  if ! grep -qF 'evidence=<value>; blockers=[...]' "$skill"; then
+    echo "SKILL.md missing canonical clean-passed marker template literal 'evidence=<value>; blockers=[...]'"
+    fail=1
+  fi
+  if ! grep -qF "evidence=skipped; blockers=['no auditable files in diff']" "$skill"; then
+    echo "SKILL.md missing canonical zero-diff marker template literal 'evidence=skipped; blockers=[...]'"
+    fail=1
+  fi
+  # Negative guard: a non-canonical evidence token (e.g. typo `pending`) inside
+  # a marker MUST still be regex-recognized (regex is permissive on token
+  # shape — the `audit-evidence-enum-values-canonical` pin (e) catches the
+  # value). This documents the layered defense: regex (shape) vs pin (e)
+  # (canonical-value whitelist).
+  _ae_recognize 'permissive token shape (any [A-Za-z_]+ accepted by regex; canonical whitelist enforced separately by pin (e))' \
+    '- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=pending; blockers=[]' || fail=1
+  return $fail
+}
+
+# Iter-2 X5 fixture-based regression coverage: production-shape resume
+# routing tests under the EXTENDED Log marker schema. Matches the existing
+# clean-passed / zero-diff-skip routing tests (L3414, L3457) but exercises
+# the extended-form fixtures.
+check_code_audit_resume_clean_passed_extended_evidence() {
+  local fx='tests/fixtures/code-audit-resume/clean-passed-extended-evidence/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  case "$marker" in
+    *"code audit passed"*) : ;;
+    *)
+      echo "clean-passed-extended-evidence: latest marker is not 'code audit passed' (got: $marker)"
+      return 1
+      ;;
+  esac
+  if ! printf '%s\n' "$marker" | grep -qF '; evidence=dual_model; blockers=[]'; then
+    echo "clean-passed-extended-evidence: extended-form suffix '; evidence=dual_model; blockers=[]' not in matched marker (regex stripped the suffix or fixture is wrong)"
+    return 1
+  fi
+  if ! printf '%s\n' "$marker" | grep -qF "verified=[X3], accepted=[X5], deferred=[X9]"; then
+    echo "clean-passed-extended-evidence: terminal marker missing verbatim verified/accepted/deferred tail"
+    return 1
+  fi
+  echo "clean-passed-extended-evidence: extended-form 'code audit passed; ...; evidence=dual_model; blockers=[]' recognized → skip-to-hand-off OK"
+}
+
+check_code_audit_resume_zero_diff_skip_extended_evidence() {
+  local fx='tests/fixtures/code-audit-resume/zero-diff-skip-extended-evidence/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  if ! printf '%s\n' "$marker" | grep -qF "code audit: no auditable files in diff; skipping"; then
+    echo "zero-diff-skip-extended-evidence: latest marker missing 'code audit: no auditable files in diff; skipping' (got: $marker)"
+    return 1
+  fi
+  if ! printf '%s\n' "$marker" | grep -qF "; evidence=skipped; blockers=['no auditable files in diff']"; then
+    echo "zero-diff-skip-extended-evidence: extended-form suffix '; evidence=skipped; blockers=[...]' not in matched marker"
+    return 1
+  fi
+  echo "zero-diff-skip-extended-evidence: extended-form skip marker recognized → skip-to-hand-off OK"
+}
+
 echo "Audit-evidence enum pins:"
 check "audit-evidence-spec-template-schema"                check_spec_template_audit_evidence_schema
 check "audit-evidence-skill-populated-at-terminal-sites"   check_skill_audit_evidence_populated_at_terminal_sites
@@ -4103,6 +4237,9 @@ check "audit-evidence-cross-auditor-spec-mode-contract"    check_cross_auditor_s
 check "audit-evidence-enum-values-canonical"               check_audit_evidence_enum_values_canonical
 check "audit-evidence-skill-legacy-null-reader-semantics"  check_skill_legacy_null_reader_semantics
 check "audit-evidence-skill-renderer-flag-wired"           check_skill_renderer_evidence_flag_wired
+check "audit-evidence-marker-recognition-symmetry"         check_code_audit_marker_recognition_symmetry
+check "audit-evidence-resume-clean-passed-extended"        check_code_audit_resume_clean_passed_extended_evidence
+check "audit-evidence-resume-zero-diff-skip-extended"      check_code_audit_resume_zero_diff_skip_extended_evidence
 echo
 
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
