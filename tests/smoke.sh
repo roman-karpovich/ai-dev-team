@@ -3955,15 +3955,37 @@ check_cross_auditor_evidence_class_in_yaml_frontmatter() {
 check_cross_auditor_spec_mode_return_contract() {
   local agent='agents/cross-auditor.md'
   local skill='skills/feature/SKILL.md'
-  local agent_hits skill_hits
-  agent_hits=$(grep -ciE 'evidence_class.{0,80}evidence_blockers|two.{0,40}final.{0,40}lines|adjacent.{0,40}final.{0,40}lines' "$agent")
-  skill_hits=$(grep -ciE 'evidence_class.{0,80}evidence_blockers|two.{0,40}final.{0,40}lines|adjacent.{0,40}final.{0,40}lines' "$skill")
-  if [ "$agent_hits" -lt 1 ]; then
-    echo "cross-auditor.md does not name the two-adjacent-final-lines return contract for spec mode"
+  # Three AND-ed assertions replace the previous OR-form across loose patterns.
+  # Spec §3.3 mandates the inline-return MUST end with two adjacent literal
+  # final lines; OR-form would accept paraphrases ("two NON-adjacent...",
+  # "...come early in the response") that contradict the contract.
+  #
+  # 1. cross-auditor.md (WRITE-side specimen) MUST contain the two literal
+  #    example lines as truly adjacent lines. awk verifies adjacency — using
+  #    `grep -qF $'a\nb'` here is unsafe because grep -F with newline in the
+  #    pattern is treated as multiple OR alternatives, not literal adjacency
+  #    (true on both BSD grep and ugrep).
+  if ! awk 'p == "evidence_class: <value>" && $0 == "evidence_blockers: <YAML-list>" {found=1} {p=$0} END {exit (found?0:1)}' "$agent"; then
+    echo "cross-auditor.md missing the two adjacent literal final lines 'evidence_class: <value>' / 'evidence_blockers: <YAML-list>'"
     return 1
   fi
-  if [ "$skill_hits" -lt 1 ]; then
-    echo "SKILL.md §3.5b does not name the two-adjacent-final-lines return contract for spec mode"
+  # 2. SKILL.md (READ-side prose doc) names BOTH literal token forms. SKILL.md
+  #    §3.5b describes the contract in prose with backticked literals (it is
+  #    not a write-side specimen with adjacent code lines), so the equivalent
+  #    strength assertion is that both literal forms appear verbatim.
+  if ! grep -qF 'evidence_class: <value>' "$skill"; then
+    echo "SKILL.md §3.5b missing literal 'evidence_class: <value>' in read-path doc"
+    return 1
+  fi
+  if ! grep -qF 'evidence_blockers: <YAML-list>' "$skill"; then
+    echo "SKILL.md §3.5b missing literal 'evidence_blockers: <YAML-list>' in read-path doc"
+    return 1
+  fi
+  # 3. One of the two files names the "no trailing prose" wording verbatim.
+  #    cross-auditor.md uses uppercase "NO trailing prose"; SKILL.md uses
+  #    lowercase "no trailing prose". -i case-insensitive covers both.
+  if ! grep -qiF 'no trailing prose' "$agent" && ! grep -qiF 'no trailing prose' "$skill"; then
+    echo "neither cross-auditor.md nor SKILL.md names 'no trailing prose' verbatim"
     return 1
   fi
   return 0
