@@ -169,7 +169,7 @@ Write the conclusion text. Multi-line is fine. It is appended verbatim under the
 ```
 
 5. Flip frontmatter `status: CONCLUDED`.
-6. Report: > Note concluded. To turn it into a feature: `/feature new <title> --from-investigation <note-path>`.
+6. Report: > Note concluded.
 
 ---
 
@@ -187,4 +187,3 @@ Write the conclusion text. Multi-line is fine. It is appended verbatim under the
 - **Frontmatter is the state machine.** Status transitions happen only in frontmatter; body sections are append-only.
 - **Never delete.** Archive instead.
 - **Default subtype is `exploration`.** Other subtypes are more specialised.
-- **Bridging to feature**: a research note can seed a feature spec via `/feature new <title> --from-investigation <note-path>` — structure it with a `## Recommended Approach` and `## Risk Register` section if you intend to bridge.
