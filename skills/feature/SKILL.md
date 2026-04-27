@@ -305,6 +305,32 @@ Set spec `status: AUDIT_PASSED`.
 
 **Mid-flow skip**: if the user says "skip" or "proceed anyway" at any point during the audit — stop, set `status: AUDIT_PASSED`, append to Log: `"spec audit skipped by user"`.
 
+### 3.5b Audit evidence
+
+Per spec `2026-04-27-audit-evidence-enum.md`. Every audit-terminal site (spec audit AUDIT_PASSED + code-audit Log markers) records WHAT evidence backs the audit by populating two paired frontmatter fields: `*_audit_evidence:` (enum) and `*_audit_blockers:` (list of strings naming what blocked the dual-model gold standard, empty when `dual_model`).
+
+**Enum values:**
+
+- `dual_model` — both Claude and Codex halves of the cross-auditor returned findings (or both confirmed clean) — the gold standard.
+- `single_model` — one half returned findings, the other half failed and the orchestrator proceeded under the documented fail-open rule (`agents/cross-auditor.md` Step 1 fail-open path).
+- `self_fallback` — the cross-auditor agent itself could not complete (stall, timeout, MCP failure, premature merge) and the orchestrator performed manual self-verification per the iter-2 fallback rule (`feedback_iter_2_audit_fallback.md`). The cross-auditor never returns a usable signal in this case.
+- `skipped` — no audit was performed against findings: user clicked Skip on the spec-audit prompt, OR mid-flow "skip / proceed anyway" override, OR the code-audit zero-diff branch fired (`no auditable files in diff`).
+
+**Reader semantics for `null` (legacy specs).** All pre-enum specs lack these fields. Readers (filters, smoke pins, analytical scripts) MUST treat `null` / missing as `legacy_unknown` — distinct from any enum value, NOT flagged as degraded, NOT compared against `dual_model` directly. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, skipped}`, NEVER the inverse `!= dual_model` (which would flag every legacy spec forever).
+
+**Honesty-gate-not-approval-gate.** This subsection records evidence; the routine case introduces NO new mid-flow user banner per `feedback_ai_dev_team_repo_autonomy.md`. Future tooling (`/feature status`, smoke pins, future analysis) reads the field programmatically and surfaces degraded rows for human review out-of-band.
+
+**`self_fallback` discipline remains user-enforced.** The iter-2 fallback memory `feedback_iter_2_audit_fallback.md` continues to define the six criteria for when manual self-verification is authorized. This subsection adds the honest record (the field) but NOT a machine-readable gate against criteria violations. The machine gate is a follow-up spec — see DRAFT `2026-04-27-self-fallback-machine-gate.md`. Recording a `self_fallback` value here means "I did manual review", NOT "the criteria were verified".
+
+**Orchestrator READ path (handshake → spec frontmatter).** The cross-auditor transmits two sibling fields back to the orchestrator: `evidence_class:` (enum, `dual_model | single_model` only — cross-auditor never writes `self_fallback` / `skipped`) and `evidence_blockers:` (list).
+
+- **Code/full mode (file-backed)** — production-file parser. The cross-auditor writes a findings.md with the two scalars in the leading top-of-file YAML frontmatter block (NO `### findings.md` heading anchor — that anchor only applies to smoke validation against the agent SOURCE template). The orchestrator reads from the produced findings.md as `awk '/^---$/{c++; next} c==1' <audit_slug>-findings.md | grep -E '^(evidence_class|evidence_blockers): '`. The production file's H1 is `# Audit Findings: <scope>`, not `### findings.md` — the production parser is unanchored on top-of-file YAML.
+- **Spec mode (inline return)** — the cross-auditor's inline-return text MUST end with TWO adjacent literal final lines `evidence_class: <value>` and `evidence_blockers: <YAML-list>` on their own lines (no trailing prose). The orchestrator parses with `grep -E '^(evidence_class|evidence_blockers): ' | tail -2` against the captured return text.
+
+**Parse-failure rule.** If either line is absent or malformed, OR if any `evidence_blockers` list item fails YAML-safety scalar validation (per cross-auditor's serialization rule: newline→space, `'`→`''`, 200-char cap, single-quoted form), the orchestrator MUST treat the audit as `self_fallback` (cross-auditor return signal not parseable → orchestrator must self-verify per `feedback_iter_2_audit_fallback.md`) and record the parse failure as a blocker (e.g. `'cross-auditor return missing evidence_class footer line'` or `'evidence_blockers entry failed YAML-safety validation'`).
+
+The orchestrator copies `evidence_blockers` from the handshake verbatim into `*_audit_blockers`, then prepends any orchestrator-side blockers (e.g. for `self_fallback`: the named cause + tracking entry; for zero-diff skip: `'no auditable files in diff'`; for explicit Skip: `'spec audit skipped by user'`).
+
 ---
 
 ## Implement
