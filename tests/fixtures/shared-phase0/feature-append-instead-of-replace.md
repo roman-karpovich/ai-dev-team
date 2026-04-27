@@ -27,4 +27,4 @@ project: my-project-name
 
 ### Feature-skill extensions
 
-Feature skill reads `codex.model`, `codex.model_fast`, and `codex.reasoning_effort` from the resolved config.
+Feature skill reads `codex.model` and `codex.reasoning_effort` from the resolved config.
