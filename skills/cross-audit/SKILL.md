@@ -34,7 +34,6 @@ decision fork in Phase 3 carries the `AWAITING YOUR INPUT` banner.
 - `--account <name>` → (multi-account mode) explicit account override for the PR-audit auth context; names an entry under `github.accounts` in `.ai-dev-team.local.yml`. Takes precedence over URL-host auto-routing and `default_account`. See Phase 0.5 hard-stop matrix (§3.7b) below for conflict semantics. Also accepted on `/cross-audit publish` where it overrides the findings-frontmatter `gh_account_context:` value.
 - `--force-publish-stale` → (publish only) bypasses the force-push preflight when the current PR `headRefOid` has diverged from the audit-time `pr_head_oid`. Records the stale OID in `head_oid_at_publish` for audit trail. See `references/publish.md`.
 - `--republish <ids>` → (publish only) forces re-posting IDs already present in a `published_to` record for the same PR URL. Adds a new record.
-- `--probe-downgrade <id>=<mode>` → **downgrade-only** per-run override for a single cross-audit probe's effective mode (spec 2026-04-21-cross-audit-probes-foundation §3.4). Multiple `--probe-downgrade` flags allowed on one invocation (e.g. `--probe-downgrade e=shadow --probe-downgrade f=off`). Allowed direction: `block → warn → shadow → off`; any upgrade is refused with a one-line warning and the probe continues at its YAML-resolved mode. **`off` is the lower bound (X9 rule)**: when the effective YAML mode for a probe is `off` — INCLUDING the absent-key default (when `cross_audit.probes` is absent or a given probe id is missing under it) — any `--probe-downgrade <id>=<mode>` with `mode != off` is treated as an upgrade and refused with the same one-line warning. Only `--probe-downgrade <id>=off` is a legal no-op against an already-off probe. Rationale: absent-key default is a user-declared floor, not a synthesized gap; emergency override bypasses the graduation-evidence gate by design and must never escalate past the user's declared posture.
 - `--materialize=worktree` → (ref-range mode only) create a temporary worktree at `refB` (`git worktree add /tmp/cross-audit-<audit_slug> <refB>`) so the cross-auditor reads file content from `refB` rather than the current working tree. Cleanup: `git worktree remove --force` + `rm -rf` at audit end (best-effort). Default off (no materialization). Anti-combinations: PR mode + `--materialize` → hard-stop ("PR mode already materializes via `gh pr checkout`; `--materialize` is for ref-range only"); non-ref-range scope + `--materialize` → warn ("`--materialize` is a no-op outside ref-range mode") and proceed; `--account` + ref-range → hard-stop ("ref-range mode does not authenticate; `--account` is for PR mode only").
 
 ---
@@ -51,22 +50,11 @@ Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved c
 
 Phase 0 also reads the optional `cross_audit.probes` block from the resolved config. Each probe id (`e`, `f`, `g`, and any future id) carries a four-mode kill-switch — `off | shadow | warn | block`. The resolved `probe_modes` dict (probe id → effective mode) is threaded into the cross-auditor dispatch in Phase 1-2.
 
-- **Default off**: when `cross_audit.probes` is absent from the resolved config, OR a given probe id is missing under `cross_audit.probes`, the effective mode defaults to `off`. Absence is a user-declared floor, not a synthesized gap (per §3.4 X9 resolution — the absent-key default is treated identically to an explicit `off` for CLI-override refusal purposes).
+- **Default off**: when `cross_audit.probes` is absent from the resolved config, OR a given probe id is missing under `cross_audit.probes`, the effective mode defaults to `off`. Absence is a user-declared floor, not a synthesized gap (per §3.4 X9 resolution).
 - **Unknown probe id → warning, not hard-stop**: when the YAML names a probe id the plugin does not recognize (e.g. `h: { mode: shadow }`), emit a one-line warning `cross_audit.probes.<id>: unknown probe id, treated as off — ignored for this run` and continue. Probes are a forward-looking enum; new ids arrive in follow-up specs without needing a Foundation re-release. Unknown-id emissions never hard-stop Phase 0.
 - **Mode enumeration**: the four allowed values are `off|shadow|warn|block`. Any other string emits the same one-line warning and falls back to `off`.
 
-See `docs/kb-discovery.md` for the canonical YAML schema and `docs/kb-discovery.md` → "cross_audit.probes.<id>.mode kill-switch" for the full mode semantics (shadow section routing, blocking semantics, Phase 3 presentation). `--probe-downgrade <id>=<mode>` CLI override semantics are declared under "Argument Parsing" above.
-
-**Override application (Phase 0 sequence)**:
-
-1. Read `cross_audit.probes` from the resolved config → `yaml_modes` dict (default: empty; missing ids default to `off`).
-2. For each `--probe-downgrade <id>=<mode>` on the invocation:
-   - If `mode ∉ {off, shadow, warn, block}` → one-line warning `--probe-downgrade <id>=<mode>: invalid mode (expected off|shadow|warn|block); ignored`; continue.
-   - Compute the probe's effective YAML mode (`yaml_modes.get(<id>, "off")`). Apply §3.4 downgrade-only rule:
-     - If `mode == off` → apply (downgrade or legal no-op when already off).
-     - If `yaml_modes.<id> == off` (including absent-key default) AND `mode != off` → **refuse** with one-line warning `--probe-downgrade <id>=<mode>: probe is off (no-op upgrade refused; off is the floor)`; continue without applying (X9 off-floor rule).
-     - Otherwise: if target mode is strictly lower than yaml mode on the `block > warn > shadow > off` ladder → apply. If target is higher → refuse with `--probe-downgrade <id>=<mode>: upgrade refused (only downgrades block→warn→shadow→off are honored)`.
-3. The resulting `probe_modes` dict is threaded into Phase 1-2 cross-auditor dispatch.
+See `docs/kb-discovery.md` for the canonical YAML schema and `docs/kb-discovery.md` → "cross_audit.probes.<id>.mode kill-switch" for the full mode semantics (shadow section routing, blocking semantics, Phase 3 presentation).
 
 **New audit**: generate `audit_slug` = `YYYY-MM-DD-<scope-slug>`.
 **Re-audit**: extract `audit_slug` from the existing findings doc filename — strip the path prefix and `-findings.md` suffix (e.g. `…/2026-04-14-workflow-definitions-findings.md` → `2026-04-14-workflow-definitions`). Do NOT regenerate from the current date; the slug must match the original to write to the same file.
@@ -210,7 +198,7 @@ gh_token_env: <resolved token_env or omitted>
 gh_host: <resolved host or omitted>
 
 [Probe plumbing — populated from Phase 0:]
-probe_modes: [dict mapping probe id → effective mode after YAML + CLI override; empty dict when no probe configured]
+probe_modes: [dict mapping probe id → effective mode resolved from the cross_audit.probes YAML kill-switch; empty dict when no probe configured]
 # probe_receipts is NO LONGER threaded by the skill — probe dispatch happens
 # inside the cross-auditor agent at Step 0.5 (spec 2026-04-21-probe-e-diff-
 # scope-leak §3.5 / X2); receipts are produced there.
