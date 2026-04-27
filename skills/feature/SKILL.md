@@ -316,7 +316,7 @@ Per spec `2026-04-27-audit-evidence-enum.md`. Every audit-terminal site (spec au
 - `self_fallback` — the cross-auditor agent itself could not complete (stall, timeout, MCP failure, premature merge) and the orchestrator performed manual self-verification per the iter-2 fallback rule (`feedback_iter_2_audit_fallback.md`). The cross-auditor never returns a usable signal in this case.
 - `skipped` — no audit was performed against findings: user clicked Skip on the spec-audit prompt, OR mid-flow "skip / proceed anyway" override, OR the code-audit zero-diff branch fired (`no auditable files in diff`).
 
-**Reader semantics for `null` (legacy specs).** All pre-enum specs lack these fields. Readers (filters, smoke pins, analytical scripts) MUST treat `null` / missing as `legacy_unknown` — distinct from any enum value, NOT flagged as degraded, NOT compared against `dual_model` directly. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, skipped}`, NEVER the inverse `!= dual_model` (which would flag every legacy spec forever).
+**Reader semantics for `null` (legacy specs).** All pre-enum specs lack these fields. Readers (filters, smoke pins, analytical scripts) MUST treat `null` / missing as `legacy_unknown` — distinct from any enum value, NOT flagged as degraded, NOT compared against `dual_model` directly. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, skipped}`. The inverse "not equal to dual_model" form is forbidden because it would flag every legacy spec forever.
 
 **Honesty-gate-not-approval-gate.** This subsection records evidence; the routine case introduces NO new mid-flow user banner per `feedback_ai_dev_team_repo_autonomy.md`. Future tooling (`/feature status`, smoke pins, future analysis) reads the field programmatically and surfaces degraded rows for human review out-of-band.
 
@@ -792,9 +792,10 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 
 ```
 ### Active
-| Spec | Project | Status | Progress | Branch |
-|------|---------|--------|----------|--------|
-| ... | ... | IN_PROGRESS | 3/7 steps | <type>/... |
+| Spec | Project | Status | Progress | Branch | Audit |
+|------|---------|--------|----------|--------|-------|
+| ... | ... | IN_PROGRESS | 3/7 steps | <type>/... | dual / dual |
+| ... | ... | AUDIT_PASSED | 0/5 steps | <type>/... | ⚠ skipped / — |
 
 ### Shipped — awaiting your action
 (SHIPPED with at least one pending `action` item, or any `failed` item.)
@@ -817,6 +818,14 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 |------|---------|------|---------|-----------|
 | ... | ... | 7 days stable in prod | 2026-04-18 | 5 days |
 ```
+
+**Audit column rendering (per §3.5b):** the `Audit` column on the `### Active` table renders `<spec_audit_evidence> / <code_audit_evidence>` from the spec frontmatter. Render rules:
+
+- `null` (legacy_unknown — pre-enum spec) → render `—` (em-dash). Do NOT flag.
+- `dual_model` → render `dual`. Do NOT flag.
+- Any of `single_model`, `self_fallback`, `skipped` → prepend a `⚠ ` warning glyph. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, skipped}` — apply this independently to `spec_audit_evidence` and to `code_audit_evidence`. Both fields use the same predicate.
+
+Continue mode is unchanged — it routes a single resolved spec, not a row table, so there's nothing to flag there.
 
 Omit any section that has no rows. If a SHIPPED spec has mixed pending types, place it in the most-actionable section (action → blocked → soaking, in that priority).
 
