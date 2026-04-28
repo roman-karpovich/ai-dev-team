@@ -4651,21 +4651,61 @@ EOF_KILLER
     return 1
   fi
   # P3: structural canary — the production helper body contains the
-  # canonical regex literal exactly once. Scoping to the awk-extracted
-  # function body (NOT file-wide grep) so a mutation that ONLY affects the
-  # helper is observable (the literal also appears in this meta-pin's
-  # `current_regex` and inside the recognition pin would otherwise yield
-  # false-positive structural-canary passes — same X9 lesson as L4441-4449).
+  # FULL canonical §3.1c regex literal (BOL date prefix + phase token + iter
+  # > 5 + justified + separator + reason tail) exactly twice (once each for
+  # grep -cE and grep -nE invocations).
+  #
+  # Iter-1 X1 fix: the prior canary anchored on the tail `justified [—-] .+$`
+  # only — a maintainer could drop the BOL+date+phase prefix
+  # `^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 ` from
+  # the production helper and the canary would still pass. The full canonical
+  # literal closes that gap. Using `grep -F` (fixed string) defeats `grep -E`
+  # self-interpretation of the canonical literal's regex meta-characters in
+  # the canary-test layer. The literal MUST be byte-identical to the form at
+  # smoke.sh:3495-3496.
+  #
+  # Scoping to the awk-extracted function body (NOT file-wide grep) so a
+  # mutation that ONLY affects the helper is observable (the literal also
+  # appears in this meta-pin's `current_regex` — a file-wide grep would
+  # silently pass after a helper-only mutation; same X9 lesson as L4441-4449).
   local prod_body prod_regex_count
   prod_body=$(awk '/^_fixture_latest_audit_iter_marker\(\)/,/^}/' tests/smoke.sh)
-  # The literal we expect: ' justified [—-] .+$' as part of the regex passed
-  # to grep -cE / grep -nE inside the helper. Anchor on the `[—-] .+\$` tail
-  # (em-dash listed first; `.+\$` mandatory non-empty reason).
-  prod_regex_count=$(printf '%s\n' "$prod_body" | grep -cE 'justified \[—-\] \.\+\$' || true)
+  local canonical_regex_literal='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$'
+  prod_regex_count=$(printf '%s\n' "$prod_body" | grep -cF "$canonical_regex_literal" || true)
   if [ "$prod_regex_count" -lt 2 ]; then
     # The helper invokes the regex twice (once for grep -cE, once for grep -nE).
     # Less than 2 means the production-helper regex shape was mutated/removed.
-    echo "iter-cap mutation-protected: _fixture_latest_audit_iter_marker() body does not contain canonical §3.1c regex tail '[—-] .+\$' twice (got $prod_regex_count — production helper grammar mutated/removed)"
+    echo "iter-cap mutation-protected: _fixture_latest_audit_iter_marker() body does not contain the FULL canonical §3.1c regex literal twice (got $prod_regex_count — production helper grammar mutated/removed; iter-1 X1 fix anchors on full BOL-to-EOL form)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P3b (iter-1 X1 parallel-surface fix): synthesize a prose-collision line
+  # that contains the substring `justified — because we said so` but is NOT
+  # in canonical form (no `(spec|code) audit iteration > 5 ` prefix). Run
+  # `_fixture_latest_audit_iter_marker` against a fixture carrying this line
+  # and assert escape_hatch_count=0. Catches BOL-anchor mutation at the
+  # helper-output layer (in addition to the structural-canary layer above).
+  # §3.1c explicitly warns: "Recognition is by regex, not free-floating
+  # substring, to defeat the prose-collision false-positive risk".
+  local prose_collision_fx="$fx_dir/prose-collision.md"
+  cat > "$prose_collision_fx" <<EOF_PROSE
+---
+title: prose-collision fixture (iter-cap mutation-observability)
+---
+
+## Log
+
+### 2026-04-28
+
+- 2026-04-28: spec_audit_iteration=7; spec_audit_fixed_ids=[X1]; spec_audit_next_id=2
+- 2026-04-28: discussion notes — justified — because we said so
+EOF_PROSE
+  local prose_out
+  prose_out=$(_fixture_latest_audit_iter_marker "$prose_collision_fx")
+  unset max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  eval "$prose_out"
+  if [ "${escape_hatch_count:-0}" -ne 0 ]; then
+    echo "iter-cap mutation-protected: prose-collision input mis-classified — escape_hatch_count=$escape_hatch_count (expected 0; production helper accepted free-floating 'justified — reason' prose, indicating BOL-anchor mutation)"
     rm -rf "$fx_dir"
     return 1
   fi
