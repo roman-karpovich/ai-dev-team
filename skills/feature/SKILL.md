@@ -317,7 +317,7 @@ Per spec `2026-04-27-audit-evidence-enum.md`. Every audit-terminal site (spec au
 - `contract_violated` — the cross-auditor *ran* but its output contract is broken: (a) inline return (spec mode) missing/malformed `evidence_class:` or `evidence_blockers:` final lines; (b) any `evidence_blockers` list item fails YAML-safety scalar validation per cross-auditor's serialization rule; (c) code/full mode — the expected `<kb>/repos/<project>/security/<audit_slug>-findings.md` file is missing on disk after the agent returns. The cross-auditor never writes this value (by definition can't reliably self-diagnose); the orchestrator records it. Recovery (re-spawn, manual self-verify per `feedback_iter_2_audit_fallback.md`, or ship as-is) is a separate orchestrator decision that may further update the final evidence value.
 - `skipped` — no audit was performed against findings: user clicked Skip on the spec-audit prompt, OR mid-flow "skip / proceed anyway" override, OR the code-audit zero-diff branch fired (`no auditable files in diff`).
 
-**Reader semantics for `null` (legacy specs).** All pre-enum specs lack these fields. Readers (filters, smoke pins, analytical scripts) MUST treat `null` / missing as `legacy_unknown` — distinct from any enum value, NOT flagged as degraded, NOT compared against `dual_model` directly. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, skipped}`. The inverse "not equal to dual_model" form is forbidden because it would flag every legacy spec forever.
+**Reader semantics for `null` (legacy specs).** All pre-enum specs lack these fields. Readers (filters, smoke pins, analytical scripts) MUST treat `null` / missing as `legacy_unknown` — distinct from any enum value, NOT flagged as degraded, NOT compared against `dual_model` directly. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, contract_violated, skipped}`. The inverse "not equal to dual_model" form is forbidden because it would flag every legacy spec forever.
 
 **Honesty-gate-not-approval-gate.** This subsection records evidence; the routine case introduces NO new mid-flow user banner per `feedback_ai_dev_team_repo_autonomy.md`. Future tooling (`/feature status`, smoke pins, future analysis) reads the field programmatically and surfaces degraded rows for human review out-of-band.
 
@@ -834,6 +834,7 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 |------|---------|--------|----------|--------|-------|
 | ... | ... | IN_PROGRESS | 3/7 steps | <type>/... | dual / dual |
 | ... | ... | AUDIT_PASSED | 0/5 steps | <type>/... | ⚠ skipped / — |
+| ... | ... | AUDIT_PASSED | 0/5 steps | <type>/... | ⚠ contract_violated / — |
 
 ### Shipped — awaiting your action
 (SHIPPED with at least one pending `action` item, or any `failed` item.)
@@ -861,7 +862,7 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 
 - `null` (legacy_unknown — pre-enum spec) → render `—` (em-dash). Do NOT flag.
 - `dual_model` → render `dual`. Do NOT flag.
-- Any of `single_model`, `self_fallback`, `skipped` → prepend a `⚠ ` warning glyph. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, skipped}` — apply this independently to `spec_audit_evidence` and to `code_audit_evidence`. Both fields use the same predicate.
+- Any of `single_model`, `self_fallback`, `contract_violated`, `skipped` → prepend a `⚠ ` warning glyph. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, contract_violated, skipped}` — apply this independently to `spec_audit_evidence` and to `code_audit_evidence`. Both fields use the same predicate.
 
 Continue mode is unchanged — it routes a single resolved spec, not a row table, so there's nothing to flag there.
 
