@@ -382,7 +382,7 @@ The cross-auditor itself only ever emits one of two values for `evidence_class:`
 - **`dual_model`** — Codex returned successfully AND Claude reviewed (the gold standard). Then `evidence_blockers: []` (empty list).
 - **`single_model`** — the fail-open Codex-FAILED prepend banner fired (Claude-only). Extract the failure reason from the existing `⚠️ WARNING: Codex audit unavailable (<error reason>)` banner and emit `evidence_blockers: ['codex audit unavailable: <reason>']` — single-quoted YAML scalar form.
 
-The cross-auditor NEVER writes `self_fallback` or `skipped` — those values are exclusively orchestrator territory (set when the cross-auditor itself could not complete or was bypassed).
+The cross-auditor NEVER writes `self_fallback`, `contract_violated`, or `skipped` — those values are exclusively orchestrator territory (set when the cross-auditor itself could not complete, violated its output contract, or was bypassed).
 
 ### YAML-safety serialization rule for blocker strings
 
@@ -418,7 +418,7 @@ evidence_class: single_model
 evidence_blockers: ['codex audit unavailable: connection refused']
 ```
 
-The orchestrator parses the two adjacent final lines using `grep -E '^(evidence_class|evidence_blockers): ' | tail -2`. If either line is absent or malformed, the orchestrator MUST treat the audit as `self_fallback` (cross-auditor return signal not parseable) and record the parse failure as a blocker — see SKILL.md §3.5b for the orchestrator-side read path.
+The orchestrator parses the two adjacent final lines using `grep -E '^(evidence_class|evidence_blockers): ' | tail -2`. If either line is absent or malformed, the orchestrator MUST treat the audit as `contract_violated` (cross-auditor return signal not parseable) and record the parse failure as a blocker — see SKILL.md §3.5b Contract-violation rule for the orchestrator-side read path.
 
 ## Step 4: Write Output Documents
 
