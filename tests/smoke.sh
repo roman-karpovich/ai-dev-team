@@ -3450,6 +3450,98 @@ _fixture_latest_code_audit_marker() {
   _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$' | tail -1
 }
 
+# Production helper for the audit-iteration-cap recognition pin (Step 7 of
+# spec 2026-04-28-orchestrator-delegation-and-stop-criteria.md). Given a
+# spec.md fixture, return phase-segregated key=value lines on stdout:
+#   max_iter=<N>                          # max of (latest spec_audit_iteration, latest code audit iteration); 0 if none
+#   latest_iter_line=<N>                  # 1-based line number of the LAST iter marker (any phase); 0 if none [legacy, retained for prose-collision meta-pin compatibility]
+#   escape_hatch_count=<N>                # total number of lines matching the §3.1c canonical regex (any phase) [legacy, used by P3b prose-collision check]
+#   escape_hatch_line=<N>                 # 1-based line number of the FIRST canonical-regex match (any phase); 0 if none [legacy]
+#   spec_iter_first_over_cap_line=<N>     # 1-based line number of the FIRST `spec_audit_iteration=N` where N > 5; 0 if none
+#   code_iter_first_over_cap_line=<N>     # 1-based line number of the FIRST `code audit iteration=N` where N > 5; 0 if none
+#   spec_hatch_line=<N>                   # 1-based line number of FIRST line matching `^- DATE: spec audit iteration > 5 justified [—-] .+$`; 0 if none
+#   code_hatch_line=<N>                   # 1-based line number of FIRST line matching `^- DATE: code audit iteration > 5 justified [—-] .+$`; 0 if none
+# Classification (clean / violation / justified-clean) is left to the calling
+# pin and consults phase-segregated output:
+#   - per phase P in {spec, code}: P_iter_first_over_cap_line > 0 ⇒ require
+#     P_hatch_line > 0 AND P_hatch_line < P_iter_first_over_cap_line
+#     (justification BEFORE the first over-cap marker for that phase),
+#     else violation.
+#   - both phases under-cap ⇒ clean.
+#   - both phases independently cleared (under-cap OR phase-matched
+#     pre-cap justification) ⇒ justified-clean (or clean if all phases
+#     under-cap).
+# Per-phase ordering (BEFORE-iter-6) and per-phase token enforcement are
+# what spec §3.1c L147 ("BEFORE iter-6 starts") and SKILL.md §3.5c L358
+# require. The earlier ±5 absolute-distance window with scalar
+# escape_hatch_count was strictly weaker (iter-2 X2): it accepted
+# rationalization-after-the-fact and let a code-phase justification clear
+# a spec-phase breach.
+#
+# The §3.1c canonical regex is the SINGLE SOURCE OF TRUTH for the escape
+# hatch:
+#   ^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$
+# Phase splitting is done by substituting one phase token in place of the
+# alternation — `(spec|code)` ⇒ `spec` and `(spec|code)` ⇒ `code`, with all
+# OTHER bytes preserved verbatim. ERE alternation `(spec|code)` (NOT
+# BRE-escaped `(spec\|code)`); separator `[—-]` (em-dash listed first to
+# avoid range parsing); reason `.+$` mandatory. Drift here is what the
+# companion meta-pin guards against.
+#
+# Iter-marker shape (per 2026-04-27-audit-evidence-enum.md L320/L327/L334
+# precedent) carries the BOL Log-line prefix `- YYYY-MM-DD: `:
+#   - 2026-04-28: spec_audit_iteration=N; ...
+#   - 2026-04-28: code audit iteration=N; ...
+_fixture_latest_audit_iter_marker() {
+  local fx="$1"
+  if [ ! -f "$fx" ]; then
+    printf 'max_iter=0\nlatest_iter_line=0\nescape_hatch_count=0\nescape_hatch_line=0\nspec_iter_first_over_cap_line=0\ncode_iter_first_over_cap_line=0\nspec_hatch_line=0\ncode_hatch_line=0\n'
+    return 0
+  fi
+  local spec_iter code_iter max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  local spec_iter_first_over_cap_line code_iter_first_over_cap_line
+  local spec_hatch_line code_hatch_line
+  spec_iter=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: spec_audit_iteration=[0-9]+' "$fx" \
+    | sed -E 's/.*spec_audit_iteration=([0-9]+).*/\1/' | sort -n | tail -1)
+  code_iter=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit iteration=[0-9]+' "$fx" \
+    | sed -E 's/.*code audit iteration=([0-9]+).*/\1/' | sort -n | tail -1)
+  spec_iter=${spec_iter:-0}
+  code_iter=${code_iter:-0}
+  if [ "$spec_iter" -ge "$code_iter" ]; then
+    max_iter=$spec_iter
+  else
+    max_iter=$code_iter
+  fi
+  latest_iter_line=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec_audit_iteration|code audit iteration)=' "$fx" \
+    | tail -1 | cut -d: -f1)
+  latest_iter_line=${latest_iter_line:-0}
+  escape_hatch_count=$(grep -cE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$' "$fx")
+  escape_hatch_line=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$' "$fx" \
+    | head -1 | cut -d: -f1)
+  escape_hatch_line=${escape_hatch_line:-0}
+  # Phase-segregated values (iter-2 X2 fix). Each grep below is a phase-
+  # specific specialization of the §3.1c canonical regex with the
+  # `(spec|code)` alternation collapsed to one literal phase token; all
+  # other bytes are preserved verbatim from the canonical literal at
+  # `escape_hatch_count` (above).
+  spec_iter_first_over_cap_line=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: spec_audit_iteration=[6-9]([^0-9]|$)|^- [0-9]{4}-[0-9]{2}-[0-9]{2}: spec_audit_iteration=[1-9][0-9]+' "$fx" \
+    | head -1 | cut -d: -f1)
+  spec_iter_first_over_cap_line=${spec_iter_first_over_cap_line:-0}
+  code_iter_first_over_cap_line=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit iteration=[6-9]([^0-9]|$)|^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit iteration=[1-9][0-9]+' "$fx" \
+    | head -1 | cut -d: -f1)
+  code_iter_first_over_cap_line=${code_iter_first_over_cap_line:-0}
+  spec_hatch_line=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: spec audit iteration > 5 justified [—-] .+$' "$fx" \
+    | head -1 | cut -d: -f1)
+  spec_hatch_line=${spec_hatch_line:-0}
+  code_hatch_line=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit iteration > 5 justified [—-] .+$' "$fx" \
+    | head -1 | cut -d: -f1)
+  code_hatch_line=${code_hatch_line:-0}
+  printf 'max_iter=%s\nlatest_iter_line=%s\nescape_hatch_count=%s\nescape_hatch_line=%s\nspec_iter_first_over_cap_line=%s\ncode_iter_first_over_cap_line=%s\nspec_hatch_line=%s\ncode_hatch_line=%s\n' \
+    "$max_iter" "$latest_iter_line" "$escape_hatch_count" "$escape_hatch_line" \
+    "$spec_iter_first_over_cap_line" "$code_iter_first_over_cap_line" \
+    "$spec_hatch_line" "$code_hatch_line"
+}
+
 # Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
 # Expected verbatim Log fragment: verified=[X3], accepted=[X5], deferred=[X9]
 # (commas between list-name tokens per SKILL.md §Code audit canonical schema).
@@ -4428,6 +4520,372 @@ EOF_MUT_FX
   return 0
 }
 
+# Audit-iteration-cap recognition pin (Step 7 of spec
+# 2026-04-28-orchestrator-delegation-and-stop-criteria.md).
+#
+# Feeds the three iter-cap-* fixtures through the production helper
+# `_fixture_latest_audit_iter_marker` and asserts the orchestrator-runtime
+# recognition contract per MISSION rule #11 (stop criteria, hard cap iter ≤
+# 5; escape hatch via §3.1c canonical regex):
+#   (a) iter ≤ 5 → recognized as clean (no escape-hatch line required).
+#   (b) iter > 5 with NO line matching the §3.1c canonical regex → violation.
+#   (c) iter > 5 WITH a line matching the §3.1c canonical regex within ±5
+#       lines of the latest iter marker → escape-hatch clean.
+#
+# Inline-pin implementations are forbidden — the pin MUST go through the
+# production helper so a future regex regression at the helper site is
+# observable through this pin (mirroring the audit-evidence-marker
+# precedent at L4216-4378).
+check_audit_iteration_hard_cap_recognition() {
+  local fx_dir='tests/fixtures/audit-iteration-cap'
+  local fail=0
+
+  _classify() {
+    # Args: spec_iter_first_over_cap_line code_iter_first_over_cap_line
+    #       spec_hatch_line code_hatch_line
+    # Echo one of: clean | violation | justified-clean
+    #
+    # Per spec §3.1c L147 + SKILL.md §3.5c L358 ("BEFORE iter-6 starts"),
+    # the two phases are evaluated INDEPENDENTLY:
+    #   - For each phase P in {spec, code}: if P_iter_first_over_cap_line > 0,
+    #     require P_hatch_line > 0 AND P_hatch_line < P_iter_first_over_cap_line
+    #     (justification BEFORE the first over-cap marker for that phase),
+    #     else this phase is in violation.
+    #   - Both phases under-cap ⇒ clean.
+    #   - One/both phases over-cap with phase-matched pre-cap justification
+    #     ⇒ justified-clean.
+    #   - Any phase over-cap without phase-matched BEFORE-iter-6 justification
+    #     ⇒ violation.
+    # The earlier ±5 absolute-distance window with a scalar
+    # `escape_hatch_count` was strictly weaker (iter-2 X2): it accepted
+    # rationalization-after-the-fact (order-blindness) and let a code-phase
+    # justification clear a spec-phase breach (phase-blindness).
+    local spec_over="$1" code_over="$2" spec_hl="$3" code_hl="$4"
+    local spec_violation=0 code_violation=0 any_over=0
+    if [ "$spec_over" -gt 0 ]; then
+      any_over=1
+      if [ "$spec_hl" -le 0 ] || [ "$spec_hl" -ge "$spec_over" ]; then
+        spec_violation=1
+      fi
+    fi
+    if [ "$code_over" -gt 0 ]; then
+      any_over=1
+      if [ "$code_hl" -le 0 ] || [ "$code_hl" -ge "$code_over" ]; then
+        code_violation=1
+      fi
+    fi
+    if [ "$any_over" -eq 0 ]; then
+      printf 'clean\n'
+      return 0
+    fi
+    if [ "$spec_violation" -eq 0 ] && [ "$code_violation" -eq 0 ]; then
+      printf 'justified-clean\n'
+      return 0
+    fi
+    printf 'violation\n'
+  }
+
+  # (a) clean fixture: iter ≤ 5 in both phases
+  local out_clean class_clean
+  out_clean=$(_fixture_latest_audit_iter_marker "$fx_dir/iter-cap-clean/spec.md")
+  eval "$out_clean"
+  class_clean=$(_classify "$spec_iter_first_over_cap_line" "$code_iter_first_over_cap_line" \
+    "$spec_hatch_line" "$code_hatch_line")
+  if [ "$max_iter" -gt 5 ]; then
+    echo "iter-cap recognition: clean fixture should have max_iter ≤ 5 (got $max_iter)"
+    fail=1
+  fi
+  if [ "$class_clean" != "clean" ]; then
+    echo "iter-cap recognition: clean fixture mis-classified as '$class_clean' (expected 'clean')"
+    fail=1
+  fi
+
+  # (b) violation fixture: iter > 5, no escape-hatch line anywhere
+  local out_violation class_violation
+  out_violation=$(_fixture_latest_audit_iter_marker "$fx_dir/iter-cap-violation/spec.md")
+  unset max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  unset spec_iter_first_over_cap_line code_iter_first_over_cap_line spec_hatch_line code_hatch_line
+  eval "$out_violation"
+  class_violation=$(_classify "$spec_iter_first_over_cap_line" "$code_iter_first_over_cap_line" \
+    "$spec_hatch_line" "$code_hatch_line")
+  if [ "$max_iter" -le 5 ]; then
+    echo "iter-cap recognition: violation fixture should have max_iter > 5 (got $max_iter)"
+    fail=1
+  fi
+  if [ "$escape_hatch_count" -ne 0 ]; then
+    echo "iter-cap recognition: violation fixture should have 0 escape-hatch matches (got $escape_hatch_count)"
+    fail=1
+  fi
+  if [ "$class_violation" != "violation" ]; then
+    echo "iter-cap recognition: violation fixture mis-classified as '$class_violation' (expected 'violation')"
+    fail=1
+  fi
+
+  # (c) justified fixture: iter > 5 in BOTH phases, BOTH phase-matched
+  # justifications placed BEFORE their respective phase's first over-cap
+  # iter marker. Both phases must independently clear, else violation.
+  local out_justified class_justified
+  out_justified=$(_fixture_latest_audit_iter_marker "$fx_dir/iter-cap-justified/spec.md")
+  unset max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  unset spec_iter_first_over_cap_line code_iter_first_over_cap_line spec_hatch_line code_hatch_line
+  eval "$out_justified"
+  class_justified=$(_classify "$spec_iter_first_over_cap_line" "$code_iter_first_over_cap_line" \
+    "$spec_hatch_line" "$code_hatch_line")
+  if [ "$max_iter" -le 5 ]; then
+    echo "iter-cap recognition: justified fixture should have max_iter > 5 (got $max_iter)"
+    fail=1
+  fi
+  if [ "$escape_hatch_count" -ne 2 ]; then
+    echo "iter-cap recognition: justified fixture should have exactly 2 escape-hatch matches — one per phase (got $escape_hatch_count)"
+    fail=1
+  fi
+  if [ "$spec_hatch_line" -le 0 ] || [ "$spec_iter_first_over_cap_line" -le 0 ] \
+      || [ "$spec_hatch_line" -ge "$spec_iter_first_over_cap_line" ]; then
+    echo "iter-cap recognition: justified fixture spec-phase justification not BEFORE first over-cap marker (spec_hatch_line=$spec_hatch_line spec_iter_first_over_cap_line=$spec_iter_first_over_cap_line)"
+    fail=1
+  fi
+  if [ "$code_hatch_line" -le 0 ] || [ "$code_iter_first_over_cap_line" -le 0 ] \
+      || [ "$code_hatch_line" -ge "$code_iter_first_over_cap_line" ]; then
+    echo "iter-cap recognition: justified fixture code-phase justification not BEFORE first over-cap marker (code_hatch_line=$code_hatch_line code_iter_first_over_cap_line=$code_iter_first_over_cap_line)"
+    fail=1
+  fi
+  if [ "$class_justified" != "justified-clean" ]; then
+    echo "iter-cap recognition: justified fixture mis-classified as '$class_justified' (expected 'justified-clean')"
+    fail=1
+  fi
+
+  # (d) iter-2 X2 phase-blind regression killer: synthesized fixture with
+  # spec_iter > 5 + code_iter > 5 + ONLY a code-phase justification
+  # (spec phase unjustified). Per spec §3.1c, spec-phase breach without a
+  # spec-phase justification is a violation. A scalar-count classifier
+  # (the iter-1 design) accepts this fixture — this killer detects that
+  # regression.
+  local kill_dir kill_fx kill_out kill_class
+  kill_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'iter_cap_phase_blind')
+  if [ -z "$kill_dir" ] || [ ! -d "$kill_dir" ]; then
+    echo "iter-cap recognition: phase-blind killer could not create temp dir"
+    return 1
+  fi
+  kill_fx="$kill_dir/spec.md"
+  cat > "$kill_fx" <<'EOF_PHASE_BLIND'
+---
+title: synthesized phase-blind regression killer
+---
+
+## Log
+
+### 2026-04-28
+
+- 2026-04-28: code audit iteration > 5 justified — security-sensitive auth path
+- 2026-04-28: spec_audit_iteration=6; spec_audit_fixed_ids=[X1]; spec_audit_next_id=2
+- 2026-04-28: code audit iteration=6; fixed_ids=[X2]; accepted_ids=[]
+EOF_PHASE_BLIND
+  kill_out=$(_fixture_latest_audit_iter_marker "$kill_fx")
+  unset max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  unset spec_iter_first_over_cap_line code_iter_first_over_cap_line spec_hatch_line code_hatch_line
+  eval "$kill_out"
+  kill_class=$(_classify "$spec_iter_first_over_cap_line" "$code_iter_first_over_cap_line" \
+    "$spec_hatch_line" "$code_hatch_line")
+  if [ "$kill_class" != "violation" ]; then
+    echo "iter-cap recognition: phase-blind killer mis-classified as '$kill_class' (expected 'violation' — code-phase justification cannot clear a spec-phase cap breach; spec_hatch_line=$spec_hatch_line spec_iter_first_over_cap_line=$spec_iter_first_over_cap_line code_hatch_line=$code_hatch_line code_iter_first_over_cap_line=$code_iter_first_over_cap_line)"
+    fail=1
+  fi
+  rm -rf "$kill_dir"
+
+  # (e) iter-2 X2 order-blind regression killer: synthesized fixture with
+  # spec_iter > 5 + a spec-phase justification line PLACED AFTER the iter
+  # marker. Per spec §3.1c L147 ("BEFORE iter-6 starts"), justification
+  # AFTER the iter marker = rationalization, not pre-commitment. Must
+  # classify as violation. A ±5-line absolute-distance classifier (the
+  # iter-1 design) accepts this fixture — this killer detects that
+  # regression.
+  local order_dir order_fx order_out order_class
+  order_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'iter_cap_order_blind')
+  if [ -z "$order_dir" ] || [ ! -d "$order_dir" ]; then
+    echo "iter-cap recognition: order-blind killer could not create temp dir"
+    return 1
+  fi
+  order_fx="$order_dir/spec.md"
+  cat > "$order_fx" <<'EOF_ORDER_BLIND'
+---
+title: synthesized order-blind regression killer
+---
+
+## Log
+
+### 2026-04-28
+
+- 2026-04-28: spec_audit_iteration=6; spec_audit_fixed_ids=[X1]; spec_audit_next_id=2
+- 2026-04-28: spec audit iteration > 5 justified — cross-cutting refactor with 7 parallel surfaces
+EOF_ORDER_BLIND
+  order_out=$(_fixture_latest_audit_iter_marker "$order_fx")
+  unset max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  unset spec_iter_first_over_cap_line code_iter_first_over_cap_line spec_hatch_line code_hatch_line
+  eval "$order_out"
+  order_class=$(_classify "$spec_iter_first_over_cap_line" "$code_iter_first_over_cap_line" \
+    "$spec_hatch_line" "$code_hatch_line")
+  if [ "$order_class" != "violation" ]; then
+    echo "iter-cap recognition: order-blind killer mis-classified as '$order_class' (expected 'violation' — justification placed AFTER iter marker is rationalization-after-the-fact; spec_hatch_line=$spec_hatch_line spec_iter_first_over_cap_line=$spec_iter_first_over_cap_line)"
+    fail=1
+  fi
+  rm -rf "$order_dir"
+
+  return $fail
+}
+
+# Companion R6 mutation-protected meta-pin (Step 7 of spec
+# 2026-04-28-orchestrator-delegation-and-stop-criteria.md).
+#
+# Mirrors the precedent at L4380-4479
+# (`check_code_audit_marker_recognition_mutation_protected`). Per X14
+# decision Option A (precedent-preserving), the mutation-killer input is
+# synthesized inside the meta-pin's body via printf/heredoc — NOT a fourth
+# fixture under tests/fixtures/audit-iteration-cap/. The three iter-cap-*
+# fixtures stay pure (each represents exactly one recognition shape:
+# clean / violation / justified).
+#
+# P1: the CURRENT (canonical §3.1c) regex REJECTS the synthesized killer
+#     input (an `iter > 5 justified` line with no separator-and-reason tail).
+# P2: a chosen MUTANT regex (relaxes `[—-] .+$` to `.*` so trailing garbage
+#     is accepted) ACCEPTS the killer input — proving the mutation is
+#     observable and not a no-op.
+# P3: structural canary scoped to the awk-extracted body of
+#     `_fixture_latest_audit_iter_marker()` only (NOT a file-wide grep): the
+#     production helper's body contains the canonical regex literal exactly
+#     once.
+# P4: the recognition pin's body invokes `_fixture_latest_audit_iter_marker`
+#     via command substitution (anchor `$(_fixture_latest_audit_iter_marker[[:space:]]`
+#     after stripping whole-line and trailing comments via `sed` per the
+#     precedent at L4461).
+# P5: the recognition pin's body does NOT contain a marker-shape regex
+#     literal at the function level (anchor on
+#     `^- \[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}:` — same shape-guard as
+#     L4467-4476).
+check_audit_iteration_hard_cap_recognition_mutation_protected() {
+  local fx_dir
+  fx_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'iter_cap_mutpin')
+  if [ -z "$fx_dir" ] || [ ! -d "$fx_dir" ]; then
+    echo "iter-cap mutation-protected: could not create temp dir"
+    return 1
+  fi
+  # Synthesize the canonical regression-killer input: an `iter > 5 justified`
+  # line with NO separator-and-reason tail (just `justified` and EOL). The
+  # current (§3.1c canonical) regex requires ` [—-] .+$` after `justified`,
+  # so this line MUST be rejected; a relaxed mutant that drops the tail
+  # requirement MUST accept it.
+  local killer="- 2026-04-28: spec audit iteration > 5 justified"
+  local fx="$fx_dir/spec.md"
+  cat > "$fx" <<EOF_KILLER
+---
+title: mutation-test fixture (iter-cap)
+---
+
+## Log
+
+### 2026-04-28
+
+- 2026-04-28: spec_audit_iteration=7; spec_audit_fixed_ids=[X1]; spec_audit_next_id=2
+$killer
+EOF_KILLER
+
+  # P1: the canonical §3.1c regex (single source of truth) REJECTS the killer.
+  local current_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$'
+  if printf '%s\n' "$killer" | grep -qE "$current_regex"; then
+    echo "iter-cap mutation-protected: current §3.1c regex INCORRECTLY accepts the killer input (no separator-and-reason tail)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P2: the MUTANT regex (relaxes `[—-] .+$` to `.*`) ACCEPTS the killer.
+  # If the mutant ALSO rejects, the mutation isn't observable and the
+  # meta-pin is ineffective.
+  local mutant_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified.*'
+  if ! printf '%s\n' "$killer" | grep -qE "$mutant_regex"; then
+    echo "iter-cap mutation-protected: mutant regex unexpectedly rejects killer input — meta-pin can't observe regression"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P3: structural canary — the production helper body contains the
+  # FULL canonical §3.1c regex literal (BOL date prefix + phase token + iter
+  # > 5 + justified + separator + reason tail) exactly twice (once each for
+  # grep -cE and grep -nE invocations).
+  #
+  # Iter-1 X1 fix: the prior canary anchored on the tail `justified [—-] .+$`
+  # only — a maintainer could drop the BOL+date+phase prefix
+  # `^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 ` from
+  # the production helper and the canary would still pass. The full canonical
+  # literal closes that gap. Using `grep -F` (fixed string) defeats `grep -E`
+  # self-interpretation of the canonical literal's regex meta-characters in
+  # the canary-test layer. The literal MUST be byte-identical to the form at
+  # smoke.sh:3495-3496.
+  #
+  # Scoping to the awk-extracted function body (NOT file-wide grep) so a
+  # mutation that ONLY affects the helper is observable (the literal also
+  # appears in this meta-pin's `current_regex` — a file-wide grep would
+  # silently pass after a helper-only mutation; same X9 lesson as L4441-4449).
+  local prod_body prod_regex_count
+  prod_body=$(awk '/^_fixture_latest_audit_iter_marker\(\)/,/^}/' tests/smoke.sh)
+  local canonical_regex_literal='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$'
+  prod_regex_count=$(printf '%s\n' "$prod_body" | grep -cF "$canonical_regex_literal" || true)
+  if [ "$prod_regex_count" -lt 2 ]; then
+    # The helper invokes the regex twice (once for grep -cE, once for grep -nE).
+    # Less than 2 means the production-helper regex shape was mutated/removed.
+    echo "iter-cap mutation-protected: _fixture_latest_audit_iter_marker() body does not contain the FULL canonical §3.1c regex literal twice (got $prod_regex_count — production helper grammar mutated/removed; iter-1 X1 fix anchors on full BOL-to-EOL form)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P3b (iter-1 X1 parallel-surface fix): synthesize a prose-collision line
+  # that contains the substring `justified — because we said so` but is NOT
+  # in canonical form (no `(spec|code) audit iteration > 5 ` prefix). Run
+  # `_fixture_latest_audit_iter_marker` against a fixture carrying this line
+  # and assert escape_hatch_count=0. Catches BOL-anchor mutation at the
+  # helper-output layer (in addition to the structural-canary layer above).
+  # §3.1c explicitly warns: "Recognition is by regex, not free-floating
+  # substring, to defeat the prose-collision false-positive risk".
+  local prose_collision_fx="$fx_dir/prose-collision.md"
+  cat > "$prose_collision_fx" <<EOF_PROSE
+---
+title: prose-collision fixture (iter-cap mutation-observability)
+---
+
+## Log
+
+### 2026-04-28
+
+- 2026-04-28: spec_audit_iteration=7; spec_audit_fixed_ids=[X1]; spec_audit_next_id=2
+- 2026-04-28: discussion notes — justified — because we said so
+EOF_PROSE
+  local prose_out
+  prose_out=$(_fixture_latest_audit_iter_marker "$prose_collision_fx")
+  unset max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  eval "$prose_out"
+  if [ "${escape_hatch_count:-0}" -ne 0 ]; then
+    echo "iter-cap mutation-protected: prose-collision input mis-classified — escape_hatch_count=$escape_hatch_count (expected 0; production helper accepted free-floating 'justified — reason' prose, indicating BOL-anchor mutation)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P4: the recognition pin invokes `_fixture_latest_audit_iter_marker`
+  # via command substitution. Strip comments first so a documentation
+  # reference cannot satisfy the anchor while neutering the call site.
+  local body code_only
+  body=$(awk '/^check_audit_iteration_hard_cap_recognition\(\)/,/^}/' tests/smoke.sh)
+  code_only=$(printf '%s\n' "$body" | sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]*#[^"'"'"']*$//')
+  if ! printf '%s\n' "$code_only" | grep -qE '\$\(_fixture_latest_audit_iter_marker[[:space:]]'; then
+    echo "iter-cap mutation-protected: recognition pin body does not invoke _fixture_latest_audit_iter_marker via command substitution (production helper bypassed)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P5: the recognition pin body must NOT contain a marker-shape regex
+  # literal at the function level — guarding against an inline-copy
+  # regression where the recognition pin learns the regex itself.
+  if printf '%s\n' "$code_only" | grep -qE "grep -q?E '\^- \[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}: \(spec\|code\) audit iteration"; then
+    echo "iter-cap mutation-protected: recognition pin contains an inline marker-shape regex literal (inline-copy regression)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  rm -rf "$fx_dir"
+  return 0
+}
+
 # Iter-2 X5 fixture-based regression coverage: production-shape resume
 # routing tests under the EXTENDED Log marker schema. Matches the existing
 # clean-passed / zero-diff-skip routing tests (L3414, L3457) but exercises
@@ -4489,6 +4947,8 @@ check "audit-evidence-marker-recognition-symmetry"         check_code_audit_mark
 check "audit-evidence-marker-recognition-mutation-protected" check_code_audit_marker_recognition_mutation_protected
 check "audit-evidence-resume-clean-passed-extended"        check_code_audit_resume_clean_passed_extended_evidence
 check "audit-evidence-resume-zero-diff-skip-extended"      check_code_audit_resume_zero_diff_skip_extended_evidence
+check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
+check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
 echo
 
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
