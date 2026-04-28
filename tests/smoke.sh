@@ -3351,7 +3351,27 @@ check_spec_template_code_findings_paragraph() {
     echo "$f missing derivation-rule phrase ('auto-derive|auto-derived|highest existing')"
     return 1
   fi
-  echo "$f has code-audit persistence paragraph (KB path + next_finding_id + derivation rule) OK"
+  # X8 sub-(c): spec-template.md L117 path mention MUST include the `/security/`
+  # segment matching the cross-auditor write contract (agents/cross-auditor.md
+  # L430) and SKILL.md L546 + L731. Mirror the X8 sub-(b) idiom: positive
+  # /security/ assertion + negative bare-form guard (every full-prefix
+  # `-code-findings.md` mention has /security/, at either <kb> or <kb_path>
+  # placeholder spelling).
+  if ! grep -qF "repos/<project>/security/<spec-slug>-code-findings.md" "$f"; then
+    echo "$f has bare findings.md path without /security/ segment — diverges from agents/cross-auditor.md:430 write contract"
+    return 1
+  fi
+  # `grep -c` always prints a count to stdout (even 0); the non-zero exit on
+  # zero-match is harmless here (no `set -e`). Capture stdout directly.
+  local bad good
+  bad=$(grep -cE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f")
+  good=$(grep -cE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f")
+  if [ "$bad" != "$good" ]; then
+    local missing=$((bad - good))
+    echo "$f has $missing findings.md path mention(s) missing /security/ segment (bad=$bad, good=$good — bad MUST equal good)"
+    return 1
+  fi
+  echo "$f has code-audit persistence paragraph (KB path + next_finding_id + derivation rule + /security/ coherence) OK"
 }
 
 check "code-audit-heading-unique"                   check_code_audit_heading_unique
@@ -5364,24 +5384,32 @@ check_skill_evidence_pair_invariant() {
 #      finds no OPEN/REOPENED entries, routes to clean hand-off; un-triaged
 #      HIGH findings ship silently.
 # The pin is two-armed: a file-wide negative guard rejecting any bare-no-/security/
-# occurrence, and a positive count assertion (≥2) on the canonical /security/
-# form covering the two known sites. Pin label `findings-path-coherence` (no
-# `contract-violated-` prefix — different defect class from §3.5b prose pins).
+# occurrence at EITHER `<kb>` or `<kb_path>` placeholder spelling (X8 sub-(b)
+# broadens the original short-form-only guard so a future edit normalizing
+# SKILL.md to long-form `<kb_path>/repos/<project>/<slug>-code-findings.md`
+# without `/security/` is also caught), and a positive count assertion (≥2) on
+# the canonical /security/ form covering the two known sites. Pin label
+# `findings-path-coherence` (no `contract-violated-` prefix — different defect
+# class from §3.5b prose pins).
 check_skill_findings_path_coherence() {
   local f='skills/feature/SKILL.md'
-  # File-wide negative guard: SKILL.md MUST NOT contain the bare path form.
-  # Both occurrences at L546 and L731 must include /security/.
-  local bad
-  bad=$(grep -cF '<kb>/repos/<project>/<slug>-code-findings.md' "$f")
-  if [ "$bad" != "0" ]; then
-    echo "SKILL.md contains $bad bare findings.md path mention(s) without /security/ segment — diverges from agents/cross-auditor.md:430 write contract"
+  # Negative guard: every full-prefix `-code-findings.md` mention (at either
+  # <kb> or <kb_path> placeholder) must include /security/. Compute bad = total
+  # mentions vs good = mentions with /security/. They must be equal.
+  # `grep -c` always prints a count to stdout (even 0); the non-zero exit on
+  # zero-match is harmless here (no `set -e`). Capture stdout directly.
+  local bad good
+  bad=$(grep -cE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f")
+  good=$(grep -cE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f")
+  if [ "$bad" != "$good" ]; then
+    local missing=$((bad - good))
+    echo "SKILL.md has $missing findings.md path mention(s) missing /security/ segment (bad=$bad, good=$good — bad MUST equal good — diverges from agents/cross-auditor.md:430 write contract)"
     return 1
   fi
-  # Positive: the two known sites at L546 + L731 must use the /security/ form.
-  local good
-  good=$(grep -cF '<kb>/repos/<project>/security/<slug>-code-findings.md' "$f")
+  # Positive: at least 2 canonical /security/ mentions must remain (the two
+  # known sites at L546 + L731). Catches both-sites-deleted regressions.
   if [ "$good" -lt 2 ]; then
-    echo "expected ≥2 occurrences of <kb>/repos/<project>/security/<slug>-code-findings.md in SKILL.md (triage step 3 + Continue-mode iteration=N row), got $good"
+    echo "expected ≥2 canonical /security/ findings.md path mentions in SKILL.md (triage step 3 + Continue-mode iteration=N row), got $good"
     return 1
   fi
   return 0
