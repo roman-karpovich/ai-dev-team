@@ -5299,6 +5299,57 @@ check_skill_orchestrator_blocker_sanitization_rule() {
   return 0
 }
 
+# (NEW) `check_skill_evidence_pair_invariant` — SKILL.md §3.5b Contract-violation
+# rule paragraph documents the X4 cross-field invariant between `evidence_class`
+# and `evidence_blockers` per the cross-auditor emit contract
+# (`agents/cross-auditor.md` §When to set L382-383): `dual_model` MUST pair with
+# empty `evidence_blockers`; `single_model` MUST pair with non-empty. Both
+# contradictory pairings route to `*_audit_evidence: contract_violated` with
+# named blocker phrasings. Without this rule, a buggy/regressed cross-auditor
+# emitting a contradictory pair would pass parser-shape (X1), YAML-safety (X3),
+# file-existence (code/full mode), and allowlist (X2) checks; the orchestrator
+# would copy both verbatim; Status mode would render a dual_model row clean
+# (no degraded flag) despite the blocker list contradicting the claim —
+# honesty-gate inversion, the failure mode the parent spec exists to prevent.
+# The pin uses the same paragraph-scoped extraction as
+# `check_skill_contract_violated_routing_rule` (anchor on
+# `**Contract-violation rule.**`, consume until next blank line) to keep the
+# scope identical to the X16 pin's positive routing-target + alt-target
+# negative-guard contract; the new clause stays inside the same paragraph.
+check_skill_evidence_pair_invariant() {
+  local f='skills/feature/SKILL.md'
+  local region_3_5b
+  region_3_5b=$(awk '/^### 3\.5b/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  if [ -z "$region_3_5b" ]; then
+    echo "SKILL.md §3.5b region empty (header may have drifted)"
+    return 1
+  fi
+  local cv_paragraph
+  cv_paragraph=$(printf '%s\n' "$region_3_5b" | awk '/\*\*Contract-violation rule\.\*\*/{flag=1} flag {print; if (flag && NR>0 && /^$/) exit}')
+  if [ -z "$cv_paragraph" ]; then
+    echo "SKILL.md §3.5b: could not extract Contract-violation paragraph (anchor '**Contract-violation rule.**' not found or paragraph empty)"
+    return 1
+  fi
+  # Case 1 — dual_model + non-empty evidence_blockers contradictory pair.
+  if ! printf '%s' "$cv_paragraph" | grep -qF 'dual_model with non-empty evidence_blockers'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph missing case-1 literal 'dual_model with non-empty evidence_blockers' (X4 invariant)"
+    return 1
+  fi
+  # Case 2 — single_model + empty evidence_blockers contradictory pair.
+  if ! printf '%s' "$cv_paragraph" | grep -qF 'single_model with empty evidence_blockers'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph missing case-2 literal 'single_model with empty evidence_blockers' (X4 invariant)"
+    return 1
+  fi
+  # Cross-reference to the cross-auditor emit contract anchor — the literal
+  # `When to set` is the heading at agents/cross-auditor.md:378, so this
+  # assertion catches drift if the doc reference goes stale.
+  if ! printf '%s' "$cv_paragraph" | grep -qF 'When to set'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph missing cross-reference literal 'When to set' (anchors X4 invariant to agents/cross-auditor.md emit contract)"
+    return 1
+  fi
+  return 0
+}
+
 echo "Audit-evidence enum pins:"
 check "audit-evidence-spec-template-schema"                check_spec_template_audit_evidence_schema
 check "audit-evidence-skill-populated-at-terminal-sites"   check_skill_audit_evidence_populated_at_terminal_sites
@@ -5316,6 +5367,7 @@ check "contract-violated-file-existence"                   check_skill_contract_
 check "contract-violated-overview-documented"              check_overview_contract_violated_documented
 check "contract-violated-cross-auditor-never-writes"       check_cross_auditor_never_writes_extension
 check "orchestrator-blocker-sanitization-rule"             check_skill_orchestrator_blocker_sanitization_rule
+check "contract-violated-evidence-pair-invariant"          check_skill_evidence_pair_invariant
 check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
 echo
