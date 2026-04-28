@@ -5415,6 +5415,41 @@ check_skill_findings_path_coherence() {
   return 0
 }
 
+# (NEW) `check_repo_findings_path_coherence` — X8 optional fourth tightening.
+# Repo-wide superset of `check_skill_findings_path_coherence`: extends the
+# count-equality guard across every markdown file under `agents/`, `docs/`,
+# and `skills/` (the audit scope). The cross-auditor.md L430-431 is the
+# canonical write contract source; if a future edit introduces a long-form
+# bare regression THERE, the entire path-coherence chain is poisoned. This
+# pin closes that surface — every `<kb(_path)?>/repos/<project>/...
+# -code-findings.md` mention anywhere under audit scope MUST include
+# `/security/`. Per-file count equality + per-file drift accounting so the
+# failure message names the specific file(s) that drifted.
+check_repo_findings_path_coherence() {
+  local files=()
+  while IFS= read -r f; do files+=("$f"); done < <(find agents docs skills -type f -name '*.md')
+  local total_bad=0
+  local total_good=0
+  local drift_files=()
+  local f bad good
+  for f in "${files[@]}"; do
+    # `grep -c` always prints a count to stdout (even 0); the non-zero exit
+    # on zero-match is harmless here (no `set -e`). Capture stdout directly.
+    bad=$(grep -cE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f")
+    good=$(grep -cE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f")
+    total_bad=$((total_bad + bad))
+    total_good=$((total_good + good))
+    if [ "$bad" != "$good" ]; then
+      drift_files+=("$f (bad=$bad, good=$good)")
+    fi
+  done
+  if [ "${#drift_files[@]}" -gt 0 ]; then
+    echo "repo-wide findings.md path-coherence drift detected (every full-prefix mention must include /security/) in: ${drift_files[*]}"
+    return 1
+  fi
+  return 0
+}
+
 echo "Audit-evidence enum pins:"
 check "audit-evidence-spec-template-schema"                check_spec_template_audit_evidence_schema
 check "audit-evidence-skill-populated-at-terminal-sites"   check_skill_audit_evidence_populated_at_terminal_sites
@@ -5434,6 +5469,7 @@ check "contract-violated-cross-auditor-never-writes"       check_cross_auditor_n
 check "orchestrator-blocker-sanitization-rule"             check_skill_orchestrator_blocker_sanitization_rule
 check "contract-violated-evidence-pair-invariant"          check_skill_evidence_pair_invariant
 check "findings-path-coherence"                            check_skill_findings_path_coherence
+check "repo-findings-path-coherence"                       check_repo_findings_path_coherence
 check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
 echo
