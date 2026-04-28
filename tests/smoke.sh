@@ -5265,6 +5265,40 @@ check_cross_auditor_never_writes_extension() {
   return 0
 }
 
+# (NEW) `check_skill_orchestrator_blocker_sanitization_rule` — SKILL.md §3.5b
+# carries the X3 Orchestrator blocker sanitization rule subsection that makes
+# the orchestrator-side blocker emission path symmetric with the cross-auditor
+# side. Without this rule, an orchestrator-generated blocker containing an
+# apostrophe (e.g. file-existence-check `<path>` slot consuming
+# `/Users/.../it's-a-spec/...` "verbatim") would corrupt the spec's YAML
+# frontmatter and silently de-card the spec from every reader. The pin extracts
+# the §3.5b region with the same `awk '/^### 3\.5b/{flag=1; next} flag &&
+# /^### / {exit} flag'` pattern existing pins use and asserts three load-bearing
+# literals: the rule's bold header anchor, the cross-reference linking it to
+# the cross-auditor sanitizer, and the symmetry claim that anchors the WHY.
+check_skill_orchestrator_blocker_sanitization_rule() {
+  local f='skills/feature/SKILL.md'
+  local region_3_5b
+  region_3_5b=$(awk '/^### 3\.5b/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  if [ -z "$region_3_5b" ]; then
+    echo "SKILL.md §3.5b region empty (header may have drifted)"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF 'Orchestrator blocker sanitization rule'; then
+    echo "SKILL.md §3.5b missing 'Orchestrator blocker sanitization rule' bold-header anchor"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF 'same YAML-safety sanitizer as cross-auditor blockers'; then
+    echo "SKILL.md §3.5b missing cross-reference literal 'same YAML-safety sanitizer as cross-auditor blockers' (anchors the rule to agents/cross-auditor.md serialization rule)"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF 'symmetric on both sides of the handshake'; then
+    echo "SKILL.md §3.5b missing 'symmetric on both sides of the handshake' claim (X3 WHY anchor)"
+    return 1
+  fi
+  return 0
+}
+
 echo "Audit-evidence enum pins:"
 check "audit-evidence-spec-template-schema"                check_spec_template_audit_evidence_schema
 check "audit-evidence-skill-populated-at-terminal-sites"   check_skill_audit_evidence_populated_at_terminal_sites
@@ -5281,6 +5315,7 @@ check "contract-violated-routing-rule"                     check_skill_contract_
 check "contract-violated-file-existence"                   check_skill_contract_violated_file_existence_check
 check "contract-violated-overview-documented"              check_overview_contract_violated_documented
 check "contract-violated-cross-auditor-never-writes"       check_cross_auditor_never_writes_extension
+check "orchestrator-blocker-sanitization-rule"             check_skill_orchestrator_blocker_sanitization_rule
 check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
 echo
