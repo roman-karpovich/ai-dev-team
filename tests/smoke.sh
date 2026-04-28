@@ -4377,10 +4377,24 @@ EOF_MUT_FX
   # If a future maintainer renames or removes `_fixture_latest_code_audit_marker`
   # (or changes the regex shape away from the current form without updating
   # this pin), the grep below fails — a structural canary.
-  local prod_line_count
-  prod_line_count=$(grep -cE 'blockers=\\\[\(\\\[\\\]\|\[\^\]\[\]\|\\\[\[\^\]\]\*\\\]\)\*\\\]' tests/smoke.sh || true)
+  #
+  # Iter-5 X9: this canary MUST be scoped to the
+  # `_fixture_latest_code_audit_marker()` function body, NOT a file-wide grep
+  # against tests/smoke.sh. The YAML-list grammar `blockers=\[(\[\]|[^][]|...
+  # appears at five sites across this file (production helper L3450, two
+  # negative-guard regex copies at L3748/L3789, an explanatory comment near
+  # the production helper's docblock, and the meta-pin's own `current_regex`
+  # literal at L4359). A file-wide `grep -c` would count 5 matches; mutating
+  # ONLY the production helper at L3450 would still leave 4 matches and P3
+  # would silently pass — defeating its stated structural-canary purpose.
+  # Scoping the grep to the awk-extracted function body makes P3 actually
+  # anchor to the production helper line: zero matches inside the body
+  # means the production regex shape was mutated/removed.
+  local prod_body prod_line_count
+  prod_body=$(awk '/^_fixture_latest_code_audit_marker\(\)/,/^}/' tests/smoke.sh)
+  prod_line_count=$(printf '%s\n' "$prod_body" | grep -cE 'blockers=\\\[\(\\\[\\\]\|\[\^\]\[\]\|\\\[\[\^\]\]\*\\\]\)\*\\\]' || true)
   if [ "$prod_line_count" -lt 1 ]; then
-    echo "mutation-protected: production helper line missing the iter-4 YAML-list grammar — symmetry pin would silently bind to old shape"
+    echo "mutation-protected: _fixture_latest_code_audit_marker() body does not contain iter-4 YAML-list grammar (X9 — production helper grammar mutated/removed)"
     rm -rf "$fx_dir"
     return 1
   fi
