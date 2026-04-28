@@ -4008,20 +4008,42 @@ check_spec_template_audit_evidence_schema() {
   local f='skills/feature/references/spec-template.md'
   local n v l
   n=$(grep -cE '^(spec|code)_audit_(evidence|blockers):' "$f")
-  v=$(grep -cE 'dual_model|single_model|self_fallback|skipped' "$f")
+  v=$(grep -cE 'dual_model|single_model|self_fallback|contract_violated|skipped' "$f")
   l=$(grep -cF 'legacy_unknown' "$f")
   if [ "$n" -ne 4 ]; then
     echo "spec-template: expected 4 frontmatter field lines (spec_audit_evidence/blockers + code_audit_evidence/blockers); got $n"
     return 1
   fi
-  if [ "$v" -lt 4 ]; then
-    echo "spec-template: comment block must list all 4 enum values; got $v lines"
+  if [ "$v" -lt 5 ]; then
+    echo "spec-template: comment block must list all 5 enum values; got $v lines"
     return 1
   fi
   if [ "$l" -lt 1 ]; then
     echo "spec-template: missing 'legacy_unknown' reader-semantics literal"
     return 1
   fi
+  # X15 ordered-sequence: extract canonical-enum-comment block and assert each
+  # token (`dual_model`, `single_model`, `self_fallback`, `contract_violated`,
+  # `skipped`) appears EXACTLY ONCE on its own `#   <token>` line in that
+  # order. Count-only check is insufficient — duplicates pass, ordering errors
+  # pass.
+  local block tok line_no prev_line
+  block=$(awk '/^# Canonical enum values:/{flag=1; next} flag && /^# null = legacy_unknown/{exit} flag' "$f")
+  prev_line=0
+  for tok in dual_model single_model self_fallback contract_violated skipped; do
+    local matches
+    matches=$(printf '%s\n' "$block" | grep -nE "^#   ${tok}( |$)" | wc -l | tr -d ' ')
+    if [ "$matches" != "1" ]; then
+      echo "spec-template: enum token '$tok' must appear exactly once on its own '#   $tok' line in canonical-enum-comment block (got $matches)"
+      return 1
+    fi
+    line_no=$(printf '%s\n' "$block" | grep -nE "^#   ${tok}( |$)" | head -1 | cut -d: -f1)
+    if [ -z "$line_no" ] || [ "$line_no" -le "$prev_line" ]; then
+      echo "spec-template: enum token '$tok' out of canonical order in comment block (line $line_no <= prev $prev_line)"
+      return 1
+    fi
+    prev_line="$line_no"
+  done
   return 0
 }
 
@@ -4220,7 +4242,7 @@ check_audit_evidence_enum_values_canonical() {
   while IFS= read -r tok; do
     [ -z "$tok" ] && continue
     case "$tok" in
-      null|dual_model|single_model|self_fallback|skipped) ;;
+      null|dual_model|single_model|self_fallback|contract_violated|skipped) ;;
       '<value>'|'<token>') ;;
       *)
         echo "non-canonical enum token: '$tok'"
@@ -4232,16 +4254,28 @@ check_audit_evidence_enum_values_canonical() {
 }
 
 # (f) SKILL.md §3.5b literally documents `null = legacy_unknown` AND uses the
-# inclusive predicate `∈ {single_model, self_fallback, skipped}` — never the
-# inverse `!= dual_model` form (which would flag every legacy spec forever).
+# inclusive 4-element predicate `∈ {single_model, self_fallback, contract_violated, skipped}`
+# inside the §3.5b region — never the inverse `!= dual_model` form (which
+# would flag every legacy spec forever). Region-scoped to §3.5b for the
+# positive predicate assertion (terminates at the FIRST sub-heading after
+# §3.5b regardless of label — §3.5c Stop criteria sits between §3.5b and
+# §3.6 in the live SKILL.md per PR #68). File-wide negative guard for the
+# OLD 3-element predicate covers Status-mode region too (X5/X6 — partial
+# update silently passes without it).
 check_skill_legacy_null_reader_semantics() {
   local f='skills/feature/SKILL.md'
   if ! grep -qF 'legacy_unknown' "$f"; then
     echo "SKILL.md missing 'legacy_unknown' literal"
     return 1
   fi
-  if ! grep -qF '∈ {single_model, self_fallback, skipped}' "$f"; then
-    echo "SKILL.md missing inclusive degraded-flag predicate '∈ {single_model, self_fallback, skipped}'"
+  local region_3_5b
+  region_3_5b=$(awk '/^### 3\.5b/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  if ! printf '%s' "$region_3_5b" | grep -qF '∈ {single_model, self_fallback, contract_violated, skipped}'; then
+    echo "SKILL.md §3.5b region missing 4-element degraded-flag predicate '∈ {single_model, self_fallback, contract_violated, skipped}'"
+    return 1
+  fi
+  if grep -qF '∈ {single_model, self_fallback, skipped}' "$f"; then
+    echo "SKILL.md contains forbidden OLD 3-element predicate '∈ {single_model, self_fallback, skipped}' (must be the 4-element form post contract_violated extension)"
     return 1
   fi
   if grep -qF '!= dual_model' "$f"; then
@@ -4254,15 +4288,18 @@ check_skill_legacy_null_reader_semantics() {
 # (g) Status-mode region (NOT just §3.5b prose) literally contains BOTH
 # `spec_audit_evidence` AND `code_audit_evidence` (NOT just bare
 # `audit_evidence` — the both-field assertion is load-bearing per §3.1
-# two-field design). The region also contains the inclusive predicate.
+# two-field design). The region also contains the EXACT 4-element predicate
+# phrase `∈ {single_model, self_fallback, contract_violated, skipped}`
+# (NOT bag-of-words AND-coverage — X6 confirms AND-coverage can pass when
+# `contract_violated` only appears in sample-table while predicate sentence
+# stays stale). Region-scoped negative guard for the OLD 3-element form.
 # Continue mode is NOT checked — it has no row renderer.
 check_skill_renderer_evidence_flag_wired() {
   local f='skills/feature/SKILL.md'
-  local region status_spec status_code status_inclusive
+  local region status_spec status_code
   region=$(awk '/^## Status mode/{flag=1; next} flag && /^## /{exit} flag' "$f")
   status_spec=$(printf '%s' "$region" | grep -cF 'spec_audit_evidence')
   status_code=$(printf '%s' "$region" | grep -cF 'code_audit_evidence')
-  status_inclusive=$(printf '%s' "$region" | grep -cE 'single_model.*self_fallback.*skipped|∈ \{single_model')
   if [ "$status_spec" -lt 1 ]; then
     echo "Status-mode region missing 'spec_audit_evidence' field reference"
     return 1
@@ -4271,8 +4308,12 @@ check_skill_renderer_evidence_flag_wired() {
     echo "Status-mode region missing 'code_audit_evidence' field reference"
     return 1
   fi
-  if [ "$status_inclusive" -lt 1 ]; then
-    echo "Status-mode region missing inclusive degraded-flag predicate"
+  if ! printf '%s' "$region" | grep -qF '∈ {single_model, self_fallback, contract_violated, skipped}'; then
+    echo "Status-mode region missing EXACT 4-element degraded-flag predicate '∈ {single_model, self_fallback, contract_violated, skipped}'"
+    return 1
+  fi
+  if printf '%s' "$region" | grep -qF '∈ {single_model, self_fallback, skipped}'; then
+    echo "Status-mode region contains forbidden OLD 3-element predicate '∈ {single_model, self_fallback, skipped}' (must be the 4-element form post contract_violated extension)"
     return 1
   fi
   return 0
@@ -4355,6 +4396,8 @@ EOF_AE_FX
     '- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=[codex_unavailable]' || fail=1
   _ae_recognize 'extended zero-diff-skip (skipped)' \
     '- 2026-04-27: code audit: no auditable files in diff; skipping; evidence=skipped; blockers=[no_auditable_files]' || fail=1
+  _ae_recognize 'extended clean-passed (contract_violated)' \
+    "- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=contract_violated; blockers=['cross-auditor return missing evidence_class footer line']" || fail=1
   # Iter-3 X6: bracketed blocker text — Codex stderr realistically contains
   # `[Errno NN]`, `[ERROR]` log prefixes etc. cross-auditor.md L389-396
   # sanitization rule normalizes newlines/quotes/length but NOT brackets, so
