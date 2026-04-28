@@ -5350,6 +5350,43 @@ check_skill_evidence_pair_invariant() {
   return 0
 }
 
+# (NEW) `check_skill_findings_path_coherence` — guards SKILL.md against the
+# X5 defect class (path-coherence between SKILL.md and the cross-auditor write
+# contract at agents/cross-auditor.md:430). Two SKILL.md sites — Code-audit
+# triage step 3 "Collect decisions" (L546) and Continue-mode resume routing
+# `iteration=N` row (L731) — used to read/write the findings file at the bare
+# `<kb>/repos/<project>/<slug>-code-findings.md` path, omitting the `/security/`
+# segment. Two silent failure modes flowed from that drift:
+#   1. Triage failure (L546) — orchestrator writes status updates to a
+#      non-existent path; cross-auditor at the canonical `/security/` path sees
+#      stale OPEN entries on re-audit; the loop fails to converge.
+#   2. Resume failure (L731) — Continue mode reads from the non-existent path,
+#      finds no OPEN/REOPENED entries, routes to clean hand-off; un-triaged
+#      HIGH findings ship silently.
+# The pin is two-armed: a file-wide negative guard rejecting any bare-no-/security/
+# occurrence, and a positive count assertion (≥2) on the canonical /security/
+# form covering the two known sites. Pin label `findings-path-coherence` (no
+# `contract-violated-` prefix — different defect class from §3.5b prose pins).
+check_skill_findings_path_coherence() {
+  local f='skills/feature/SKILL.md'
+  # File-wide negative guard: SKILL.md MUST NOT contain the bare path form.
+  # Both occurrences at L546 and L731 must include /security/.
+  local bad
+  bad=$(grep -cF '<kb>/repos/<project>/<slug>-code-findings.md' "$f")
+  if [ "$bad" != "0" ]; then
+    echo "SKILL.md contains $bad bare findings.md path mention(s) without /security/ segment — diverges from agents/cross-auditor.md:430 write contract"
+    return 1
+  fi
+  # Positive: the two known sites at L546 + L731 must use the /security/ form.
+  local good
+  good=$(grep -cF '<kb>/repos/<project>/security/<slug>-code-findings.md' "$f")
+  if [ "$good" -lt 2 ]; then
+    echo "expected ≥2 occurrences of <kb>/repos/<project>/security/<slug>-code-findings.md in SKILL.md (triage step 3 + Continue-mode iteration=N row), got $good"
+    return 1
+  fi
+  return 0
+}
+
 echo "Audit-evidence enum pins:"
 check "audit-evidence-spec-template-schema"                check_spec_template_audit_evidence_schema
 check "audit-evidence-skill-populated-at-terminal-sites"   check_skill_audit_evidence_populated_at_terminal_sites
@@ -5368,6 +5405,7 @@ check "contract-violated-overview-documented"              check_overview_contra
 check "contract-violated-cross-auditor-never-writes"       check_cross_auditor_never_writes_extension
 check "orchestrator-blocker-sanitization-rule"             check_skill_orchestrator_blocker_sanitization_rule
 check "contract-violated-evidence-pair-invariant"          check_skill_evidence_pair_invariant
+check "findings-path-coherence"                            check_skill_findings_path_coherence
 check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
 echo
