@@ -331,6 +331,32 @@ Per spec `2026-04-27-audit-evidence-enum.md`. Every audit-terminal site (spec au
 
 The orchestrator copies `evidence_blockers` from the handshake verbatim into `*_audit_blockers`, then prepends any orchestrator-side blockers (e.g. for `self_fallback`: the named cause + tracking entry; for zero-diff skip: `'no auditable files in diff'`; for explicit Skip: `'spec audit skipped by user'`).
 
+### 3.5c Stop criteria
+
+Per MISSION rule #11 (spec/code audit stop criteria) and MISSION rule #10 (orchestrator-delegation discipline) as the paired control. This subsection documents how the rules apply at orchestrator-runtime decision points after each cross-audit iteration. Applies to BOTH spec audit (§3.5 Pass 2) and code audit (§Code audit Pass 2) phases.
+
+**Three signals direct the orchestrator to stop blind cross-auditor re-spawns and run a comprehensive sweep instead of a surgical retry:**
+
+1. **REOPEN finding** — the cross-auditor flags a sibling at a parallel surface of a previously-fixed defect class. Run a comprehensive sweep BEFORE the next iter — do not surgically patch the named surface and re-spawn.
+2. **Same-defect-class continuation on 2+ consecutive iters** — comprehensive sweep covering ALL parallel surfaces of that class. Different IDs, same defect shape, two iters in a row = stop and sweep.
+3. **Hard cap iter ≤ 5** for both spec audit and code audit. Cap exceeded only with explicit Log-line justification matching the §3.1c canonical regex `^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$`.
+
+**Paired control with rule #10 — context refresh is mandatory.** The comprehensive sweep on REOPEN OR same-defect-class on 2+ iters MUST be performed AFTER `/compact` (working-memory reset) OR by spawning a fresh-context subagent (developer-senior or cross-auditor) that re-reads the artifact from disk. Polluted-orchestrator surgical retries are the failure mode this case study established (see `2026-04-27-audit-evidence-enum.md`). The orchestrator records WHICH refresh path was used in the spec Log:
+
+- `- YYYY-MM-DD: REOPEN sweep — context refreshed via /compact`
+- `- YYYY-MM-DD: REOPEN sweep — context refreshed via fresh @<agent>`
+
+**Phase split — spec audit (§3.5 Pass 2) is gating, not hard-blocking.** On cap-with-comprehensive-sweep, the orchestrator MAY move to Implement after one final sweep. Defects remaining at iter-5 are recorded in the spec Log as known-residue rather than re-iterated forever. Verification-rigor residue, if any, is caught more efficiently by the code audit on the actual implementation than by an unbounded spec audit on abstract contract prose.
+
+**Phase split — code audit (§Code audit Pass 2) preserves the closed gate.** The per-finding `fix` / `accept` / `defer` mechanism remains the only legitimate way to clear CRITICAL/HIGH findings. Stop criteria here means "stop blind re-spawning of the cross-auditor" — when the comprehensive sweep finds no new parallel surfaces, the residue is funneled through per-finding triage:
+
+- `accept` with rationale (deliberate risk acceptance, or false-positive call with explanation),
+- `defer` with follow-up spec slug (genuine future work the merge does not block on),
+
+— **NOT skip-to-hand-off**. The iteration cap counts cross-auditor re-spawns. Funneling residue through per-finding triage IS the legitimate exit from the audit loop; the cap protects against the polluted-orchestrator-keeps-re-spawning failure mode, NOT against the closed gate itself.
+
+**Hard-cap escape hatch** (rule #11 §3.1c). When a spec legitimately needs > 5 iters (cross-cutting refactor with many surfaces, security-sensitive code where verification rigor IS the value, first-of-class spec introducing new design patterns), append a Log line matching the §3.1c canonical regex BEFORE iter-6 starts. Recognition is by ERE regex (NOT free-floating substring) — the regex requires BOL Log-entry prefix, phase token (`spec` or `code`), literal middle ` audit iteration > 5 justified`, mandatory space + dash (em-dash or ASCII hyphen) + space separator, and a non-empty reason tail. Empty tails fail to match.
+
 ---
 
 ## Implement
