@@ -371,6 +371,55 @@ After Claude+Codex collection (Steps 1-2 above), run the following five-stage pi
    **Union with Step-0.5 / stage-4.5 seed** (spec 2026-04-21-probe-e-diff-scope-leak §3.5 / iter-4 X20): compose the final `probe_failures[]` as `synth_probe_failures(probe_receipts) + probe_failures_seed`. Probe E v1 has no happy-path `degraded_mode: true` receipts (every fail-open branch bails BEFORE `probe_receipts.append`), so the Foundation synthesis is a no-op for v1; the seed carries every fail-open entry. Forward-compat: future probes that emit `degraded_mode: true` alongside valid findings will be caught by the Foundation path.
 6. **Render via `hooks/lib/render_findings.sh`** — pipe `{findings: <scored+deduped>, probe_modes, probe_failures: <synthesized>, scorer_status, scorer_failure_reason}` through the helper. Helper output is the full findings.md body. Step 4 below writes the final file with frontmatter.
 
+## Audit evidence handshake (`evidence_class:` + `evidence_blockers:`)
+
+Per spec `2026-04-27-audit-evidence-enum.md`. The cross-auditor transmits TWO sibling fields back to the orchestrator on every audit, in two channels (file-backed for code/full mode; inline footer for spec mode). The orchestrator copies these into the spec frontmatter at the audit-terminal site.
+
+### When to set
+
+The cross-auditor itself only ever emits one of two values for `evidence_class:` (binary on whether Codex's audit was usable):
+
+- **`dual_model`** — Codex returned successfully AND Claude reviewed (the gold standard). Then `evidence_blockers: []` (empty list).
+- **`single_model`** — the fail-open Codex-FAILED prepend banner fired (Claude-only). Extract the failure reason from the existing `⚠️ WARNING: Codex audit unavailable (<error reason>)` banner and emit `evidence_blockers: ['codex audit unavailable: <reason>']` — single-quoted YAML scalar form.
+
+The cross-auditor NEVER writes `self_fallback` or `skipped` — those values are exclusively orchestrator territory (set when the cross-auditor itself could not complete or was bypassed).
+
+### YAML-safety serialization rule for blocker strings
+
+Reason text extracted from Codex stderr can contain apostrophes, newlines, or other YAML-hostile characters. Before emitting `evidence_blockers:`, the cross-auditor MUST normalize each blocker string:
+
+1. **Replace newlines** (`\n`, `\r`, `\r\n`) with a single space.
+2. **Escape single quotes** by doubling (`'` → `''`) — required for YAML single-quoted scalar style.
+3. **Cap length** at 200 characters (consistent with existing `[:200]` truncation elsewhere in this agent). Append `…` if truncated.
+4. **Emit in single-quoted YAML form** (`'sanitized text'`) inside the list literal: `evidence_blockers: ['codex audit unavailable: <sanitized-reason>']`.
+
+This sanitize-blocker rule applies to every newline→space conversion site, every escape-single-quote site, and every 200-char cap site in this agent's blocker emission path.
+
+### Spec-mode return contract (inline output)
+
+For `mode: spec`, the cross-auditor does NOT write findings.md to disk; the consolidated findings are returned as inline output text to the calling feature skill. To preserve the orchestrator-readable handshake in this mode, the inline output MUST end with TWO adjacent literal final lines, each on its own line, in this order, with NO trailing prose after them:
+
+```
+evidence_class: <value>
+evidence_blockers: <YAML-list>
+```
+
+Example (dual_model success):
+
+```
+evidence_class: dual_model
+evidence_blockers: []
+```
+
+Example (single_model fail-open):
+
+```
+evidence_class: single_model
+evidence_blockers: ['codex audit unavailable: connection refused']
+```
+
+The orchestrator parses the two adjacent final lines using `grep -E '^(evidence_class|evidence_blockers): ' | tail -2`. If either line is absent or malformed, the orchestrator MUST treat the audit as `self_fallback` (cross-auditor return signal not parseable) and record the parse failure as a blocker — see SKILL.md §3.5b for the orchestrator-side read path.
+
 ## Step 4: Write Output Documents
 
 **`spec` mode exception**: do NOT write files. Return the consolidated findings as your inline output message to the caller (the feature skill). Format as a readable markdown report with a summary table and details section — the same structure as findings.md, but returned as the agent response, not written to disk. Spec audit findings are transient; once the spec is fixed, the issues are gone.
@@ -404,6 +453,8 @@ type: audit-findings
 mode: <logic|security|full>
 iteration: N
 created: YYYY-MM-DD
+evidence_class: <value>
+evidence_blockers: <YAML-list>
 tags: [audit, <project>]
 ---
 

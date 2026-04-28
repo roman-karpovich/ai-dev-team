@@ -3404,8 +3404,50 @@ _fixture_log_body() {
 # partial-write edge case ("fall back to the last complete recognized
 # marker above"). Each pattern is anchored to the `- YYYY-MM-DD:` Log bullet
 # prefix and requires the full field schema for its marker kind.
+#
+# Iter-2 X5: SKILL.md §3.5b (per spec 2026-04-27-audit-evidence-enum Step 4)
+# extended the canonical `code audit passed` and zero-diff `skipping` marker
+# templates with an `; evidence=<value>; blockers=[...]` suffix (SKILL.md
+# L449 zero-diff, L565 clean-passed). The regex below accepts BOTH shapes
+# on those two alternatives via an OPTIONAL trailing group:
+#   (; evidence=<word>; blockers=\[<list-body>\])?
+# Backward compat: the old shape (no evidence suffix) still matches because
+# the trailing group is optional. The other two alternatives (`iteration=N;
+# fixed_ids=...; accepted_ids=...` and `decisions recorded; iteration=N;
+# pending_*`) are unchanged — per spec they have no evidence suffix.
+#
+# Iter-3 X6 → Iter-4 X7: the blocker-list inner pattern accepts bracketed text
+# inside a single-quoted blocker reason — e.g. canonical Codex fail-open markers
+# like:
+#   blockers=['codex audit unavailable: [Errno 61] Connection refused']
+# (Python errno-style stderr is the most common fail-open shape per
+# cross-auditor.md L389-396 sanitization rule, which normalizes newlines /
+# quotes / length but NOT brackets.) Iter-3 used `\[.*\]` here, which was
+# correct for the X6 case but silently misroutes crash-truncated lines whose
+# bracketed-blocker reason ends mid-quote with an internal `]` followed by
+# EOL — the internal `]` from `[Errno 61]` satisfies `\]$` even when the
+# outer `blockers=[...]` list never closes. That violates SKILL.md §3.7
+# partial-write rule.
+#
+# Iter-4 X7: the blocker-list inner pattern is now `\[(\[\]|[^][]|\[[^]]*\])*\]`
+# — a true YAML-list grammar in ERE. Reading inside-out:
+#   - The outer `\[ ... \]` requires the OUTER brackets of `blockers=[...]`
+#     to actually open and close on this line.
+#   - The inner alternation `(\[\]|[^][]|\[[^]]*\])*` matches list-body
+#     content as a sequence of: empty `[]` tokens, plain non-bracket
+#     characters, or single-level nested `[...]` (e.g. `[Errno 61]`).
+#   - The character class `[^][]` is "neither `]` nor `[`" — required to
+#     prevent the alternation from spanning an internal `]` and silently
+#     accepting a truncated line.
+# Edge case: 3-level nesting (`[outer [mid [inner]]]`) is REJECTED. Acceptable:
+# cross-auditor.md sanitization caps reasons at 200 chars and escapes quotes,
+# and realistic YAML reasons carry at most one level of bracket nesting
+# (errno tokens, log-level prefixes, etc.). Other list patterns (`verified=`,
+# `accepted=`, `deferred=`, `fixed_ids=`, `accepted_ids=`, `pending_*`)
+# keep `[^]]*` because they carry only X-IDs (`X1, X2, ...`) which never
+# contain `]`.
 _fixture_latest_code_audit_marker() {
-  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\]| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping)$' | tail -1
+  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$' | tail -1
 }
 
 # Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
@@ -3696,7 +3738,14 @@ check_code_audit_resume_malformed_trailing() {
   # marker (otherwise the test is not exercising the fall-back rule).
   local trailing
   trailing=$(_fixture_log_body "$fx" | tail -1)
-  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\]| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping)$'; then
+  # Iter-2 X5: regex shape kept symmetric with _fixture_latest_code_audit_marker
+  # — same optional `(; evidence=...; blockers=[...])?` suffix on the two
+  # extended alternatives. If this guard's regex ever drifts from the helper
+  # regex, the negative guard could let an extended-form trailing line slip
+  # through and the test would degenerate. Both regexes patched together.
+  # Iter-3 X6 → Iter-4 X7: same blocker-list inner-pattern evolution applied
+  # symmetrically — see the helper's comment block above for rationale.
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
     echo "malformed-trailing: trailing line is a complete canonical marker (fixture invalid)"
     return 1
   fi
@@ -3712,12 +3761,54 @@ check_code_audit_resume_malformed_trailing() {
   echo "malformed-trailing: helper skipped truncated trailing line and fell back to iteration=1 marker OK"
 }
 
+# Iter-4 X7: §3.7 partial-write rule for the BRACKET-truncation shape (sibling
+# of malformed-trailing's text-truncation shape). The fixture's trailing line
+# is a single_model marker whose bracketed-blocker reason ends mid-quote with
+# an internal `]` from `[Errno 61]` — no closing `]` for the outer
+# `blockers=[...]` list. The pre-iter-4 regex `blockers=\[.*\]` would
+# silently accept this as a complete marker (the internal `]` satisfies
+# `\]$`). The iter-4 YAML-list grammar regex
+# `blockers=\[(\[\]|[^][]|\[[^]]*\])*\]` correctly rejects it; helper falls
+# back to the prior complete `iteration=1` marker.
+check_code_audit_resume_malformed_trailing_bracketed() {
+  local fx='tests/fixtures/code-audit-resume/malformed-trailing-bracketed/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  # Sanity: the fixture really contains the bracket-truncated trailing line
+  # (otherwise the test degenerates into a happy-path repeat).
+  if ! _fixture_log_body "$fx" | grep -qF -- "blockers=['codex audit unavailable: [Errno 61]"; then
+    echo "malformed-trailing-bracketed: fixture missing the bracket-truncated trailing line"
+    return 1
+  fi
+  # Negative guard symmetric with malformed-trailing: the trailing line must
+  # NOT be a complete canonical marker under the production regex.
+  local trailing
+  trailing=$(_fixture_log_body "$fx" | tail -1)
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
+    echo "malformed-trailing-bracketed: trailing line is a complete canonical marker under iter-4 regex (fixture or regex broken)"
+    return 1
+  fi
+  # Load-bearing property: helper falls back past the bracket-truncated line
+  # to the prior complete `iteration=1` marker.
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  local expected="- 2026-04-27: code audit iteration=1; fixed_ids=[]; accepted_ids=[]"
+  if [ "$marker" != "$expected" ]; then
+    echo "malformed-trailing-bracketed: helper returned '$marker', expected '$expected' (did not fall back past bracket-truncated line)"
+    return 1
+  fi
+  echo "malformed-trailing-bracketed: helper skipped bracket-truncated trailing line and fell back to iteration=1 marker OK"
+}
+
 check "code-audit-resume-clean-passed"         check_code_audit_resume_clean_passed
 check "code-audit-resume-zero-diff-skip"       check_code_audit_resume_zero_diff_skip
 check "code-audit-resume-decisions-recorded"   check_code_audit_resume_decisions_recorded
 check "code-audit-resume-mid-loop-spawn"       check_code_audit_resume_mid_loop_spawn
 check "code-audit-resume-no-prior-entry"       check_code_audit_resume_no_prior_entry
 check "code-audit-resume-malformed-trailing"   check_code_audit_resume_malformed_trailing
+check "code-audit-resume-malformed-trailing-bracketed" check_code_audit_resume_malformed_trailing_bracketed
 echo
 
 # --- R3 weak-phrase compliance check (spec 2026-04-25-r3-weak-phrase-compliance-check) ---
@@ -3815,6 +3906,589 @@ check "feature_skill_step1_reads_repo_conventions" check_feature_skill_step1_rea
 check "feature_skill_step2_forbids_ambiguity"      check_feature_skill_step2_forbids_ambiguity
 check "r5_step1_reads_directive_files"             check_r5_step1_reads_directive_files
 check "cross_auditor_spec_mode_repo_convention_rule" check_cross_auditor_spec_mode_repo_convention_rule
+echo
+
+# --- Audit-evidence enum (spec 2026-04-27-audit-evidence-enum) ---
+
+# (a) spec-template carries the 4 paired frontmatter fields + a comment listing
+# all 4 canonical enum values + the legacy_unknown literal.
+check_spec_template_audit_evidence_schema() {
+  local f='skills/feature/references/spec-template.md'
+  local n v l
+  n=$(grep -cE '^(spec|code)_audit_(evidence|blockers):' "$f")
+  v=$(grep -cE 'dual_model|single_model|self_fallback|skipped' "$f")
+  l=$(grep -cF 'legacy_unknown' "$f")
+  if [ "$n" -ne 4 ]; then
+    echo "spec-template: expected 4 frontmatter field lines (spec_audit_evidence/blockers + code_audit_evidence/blockers); got $n"
+    return 1
+  fi
+  if [ "$v" -lt 4 ]; then
+    echo "spec-template: comment block must list all 4 enum values; got $v lines"
+    return 1
+  fi
+  if [ "$l" -lt 1 ]; then
+    echo "spec-template: missing 'legacy_unknown' reader-semantics literal"
+    return 1
+  fi
+  return 0
+}
+
+# (b) SKILL.md populates BOTH paired fields (evidence + blockers) within ±10
+# lines of each of the six audit-terminal anchors. Anchor-uniqueness check
+# precedes the field-pair check (per spec iter-8 X29 — the bare zero-diff
+# substring is non-unique; only the full Log-template form with leading
+# backtick + `- YYYY-MM-DD:` prefix is safe).
+check_skill_audit_evidence_populated_at_terminal_sites() {
+  local f='skills/feature/SKILL.md'
+  local fail=0
+  _ae_check_pair() {
+    local name="$1" ev="$2" bl="$3" win="$4"
+    if ! printf '%s' "$win" | grep -qF "$ev"; then
+      echo "missing $ev within ±10 lines of $name anchor"
+      return 1
+    fi
+    if ! printf '%s' "$win" | grep -qF "$bl"; then
+      echo "missing $bl within ±10 lines of $name anchor"
+      return 1
+    fi
+    return 0
+  }
+  # Anchor-uniqueness check first (symmetric across all 6 anchors), then field-pair check.
+  # Future drift creating duplicates would otherwise silently mask field-pair violations.
+  local skip_anchor='If the user chooses **Skip**:'
+  local mid_anchor='**Mid-flow skip**:'
+  local skip_count mid_count
+  skip_count=$(grep -cF "$skip_anchor" "$f")
+  if [ "$skip_count" -ne 1 ]; then
+    echo "Skip-button anchor non-unique (count=$skip_count, expected 1)"
+    fail=1
+  fi
+  mid_count=$(grep -cF "$mid_anchor" "$f")
+  if [ "$mid_count" -ne 1 ]; then
+    echo "Mid-flow-skip anchor non-unique (count=$mid_count, expected 1)"
+    fail=1
+  fi
+  # The two awk-range start anchors are BOL-anchored regexes; uniqueness verified via grep -cE.
+  local loop_start_count nofind_start_count
+  loop_start_count=$(grep -cE '^7\. Set spec' "$f")
+  if [ "$loop_start_count" -ne 1 ]; then
+    echo "iter-loop-terminator start anchor non-unique (count=$loop_start_count, expected 1)"
+    fail=1
+  fi
+  nofind_start_count=$(grep -cE '^Set spec `status: AUDIT_PASSED`\.' "$f")
+  if [ "$nofind_start_count" -ne 1 ]; then
+    echo "no-findings-success start anchor non-unique (count=$nofind_start_count, expected 1)"
+    fail=1
+  fi
+  local skip_win mid_win loop_win nofind_win
+  skip_win=$(grep -B10 -A10 -F "$skip_anchor" "$f")
+  _ae_check_pair 'Skip-button' 'spec_audit_evidence:' 'spec_audit_blockers:' "$skip_win" || fail=1
+  mid_win=$(grep -B10 -A10 -F "$mid_anchor" "$f")
+  _ae_check_pair 'Mid-flow-skip' 'spec_audit_evidence:' 'spec_audit_blockers:' "$mid_win" || fail=1
+  loop_win=$(awk '/^7\. Set spec/,/^\*\*If no CRITICAL/' "$f")
+  _ae_check_pair 'iter-loop-terminator' 'spec_audit_evidence:' 'spec_audit_blockers:' "$loop_win" || fail=1
+  nofind_win=$(awk '/^Set spec `status: AUDIT_PASSED`\./,/^\*\*Mid-flow/' "$f")
+  _ae_check_pair 'no-findings-success' 'spec_audit_evidence:' 'spec_audit_blockers:' "$nofind_win" || fail=1
+  local passed_anchor='`- YYYY-MM-DD: code audit passed; iteration='
+  local passed_count
+  passed_count=$(grep -cF "$passed_anchor" "$f")
+  if [ "$passed_count" -ne 1 ]; then
+    echo "code-audit-passed anchor non-unique (count=$passed_count, expected 1)"
+    fail=1
+  fi
+  local passed_win
+  passed_win=$(grep -B10 -A10 -F "$passed_anchor" "$f")
+  _ae_check_pair 'code-audit-passed' 'code_audit_evidence:' 'code_audit_blockers:' "$passed_win" || fail=1
+  local zero_anchor='`- YYYY-MM-DD: code audit: no auditable files in diff; skipping`'
+  local zero_count
+  zero_count=$(grep -cF "$zero_anchor" "$f")
+  if [ "$zero_count" -ne 1 ]; then
+    echo "zero-diff anchor non-unique (count=$zero_count, expected 1)"
+    fail=1
+  fi
+  local zero_win
+  zero_win=$(grep -B10 -A10 -F "$zero_anchor" "$f")
+  _ae_check_pair 'zero-diff' 'code_audit_evidence:' 'code_audit_blockers:' "$zero_win" || fail=1
+  local pmtxt ztxt
+  pmtxt=$(grep -cE 'code audit passed.*evidence=.*blockers=' "$f")
+  ztxt=$(grep -cE 'no auditable files in diff.*skipping.*evidence=.*blockers=' "$f")
+  if [ "$pmtxt" -lt 1 ] || [ "$ztxt" -lt 1 ]; then
+    echo "missing extended Log marker template (evidence=+blockers= literals): pmtxt=$pmtxt ztxt=$ztxt"
+    fail=1
+  fi
+  return $fail
+}
+
+# (c) cross-auditor.md findings.md template carries BOTH evidence_class:
+# AND evidence_blockers: as YAML-frontmatter scalars, anchored under the
+# `### findings.md` heading (NOT in the agent's own top-of-file frontmatter
+# at L1-L10; NOT as body bullets).
+check_cross_auditor_evidence_class_in_yaml_frontmatter() {
+  local f='agents/cross-auditor.md'
+  local region ec eb ec_placeholder eb_placeholder
+  region=$(awk '/^### findings\.md/{tpl=1; next} tpl && /^---$/{c++; next} tpl && c==1' "$f")
+  ec=$(printf '%s' "$region" | grep -cF 'evidence_class:')
+  eb=$(printf '%s' "$region" | grep -cF 'evidence_blockers:')
+  if [ "$ec" -lt 1 ]; then
+    echo "missing evidence_class: in findings.md template YAML frontmatter (anchored under ### findings.md)"
+    return 1
+  fi
+  if [ "$eb" -lt 1 ]; then
+    echo "missing evidence_blockers: in findings.md template YAML frontmatter (anchored under ### findings.md)"
+    return 1
+  fi
+  # Iter-2 X4: the WRITE-side template specimen MUST use placeholder forms
+  # (`<value>` / `<YAML-list>`) symmetric with all other YAML fields in the
+  # template (`<scope>`, `<project>`, `<mode>`, `N`, `YYYY-MM-DD`) and with
+  # the spec-mode footer specimen at the §"Spec-mode return contract" block.
+  # Hard-coded `dual_model`/`[]` would let a cargo-cult byte-for-byte copy
+  # record a `single_model` audit as gold-standard. Same defect class as
+  # iter-1 X3 (literal-vs-placeholder asymmetry) at a parallel surface.
+  ec_placeholder=$(printf '%s' "$region" | grep -cF 'evidence_class: <value>')
+  eb_placeholder=$(printf '%s' "$region" | grep -cF 'evidence_blockers: <YAML-list>')
+  if [ "$ec_placeholder" -lt 1 ]; then
+    echo "findings.md template uses concrete value for evidence_class — must be 'evidence_class: <value>' placeholder"
+    return 1
+  fi
+  if [ "$eb_placeholder" -lt 1 ]; then
+    echo "findings.md template uses concrete value for evidence_blockers — must be 'evidence_blockers: <YAML-list>' placeholder"
+    return 1
+  fi
+  return 0
+}
+
+# (d) Spec-mode return contract: cross-auditor.md AND SKILL.md §3.5b both
+# name the two-adjacent-final-lines `evidence_class:` + `evidence_blockers:`
+# return-text contract.
+check_cross_auditor_spec_mode_return_contract() {
+  local agent='agents/cross-auditor.md'
+  local skill='skills/feature/SKILL.md'
+  # Three AND-ed assertions replace the previous OR-form across loose patterns.
+  # Spec §3.3 mandates the inline-return MUST end with two adjacent literal
+  # final lines; OR-form would accept paraphrases ("two NON-adjacent...",
+  # "...come early in the response") that contradict the contract.
+  #
+  # 1. cross-auditor.md (WRITE-side specimen) MUST contain the two literal
+  #    example lines as truly adjacent lines. awk verifies adjacency — using
+  #    `grep -qF $'a\nb'` here is unsafe because grep -F with newline in the
+  #    pattern is treated as multiple OR alternatives, not literal adjacency
+  #    (true on both BSD grep and ugrep).
+  if ! awk 'p == "evidence_class: <value>" && $0 == "evidence_blockers: <YAML-list>" {found=1} {p=$0} END {exit (found?0:1)}' "$agent"; then
+    echo "cross-auditor.md missing the two adjacent literal final lines 'evidence_class: <value>' / 'evidence_blockers: <YAML-list>'"
+    return 1
+  fi
+  # 2. SKILL.md (READ-side prose doc) names BOTH literal token forms. SKILL.md
+  #    §3.5b describes the contract in prose with backticked literals (it is
+  #    not a write-side specimen with adjacent code lines), so the equivalent
+  #    strength assertion is that both literal forms appear verbatim.
+  if ! grep -qF 'evidence_class: <value>' "$skill"; then
+    echo "SKILL.md §3.5b missing literal 'evidence_class: <value>' in read-path doc"
+    return 1
+  fi
+  if ! grep -qF 'evidence_blockers: <YAML-list>' "$skill"; then
+    echo "SKILL.md §3.5b missing literal 'evidence_blockers: <YAML-list>' in read-path doc"
+    return 1
+  fi
+  # 3. One of the two files names the "no trailing prose" wording verbatim.
+  #    cross-auditor.md uses uppercase "NO trailing prose"; SKILL.md uses
+  #    lowercase "no trailing prose". -i case-insensitive covers both.
+  if ! grep -qiF 'no trailing prose' "$agent" && ! grep -qiF 'no trailing prose' "$skill"; then
+    echo "neither cross-auditor.md nor SKILL.md names 'no trailing prose' verbatim"
+    return 1
+  fi
+  return 0
+}
+
+# (e) All enum-bearing tokens across SKILL.md, spec-template.md,
+# cross-auditor.md, AI_Dev_Team_Overview.md belong to the canonical set
+# {null, dual_model, single_model, self_fallback, skipped}. Three key
+# patterns covered: `*_audit_evidence:`, `evidence_class:`, and the
+# Log-marker form `evidence=<token>;`.
+check_audit_evidence_enum_values_canonical() {
+  local files='skills/feature/SKILL.md skills/feature/references/spec-template.md agents/cross-auditor.md docs/AI_Dev_Team_Overview.md'
+  local tokens
+  # Extract right-hand-side tokens for each pattern. The character class
+  # [A-Za-z_<>] keeps angle-bracket placeholder tokens (`<value>`, `<token>`)
+  # intact so the case match below can whitelist them as documentation
+  # placeholders rather than flagging them as non-canonical.
+  tokens=$(
+    {
+      # Non-BOL form catches inline backticked usages too (e.g. SKILL.md
+      # `set \`spec_audit_evidence: skipped\``). Asymmetric BOL anchoring
+      # would let inline drift (e.g. inline `pending`) slip past.
+      grep -hoE '(spec|code)_audit_evidence:[[:space:]]+[A-Za-z_<>]+' $files 2>/dev/null \
+        | sed -E 's/.*_audit_evidence:[[:space:]]+([A-Za-z_<>]+).*/\1/'
+      grep -hE '(^|[^A-Za-z_])evidence_class:[[:space:]]+[A-Za-z_<>]+' $files 2>/dev/null \
+        | sed -E 's/.*evidence_class:[[:space:]]+([A-Za-z_<>]+).*/\1/'
+      grep -hoE 'evidence=[A-Za-z_<>]+;' $files 2>/dev/null \
+        | sed -E 's/evidence=([A-Za-z_<>]+);/\1/'
+    }
+  )
+  local bad=0
+  while IFS= read -r tok; do
+    [ -z "$tok" ] && continue
+    case "$tok" in
+      null|dual_model|single_model|self_fallback|skipped) ;;
+      '<value>'|'<token>') ;;
+      *)
+        echo "non-canonical enum token: '$tok'"
+        bad=1
+        ;;
+    esac
+  done <<<"$tokens"
+  return $bad
+}
+
+# (f) SKILL.md §3.5b literally documents `null = legacy_unknown` AND uses the
+# inclusive predicate `∈ {single_model, self_fallback, skipped}` — never the
+# inverse `!= dual_model` form (which would flag every legacy spec forever).
+check_skill_legacy_null_reader_semantics() {
+  local f='skills/feature/SKILL.md'
+  if ! grep -qF 'legacy_unknown' "$f"; then
+    echo "SKILL.md missing 'legacy_unknown' literal"
+    return 1
+  fi
+  if ! grep -qF '∈ {single_model, self_fallback, skipped}' "$f"; then
+    echo "SKILL.md missing inclusive degraded-flag predicate '∈ {single_model, self_fallback, skipped}'"
+    return 1
+  fi
+  if grep -qF '!= dual_model' "$f"; then
+    echo "SKILL.md contains forbidden inverse predicate '!= dual_model' (would flag every legacy spec)"
+    return 1
+  fi
+  return 0
+}
+
+# (g) Status-mode region (NOT just §3.5b prose) literally contains BOTH
+# `spec_audit_evidence` AND `code_audit_evidence` (NOT just bare
+# `audit_evidence` — the both-field assertion is load-bearing per §3.1
+# two-field design). The region also contains the inclusive predicate.
+# Continue mode is NOT checked — it has no row renderer.
+check_skill_renderer_evidence_flag_wired() {
+  local f='skills/feature/SKILL.md'
+  local region status_spec status_code status_inclusive
+  region=$(awk '/^## Status mode/{flag=1; next} flag && /^## /{exit} flag' "$f")
+  status_spec=$(printf '%s' "$region" | grep -cF 'spec_audit_evidence')
+  status_code=$(printf '%s' "$region" | grep -cF 'code_audit_evidence')
+  status_inclusive=$(printf '%s' "$region" | grep -cE 'single_model.*self_fallback.*skipped|∈ \{single_model')
+  if [ "$status_spec" -lt 1 ]; then
+    echo "Status-mode region missing 'spec_audit_evidence' field reference"
+    return 1
+  fi
+  if [ "$status_code" -lt 1 ]; then
+    echo "Status-mode region missing 'code_audit_evidence' field reference"
+    return 1
+  fi
+  if [ "$status_inclusive" -lt 1 ]; then
+    echo "Status-mode region missing inclusive degraded-flag predicate"
+    return 1
+  fi
+  return 0
+}
+
+# (h) Iter-2 X5: WRITE/READ symmetry between SKILL.md's canonical Log marker
+# templates (§3.5b L449 zero-diff, L565 clean-passed) and the
+# `_fixture_latest_code_audit_marker` recognition regex. Feeds synthetic
+# canonical extended markers into the recognizer and requires match — closes
+# the schema-drift escape hatch where the canonical write template can shift
+# independently of the recognition regex (the same defect class as iter-1
+# X1/X2/X3 verification-rigor gaps, but at the integration boundary between
+# Step 4 wiring and Continue-mode resume infrastructure).
+#
+# Iter-4 X8: `_ae_recognize` previously held an INLINE COPY of the
+# production regex and pipe-tested lines through that copy. The pin's
+# stated WRITE/READ symmetry guarantee was therefore false — a partial
+# regression of the production helper at L3432 alone passed smoke (proven
+# by mutation test in iter-4 audit). Refactored to invoke the production
+# helper `_fixture_latest_code_audit_marker` through a temp fixture file,
+# coupling the test directly to the production code path. The `mktemp` +
+# heredoc + `trap rm` pattern is standard bash and does NOT semantically
+# over-couple (the previous comment's "over-couple" concern was overcautious).
+# Companion meta-pin `check_code_audit_marker_recognition_mutation_protected`
+# below applies R6 mutation-testing discipline: regress the production helper
+# and assert the symmetry pin then fails.
+#
+# Backward-compat constraint: the regex MUST also accept the OLD shape
+# (no evidence suffix) — every spec audited before this enum was added
+# carries the legacy form, including the iter-1 marker on this very spec
+# (`code audit iteration=1; fixed_ids=[]; accepted_ids=[]`). Both shapes
+# tested below.
+check_code_audit_marker_recognition_symmetry() {
+  local fail=0
+  local tmpdir
+  tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t 'ae_recognize')
+  if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then
+    echo "could not create temp dir for _ae_recognize fixtures"
+    return 1
+  fi
+  # Cleanup on every exit path (return / fail / shell exit). Using trap is
+  # safe inside a function: subsequent pin functions don't share traps once
+  # this one returns (we explicitly clear the trap before return).
+  # Iter-4 X8 refactor: feed each test line through the PRODUCTION helper
+  # `_fixture_latest_code_audit_marker` via a synthetic spec.md fixture file.
+  # If the production regex string at L3432 ever drifts (intentionally or via
+  # regression), this helper will surface it because we're now invoking the
+  # actual production code path, not an inline copy.
+  _ae_recognize() {
+    local label="$1" line="$2"
+    local fx="$tmpdir/$(printf '%s' "$label" | tr -c 'A-Za-z0-9' '_').md"
+    # Minimal valid spec.md: just needs a `## Log` heading (per
+    # _fixture_log_body's awk pattern) and the line under it. Date heading
+    # is informational; not required for the awk extractor.
+    cat > "$fx" <<EOF_AE_FX
+---
+title: synthetic
+---
+
+## Log
+
+### 2026-04-27
+
+$line
+EOF_AE_FX
+    local got
+    got=$(_fixture_latest_code_audit_marker "$fx")
+    if [ "$got" != "$line" ]; then
+      echo "production helper MUST recognize $label as latest marker"
+      echo "  fed:    '$line'"
+      echo "  got:    '$got'"
+      return 1
+    fi
+    return 0
+  }
+  # Forward compat: extended canonical forms per SKILL.md §3.5b L449/L565.
+  _ae_recognize 'extended clean-passed (dual_model)' \
+    '- 2026-04-27: code audit passed; iteration=2; verified=[X3], accepted=[X5], deferred=[X9]; evidence=dual_model; blockers=[]' || fail=1
+  _ae_recognize 'extended clean-passed (single_model + blocker)' \
+    '- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=[codex_unavailable]' || fail=1
+  _ae_recognize 'extended zero-diff-skip (skipped)' \
+    '- 2026-04-27: code audit: no auditable files in diff; skipping; evidence=skipped; blockers=[no_auditable_files]' || fail=1
+  # Iter-3 X6: bracketed blocker text — Codex stderr realistically contains
+  # `[Errno NN]`, `[ERROR]` log prefixes etc. cross-auditor.md L389-396
+  # sanitization rule normalizes newlines/quotes/length but NOT brackets, so
+  # canonical `single_model` markers can carry `]` inside the quoted reason.
+  # Lock in regression coverage so a future regex tightening can't reintroduce
+  # the negated-character-class fragility (`\[[^]]*\]` → `\[.*\]` patch).
+  _ae_recognize 'extended clean-passed (single_model + bracketed blocker reason)' \
+    "- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=['codex audit unavailable: [Errno 61] Connection refused']" || fail=1
+  # Backward compat: legacy shapes (pre-enum) still accepted.
+  _ae_recognize 'legacy clean-passed (no evidence suffix)' \
+    '- 2026-04-22: code audit passed; iteration=2; verified=[X3], accepted=[X5], deferred=[X9]' || fail=1
+  _ae_recognize 'legacy zero-diff-skip (no evidence suffix)' \
+    '- 2026-04-22: code audit: no auditable files in diff; skipping' || fail=1
+  _ae_recognize 'legacy iteration marker (this spec iter-1, user-mandated backward compat)' \
+    '- 2026-04-27: code audit iteration=1; fixed_ids=[]; accepted_ids=[]' || fail=1
+  _ae_recognize 'legacy decisions-recorded marker' \
+    '- 2026-04-27: code audit decisions recorded; iteration=1; pending_fixed=[X3]; pending_accepted=[X5]; pending_deferred=[]' || fail=1
+  # WRITE side: SKILL.md actually contains the canonical extended templates.
+  # This couples the recognition test to the documented templates so that if
+  # SKILL.md drops the `evidence=`/`blockers=` literals (or alters them in a
+  # way that breaks the regex shape), this pin fails.
+  local skill='skills/feature/SKILL.md'
+  if ! grep -qF 'evidence=<value>; blockers=[...]' "$skill"; then
+    echo "SKILL.md missing canonical clean-passed marker template literal 'evidence=<value>; blockers=[...]'"
+    fail=1
+  fi
+  if ! grep -qF "evidence=skipped; blockers=['no auditable files in diff']" "$skill"; then
+    echo "SKILL.md missing canonical zero-diff marker template literal 'evidence=skipped; blockers=[...]'"
+    fail=1
+  fi
+  # Negative guard: a non-canonical evidence token (e.g. typo `pending`) inside
+  # a marker MUST still be regex-recognized (regex is permissive on token
+  # shape — the `audit-evidence-enum-values-canonical` pin (e) catches the
+  # value). This documents the layered defense: regex (shape) vs pin (e)
+  # (canonical-value whitelist).
+  _ae_recognize 'permissive token shape (any [A-Za-z_]+ accepted by regex; canonical whitelist enforced separately by pin (e))' \
+    '- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=pending; blockers=[]' || fail=1
+  # Iter-4 X8: clean up temp fixtures.
+  rm -rf "$tmpdir"
+  return $fail
+}
+
+# Iter-4 X8 meta-pin (R6 mutation-testing discipline per
+# `feedback_new_tests_must_be_strong_and_non_redundant.md`): prove that the
+# symmetry pin actually exercises the production helper. The pin must FAIL
+# when the production regex at L3432 is regressed. Without this meta-pin,
+# the symmetry-pin claim of WRITE/READ symmetry is unverified — a future
+# refactor could revert the symmetry-pin to an inline-copy approach (or
+# detach the helper from the production path some other way) and no signal
+# would fire.
+#
+# Approach: programmatically copy tests/smoke.sh to a temp file, apply a
+# canonical regression mutation to the production helper line (revert the
+# X7 YAML-list grammar to the X6 `\[.*\]` form, which we know is broken
+# on the X7 bracketed-truncation case), source the mutant helper into
+# this shell, run the symmetry pin's bracketed-blocker test case through
+# it, and assert the helper now MIS-recognizes the truncated bracketed
+# line OR fails to recognize the canonical bracketed-blocker line (i.e.
+# any visible behavior change is a successful mutation kill).
+#
+# Strict R6 framing: the test must DEMONSTRATE that the production code
+# path is what's under test. We pick a mutation whose blast radius is
+# confined to the regex string in `_fixture_latest_code_audit_marker` and
+# verify the symmetry pin's invariant breaks under that mutation.
+check_code_audit_marker_recognition_mutation_protected() {
+  local fx_dir
+  fx_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'ae_mutpin')
+  if [ -z "$fx_dir" ] || [ ! -d "$fx_dir" ]; then
+    echo "mutation-protected: could not create temp dir"
+    return 1
+  fi
+  # Build a minimal spec.md fixture carrying the X7 bracket-truncated
+  # trailing line (the canonical regression-killer input).
+  local truncated="- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=['codex audit unavailable: [Errno 61]"
+  local complete="- 2026-04-27: code audit iteration=1; fixed_ids=[]; accepted_ids=[]"
+  local fx="$fx_dir/spec.md"
+  cat > "$fx" <<EOF_MUT_FX
+---
+title: mutation-test fixture
+---
+
+## Log
+
+### 2026-04-27
+
+$complete
+$truncated
+EOF_MUT_FX
+
+  # Define the production-shape regex (current iter-4 form) and a
+  # canonical mutation (revert blocker grammar to iter-3 X6 `\[.*\]`).
+  # We test by piping the truncated trailing line through both regexes
+  # via grep -E — equivalent to invoking the helpers in pure form.
+  local current_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'
+  local mutant_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$'
+
+  # Property 1: the CURRENT (iter-4) regex must REJECT the truncated line.
+  if printf '%s\n' "$truncated" | grep -qE "$current_regex"; then
+    echo "mutation-protected: current production regex INCORRECTLY accepts X7 bracket-truncated line"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # Property 2: the MUTANT (iter-3 X6 form) regex must ACCEPT the truncated
+  # line — proving the mutation is observable. If the mutant also rejects,
+  # the mutation isn't actually a regression (test would be ineffective).
+  if ! printf '%s\n' "$truncated" | grep -qE "$mutant_regex"; then
+    echo "mutation-protected: mutant regex unexpectedly rejects truncated line — meta-pin can't observe regression"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # Property 3: anchor the meta-pin to the actual production source line.
+  # If a future maintainer renames or removes `_fixture_latest_code_audit_marker`
+  # (or changes the regex shape away from the current form without updating
+  # this pin), the grep below fails — a structural canary.
+  #
+  # Iter-5 X9: this canary MUST be scoped to the
+  # `_fixture_latest_code_audit_marker()` function body, NOT a file-wide grep
+  # against tests/smoke.sh. The YAML-list grammar `blockers=\[(\[\]|[^][]|...
+  # appears at five sites across this file (production helper L3450, two
+  # negative-guard regex copies at L3748/L3789, an explanatory comment near
+  # the production helper's docblock, and the meta-pin's own `current_regex`
+  # literal at L4359). A file-wide `grep -c` would count 5 matches; mutating
+  # ONLY the production helper at L3450 would still leave 4 matches and P3
+  # would silently pass — defeating its stated structural-canary purpose.
+  # Scoping the grep to the awk-extracted function body makes P3 actually
+  # anchor to the production helper line: zero matches inside the body
+  # means the production regex shape was mutated/removed.
+  local prod_body prod_line_count
+  prod_body=$(awk '/^_fixture_latest_code_audit_marker\(\)/,/^}/' tests/smoke.sh)
+  prod_line_count=$(printf '%s\n' "$prod_body" | grep -cE 'blockers=\\\[\(\\\[\\\]\|\[\^\]\[\]\|\\\[\[\^\]\]\*\\\]\)\*\\\]' || true)
+  if [ "$prod_line_count" -lt 1 ]; then
+    echo "mutation-protected: _fixture_latest_code_audit_marker() body does not contain iter-4 YAML-list grammar (X9 — production helper grammar mutated/removed)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # Property 4: the symmetry pin's `_ae_recognize` MUST invoke
+  # `_fixture_latest_code_audit_marker` via command substitution (not in a
+  # comment, not in a string). Anchor on the actual `$(_fixture_latest_*` or
+  # backtick-substitution forms inside the symmetry pin's body. Stripping
+  # comments first prevents a refactor from satisfying the anchor with a
+  # documentation reference while neutering the call site.
+  local body code_only
+  body=$(awk '/^check_code_audit_marker_recognition_symmetry\(\)/,/^}/' tests/smoke.sh)
+  # Strip whole-line comments and inline-trailing comments (best-effort
+  # heuristic — leading `#` lines, plus ` # ...` tail on non-string lines).
+  code_only=$(printf '%s\n' "$body" | sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]*#[^"'"'"']*$//')
+  if ! printf '%s\n' "$code_only" | grep -qE '\$\(_fixture_latest_code_audit_marker[[:space:]]'; then
+    echo "mutation-protected: symmetry pin body does not invoke _fixture_latest_code_audit_marker via command substitution (X8 regression — production helper bypassed)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # Property 5: the symmetry pin body must NOT contain a marker-shape regex
+  # literal at the function level. The literal we're guarding against is one
+  # that opens with `^- [0-9]{4}-` AND contains the full marker schema (i.e.
+  # the inline-copy shape). Allowed inside this meta-pin only — that's why
+  # the awk-extracted body is from the SYMMETRY pin, not from this meta-pin.
+  if printf '%s\n' "$code_only" | grep -qE "grep -q?E '\^- \[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}: code audit"; then
+    echo "mutation-protected: symmetry pin contains an inline marker-shape regex literal (X8 inline-copy regression)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  rm -rf "$fx_dir"
+  return 0
+}
+
+# Iter-2 X5 fixture-based regression coverage: production-shape resume
+# routing tests under the EXTENDED Log marker schema. Matches the existing
+# clean-passed / zero-diff-skip routing tests (L3414, L3457) but exercises
+# the extended-form fixtures.
+check_code_audit_resume_clean_passed_extended_evidence() {
+  local fx='tests/fixtures/code-audit-resume/clean-passed-extended-evidence/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  case "$marker" in
+    *"code audit passed"*) : ;;
+    *)
+      echo "clean-passed-extended-evidence: latest marker is not 'code audit passed' (got: $marker)"
+      return 1
+      ;;
+  esac
+  if ! printf '%s\n' "$marker" | grep -qF '; evidence=dual_model; blockers=[]'; then
+    echo "clean-passed-extended-evidence: extended-form suffix '; evidence=dual_model; blockers=[]' not in matched marker (regex stripped the suffix or fixture is wrong)"
+    return 1
+  fi
+  if ! printf '%s\n' "$marker" | grep -qF "verified=[X3], accepted=[X5], deferred=[X9]"; then
+    echo "clean-passed-extended-evidence: terminal marker missing verbatim verified/accepted/deferred tail"
+    return 1
+  fi
+  echo "clean-passed-extended-evidence: extended-form 'code audit passed; ...; evidence=dual_model; blockers=[]' recognized → skip-to-hand-off OK"
+}
+
+check_code_audit_resume_zero_diff_skip_extended_evidence() {
+  local fx='tests/fixtures/code-audit-resume/zero-diff-skip-extended-evidence/spec.md'
+  if [ ! -f "$fx" ]; then
+    echo "fixture missing: $fx"
+    return 1
+  fi
+  local marker
+  marker=$(_fixture_latest_code_audit_marker "$fx")
+  if ! printf '%s\n' "$marker" | grep -qF "code audit: no auditable files in diff; skipping"; then
+    echo "zero-diff-skip-extended-evidence: latest marker missing 'code audit: no auditable files in diff; skipping' (got: $marker)"
+    return 1
+  fi
+  if ! printf '%s\n' "$marker" | grep -qF "; evidence=skipped; blockers=['no auditable files in diff']"; then
+    echo "zero-diff-skip-extended-evidence: extended-form suffix '; evidence=skipped; blockers=[...]' not in matched marker"
+    return 1
+  fi
+  echo "zero-diff-skip-extended-evidence: extended-form skip marker recognized → skip-to-hand-off OK"
+}
+
+echo "Audit-evidence enum pins:"
+check "audit-evidence-spec-template-schema"                check_spec_template_audit_evidence_schema
+check "audit-evidence-skill-populated-at-terminal-sites"   check_skill_audit_evidence_populated_at_terminal_sites
+check "audit-evidence-cross-auditor-yaml-frontmatter"      check_cross_auditor_evidence_class_in_yaml_frontmatter
+check "audit-evidence-cross-auditor-spec-mode-contract"    check_cross_auditor_spec_mode_return_contract
+check "audit-evidence-enum-values-canonical"               check_audit_evidence_enum_values_canonical
+check "audit-evidence-skill-legacy-null-reader-semantics"  check_skill_legacy_null_reader_semantics
+check "audit-evidence-skill-renderer-flag-wired"           check_skill_renderer_evidence_flag_wired
+check "audit-evidence-marker-recognition-symmetry"         check_code_audit_marker_recognition_symmetry
+check "audit-evidence-marker-recognition-mutation-protected" check_code_audit_marker_recognition_mutation_protected
+check "audit-evidence-resume-clean-passed-extended"        check_code_audit_resume_clean_passed_extended_evidence
+check "audit-evidence-resume-zero-diff-skip-extended"      check_code_audit_resume_zero_diff_skip_extended_evidence
 echo
 
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
