@@ -3450,6 +3450,56 @@ _fixture_latest_code_audit_marker() {
   _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$' | tail -1
 }
 
+# Production helper for the audit-iteration-cap recognition pin (Step 7 of
+# spec 2026-04-28-orchestrator-delegation-and-stop-criteria.md). Given a
+# spec.md fixture, return four key=value lines on stdout:
+#   max_iter=<N>             # max of (latest spec_audit_iteration, latest code audit iteration); 0 if none
+#   latest_iter_line=<N>     # 1-based line number of the LAST iter marker (any phase); 0 if none
+#   escape_hatch_count=<N>   # number of lines matching the §3.1c canonical regex
+#   escape_hatch_line=<N>    # 1-based line number of the FIRST canonical-regex match; 0 if none
+# Classification (clean / violation / justified) is left to the calling pin
+# so a future "near-miss" tolerance change happens only at the call site.
+#
+# The §3.1c canonical regex is the SINGLE SOURCE OF TRUTH for the escape
+# hatch:
+#   ^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$
+# ERE alternation `(spec|code)` (NOT BRE-escaped `(spec\|code)`); separator
+# `[—-]` (em-dash listed first to avoid range parsing); reason `.+$`
+# mandatory. Drift here is what the companion meta-pin guards against.
+#
+# Iter-marker shape (per 2026-04-27-audit-evidence-enum.md L320/L327/L334
+# precedent) carries the BOL Log-line prefix `- YYYY-MM-DD: `:
+#   - 2026-04-28: spec_audit_iteration=N; ...
+#   - 2026-04-28: code audit iteration=N; ...
+_fixture_latest_audit_iter_marker() {
+  local fx="$1"
+  if [ ! -f "$fx" ]; then
+    printf 'max_iter=0\nlatest_iter_line=0\nescape_hatch_count=0\nescape_hatch_line=0\n'
+    return 0
+  fi
+  local spec_iter code_iter max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  spec_iter=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: spec_audit_iteration=[0-9]+' "$fx" \
+    | sed -E 's/.*spec_audit_iteration=([0-9]+).*/\1/' | sort -n | tail -1)
+  code_iter=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit iteration=[0-9]+' "$fx" \
+    | sed -E 's/.*code audit iteration=([0-9]+).*/\1/' | sort -n | tail -1)
+  spec_iter=${spec_iter:-0}
+  code_iter=${code_iter:-0}
+  if [ "$spec_iter" -ge "$code_iter" ]; then
+    max_iter=$spec_iter
+  else
+    max_iter=$code_iter
+  fi
+  latest_iter_line=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec_audit_iteration|code audit iteration)=' "$fx" \
+    | tail -1 | cut -d: -f1)
+  latest_iter_line=${latest_iter_line:-0}
+  escape_hatch_count=$(grep -cE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$' "$fx")
+  escape_hatch_line=$(grep -nE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$' "$fx" \
+    | head -1 | cut -d: -f1)
+  escape_hatch_line=${escape_hatch_line:-0}
+  printf 'max_iter=%s\nlatest_iter_line=%s\nescape_hatch_count=%s\nescape_hatch_line=%s\n' \
+    "$max_iter" "$latest_iter_line" "$escape_hatch_count" "$escape_hatch_line"
+}
+
 # Branch 1: clean-passed — `code audit passed` terminal marker → skip to hand-off.
 # Expected verbatim Log fragment: verified=[X3], accepted=[X5], deferred=[X9]
 # (commas between list-name tokens per SKILL.md §Code audit canonical schema).
@@ -4428,6 +4478,220 @@ EOF_MUT_FX
   return 0
 }
 
+# Audit-iteration-cap recognition pin (Step 7 of spec
+# 2026-04-28-orchestrator-delegation-and-stop-criteria.md).
+#
+# Feeds the three iter-cap-* fixtures through the production helper
+# `_fixture_latest_audit_iter_marker` and asserts the orchestrator-runtime
+# recognition contract per MISSION rule #11 (stop criteria, hard cap iter ≤
+# 5; escape hatch via §3.1c canonical regex):
+#   (a) iter ≤ 5 → recognized as clean (no escape-hatch line required).
+#   (b) iter > 5 with NO line matching the §3.1c canonical regex → violation.
+#   (c) iter > 5 WITH a line matching the §3.1c canonical regex within ±5
+#       lines of the latest iter marker → escape-hatch clean.
+#
+# Inline-pin implementations are forbidden — the pin MUST go through the
+# production helper so a future regex regression at the helper site is
+# observable through this pin (mirroring the audit-evidence-marker
+# precedent at L4216-4378).
+check_audit_iteration_hard_cap_recognition() {
+  local fx_dir='tests/fixtures/audit-iteration-cap'
+  local fail=0
+
+  _classify() {
+    # Args: max_iter latest_iter_line escape_hatch_count escape_hatch_line
+    # Echo one of: clean | violation | justified-clean
+    local mi="$1" lil="$2" ehc="$3" ehl="$4"
+    if [ "$mi" -le 5 ]; then
+      printf 'clean\n'
+      return 0
+    fi
+    # iter > 5: classify by escape-hatch presence and ±5-line spatial locality
+    if [ "$ehc" -eq 0 ]; then
+      printf 'violation\n'
+      return 0
+    fi
+    local diff
+    if [ "$ehl" -ge "$lil" ]; then
+      diff=$((ehl - lil))
+    else
+      diff=$((lil - ehl))
+    fi
+    if [ "$diff" -le 5 ]; then
+      printf 'justified-clean\n'
+    else
+      printf 'violation\n'
+    fi
+  }
+
+  # (a) clean fixture: iter ≤ 5
+  local out_clean class_clean
+  out_clean=$(_fixture_latest_audit_iter_marker "$fx_dir/iter-cap-clean/spec.md")
+  eval "$out_clean"
+  class_clean=$(_classify "$max_iter" "$latest_iter_line" "$escape_hatch_count" "$escape_hatch_line")
+  if [ "$max_iter" -gt 5 ]; then
+    echo "iter-cap recognition: clean fixture should have max_iter ≤ 5 (got $max_iter)"
+    fail=1
+  fi
+  if [ "$class_clean" != "clean" ]; then
+    echo "iter-cap recognition: clean fixture mis-classified as '$class_clean' (expected 'clean')"
+    fail=1
+  fi
+
+  # (b) violation fixture: iter > 5, no escape-hatch line anywhere
+  local out_violation class_violation
+  out_violation=$(_fixture_latest_audit_iter_marker "$fx_dir/iter-cap-violation/spec.md")
+  unset max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  eval "$out_violation"
+  class_violation=$(_classify "$max_iter" "$latest_iter_line" "$escape_hatch_count" "$escape_hatch_line")
+  if [ "$max_iter" -le 5 ]; then
+    echo "iter-cap recognition: violation fixture should have max_iter > 5 (got $max_iter)"
+    fail=1
+  fi
+  if [ "$escape_hatch_count" -ne 0 ]; then
+    echo "iter-cap recognition: violation fixture should have 0 escape-hatch matches (got $escape_hatch_count)"
+    fail=1
+  fi
+  if [ "$class_violation" != "violation" ]; then
+    echo "iter-cap recognition: violation fixture mis-classified as '$class_violation' (expected 'violation')"
+    fail=1
+  fi
+
+  # (c) justified fixture: iter > 5, exactly one escape-hatch within ±5 lines of latest iter marker
+  local out_justified class_justified
+  out_justified=$(_fixture_latest_audit_iter_marker "$fx_dir/iter-cap-justified/spec.md")
+  unset max_iter latest_iter_line escape_hatch_count escape_hatch_line
+  eval "$out_justified"
+  class_justified=$(_classify "$max_iter" "$latest_iter_line" "$escape_hatch_count" "$escape_hatch_line")
+  if [ "$max_iter" -le 5 ]; then
+    echo "iter-cap recognition: justified fixture should have max_iter > 5 (got $max_iter)"
+    fail=1
+  fi
+  if [ "$escape_hatch_count" -ne 1 ]; then
+    echo "iter-cap recognition: justified fixture should have exactly 1 escape-hatch match (got $escape_hatch_count)"
+    fail=1
+  fi
+  if [ "$class_justified" != "justified-clean" ]; then
+    echo "iter-cap recognition: justified fixture mis-classified as '$class_justified' (expected 'justified-clean')"
+    fail=1
+  fi
+
+  return $fail
+}
+
+# Companion R6 mutation-protected meta-pin (Step 7 of spec
+# 2026-04-28-orchestrator-delegation-and-stop-criteria.md).
+#
+# Mirrors the precedent at L4380-4479
+# (`check_code_audit_marker_recognition_mutation_protected`). Per X14
+# decision Option A (precedent-preserving), the mutation-killer input is
+# synthesized inside the meta-pin's body via printf/heredoc — NOT a fourth
+# fixture under tests/fixtures/audit-iteration-cap/. The three iter-cap-*
+# fixtures stay pure (each represents exactly one recognition shape:
+# clean / violation / justified).
+#
+# P1: the CURRENT (canonical §3.1c) regex REJECTS the synthesized killer
+#     input (an `iter > 5 justified` line with no separator-and-reason tail).
+# P2: a chosen MUTANT regex (relaxes `[—-] .+$` to `.*` so trailing garbage
+#     is accepted) ACCEPTS the killer input — proving the mutation is
+#     observable and not a no-op.
+# P3: structural canary scoped to the awk-extracted body of
+#     `_fixture_latest_audit_iter_marker()` only (NOT a file-wide grep): the
+#     production helper's body contains the canonical regex literal exactly
+#     once.
+# P4: the recognition pin's body invokes `_fixture_latest_audit_iter_marker`
+#     via command substitution (anchor `$(_fixture_latest_audit_iter_marker[[:space:]]`
+#     after stripping whole-line and trailing comments via `sed` per the
+#     precedent at L4461).
+# P5: the recognition pin's body does NOT contain a marker-shape regex
+#     literal at the function level (anchor on
+#     `^- \[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}:` — same shape-guard as
+#     L4467-4476).
+check_audit_iteration_hard_cap_recognition_mutation_protected() {
+  local fx_dir
+  fx_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'iter_cap_mutpin')
+  if [ -z "$fx_dir" ] || [ ! -d "$fx_dir" ]; then
+    echo "iter-cap mutation-protected: could not create temp dir"
+    return 1
+  fi
+  # Synthesize the canonical regression-killer input: an `iter > 5 justified`
+  # line with NO separator-and-reason tail (just `justified` and EOL). The
+  # current (§3.1c canonical) regex requires ` [—-] .+$` after `justified`,
+  # so this line MUST be rejected; a relaxed mutant that drops the tail
+  # requirement MUST accept it.
+  local killer="- 2026-04-28: spec audit iteration > 5 justified"
+  local fx="$fx_dir/spec.md"
+  cat > "$fx" <<EOF_KILLER
+---
+title: mutation-test fixture (iter-cap)
+---
+
+## Log
+
+### 2026-04-28
+
+- 2026-04-28: spec_audit_iteration=7; spec_audit_fixed_ids=[X1]; spec_audit_next_id=2
+$killer
+EOF_KILLER
+
+  # P1: the canonical §3.1c regex (single source of truth) REJECTS the killer.
+  local current_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$'
+  if printf '%s\n' "$killer" | grep -qE "$current_regex"; then
+    echo "iter-cap mutation-protected: current §3.1c regex INCORRECTLY accepts the killer input (no separator-and-reason tail)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P2: the MUTANT regex (relaxes `[—-] .+$` to `.*`) ACCEPTS the killer.
+  # If the mutant ALSO rejects, the mutation isn't observable and the
+  # meta-pin is ineffective.
+  local mutant_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified.*'
+  if ! printf '%s\n' "$killer" | grep -qE "$mutant_regex"; then
+    echo "iter-cap mutation-protected: mutant regex unexpectedly rejects killer input — meta-pin can't observe regression"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P3: structural canary — the production helper body contains the
+  # canonical regex literal exactly once. Scoping to the awk-extracted
+  # function body (NOT file-wide grep) so a mutation that ONLY affects the
+  # helper is observable (the literal also appears in this meta-pin's
+  # `current_regex` and inside the recognition pin would otherwise yield
+  # false-positive structural-canary passes — same X9 lesson as L4441-4449).
+  local prod_body prod_regex_count
+  prod_body=$(awk '/^_fixture_latest_audit_iter_marker\(\)/,/^}/' tests/smoke.sh)
+  # The literal we expect: ' justified [—-] .+$' as part of the regex passed
+  # to grep -cE / grep -nE inside the helper. Anchor on the `[—-] .+\$` tail
+  # (em-dash listed first; `.+\$` mandatory non-empty reason).
+  prod_regex_count=$(printf '%s\n' "$prod_body" | grep -cE 'justified \[—-\] \.\+\$' || true)
+  if [ "$prod_regex_count" -lt 2 ]; then
+    # The helper invokes the regex twice (once for grep -cE, once for grep -nE).
+    # Less than 2 means the production-helper regex shape was mutated/removed.
+    echo "iter-cap mutation-protected: _fixture_latest_audit_iter_marker() body does not contain canonical §3.1c regex tail '[—-] .+\$' twice (got $prod_regex_count — production helper grammar mutated/removed)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P4: the recognition pin invokes `_fixture_latest_audit_iter_marker`
+  # via command substitution. Strip comments first so a documentation
+  # reference cannot satisfy the anchor while neutering the call site.
+  local body code_only
+  body=$(awk '/^check_audit_iteration_hard_cap_recognition\(\)/,/^}/' tests/smoke.sh)
+  code_only=$(printf '%s\n' "$body" | sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]*#[^"'"'"']*$//')
+  if ! printf '%s\n' "$code_only" | grep -qE '\$\(_fixture_latest_audit_iter_marker[[:space:]]'; then
+    echo "iter-cap mutation-protected: recognition pin body does not invoke _fixture_latest_audit_iter_marker via command substitution (production helper bypassed)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  # P5: the recognition pin body must NOT contain a marker-shape regex
+  # literal at the function level — guarding against an inline-copy
+  # regression where the recognition pin learns the regex itself.
+  if printf '%s\n' "$code_only" | grep -qE "grep -q?E '\^- \[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}: \(spec\|code\) audit iteration"; then
+    echo "iter-cap mutation-protected: recognition pin contains an inline marker-shape regex literal (inline-copy regression)"
+    rm -rf "$fx_dir"
+    return 1
+  fi
+  rm -rf "$fx_dir"
+  return 0
+}
+
 # Iter-2 X5 fixture-based regression coverage: production-shape resume
 # routing tests under the EXTENDED Log marker schema. Matches the existing
 # clean-passed / zero-diff-skip routing tests (L3414, L3457) but exercises
@@ -4489,6 +4753,8 @@ check "audit-evidence-marker-recognition-symmetry"         check_code_audit_mark
 check "audit-evidence-marker-recognition-mutation-protected" check_code_audit_marker_recognition_mutation_protected
 check "audit-evidence-resume-clean-passed-extended"        check_code_audit_resume_clean_passed_extended_evidence
 check "audit-evidence-resume-zero-diff-skip-extended"      check_code_audit_resume_zero_diff_skip_extended_evidence
+check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
+check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
 echo
 
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
