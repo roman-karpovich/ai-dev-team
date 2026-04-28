@@ -543,7 +543,7 @@ the rationale `false positive — both auditors erred: <explanation>`.
 
 3. **Collect decisions.** For each finding, record the user's chosen
    action in memory and update the finding's status in the findings
-   file at `<kb>/repos/<project>/<slug>-code-findings.md`. A single
+   file at `<kb>/repos/<project>/security/<slug>-code-findings.md`. A single
    round may mix `fix`, `accept`, and `defer` across different IDs.
    **Do not spawn any developer yet — collection is pure bookkeeping
    before the checkpoint in step 4.**
@@ -728,7 +728,7 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
      | `code audit passed` | Skip straight to hand-off. Code audit already complete. |
      | `code audit: no auditable files in diff; skipping` | Skip to hand-off — deterministic empty-diff skip already applied. |
      | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. |
-     | `code audit iteration=N` (without a later `decisions recorded` or `passed` marker) | Round N findings were returned but triage is pending — **do not** re-spawn the cross-auditor. Re-read the findings file at `<kb>/repos/<project>/<slug>-code-findings.md`, collect the findings whose status is `OPEN` or `REOPENED`, re-present them to the user, and resume the §Code audit triage loop from step 1 with those findings. |
+     | `code audit iteration=N` (without a later `decisions recorded` or `passed` marker) | Round N findings were returned but triage is pending — **do not** re-spawn the cross-auditor. Re-read the findings file at `<kb>/repos/<project>/security/<slug>-code-findings.md`, collect the findings whose status is `OPEN` or `REOPENED`, re-present them to the user, and resume the §Code audit triage loop from step 1 with those findings. |
      | No code-audit Log entry at all | Fresh code-audit run: re-run the verifier first to confirm the baseline is still green (defensive), then spawn `iteration=1` with `previously_fixed=[]` and `accepted_ids=[]`. |
 
      Malformed or truncated trailing code-audit Log lines are ignored; fall back to the last complete recognized marker above. If the only code-audit entry is unrecognized, treat it as no code-audit Log entry and take the fresh-run branch.
