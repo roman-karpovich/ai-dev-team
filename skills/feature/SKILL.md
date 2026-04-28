@@ -293,7 +293,7 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 3. Collect IDs of findings the user fixed → append to `spec_audit_fixed_ids`
 4. Update `spec_audit_next_id` = highest finding ID in this round's report + 1
 5. Increment `spec_audit_iteration`
-5. Re-run Pass 1 self-review, then re-spawn cross-auditor with updated `iteration` and `previously_fixed`
+5. Before re-spawn, see §3.5c Stop criteria — REOPEN findings or same-defect-class on 2+ iters trigger a comprehensive sweep AFTER `/compact` or via a fresh-context subagent; hard cap iter ≤ 5 unless an explicit §3.1c-regex Log line justifies the exception. Then re-run Pass 1 self-review and re-spawn cross-auditor with updated `iteration` and `previously_fixed`.
 6. Repeat until no CRITICAL/HIGH remain
 7. Set spec `status: AUDIT_PASSED`. Populate `spec_audit_evidence:` from the cross-auditor's final-iteration return signal per §3.5b READ path (spec-mode parses two adjacent final lines `evidence_class:` + `evidence_blockers:` from the inline return text). Copy `evidence_blockers:` verbatim into `spec_audit_blockers:` (parse-failure → `self_fallback` per §3.5b).
 
@@ -583,7 +583,13 @@ the rationale `false positive — both auditors erred: <explanation>`.
 
 9. Repeat the loop until no CRITICAL or HIGH findings remain in `OPEN`
    or `REOPENED`. `FIXED` findings count as clean only after a later
-   audit round verifies them.
+   audit round verifies them. Before re-spawn, see §3.5c Stop criteria
+   — REOPEN findings or same-defect-class on 2+ iters trigger a
+   comprehensive sweep (paired control with rule #10: AFTER `/compact`
+   or via a fresh-context subagent); hard cap iter ≤ 5 (counts
+   cross-auditor re-spawns) unless an explicit §3.1c-regex Log line
+   justifies the exception; residue is funneled through per-finding
+   `accept` / `defer` triage, NOT skip-to-hand-off.
 
 **If there are no CRITICAL or HIGH findings, or all such findings have
 been resolved:**
