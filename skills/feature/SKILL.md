@@ -738,11 +738,13 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
 | Matched design status | Continue mode (no-in-flight branch) | Status mode (`### Queued from retrospectives` row) |
 |---|---|---|
 | (no match — no `*-<slug>.md` file exists) | render: `queued — not yet materialized` | render row |
-| `DRAFT` / `APPROVED` | render: `queued — spec drafted but not in flight: see design/<slug>.md` | render row (annotated) |
-| `BLOCKED` | render: `queued — spec drafted but BLOCKED: see design/<slug>.md` | render row (annotated) |
+| `DRAFT` / `APPROVED` | render: `queued — spec drafted but not in flight: see <matched-design-relative-path>` | render row (annotated) |
+| `BLOCKED` | render: `queued — spec drafted but BLOCKED: see <matched-design-relative-path>` | render row (annotated) |
 | `IN_PROGRESS` / `AUDIT_PASSED` | suppress (already surfaced by in-flight scan) | suppress |
 | `VERIFIED` (or legacy `DONE`) / `SHIPPED` | suppress (terminal — work done) | suppress |
 | `DISCARDED` | render: `queued — prior attempt discarded; consider re-queue or remove` | render row (annotated) |
+
+`<matched-design-relative-path>` is the project-relative path returned by the lookup glob in §Session resume — KB scan (e.g. `design/2026-04-30-shared-absence-helper-extraction.md` — the full date-prefixed basename, NOT a bare `<slug>.md`). Following the bare-slug form would emit a broken Obsidian link because the actual file on disk carries the date prefix.
 
 Edge cases:
 - **Multi-match** (suffix `-<slug>.md` returns >1 result): pick the lexicographically newest match (date prefix sorts naturally) AND emit a one-line warning `⚠ multiple design files match slug <slug>; using newest <date-prefix>`.
@@ -909,7 +911,7 @@ Scan glob is `<kb>/repos/*/research/**/*.md` (all projects, mirroring the existi
 - **Project**: parent-of-`research/` directory of the matched source note (`<kb>/repos/<X>/research/...` → `<X>`). Mirrors the existing all-project contract.
 - **Queued spec**: `<id> <slug>` if `id` is present in frontmatter; just `<slug>` otherwise (matching the schema's id-optional rule).
 - **Queued since**: the `created:` field of the source note (original publication date — NOT the latest update).
-- **State**: render decision from the Materialization status branching table in §Continue mode. Includes legacy `DONE` synonym treatment (terminal — work done; suppressed).
+- **State**: render decision from the Materialization status branching table in §Continue mode. Includes legacy `DONE` synonym treatment (terminal — work done; suppressed). When the branching table emits a `see <matched-design-relative-path>` reference, use the full date-prefixed basename returned by the lookup (matching the example row at `2026-04-30-shared-absence-helper-extraction.md`), never a bare `<slug>.md` form — that would produce a broken Obsidian link.
 - **Sort**: by Queued since, **oldest first** — surfaces backlog age.
 - **Omit the section entirely if no rows match** (consistent with other Status sections).
 
