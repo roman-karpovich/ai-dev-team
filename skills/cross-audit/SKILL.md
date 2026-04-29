@@ -35,6 +35,11 @@ decision fork in Phase 3 carries the `AWAITING YOUR INPUT` banner.
 - `--republish <ids>` → (publish only) forces re-posting IDs already present in a `published_to` record for the same PR URL. Adds a new record.
 - `--materialize=worktree` → (ref-range mode only) create a temporary worktree at `refB` (`git worktree add /tmp/cross-audit-<audit_slug> <refB>`) so the cross-auditor reads file content from `refB` rather than the current working tree. Cleanup: `git worktree remove --force` + `rm -rf` at audit end (best-effort). Default off (no materialization). Anti-combinations: PR mode + `--materialize` → hard-stop ("PR mode already materializes via `gh pr checkout`; `--materialize` is for ref-range only"); non-ref-range scope + `--materialize` → warn ("`--materialize` is a no-op outside ref-range mode") and proceed.
 
+**Removed-flag hard-fail** (per `docs/cut-spec-policy.md`). If `$ARGUMENTS` contains either of the flags below, hard-stop with the corresponding canonical error message — do NOT attempt to interpret the argument or silently drop it:
+
+- `--probe-downgrade` → emit `ERROR: --probe-downgrade was removed in cut spec design/2026-04-26-cut-probe-downgrade.md. Read that spec for the migration path.`
+- `--account` → emit `ERROR: --account was removed in cut spec design/2026-04-27-cut-multi-gh-account.md. Read that spec for the migration path.`
+
 ---
 
 ## Phase 0: KB Discovery
