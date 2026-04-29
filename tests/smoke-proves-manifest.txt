@@ -88,3 +88,10 @@ check_codex_audit_dispatch_helper_propagates_exit_code behavioral
 check_codex_audit_dispatch_helper_arg_validation behavioral
 check_cross_auditor_uses_async_codex_dispatch prompt-text
 check_cross_auditor_codex_effort_default_xhigh_kept prompt-text
+
+# Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28)
+check_research_template_queued_specs_documented schema
+check_research_skill_queue_spec_contract prompt-text
+check_feature_skill_session_resume_research_scan prompt-text
+check_feature_skill_continue_research_scan prompt-text
+check_feature_skill_status_queued_render_rules prompt-text

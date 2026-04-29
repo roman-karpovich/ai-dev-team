@@ -1296,11 +1296,11 @@ check_cross_audit_awaiting_count_1() {
 check_research_awaiting_count_4() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/research/SKILL.md)
-  if [ "$n" != "4" ]; then
-    echo "research AWAITING count=$n expected 4"
+  if [ "$n" != "5" ]; then
+    echo "research AWAITING count=$n expected 5"
     return 1
   fi
-  echo "research AWAITING count=4 OK"
+  echo "research AWAITING count=5 OK"
 }
 
 # (f) investigate SKILL.md must have exactly 1 AWAITING banner line.
@@ -1415,8 +1415,9 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 24 — includes the
-# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1).
+# (r) ruler-prefix count matches total banner count (expected 25 — includes the
+# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1
+# and the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2).
 check_awaiting_ruler_prefix_count_matches() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1425,15 +1426,16 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "24" ]; then
-    echo "ruler-prefix count=$c expected 24"
+  if [ "$c" != "25" ]; then
+    echo "ruler-prefix count=$c expected 25"
     return 1
   fi
-  echo "ruler-prefix count=24 OK"
+  echo "ruler-prefix count=25 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 24 — includes the
-# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1).
+# (s) each banner has trailing bold question within 15 lines (expected 25 — includes the
+# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1
+# and the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1444,11 +1446,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "24" ]; then
-    echo "trailing-bold-present-each count=$c expected 24"
+  if [ "$c" != "25" ]; then
+    echo "trailing-bold-present-each count=$c expected 25"
     return 1
   fi
-  echo "trailing-bold-present-each=24 OK"
+  echo "trailing-bold-present-each=25 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -5493,6 +5495,106 @@ check "findings-path-coherence"                            check_skill_findings_
 check "repo-findings-path-coherence"                       check_repo_findings_path_coherence
 check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
+echo
+
+# --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---
+# Pins per spec §3.5: each catches one specific class of broken implementation
+# (R3 — strong tests, no substring-existence false-greens).
+echo "Session-handoff queue visibility pins:"
+
+check_research_template_queued_specs_documented() {
+  local f="skills/research/references/research-template.md"
+  # POSITIVE: YAML-comment block documents schema (catches: schema not documented,
+  # body-vs-frontmatter mistake — comment lives inside frontmatter, before closing ---).
+  grep -qE '^# queued_specs:' "$f" \
+    || { echo "missing YAML-comment header '^# queued_specs:' in $f"; return 1; }
+  grep -qE '^#   - slug:' "$f" \
+    || { echo "missing '#   - slug:' field-name in $f"; return 1; }
+  grep -qE '^#     scope:' "$f" \
+    || { echo "missing '#     scope:' field-name in $f"; return 1; }
+  grep -qE '^#     id:' "$f" \
+    || { echo "missing '#     id:' field-name in $f"; return 1; }
+  # NEGATIVE: literal active key MUST NOT be set in template — opt-in only
+  # (catches: schema accidentally promoted to mandatory field).
+  if grep -qE '^queued_specs:' "$f"; then
+    echo "literal active 'queued_specs:' present in $f (template is opt-in only)"
+    return 1
+  fi
+  echo "research-template queued_specs schema documented as YAML comment OK"
+}
+
+check_research_skill_queue_spec_contract() {
+  local f="skills/research/SKILL.md"
+  # Extract §Conclude mode region with BSD-portable next-mode-anchored pattern
+  # (avoids truncation on in-region '## ⏸ AWAITING YOUR INPUT' H2 banners).
+  local region
+  region=$(awk 'p && /^## Archive mode$/{exit} /^## Conclude mode$/{p=1} p' "$f")
+  local missing=""
+  for lit in '--queue-spec' 'pipe-delimited' 'frontmatter' 'slug' 'scope'; do
+    printf '%s' "$region" | grep -qF -- "$lit" || missing="$missing $lit"
+  done
+  # 'dedup' matches both 'dedupe' and 'deduplicate'
+  printf '%s' "$region" | grep -qF 'dedup' || missing="$missing dedup"
+  if [ -n "$missing" ]; then
+    echo "§Conclude region missing literals:$missing"
+    return 1
+  fi
+  echo "research SKILL §Conclude --queue-spec contract documented OK"
+}
+
+check_feature_skill_session_resume_research_scan() {
+  local f="skills/feature/SKILL.md"
+  # Extract §Session resume — KB scan with next-mode-anchored pattern.
+  local region
+  region=$(awk 'p && /^## Phase 0:/{exit} /^## Session resume — KB scan$/{p=1} p' "$f")
+  local missing=""
+  for lit in 'research/**/*.md' 'status: CONCLUDED' 'queued_specs' 'frontmatter'; do
+    printf '%s' "$region" | grep -qF -- "$lit" || missing="$missing $lit"
+  done
+  if [ -n "$missing" ]; then
+    echo "§Session resume — KB scan missing literals:$missing"
+    return 1
+  fi
+  echo "feature SKILL §Session resume research-queue scan contract documented OK"
+}
+
+check_feature_skill_continue_research_scan() {
+  local f="skills/feature/SKILL.md"
+  # Extract §Continue mode with next-mode-anchored pattern (Discard avoids in-region AWAITING H2 banners).
+  local region
+  region=$(awk 'p && /^## Discard mode$/{exit} /^## Continue mode$/{p=1} p' "$f")
+  local missing=""
+  printf '%s' "$region" | grep -qF 'queued_specs' || missing="$missing queued_specs"
+  printf '%s' "$region" | grep -qF 'aterialization status' || missing="$missing materialization-status-cross-ref"
+  if [ -n "$missing" ]; then
+    echo "§Continue mode missing literals:$missing"
+    return 1
+  fi
+  echo "feature SKILL §Continue mode materialization-status cross-reference documented OK"
+}
+
+check_feature_skill_status_queued_render_rules() {
+  local f="skills/feature/SKILL.md"
+  # Extract `### Queued from retrospectives` block with BSD-portable next-H3-anchored pattern
+  # (H3-only terminator is provably safe — AWAITING banners are H2 and cannot truncate).
+  local region
+  region=$(awk 'p && /^### /{exit} /^### Queued from retrospectives$/{p=1} p' "$f")
+  local missing=""
+  for lit in 'Source note' 'Project' 'Queued spec' 'Queued since' 'State' 'oldest first' 'Omit the section' 'created:'; do
+    printf '%s' "$region" | grep -qF -- "$lit" || missing="$missing '$lit'"
+  done
+  if [ -n "$missing" ]; then
+    echo "### Queued from retrospectives missing literals:$missing"
+    return 1
+  fi
+  echo "feature SKILL §Status mode ### Queued from retrospectives render rules documented OK"
+}
+
+check "session-handoff-queued-specs-template-schema"      check_research_template_queued_specs_documented
+check "session-handoff-research-skill-queue-spec-contract" check_research_skill_queue_spec_contract
+check "session-handoff-feature-session-resume-research-scan" check_feature_skill_session_resume_research_scan
+check "session-handoff-feature-continue-research-scan"    check_feature_skill_continue_research_scan
+check "session-handoff-feature-status-queued-render-rules" check_feature_skill_status_queued_render_rules
 echo
 
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
