@@ -5422,39 +5422,50 @@ check_skill_findings_path_coherence() {
   return 0
 }
 
-# (NEW) `check_repo_findings_path_coherence` — X8 optional fourth tightening.
+# (NEW) `check_repo_findings_path_coherence` — X8 optional fourth tightening
+# (broadened by X10 to cover the cross-auditor write contract filenames).
 # Repo-wide superset of `check_skill_findings_path_coherence`: extends the
 # count-equality guard across every markdown file under `agents/`, `docs/`,
 # and `skills/` (the audit scope). The cross-auditor.md L430-431 is the
 # canonical write contract source; if a future edit introduces a long-form
 # bare regression THERE, the entire path-coherence chain is poisoned. This
-# pin closes that surface — every `<kb(_path)?>/repos/<project>/...
-# -code-findings.md` mention anywhere under audit scope MUST include
-# `/security/`. Per-file count equality + per-file drift accounting so the
-# failure message names the specific file(s) that drifted.
+# pin closes that surface — every `<kb(_path)?>/repos/<project>/...` mention
+# whose tail matches one of the canonical findings.md / workdoc-iter.md
+# filename patterns MUST include `/security/`.
+#
+# X10 fix: the original `*-code-findings.md` regex MISSED the canonical
+# write-contract filename pattern at agents/cross-auditor.md L430-431:
+#   - `<kb_path>/repos/<project>/security/<audit_slug>-findings.md`     (no `-code-` prefix)
+#   - `<kb_path>/repos/<project>/security/<audit_slug>-workdoc-iter<N>.md`
+# Mutation-verified: dropping `/security/` at L430 yielded bad=0/good=0
+# under the old regex (pin PASSED). Broadened matcher now uses TWO regex
+# pairs:
+#   1. `-(code-)?findings\.md` — covers both `<slug>-code-findings.md` and
+#      `<audit_slug>-findings.md` filenames.
+#   2. `-workdoc-iter<N>\.md` — covers the cross-auditor workdoc filename.
+# Per-file count equality on EACH pair independently; either pair drifting
+# fails the pin with named file + per-pair counts.
 check_repo_findings_path_coherence() {
   local files=()
   while IFS= read -r f; do files+=("$f"); done < <(find agents docs skills -type f -name '*.md')
-  local total_bad=0
-  local total_good=0
   local drift_files=()
-  local f bad good
+  local f bad_findings good_findings bad_workdoc good_workdoc
   for f in "${files[@]}"; do
     # X9 fix: count OCCURRENCES (`grep -oE | wc -l`), not matching LINES
     # (`grep -cE`). A single line carrying both a canonical /security/ mention
     # AND a bare mention would otherwise contribute 1 to both counters under
     # -cE, the equality holds, and the bare path slips through. Per-occurrence
     # counting makes that bypass impossible.
-    bad=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
-    good=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
-    total_bad=$((total_bad + bad))
-    total_good=$((total_good + good))
-    if [ "$bad" != "$good" ]; then
-      drift_files+=("$f (bad=$bad, good=$good)")
+    bad_findings=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-(code-)?findings\.md' "$f" | wc -l | tr -d ' ')
+    good_findings=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-(code-)?findings\.md' "$f" | wc -l | tr -d ' ')
+    bad_workdoc=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-workdoc-iter<N>\.md' "$f" | wc -l | tr -d ' ')
+    good_workdoc=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-workdoc-iter<N>\.md' "$f" | wc -l | tr -d ' ')
+    if [ "$bad_findings" != "$good_findings" ] || [ "$bad_workdoc" != "$good_workdoc" ]; then
+      drift_files+=("$f (findings: bad=$bad_findings good=$good_findings; workdoc: bad=$bad_workdoc good=$good_workdoc)")
     fi
   done
   if [ "${#drift_files[@]}" -gt 0 ]; then
-    echo "repo-wide findings.md path-coherence drift detected (every full-prefix mention must include /security/) in: ${drift_files[*]}"
+    echo "repo-wide findings.md / workdoc-iter.md path-coherence drift detected (every full-prefix mention must include /security/) in: ${drift_files[*]}"
     return 1
   fi
   return 0
