@@ -5728,6 +5728,104 @@ check "session-handoff-feature-continue-research-scan"    check_feature_skill_co
 check "session-handoff-feature-status-queued-render-rules" check_feature_skill_status_queued_render_rules
 echo
 
+# --- Cut-spec hard-fail (BACKLOG #56, spec 2026-04-29) ---
+# Pins per spec §3.4: 1 schema (policy doc present) + 5 prompt-text pins
+# (each asserting the FULL canonical hard-fail line byte-for-byte at its
+# parsing-surface site — 3 voice anchors per X3 fix: ERROR: prefix, the
+# `was removed in cut spec design/<slug>.md` middle, and the
+# `. Read that spec for the migration path.` remediation suffix).
+# Behavioral coverage gap (acknowledged honestly per the X3 honesty-edit
+# precedent from spec 2026-04-28-session-handoff-queue-visibility): these
+# are prompt-text pins — they confirm the prose is present, not that
+# Claude actually hard-stops at runtime when it sees the flag. Behavioral
+# verification (Claude reads the prose → emits the error → halts) is NOT
+# covered here. Tracked as Q4-slice-2 follow-up (paired with BACKLOG #57's
+# shared-absence-helper-extraction).
+echo "Cut-spec hard-fail pins:"
+
+check_cut_spec_policy_doc_present() {
+  local f="docs/cut-spec-policy.md"
+  if [ ! -f "$f" ]; then
+    echo "cut-spec-policy doc missing: $f"
+    return 1
+  fi
+  if [ "$(head -1 "$f")" != "# Cut-spec hard-fail policy" ]; then
+    echo "cut-spec-policy H1 mismatch: expected '# Cut-spec hard-fail policy'"
+    return 1
+  fi
+  for lit in 'ERROR:' 'was removed in cut spec' 'Read that spec for the migration path'; do
+    if ! grep -qF -- "$lit" "$f"; then
+      echo "cut-spec-policy missing literal: $lit"
+      return 1
+    fi
+  done
+  for slug in '2026-04-26-cut-probe-downgrade' '2026-04-27-cut-from-investigation' '2026-04-27-cut-codex-fast' '2026-04-27-cut-multi-gh-account'; do
+    if ! grep -qF -- "$slug" "$f"; then
+      echo "cut-spec-policy missing registry slug: $slug"
+      return 1
+    fi
+  done
+  echo "check_cut_spec_policy_doc_present: schema OK (H1 + 3 voice literals + 4 cut-spec slugs)"
+}
+
+check_kb_discovery_codex_model_fast_hard_fail() {
+  local f="docs/kb-discovery.md"
+  local line='ERROR: codex.model_fast was removed in cut spec design/2026-04-27-cut-codex-fast.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "kb-discovery missing canonical codex.model_fast hard-fail line"
+    return 1
+  fi
+  echo "check_kb_discovery_codex_model_fast_hard_fail: canonical line present"
+}
+
+check_kb_discovery_github_block_hard_fail() {
+  local f="docs/kb-discovery.md"
+  local line='ERROR: github: config block was removed in cut spec design/2026-04-27-cut-multi-gh-account.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "kb-discovery missing canonical github: block hard-fail line"
+    return 1
+  fi
+  echo "check_kb_discovery_github_block_hard_fail: canonical line present"
+}
+
+check_cross_audit_probe_downgrade_hard_fail() {
+  local f="skills/cross-audit/SKILL.md"
+  local line='ERROR: --probe-downgrade was removed in cut spec design/2026-04-26-cut-probe-downgrade.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "cross-audit SKILL missing canonical --probe-downgrade hard-fail line"
+    return 1
+  fi
+  echo "check_cross_audit_probe_downgrade_hard_fail: canonical line present"
+}
+
+check_cross_audit_account_flag_hard_fail() {
+  local f="skills/cross-audit/SKILL.md"
+  local line='ERROR: --account was removed in cut spec design/2026-04-27-cut-multi-gh-account.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "cross-audit SKILL missing canonical --account hard-fail line"
+    return 1
+  fi
+  echo "check_cross_audit_account_flag_hard_fail: canonical line present"
+}
+
+check_feature_skill_from_investigation_hard_fail() {
+  local f="skills/feature/SKILL.md"
+  local line='ERROR: --from-investigation was removed in cut spec design/2026-04-27-cut-from-investigation.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "feature SKILL missing canonical --from-investigation hard-fail line"
+    return 1
+  fi
+  echo "check_feature_skill_from_investigation_hard_fail: canonical line present"
+}
+
+check "cut-spec-policy-doc-present"                        check_cut_spec_policy_doc_present
+check "kb-discovery-codex-model-fast-hard-fail"            check_kb_discovery_codex_model_fast_hard_fail
+check "kb-discovery-github-block-hard-fail"                check_kb_discovery_github_block_hard_fail
+check "cross-audit-probe-downgrade-hard-fail"              check_cross_audit_probe_downgrade_hard_fail
+check "cross-audit-account-flag-hard-fail"                 check_cross_audit_account_flag_hard_fail
+check "feature-skill-from-investigation-hard-fail"         check_feature_skill_from_investigation_hard_fail
+echo
+
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
 echo "Plugin claims-vs-runtime audit pins:"
 check "smoke_proves_manifest_canonical"       check_smoke_proves_manifest_canonical
