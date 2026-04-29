@@ -616,39 +616,43 @@ echo
 echo "Feature investigation-bridge retirement guard:"
 
 check_feature_from_investigation_absent() {
-  if grep -rqF -- '--from-investigation' skills/; then
-    echo "assertion 1 FAIL: --from-investigation literal present in skills/"
-    return 1
-  fi
+  # 5 absence assertions (was 6 — assertion #1 forbidding the
+  # `--from-investigation` literal in skills/ was retired by spec
+  # design/2026-04-29-removed-cli-flag-hard-fail.md §3.3.4 Path 4 because
+  # the new "Removed-flag hard-fail" block in skills/feature/SKILL.md must
+  # contain the flag literal byte-for-byte for the canonical hard-fail line;
+  # equivalent silent-reintroduction protection now comes from the §3.4
+  # presence pin check_feature_skill_from_investigation_hard_fail asserting
+  # the canonical line byte-for-byte).
   if grep -rqF 'investigation_source' skills/; then
-    echo "assertion 2 FAIL: investigation_source literal present in skills/"
+    echo "assertion 1 FAIL: investigation_source literal present in skills/"
     return 1
   fi
   if grep -qE '^check_feature_(from_investigation_flag|investigation_source_field)\(\)' tests/smoke.sh; then
-    echo "assertion 3 FAIL: retired check-function definition present in tests/smoke.sh"
+    echo "assertion 2 FAIL: retired check-function definition present in tests/smoke.sh"
     return 1
   fi
   if grep -qE 'check_feature_(from_investigation_flag|investigation_source_field)' tests/smoke.sh; then
-    echo "assertion 4 FAIL: retired check-function reference present in tests/smoke.sh"
+    echo "assertion 3 FAIL: retired check-function reference present in tests/smoke.sh"
     return 1
   fi
   if ! grep -qF '/research' skills/research/SKILL.md; then
-    echo "assertion 5 FAIL: /research entry-point missing from skills/research/SKILL.md"
+    echo "assertion 4 FAIL: /research entry-point missing from skills/research/SKILL.md"
     return 1
   fi
   if ! grep -qF '/feature new' skills/feature/SKILL.md; then
-    echo "assertion 5 FAIL: /feature new entry-point missing from skills/feature/SKILL.md"
+    echo "assertion 4 FAIL: /feature new entry-point missing from skills/feature/SKILL.md"
     return 1
   fi
   if grep -qE '^# .*--from-investigation' tests/smoke.sh; then
-    echo "assertion 6 FAIL: stale section-header comment in tests/smoke.sh contains retired-bridge literal"
+    echo "assertion 5 FAIL: stale section-header comment in tests/smoke.sh contains retired-bridge literal"
     return 1
   fi
   if grep -qE '^# .*--from-investigation' tests/smoke-helpers.sh; then
-    echo "assertion 6 FAIL: stale section-header comment in tests/smoke-helpers.sh contains retired-bridge literal"
+    echo "assertion 5 FAIL: stale section-header comment in tests/smoke-helpers.sh contains retired-bridge literal"
     return 1
   fi
-  echo "check_feature_from_investigation_absent: all 6 assertions OK"
+  echo "check_feature_from_investigation_absent: all 5 assertions OK"
 }
 
 check "feature --from-investigation absent" check_feature_from_investigation_absent
@@ -2459,56 +2463,61 @@ echo "Fast-mode retirement guard:"
 
 check_codex_fast_absent() {
   # Single absence-asserting helper for the retired T-CF Codex Fast routing
-  # variant (PR A-3). 8 assertions per spec §3.6. Self-reference safety: this
-  # body and the registration line use Fast-mode (hyphenated) and Codex-Fast
-  # (hyphenated) compounds, byte-distinct from banned literals 'Codex Fast'
-  # (space), 'model_fast' (underscore), and 'T-CF' (with hyphen + suffix).
+  # variant (PR A-3). 7 assertions (was 8 — assertion #2 forbidding the
+  # `model_fast` literal in skills/ agents/ docs/ README.md
+  # .ai-dev-team.yml.example was retired by spec
+  # design/2026-04-29-removed-cli-flag-hard-fail.md §3.3.4 Path 4 because the
+  # new `Removed-key hard-fail` clause in docs/kb-discovery.md must contain
+  # the `codex.model_fast` literal byte-for-byte; equivalent silent-
+  # reintroduction protection now comes from the §3.4 presence pin
+  # `check_kb_discovery_codex_model_fast_hard_fail`). Self-reference safety:
+  # this body and the registration line use Fast-mode (hyphenated) and
+  # Codex-Fast (hyphenated) compounds, byte-distinct from banned literals
+  # 'Codex Fast' (space), 'model_fast' (underscore), and 'T-CF' (with hyphen
+  # + suffix).
   # 1. No `Codex Fast` literal in live skill prose / docs / agents / config.
   ! grep -rqF 'Codex Fast' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
     || { echo "absence #1 FAIL: 'Codex Fast' literal still present in live source"; return 1; }
-  # 2. No `model_fast` literal in live source.
-  ! grep -rqF 'model_fast' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
-    || { echo "absence #2 FAIL: 'model_fast' literal still present in live source"; return 1; }
-  # 3. No `T-CF` literal in live source.
+  # 2. No `T-CF` literal in live source.
   ! grep -rqE 'T-CF' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
-    || { echo "absence #3 FAIL: 'T-CF' literal still present in live source"; return 1; }
-  # 4. No retired check-helper definitions in tests/smoke-helpers.sh.
+    || { echo "absence #2 FAIL: 'T-CF' literal still present in live source"; return 1; }
+  # 3. No retired check-helper definitions in tests/smoke-helpers.sh.
   ! grep -qE '^check_(cross_audit_phase0_bans_model_fast|spec_template_codex_fast_rationale|agent_routing_codex_fast_rationale)\(\)' tests/smoke-helpers.sh \
-    || { echo "absence #4 FAIL: retired helper-fn def still present in tests/smoke-helpers.sh"; return 1; }
-  # 5. No retired check invocations or wrapper definitions in tests/smoke.sh
+    || { echo "absence #3 FAIL: retired helper-fn def still present in tests/smoke-helpers.sh"; return 1; }
+  # 4. No retired check invocations or wrapper definitions in tests/smoke.sh
   #    (anchored to ^check "..." registrations and ^<wrapper>() definitions).
   ! grep -qE '^check "(check_(cross_audit_phase0_bans_model_fast|spec_template_codex_fast_rationale|agent_routing_codex_fast_rationale))"' tests/smoke.sh \
-    || { echo "absence #5a FAIL: retired check registration still present in tests/smoke.sh"; return 1; }
+    || { echo "absence #4a FAIL: retired check registration still present in tests/smoke.sh"; return 1; }
   ! grep -qE '^check_smoke_helper_(phase0_cross_audit_rejected|p3_spec_template_no_codex_action_rejected|p3_agent_routing_no_codex_action_rejected)\(\)' tests/smoke.sh \
-    || { echo "absence #5b FAIL: retired wrapper-fn def still present in tests/smoke.sh"; return 1; }
+    || { echo "absence #4b FAIL: retired wrapper-fn def still present in tests/smoke.sh"; return 1; }
   ! grep -qE '^check "check_smoke_helper_(phase0_cross_audit_rejected|p3_spec_template_no_codex_action_rejected|p3_agent_routing_no_codex_action_rejected)"' tests/smoke.sh \
-    || { echo "absence #5c FAIL: retired wrapper-rejection registration still present in tests/smoke.sh"; return 1; }
-  # 6. No stale section-header comments containing the retired-variant literals.
+    || { echo "absence #4c FAIL: retired wrapper-rejection registration still present in tests/smoke.sh"; return 1; }
+  # 5. No stale section-header comments containing the retired-variant literals.
   ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke.sh \
-    || { echo "absence #6a FAIL: stale section-header comment with banned literal in tests/smoke.sh"; return 1; }
+    || { echo "absence #5a FAIL: stale section-header comment with banned literal in tests/smoke.sh"; return 1; }
   ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke-helpers.sh \
-    || { echo "absence #6b FAIL: stale section-header comment with banned literal in tests/smoke-helpers.sh"; return 1; }
-  # 7. Positive overcut guards (adjacent live surface survives).
+    || { echo "absence #5b FAIL: stale section-header comment with banned literal in tests/smoke-helpers.sh"; return 1; }
+  # 6. Positive overcut guards (adjacent live surface survives).
   grep -qF '#### Option 1: Codex (developer-codex agent)' skills/feature/SKILL.md \
-    || { echo "absence #7a FAIL: Option 1 menu subsection missing from skills/feature/SKILL.md"; return 1; }
+    || { echo "absence #6a FAIL: Option 1 menu subsection missing from skills/feature/SKILL.md"; return 1; }
   grep -qF '#### Option 2: Senior (developer-senior agent)' skills/feature/SKILL.md \
-    || { echo "absence #7b FAIL: Option 2 menu subsection missing from skills/feature/SKILL.md"; return 1; }
+    || { echo "absence #6b FAIL: Option 2 menu subsection missing from skills/feature/SKILL.md"; return 1; }
   grep -qF '## Codex (default)' skills/feature/references/agent-routing.md \
-    || { echo "absence #7c FAIL: ## Codex (default) section missing from agent-routing.md"; return 1; }
+    || { echo "absence #6c FAIL: ## Codex (default) section missing from agent-routing.md"; return 1; }
   grep -qF '## Senior' skills/feature/references/agent-routing.md \
-    || { echo "absence #7d FAIL: ## Senior section missing from agent-routing.md"; return 1; }
+    || { echo "absence #6d FAIL: ## Senior section missing from agent-routing.md"; return 1; }
   grep -qF '## Rationale logging' skills/feature/references/agent-routing.md \
-    || { echo "absence #7e FAIL: ## Rationale logging section missing from agent-routing.md"; return 1; }
+    || { echo "absence #6e FAIL: ## Rationale logging section missing from agent-routing.md"; return 1; }
   grep -qF 'codex_model' agents/developer-codex.md \
-    || { echo "absence #7f FAIL: codex_model agent input parameter missing from agents/developer-codex.md"; return 1; }
+    || { echo "absence #6f FAIL: codex_model agent input parameter missing from agents/developer-codex.md"; return 1; }
   grep -qF 'codex_model' agents/cross-auditor.md \
-    || { echo "absence #7g FAIL: codex_model agent input parameter missing from agents/cross-auditor.md"; return 1; }
-  # 8. Smoke-helpers integrity (trimmed helper survives + success-echo updated).
+    || { echo "absence #6g FAIL: codex_model agent input parameter missing from agents/cross-auditor.md"; return 1; }
+  # 7. Smoke-helpers integrity (trimmed helper survives + success-echo updated).
   grep -qF 'check_feature_phase0_mentions_codex_keys' tests/smoke-helpers.sh \
-    || { echo "absence #8a FAIL: trimmed helper check_feature_phase0_mentions_codex_keys missing"; return 1; }
+    || { echo "absence #7a FAIL: trimmed helper check_feature_phase0_mentions_codex_keys missing"; return 1; }
   grep -qF "Phase 0 extensions mention both codex.model and codex.reasoning_effort keys" tests/smoke-helpers.sh \
-    || { echo "absence #8b FAIL: success-echo update from Step 5 missing"; return 1; }
-  echo "check_codex_fast_absent: all 8 assertions OK"
+    || { echo "absence #7b FAIL: success-echo update from Step 5 missing"; return 1; }
+  echo "check_codex_fast_absent: all 7 assertions OK"
 }
 check "Codex-Fast routing variant absent" check_codex_fast_absent
 echo
@@ -5717,6 +5726,104 @@ check "session-handoff-research-skill-queue-spec-emit-yaml-safe" check_research_
 check "session-handoff-feature-session-resume-research-scan" check_feature_skill_session_resume_research_scan
 check "session-handoff-feature-continue-research-scan"    check_feature_skill_continue_research_scan
 check "session-handoff-feature-status-queued-render-rules" check_feature_skill_status_queued_render_rules
+echo
+
+# --- Cut-spec hard-fail (BACKLOG #56, spec 2026-04-29) ---
+# Pins per spec §3.4: 1 schema (policy doc present) + 5 prompt-text pins
+# (each asserting the FULL canonical hard-fail line byte-for-byte at its
+# parsing-surface site — 3 voice anchors per X3 fix: ERROR: prefix, the
+# `was removed in cut spec design/<slug>.md` middle, and the
+# `. Read that spec for the migration path.` remediation suffix).
+# Behavioral coverage gap (acknowledged honestly per the X3 honesty-edit
+# precedent from spec 2026-04-28-session-handoff-queue-visibility): these
+# are prompt-text pins — they confirm the prose is present, not that
+# Claude actually hard-stops at runtime when it sees the flag. Behavioral
+# verification (Claude reads the prose → emits the error → halts) is NOT
+# covered here. Tracked as Q4-slice-2 follow-up (paired with BACKLOG #57's
+# shared-absence-helper-extraction).
+echo "Cut-spec hard-fail pins:"
+
+check_cut_spec_policy_doc_present() {
+  local f="docs/cut-spec-policy.md"
+  if [ ! -f "$f" ]; then
+    echo "cut-spec-policy doc missing: $f"
+    return 1
+  fi
+  if [ "$(head -1 "$f")" != "# Cut-spec hard-fail policy" ]; then
+    echo "cut-spec-policy H1 mismatch: expected '# Cut-spec hard-fail policy'"
+    return 1
+  fi
+  for lit in 'ERROR:' 'was removed in cut spec' 'Read that spec for the migration path'; do
+    if ! grep -qF -- "$lit" "$f"; then
+      echo "cut-spec-policy missing literal: $lit"
+      return 1
+    fi
+  done
+  for slug in '2026-04-26-cut-probe-downgrade' '2026-04-27-cut-from-investigation' '2026-04-27-cut-codex-fast' '2026-04-27-cut-multi-gh-account'; do
+    if ! grep -qF -- "$slug" "$f"; then
+      echo "cut-spec-policy missing registry slug: $slug"
+      return 1
+    fi
+  done
+  echo "check_cut_spec_policy_doc_present: schema OK (H1 + 3 voice literals + 4 cut-spec slugs)"
+}
+
+check_kb_discovery_codex_model_fast_hard_fail() {
+  local f="docs/kb-discovery.md"
+  local line='ERROR: codex.model_fast was removed in cut spec design/2026-04-27-cut-codex-fast.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "kb-discovery missing canonical codex.model_fast hard-fail line"
+    return 1
+  fi
+  echo "check_kb_discovery_codex_model_fast_hard_fail: canonical line present"
+}
+
+check_kb_discovery_github_block_hard_fail() {
+  local f="docs/kb-discovery.md"
+  local line='ERROR: github: config block was removed in cut spec design/2026-04-27-cut-multi-gh-account.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "kb-discovery missing canonical github: block hard-fail line"
+    return 1
+  fi
+  echo "check_kb_discovery_github_block_hard_fail: canonical line present"
+}
+
+check_cross_audit_probe_downgrade_hard_fail() {
+  local f="skills/cross-audit/SKILL.md"
+  local line='ERROR: --probe-downgrade was removed in cut spec design/2026-04-26-cut-probe-downgrade.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "cross-audit SKILL missing canonical --probe-downgrade hard-fail line"
+    return 1
+  fi
+  echo "check_cross_audit_probe_downgrade_hard_fail: canonical line present"
+}
+
+check_cross_audit_account_flag_hard_fail() {
+  local f="skills/cross-audit/SKILL.md"
+  local line='ERROR: --account was removed in cut spec design/2026-04-27-cut-multi-gh-account.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "cross-audit SKILL missing canonical --account hard-fail line"
+    return 1
+  fi
+  echo "check_cross_audit_account_flag_hard_fail: canonical line present"
+}
+
+check_feature_skill_from_investigation_hard_fail() {
+  local f="skills/feature/SKILL.md"
+  local line='ERROR: --from-investigation was removed in cut spec design/2026-04-27-cut-from-investigation.md. Read that spec for the migration path.'
+  if ! grep -qF -- "$line" "$f"; then
+    echo "feature SKILL missing canonical --from-investigation hard-fail line"
+    return 1
+  fi
+  echo "check_feature_skill_from_investigation_hard_fail: canonical line present"
+}
+
+check "cut-spec-policy-doc-present"                        check_cut_spec_policy_doc_present
+check "kb-discovery-codex-model-fast-hard-fail"            check_kb_discovery_codex_model_fast_hard_fail
+check "kb-discovery-github-block-hard-fail"                check_kb_discovery_github_block_hard_fail
+check "cross-audit-probe-downgrade-hard-fail"              check_cross_audit_probe_downgrade_hard_fail
+check "cross-audit-account-flag-hard-fail"                 check_cross_audit_account_flag_hard_fail
+check "feature-skill-from-investigation-hard-fail"         check_feature_skill_from_investigation_hard_fail
 echo
 
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
