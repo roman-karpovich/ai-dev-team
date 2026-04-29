@@ -3351,7 +3351,30 @@ check_spec_template_code_findings_paragraph() {
     echo "$f missing derivation-rule phrase ('auto-derive|auto-derived|highest existing')"
     return 1
   fi
-  echo "$f has code-audit persistence paragraph (KB path + next_finding_id + derivation rule) OK"
+  # X8 sub-(c): spec-template.md L117 path mention MUST include the `/security/`
+  # segment matching the cross-auditor write contract (agents/cross-auditor.md
+  # L430) and SKILL.md L546 + L731. Mirror the X8 sub-(b) idiom: positive
+  # /security/ assertion + negative bare-form guard (every full-prefix
+  # `-code-findings.md` mention has /security/, at either <kb> or <kb_path>
+  # placeholder spelling).
+  if ! grep -qF "repos/<project>/security/<spec-slug>-code-findings.md" "$f"; then
+    echo "$f has bare findings.md path without /security/ segment — diverges from agents/cross-auditor.md:430 write contract"
+    return 1
+  fi
+  # X9 fix: count OCCURRENCES via `grep -oE | wc -l`, not matching LINES via
+  # `grep -cE`. A single line that mentions both a canonical /security/ path
+  # AND a bare path would otherwise yield bad=1, good=1 (line counts) and pass
+  # this guard despite carrying a forbidden bare form. Per-occurrence counting
+  # makes that bypass impossible: such a line yields bad=2, good=1.
+  local bad good
+  bad=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
+  good=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
+  if [ "$bad" != "$good" ]; then
+    local missing=$((bad - good))
+    echo "$f has $missing findings.md path mention(s) missing /security/ segment (bad=$bad, good=$good — bad MUST equal good)"
+    return 1
+  fi
+  echo "$f has code-audit persistence paragraph (KB path + next_finding_id + derivation rule + /security/ coherence) OK"
 }
 
 check "code-audit-heading-unique"                   check_code_audit_heading_unique
@@ -4008,20 +4031,42 @@ check_spec_template_audit_evidence_schema() {
   local f='skills/feature/references/spec-template.md'
   local n v l
   n=$(grep -cE '^(spec|code)_audit_(evidence|blockers):' "$f")
-  v=$(grep -cE 'dual_model|single_model|self_fallback|skipped' "$f")
+  v=$(grep -cE 'dual_model|single_model|self_fallback|contract_violated|skipped' "$f")
   l=$(grep -cF 'legacy_unknown' "$f")
   if [ "$n" -ne 4 ]; then
     echo "spec-template: expected 4 frontmatter field lines (spec_audit_evidence/blockers + code_audit_evidence/blockers); got $n"
     return 1
   fi
-  if [ "$v" -lt 4 ]; then
-    echo "spec-template: comment block must list all 4 enum values; got $v lines"
+  if [ "$v" -lt 5 ]; then
+    echo "spec-template: comment block must list all 5 enum values; got $v lines"
     return 1
   fi
   if [ "$l" -lt 1 ]; then
     echo "spec-template: missing 'legacy_unknown' reader-semantics literal"
     return 1
   fi
+  # X15 ordered-sequence: extract canonical-enum-comment block and assert each
+  # token (`dual_model`, `single_model`, `self_fallback`, `contract_violated`,
+  # `skipped`) appears EXACTLY ONCE on its own `#   <token>` line in that
+  # order. Count-only check is insufficient — duplicates pass, ordering errors
+  # pass.
+  local block tok line_no prev_line
+  block=$(awk '/^# Canonical enum values:/{flag=1; next} flag && /^# null = legacy_unknown/{exit} flag' "$f")
+  prev_line=0
+  for tok in dual_model single_model self_fallback contract_violated skipped; do
+    local matches
+    matches=$(printf '%s\n' "$block" | grep -nE "^#   ${tok}( |$)" | wc -l | tr -d ' ')
+    if [ "$matches" != "1" ]; then
+      echo "spec-template: enum token '$tok' must appear exactly once on its own '#   $tok' line in canonical-enum-comment block (got $matches)"
+      return 1
+    fi
+    line_no=$(printf '%s\n' "$block" | grep -nE "^#   ${tok}( |$)" | head -1 | cut -d: -f1)
+    if [ -z "$line_no" ] || [ "$line_no" -le "$prev_line" ]; then
+      echo "spec-template: enum token '$tok' out of canonical order in comment block (line $line_no <= prev $prev_line)"
+      return 1
+    fi
+    prev_line="$line_no"
+  done
   return 0
 }
 
@@ -4220,7 +4265,7 @@ check_audit_evidence_enum_values_canonical() {
   while IFS= read -r tok; do
     [ -z "$tok" ] && continue
     case "$tok" in
-      null|dual_model|single_model|self_fallback|skipped) ;;
+      null|dual_model|single_model|self_fallback|contract_violated|skipped) ;;
       '<value>'|'<token>') ;;
       *)
         echo "non-canonical enum token: '$tok'"
@@ -4232,16 +4277,28 @@ check_audit_evidence_enum_values_canonical() {
 }
 
 # (f) SKILL.md §3.5b literally documents `null = legacy_unknown` AND uses the
-# inclusive predicate `∈ {single_model, self_fallback, skipped}` — never the
-# inverse `!= dual_model` form (which would flag every legacy spec forever).
+# inclusive 4-element predicate `∈ {single_model, self_fallback, contract_violated, skipped}`
+# inside the §3.5b region — never the inverse `!= dual_model` form (which
+# would flag every legacy spec forever). Region-scoped to §3.5b for the
+# positive predicate assertion (terminates at the FIRST sub-heading after
+# §3.5b regardless of label — §3.5c Stop criteria sits between §3.5b and
+# §3.6 in the live SKILL.md per PR #68). File-wide negative guard for the
+# OLD 3-element predicate covers Status-mode region too (X5/X6 — partial
+# update silently passes without it).
 check_skill_legacy_null_reader_semantics() {
   local f='skills/feature/SKILL.md'
   if ! grep -qF 'legacy_unknown' "$f"; then
     echo "SKILL.md missing 'legacy_unknown' literal"
     return 1
   fi
-  if ! grep -qF '∈ {single_model, self_fallback, skipped}' "$f"; then
-    echo "SKILL.md missing inclusive degraded-flag predicate '∈ {single_model, self_fallback, skipped}'"
+  local region_3_5b
+  region_3_5b=$(awk '/^### 3\.5b/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  if ! printf '%s' "$region_3_5b" | grep -qF '∈ {single_model, self_fallback, contract_violated, skipped}'; then
+    echo "SKILL.md §3.5b region missing 4-element degraded-flag predicate '∈ {single_model, self_fallback, contract_violated, skipped}'"
+    return 1
+  fi
+  if grep -qF '∈ {single_model, self_fallback, skipped}' "$f"; then
+    echo "SKILL.md contains forbidden OLD 3-element predicate '∈ {single_model, self_fallback, skipped}' (must be the 4-element form post contract_violated extension)"
     return 1
   fi
   if grep -qF '!= dual_model' "$f"; then
@@ -4254,15 +4311,18 @@ check_skill_legacy_null_reader_semantics() {
 # (g) Status-mode region (NOT just §3.5b prose) literally contains BOTH
 # `spec_audit_evidence` AND `code_audit_evidence` (NOT just bare
 # `audit_evidence` — the both-field assertion is load-bearing per §3.1
-# two-field design). The region also contains the inclusive predicate.
+# two-field design). The region also contains the EXACT 4-element predicate
+# phrase `∈ {single_model, self_fallback, contract_violated, skipped}`
+# (NOT bag-of-words AND-coverage — X6 confirms AND-coverage can pass when
+# `contract_violated` only appears in sample-table while predicate sentence
+# stays stale). Region-scoped negative guard for the OLD 3-element form.
 # Continue mode is NOT checked — it has no row renderer.
 check_skill_renderer_evidence_flag_wired() {
   local f='skills/feature/SKILL.md'
-  local region status_spec status_code status_inclusive
+  local region status_spec status_code
   region=$(awk '/^## Status mode/{flag=1; next} flag && /^## /{exit} flag' "$f")
   status_spec=$(printf '%s' "$region" | grep -cF 'spec_audit_evidence')
   status_code=$(printf '%s' "$region" | grep -cF 'code_audit_evidence')
-  status_inclusive=$(printf '%s' "$region" | grep -cE 'single_model.*self_fallback.*skipped|∈ \{single_model')
   if [ "$status_spec" -lt 1 ]; then
     echo "Status-mode region missing 'spec_audit_evidence' field reference"
     return 1
@@ -4271,8 +4331,12 @@ check_skill_renderer_evidence_flag_wired() {
     echo "Status-mode region missing 'code_audit_evidence' field reference"
     return 1
   fi
-  if [ "$status_inclusive" -lt 1 ]; then
-    echo "Status-mode region missing inclusive degraded-flag predicate"
+  if ! printf '%s' "$region" | grep -qF '∈ {single_model, self_fallback, contract_violated, skipped}'; then
+    echo "Status-mode region missing EXACT 4-element degraded-flag predicate '∈ {single_model, self_fallback, contract_violated, skipped}'"
+    return 1
+  fi
+  if printf '%s' "$region" | grep -qF '∈ {single_model, self_fallback, skipped}'; then
+    echo "Status-mode region contains forbidden OLD 3-element predicate '∈ {single_model, self_fallback, skipped}' (must be the 4-element form post contract_violated extension)"
     return 1
   fi
   return 0
@@ -4355,6 +4419,8 @@ EOF_AE_FX
     '- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=[codex_unavailable]' || fail=1
   _ae_recognize 'extended zero-diff-skip (skipped)' \
     '- 2026-04-27: code audit: no auditable files in diff; skipping; evidence=skipped; blockers=[no_auditable_files]' || fail=1
+  _ae_recognize 'extended clean-passed (contract_violated)' \
+    "- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=contract_violated; blockers=['cross-auditor return missing evidence_class footer line']" || fail=1
   # Iter-3 X6: bracketed blocker text — Codex stderr realistically contains
   # `[Errno NN]`, `[ERROR]` log prefixes etc. cross-auditor.md L389-396
   # sanitization rule normalizes newlines/quotes/length but NOT brackets, so
@@ -4935,6 +5001,476 @@ check_code_audit_resume_zero_diff_skip_extended_evidence() {
   echo "zero-diff-skip-extended-evidence: extended-form skip marker recognized → skip-to-hand-off OK"
 }
 
+# --- Contract-violated enum pins (spec 2026-04-28-contract-violated-enum) ---
+# These four pins land the enforcement slice for the `contract_violated` enum
+# value addition: routing-rule + file-existence-check + Overview doc coverage
+# + cross-auditor never-writes extension. Each pin documents the load-bearing
+# negative guards inline with the spec finding-id (X10/X12/X13/X16/X17) so a
+# future maintainer can map the assertion back to the design rationale.
+
+# (NEW) `check_skill_contract_violated_routing_rule` — SKILL.md §3.5b documents
+# the parse-failure / YAML-safety / missing-findings.md → `contract_violated`
+# routing rule (the rewrite from the parent-spec `self_fallback` routing).
+# Enforces:
+#   - §3.5b region positive: literal `Contract-violation rule`, the example
+#     phrase `'cross-auditor return missing evidence_class footer line'`, the
+#     X10 Historical-event-storage-rule literals (`Historical-event storage
+#     rule`, `recorded in the spec Log ONLY`, ``NOT in `*_audit_blockers` ``,
+#     ``tied to the FINAL `*_audit_evidence` value``).
+#   - §3.5b region negative guard: the OLD routing literal `treat the audit
+#     as `self_fallback` (cross-auditor return signal not parseable` MUST NOT
+#     appear in the rewritten §3.5b region.
+#   - File-wide negative guard (X2): the OLD parse-failure parenthetical
+#     `(parse-failure → `self_fallback` per §3.5b)` MUST NOT appear ANYWHERE
+#     in `skills/feature/SKILL.md` — catches the case where developer updates
+#     §3.5b but leaves one of the three call sites L298/L304/L598 carrying
+#     the orphan parenthetical.
+#   - X16 paragraph-scoped routing-target literal: extract the
+#     Contract-violation paragraph from §3.5b region by anchoring on the
+#     literal `**Contract-violation rule.**` and consuming until the next
+#     blank line (markdown paragraph terminator); the literal
+#     `*_audit_evidence: contract_violated` MUST appear in that paragraph
+#     (positive) AND the alt-routing-target literals
+#     `*_audit_evidence: self_fallback`, `*_audit_evidence: single_model`,
+#     `*_audit_evidence: skipped` MUST NOT appear in the same paragraph
+#     (negative) — this catches synthetic developer-misedit where the
+#     paragraph body silently routes to a different enum value while the
+#     heading stays intact.
+check_skill_contract_violated_routing_rule() {
+  local f='skills/feature/SKILL.md'
+  local region_3_5b
+  region_3_5b=$(awk '/^### 3\.5b/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  if ! printf '%s' "$region_3_5b" | grep -qF 'Contract-violation rule'; then
+    echo "SKILL.md §3.5b missing 'Contract-violation rule' heading literal"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF "'cross-auditor return missing evidence_class footer line'"; then
+    echo "SKILL.md §3.5b missing example blocker phrase 'cross-auditor return missing evidence_class footer line'"
+    return 1
+  fi
+  if printf '%s' "$region_3_5b" | grep -qF "treat the audit as \`self_fallback\` (cross-auditor return signal not parseable"; then
+    echo "SKILL.md §3.5b still contains OLD self_fallback routing literal — must be rewritten to contract_violated"
+    return 1
+  fi
+  # X2 file-wide negative guard for the orphan parse-failure parenthetical.
+  if grep -qF "(parse-failure → \`self_fallback\` per §3.5b)" "$f"; then
+    echo "SKILL.md still contains OLD parse-failure parenthetical '(parse-failure → \`self_fallback\` per §3.5b)' at one of the call sites L298/L304/L598 — all three MUST be rewritten to contract_violated"
+    return 1
+  fi
+  # X10 Historical-event-storage-rule literals — without these, the iter-1 X7
+  # Historical-event paragraph can be silently dropped or weakened in a future
+  # edit and the schema's "blockers describe what blocks the FINAL gold
+  # standard" semantics regresses.
+  if ! printf '%s' "$region_3_5b" | grep -qF 'Historical-event storage rule'; then
+    echo "SKILL.md §3.5b missing 'Historical-event storage rule' literal (X10)"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF 'recorded in the spec Log ONLY'; then
+    echo "SKILL.md §3.5b missing 'recorded in the spec Log ONLY' literal (X10)"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF 'NOT in `*_audit_blockers`'; then
+    echo "SKILL.md §3.5b missing 'NOT in \`*_audit_blockers\`' literal (X10)"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF 'tied to the FINAL `*_audit_evidence` value'; then
+    echo "SKILL.md §3.5b missing 'tied to the FINAL \`*_audit_evidence\` value' literal (X10)"
+    return 1
+  fi
+  # X16 paragraph-scoped routing-target literal: extract the Contract-violation
+  # paragraph anchored on `**Contract-violation rule.**`, consume up to (but
+  # not including) the next blank line (markdown paragraph terminator).
+  local cv_paragraph
+  cv_paragraph=$(printf '%s\n' "$region_3_5b" | awk '/\*\*Contract-violation rule\.\*\*/{flag=1} flag {print; if (flag && NR>0 && /^$/) exit}')
+  if [ -z "$cv_paragraph" ]; then
+    echo "SKILL.md §3.5b: could not extract Contract-violation paragraph (anchor '**Contract-violation rule.**' not found or paragraph empty)"
+    return 1
+  fi
+  if ! printf '%s' "$cv_paragraph" | grep -qF '*_audit_evidence: contract_violated'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph missing routing-target literal '*_audit_evidence: contract_violated' (X16)"
+    return 1
+  fi
+  if printf '%s' "$cv_paragraph" | grep -qF '*_audit_evidence: self_fallback'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph contains forbidden alt-routing-target '*_audit_evidence: self_fallback' (X16)"
+    return 1
+  fi
+  if printf '%s' "$cv_paragraph" | grep -qF '*_audit_evidence: single_model'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph contains forbidden alt-routing-target '*_audit_evidence: single_model' (X16)"
+    return 1
+  fi
+  if printf '%s' "$cv_paragraph" | grep -qF '*_audit_evidence: skipped'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph contains forbidden alt-routing-target '*_audit_evidence: skipped' (X16)"
+    return 1
+  fi
+  return 0
+}
+
+# (NEW) `check_skill_contract_violated_file_existence_check` — SKILL.md §3.5b
+# documents the new code/full-mode file-existence check that routes a missing
+# `<kb>/repos/<project>/security/<audit_slug>-findings.md` to
+# `contract_violated`. Body extraction: anchor on
+# `File-existence check (code/full mode only)`, consume subsequent lines
+# until the next bullet starting with `^- \*\*`, OR a section break `^---`,
+# OR end-of-section (next `^### ` or `^## `). X12: `self_fallback` MUST NOT
+# appear in the extracted body — without this, a future edit could re-route
+# the missing-file branch to `self_fallback` and the loose anchor checks
+# would still pass.
+check_skill_contract_violated_file_existence_check() {
+  local f='skills/feature/SKILL.md'
+  if ! grep -qF 'File-existence check (code/full mode only)' "$f"; then
+    echo "SKILL.md missing 'File-existence check (code/full mode only)' bullet anchor"
+    return 1
+  fi
+  local bullet_body
+  bullet_body=$(awk '
+    /File-existence check \(code\/full mode only\)/ {flag=1; print; next}
+    flag && /^- \*\*/ {exit}
+    flag && /^---/ {exit}
+    flag && /^### / {exit}
+    flag && /^## / {exit}
+    flag {print}
+  ' "$f")
+  if [ -z "$bullet_body" ]; then
+    echo "SKILL.md: could not extract file-existence-check bullet body"
+    return 1
+  fi
+  if ! printf '%s' "$bullet_body" | grep -qF 'findings.md missing at'; then
+    echo "SKILL.md file-existence-check bullet missing 'findings.md missing at' literal"
+    return 1
+  fi
+  if ! printf '%s' "$bullet_body" | grep -qF '*_audit_evidence: contract_violated'; then
+    echo "SKILL.md file-existence-check bullet missing '*_audit_evidence: contract_violated' routing literal"
+    return 1
+  fi
+  if ! printf '%s' "$bullet_body" | grep -qF 'skip the YAML extraction'; then
+    echo "SKILL.md file-existence-check bullet missing 'skip the YAML extraction' literal"
+    return 1
+  fi
+  # X12 negative guard: the missing-file branch MUST route to contract_violated,
+  # not self_fallback. Without this, a future edit could re-route silently.
+  if printf '%s' "$bullet_body" | grep -qF 'self_fallback'; then
+    echo "SKILL.md file-existence-check bullet contains forbidden 'self_fallback' literal — missing-file branch MUST route to contract_violated (X12)"
+    return 1
+  fi
+  return 0
+}
+
+# (NEW) `check_overview_contract_violated_documented` — operating-manual
+# §Audit evidence covers contract_violated symmetric with the SKILL.md
+# rewrite: bullet-form mention, 4-element predicate, cardinal-text
+# `Five canonical enum values:`, visibility-only-signals enumeration. X14:
+# extraction uses literal-case `^## Audit evidence` (BSD awk has no
+# IGNORECASE — GAWK extension would extract 0 lines on macOS). X15: bullet
+# form `^- \*\*\`contract_violated\`\*\*` ≥1 match (NOT just inline mention
+# in predicate text — that would let the bullet silently disappear). X3 +
+# X5 + X13 negative guards reject the OLD literals.
+check_overview_contract_violated_documented() {
+  local f='docs/AI_Dev_Team_Overview.md'
+  local region
+  region=$(awk '/^## Audit evidence/{flag=1; next} flag && /^## /{flag=0} flag' "$f")
+  if [ -z "$region" ]; then
+    echo "Overview: §Audit evidence region empty (literal-case awk extraction failed — header may have drifted)"
+    return 1
+  fi
+  if ! printf '%s' "$region" | grep -qF 'contract_violated'; then
+    echo "Overview §Audit evidence region missing 'contract_violated' mention"
+    return 1
+  fi
+  # X15 bullet-form: `contract_violated` MUST appear as a top-level bullet
+  # `- **`contract_violated`**` (not just inline in predicate prose).
+  if ! printf '%s' "$region" | grep -qE '^- \*\*`contract_violated`\*\*'; then
+    echo "Overview §Audit evidence region missing bullet-form '- **`contract_violated`**' (X15 — inline mention insufficient)"
+    return 1
+  fi
+  if ! printf '%s' "$region" | grep -qF '∈ {single_model, self_fallback, contract_violated, skipped}'; then
+    echo "Overview §Audit evidence region missing 4-element predicate '∈ {single_model, self_fallback, contract_violated, skipped}'"
+    return 1
+  fi
+  if ! printf '%s' "$region" | grep -qF 'Five canonical enum values:'; then
+    echo "Overview §Audit evidence region missing cardinal text 'Five canonical enum values:' (X3)"
+    return 1
+  fi
+  # X13 visibility-only-signals enumeration: `single_model`, `self_fallback`,
+  # AND `contract_violated` are all visibility-only — the prose enumeration
+  # MUST list all three.
+  if ! printf '%s' "$region" | grep -qF '`single_model`, `self_fallback`, and `contract_violated` are visibility-only signals'; then
+    echo "Overview §Audit evidence region missing X13 visibility-only-signals enumeration '`single_model`, `self_fallback`, and `contract_violated` are visibility-only signals'"
+    return 1
+  fi
+  # X3 cardinal-text negative guard
+  if printf '%s' "$region" | grep -qF 'Four canonical enum values:'; then
+    echo "Overview §Audit evidence region contains forbidden OLD cardinal text 'Four canonical enum values:' (X3 — must be 'Five')"
+    return 1
+  fi
+  # X5 OLD-predicate negative guard
+  if printf '%s' "$region" | grep -qF '∈ {single_model, self_fallback, skipped}'; then
+    echo "Overview §Audit evidence region contains forbidden OLD 3-element predicate '∈ {single_model, self_fallback, skipped}' (X5)"
+    return 1
+  fi
+  # X13 OLD-enumeration negative guard
+  if printf '%s' "$region" | grep -qF '`single_model` and `self_fallback` are visibility-only signals'; then
+    echo "Overview §Audit evidence region contains forbidden OLD visibility-only-signals enumeration '`single_model` and `self_fallback` are visibility-only signals' (X13 — must enumerate three values)"
+    return 1
+  fi
+  return 0
+}
+
+# (NEW) `check_cross_auditor_never_writes_extension` — agents/cross-auditor.md
+# extends the never-writes literal list to 3 values + reroutes parse-failure
+# to contract_violated; SKILL.md L325 third-site never-writes parenthetical
+# also names contract_violated (X4 — without this the two never-writes
+# literals can drift). X11: cross-auditor still emits ONLY `dual_model` /
+# `single_model`. X17: cardinality assertion `count(^- \*\*\`<token>\`\*\*) == 2`
+# in the When-to-set region + region-scoped negative guard for the OLD
+# 2-value sentence `NEVER writes \`self_fallback\` or \`skipped\`` (without
+# `\`contract_violated\``).
+check_cross_auditor_never_writes_extension() {
+  local f='agents/cross-auditor.md'
+  local skill='skills/feature/SKILL.md'
+  if ! grep -qF "self_fallback\`, \`contract_violated\`, or \`skipped" "$f"; then
+    echo "cross-auditor.md missing 3-value never-writes literal list 'self_fallback\`, \`contract_violated\`, or \`skipped'"
+    return 1
+  fi
+  if ! grep -qE 'treat the audit as `contract_violated`' "$f"; then
+    echo "cross-auditor.md L421 parse-failure rule must route to 'contract_violated' (not self_fallback)"
+    return 1
+  fi
+  if grep -qE 'treat the audit as `self_fallback` \(cross-auditor return signal not parseable\)' "$f"; then
+    echo "cross-auditor.md L421 still contains OLD self_fallback routing literal — must be rewritten to contract_violated"
+    return 1
+  fi
+  # X4 third-site coverage: SKILL.md L325 Orchestrator READ path parenthetical
+  # MUST also list contract_violated in the never-writes literal.
+  if ! grep -qF 'cross-auditor never writes `self_fallback` / `contract_violated` / `skipped`' "$skill"; then
+    echo "SKILL.md L325 'Orchestrator READ path' parenthetical missing 3-value never-writes literal 'cross-auditor never writes \`self_fallback\` / \`contract_violated\` / \`skipped\`' (X4 third symmetric site)"
+    return 1
+  fi
+  # X11 + X17: extract the `### When to set` region and assert the binary-emit
+  # invariant + cardinality + OLD-sentence guard.
+  local wts
+  wts=$(awk '/^### When to set/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  if [ -z "$wts" ]; then
+    echo "cross-auditor.md: could not extract '### When to set' region"
+    return 1
+  fi
+  if ! printf '%s' "$wts" | grep -qF '**`dual_model`**'; then
+    echo "cross-auditor.md '### When to set' region missing '**\`dual_model\`**' bullet (X11 binary-emit invariant)"
+    return 1
+  fi
+  if ! printf '%s' "$wts" | grep -qF '**`single_model`**'; then
+    echo "cross-auditor.md '### When to set' region missing '**\`single_model\`**' bullet (X11 binary-emit invariant)"
+    return 1
+  fi
+  if printf '%s' "$wts" | grep -qF '**`contract_violated`**'; then
+    echo "cross-auditor.md '### When to set' region must NOT contain '**\`contract_violated\`**' bullet — orchestrator-only territory (X11)"
+    return 1
+  fi
+  if printf '%s' "$wts" | grep -qF '**`self_fallback`**'; then
+    echo "cross-auditor.md '### When to set' region must NOT contain '**\`self_fallback\`**' bullet — orchestrator-only territory (X11)"
+    return 1
+  fi
+  if printf '%s' "$wts" | grep -qF '**`skipped`**'; then
+    echo "cross-auditor.md '### When to set' region must NOT contain '**\`skipped\`**' bullet — orchestrator-only territory (X11)"
+    return 1
+  fi
+  # X17 cardinality: exactly two emit-style bullets `^- **`<token>`**`.
+  local bullet_count
+  bullet_count=$(printf '%s\n' "$wts" | grep -cE '^- \*\*`[^`]+`\*\*')
+  if [ "$bullet_count" != "2" ]; then
+    echo "cross-auditor.md '### When to set' region must contain exactly 2 emit-style bullets '^- **\`<token>\`**' (got $bullet_count) — X17 cardinality"
+    return 1
+  fi
+  # X17 OLD-sentence region-scoped negative guard.
+  if printf '%s' "$wts" | grep -qF 'NEVER writes `self_fallback` or `skipped`'; then
+    echo "cross-auditor.md '### When to set' region still contains OLD 2-value never-writes sentence 'NEVER writes \`self_fallback\` or \`skipped\`' (without contract_violated) — X17 must be rewritten to 3-value form"
+    return 1
+  fi
+  return 0
+}
+
+# (NEW) `check_skill_orchestrator_blocker_sanitization_rule` — SKILL.md §3.5b
+# carries the X3 Orchestrator blocker sanitization rule subsection that makes
+# the orchestrator-side blocker emission path symmetric with the cross-auditor
+# side. Without this rule, an orchestrator-generated blocker containing an
+# apostrophe (e.g. file-existence-check `<path>` slot consuming
+# `/Users/.../it's-a-spec/...` "verbatim") would corrupt the spec's YAML
+# frontmatter and silently de-card the spec from every reader. The pin extracts
+# the §3.5b region with the same `awk '/^### 3\.5b/{flag=1; next} flag &&
+# /^### / {exit} flag'` pattern existing pins use and asserts three load-bearing
+# literals: the rule's bold header anchor, the cross-reference linking it to
+# the cross-auditor sanitizer, and the symmetry claim that anchors the WHY.
+check_skill_orchestrator_blocker_sanitization_rule() {
+  local f='skills/feature/SKILL.md'
+  local region_3_5b
+  region_3_5b=$(awk '/^### 3\.5b/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  if [ -z "$region_3_5b" ]; then
+    echo "SKILL.md §3.5b region empty (header may have drifted)"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF 'Orchestrator blocker sanitization rule'; then
+    echo "SKILL.md §3.5b missing 'Orchestrator blocker sanitization rule' bold-header anchor"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF 'same YAML-safety sanitizer as cross-auditor blockers'; then
+    echo "SKILL.md §3.5b missing cross-reference literal 'same YAML-safety sanitizer as cross-auditor blockers' (anchors the rule to agents/cross-auditor.md serialization rule)"
+    return 1
+  fi
+  if ! printf '%s' "$region_3_5b" | grep -qF 'symmetric on both sides of the handshake'; then
+    echo "SKILL.md §3.5b missing 'symmetric on both sides of the handshake' claim (X3 WHY anchor)"
+    return 1
+  fi
+  return 0
+}
+
+# (NEW) `check_skill_evidence_pair_invariant` — SKILL.md §3.5b Contract-violation
+# rule paragraph documents the X4 cross-field invariant between `evidence_class`
+# and `evidence_blockers` per the cross-auditor emit contract
+# (`agents/cross-auditor.md` §When to set L382-383): `dual_model` MUST pair with
+# empty `evidence_blockers`; `single_model` MUST pair with non-empty. Both
+# contradictory pairings route to `*_audit_evidence: contract_violated` with
+# named blocker phrasings. Without this rule, a buggy/regressed cross-auditor
+# emitting a contradictory pair would pass parser-shape (X1), YAML-safety (X3),
+# file-existence (code/full mode), and allowlist (X2) checks; the orchestrator
+# would copy both verbatim; Status mode would render a dual_model row clean
+# (no degraded flag) despite the blocker list contradicting the claim —
+# honesty-gate inversion, the failure mode the parent spec exists to prevent.
+# The pin uses the same paragraph-scoped extraction as
+# `check_skill_contract_violated_routing_rule` (anchor on
+# `**Contract-violation rule.**`, consume until next blank line) to keep the
+# scope identical to the X16 pin's positive routing-target + alt-target
+# negative-guard contract; the new clause stays inside the same paragraph.
+check_skill_evidence_pair_invariant() {
+  local f='skills/feature/SKILL.md'
+  local region_3_5b
+  region_3_5b=$(awk '/^### 3\.5b/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  if [ -z "$region_3_5b" ]; then
+    echo "SKILL.md §3.5b region empty (header may have drifted)"
+    return 1
+  fi
+  local cv_paragraph
+  cv_paragraph=$(printf '%s\n' "$region_3_5b" | awk '/\*\*Contract-violation rule\.\*\*/{flag=1} flag {print; if (flag && NR>0 && /^$/) exit}')
+  if [ -z "$cv_paragraph" ]; then
+    echo "SKILL.md §3.5b: could not extract Contract-violation paragraph (anchor '**Contract-violation rule.**' not found or paragraph empty)"
+    return 1
+  fi
+  # Case 1 — dual_model + non-empty evidence_blockers contradictory pair.
+  if ! printf '%s' "$cv_paragraph" | grep -qF 'dual_model with non-empty evidence_blockers'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph missing case-1 literal 'dual_model with non-empty evidence_blockers' (X4 invariant)"
+    return 1
+  fi
+  # Case 2 — single_model + empty evidence_blockers contradictory pair.
+  if ! printf '%s' "$cv_paragraph" | grep -qF 'single_model with empty evidence_blockers'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph missing case-2 literal 'single_model with empty evidence_blockers' (X4 invariant)"
+    return 1
+  fi
+  # Cross-reference to the cross-auditor emit contract anchor — the literal
+  # `When to set` is the heading at agents/cross-auditor.md:378, so this
+  # assertion catches drift if the doc reference goes stale.
+  if ! printf '%s' "$cv_paragraph" | grep -qF 'When to set'; then
+    echo "SKILL.md §3.5b Contract-violation paragraph missing cross-reference literal 'When to set' (anchors X4 invariant to agents/cross-auditor.md emit contract)"
+    return 1
+  fi
+  return 0
+}
+
+# (NEW) `check_skill_findings_path_coherence` — guards SKILL.md against the
+# X5 defect class (path-coherence between SKILL.md and the cross-auditor write
+# contract at agents/cross-auditor.md:430). Two SKILL.md sites — Code-audit
+# triage step 3 "Collect decisions" (L546) and Continue-mode resume routing
+# `iteration=N` row (L731) — used to read/write the findings file at the bare
+# `<kb>/repos/<project>/<slug>-code-findings.md` path, omitting the `/security/`
+# segment. Two silent failure modes flowed from that drift:
+#   1. Triage failure (L546) — orchestrator writes status updates to a
+#      non-existent path; cross-auditor at the canonical `/security/` path sees
+#      stale OPEN entries on re-audit; the loop fails to converge.
+#   2. Resume failure (L731) — Continue mode reads from the non-existent path,
+#      finds no OPEN/REOPENED entries, routes to clean hand-off; un-triaged
+#      HIGH findings ship silently.
+# The pin is two-armed: a file-wide negative guard rejecting any bare-no-/security/
+# occurrence at EITHER `<kb>` or `<kb_path>` placeholder spelling (X8 sub-(b)
+# broadens the original short-form-only guard so a future edit normalizing
+# SKILL.md to long-form `<kb_path>/repos/<project>/<slug>-code-findings.md`
+# without `/security/` is also caught), and a positive count assertion (≥2) on
+# the canonical /security/ form covering the two known sites. Pin label
+# `findings-path-coherence` (no `contract-violated-` prefix — different defect
+# class from §3.5b prose pins).
+check_skill_findings_path_coherence() {
+  local f='skills/feature/SKILL.md'
+  # Negative guard: every full-prefix `-code-findings.md` mention (at either
+  # <kb> or <kb_path> placeholder) must include /security/. Compute bad = total
+  # mentions vs good = mentions with /security/. They must be equal.
+  # X9 fix: count OCCURRENCES (`grep -oE | wc -l`), not matching LINES
+  # (`grep -cE`). A single line carrying both a canonical /security/ mention
+  # AND a bare mention would contribute 1 to both bad and good under -cE
+  # (line counts), so equality holds and the bare path slips through. Under
+  # -oE | wc -l, each occurrence is on its own output line, so the same
+  # mutated line yields bad=2, good=1 and the pin correctly FAILs.
+  local bad good
+  bad=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
+  good=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
+  if [ "$bad" != "$good" ]; then
+    local missing=$((bad - good))
+    echo "SKILL.md has $missing findings.md path mention(s) missing /security/ segment (bad=$bad, good=$good — bad MUST equal good — diverges from agents/cross-auditor.md:430 write contract)"
+    return 1
+  fi
+  # Positive: at least 2 canonical /security/ mentions must remain (the two
+  # known sites at L546 + L731). Catches both-sites-deleted regressions.
+  if [ "$good" -lt 2 ]; then
+    echo "expected ≥2 canonical /security/ findings.md path mentions in SKILL.md (triage step 3 + Continue-mode iteration=N row), got $good"
+    return 1
+  fi
+  return 0
+}
+
+# (NEW) `check_repo_findings_path_coherence` — X8 optional fourth tightening
+# (broadened by X10 to cover the cross-auditor write contract filenames).
+# Repo-wide superset of `check_skill_findings_path_coherence`: extends the
+# count-equality guard across every markdown file under `agents/`, `docs/`,
+# and `skills/` (the audit scope). The cross-auditor.md L430-431 is the
+# canonical write contract source; if a future edit introduces a long-form
+# bare regression THERE, the entire path-coherence chain is poisoned. This
+# pin closes that surface — every `<kb(_path)?>/repos/<project>/...` mention
+# whose tail matches one of the canonical findings.md / workdoc-iter.md
+# filename patterns MUST include `/security/`.
+#
+# X10 fix: the original `*-code-findings.md` regex MISSED the canonical
+# write-contract filename pattern at agents/cross-auditor.md L430-431:
+#   - `<kb_path>/repos/<project>/security/<audit_slug>-findings.md`     (no `-code-` prefix)
+#   - `<kb_path>/repos/<project>/security/<audit_slug>-workdoc-iter<N>.md`
+# Mutation-verified: dropping `/security/` at L430 yielded bad=0/good=0
+# under the old regex (pin PASSED). Broadened matcher now uses TWO regex
+# pairs:
+#   1. `-(code-)?findings\.md` — covers both `<slug>-code-findings.md` and
+#      `<audit_slug>-findings.md` filenames.
+#   2. `-workdoc-iter<N>\.md` — covers the cross-auditor workdoc filename.
+# Per-file count equality on EACH pair independently; either pair drifting
+# fails the pin with named file + per-pair counts.
+check_repo_findings_path_coherence() {
+  local files=()
+  while IFS= read -r f; do files+=("$f"); done < <(find agents docs skills -type f -name '*.md')
+  local drift_files=()
+  local f bad_findings good_findings bad_workdoc good_workdoc
+  for f in "${files[@]}"; do
+    # X9 fix: count OCCURRENCES (`grep -oE | wc -l`), not matching LINES
+    # (`grep -cE`). A single line carrying both a canonical /security/ mention
+    # AND a bare mention would otherwise contribute 1 to both counters under
+    # -cE, the equality holds, and the bare path slips through. Per-occurrence
+    # counting makes that bypass impossible.
+    bad_findings=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-(code-)?findings\.md' "$f" | wc -l | tr -d ' ')
+    good_findings=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-(code-)?findings\.md' "$f" | wc -l | tr -d ' ')
+    bad_workdoc=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-workdoc-iter<N>\.md' "$f" | wc -l | tr -d ' ')
+    good_workdoc=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-workdoc-iter<N>\.md' "$f" | wc -l | tr -d ' ')
+    if [ "$bad_findings" != "$good_findings" ] || [ "$bad_workdoc" != "$good_workdoc" ]; then
+      drift_files+=("$f (findings: bad=$bad_findings good=$good_findings; workdoc: bad=$bad_workdoc good=$good_workdoc)")
+    fi
+  done
+  if [ "${#drift_files[@]}" -gt 0 ]; then
+    echo "repo-wide findings.md / workdoc-iter.md path-coherence drift detected (every full-prefix mention must include /security/) in: ${drift_files[*]}"
+    return 1
+  fi
+  return 0
+}
+
 echo "Audit-evidence enum pins:"
 check "audit-evidence-spec-template-schema"                check_spec_template_audit_evidence_schema
 check "audit-evidence-skill-populated-at-terminal-sites"   check_skill_audit_evidence_populated_at_terminal_sites
@@ -4947,6 +5483,14 @@ check "audit-evidence-marker-recognition-symmetry"         check_code_audit_mark
 check "audit-evidence-marker-recognition-mutation-protected" check_code_audit_marker_recognition_mutation_protected
 check "audit-evidence-resume-clean-passed-extended"        check_code_audit_resume_clean_passed_extended_evidence
 check "audit-evidence-resume-zero-diff-skip-extended"      check_code_audit_resume_zero_diff_skip_extended_evidence
+check "contract-violated-routing-rule"                     check_skill_contract_violated_routing_rule
+check "contract-violated-file-existence"                   check_skill_contract_violated_file_existence_check
+check "contract-violated-overview-documented"              check_overview_contract_violated_documented
+check "contract-violated-cross-auditor-never-writes"       check_cross_auditor_never_writes_extension
+check "orchestrator-blocker-sanitization-rule"             check_skill_orchestrator_blocker_sanitization_rule
+check "contract-violated-evidence-pair-invariant"          check_skill_evidence_pair_invariant
+check "findings-path-coherence"                            check_skill_findings_path_coherence
+check "repo-findings-path-coherence"                       check_repo_findings_path_coherence
 check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
 echo

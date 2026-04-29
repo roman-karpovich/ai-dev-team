@@ -382,7 +382,7 @@ The cross-auditor itself only ever emits one of two values for `evidence_class:`
 - **`dual_model`** — Codex returned successfully AND Claude reviewed (the gold standard). Then `evidence_blockers: []` (empty list).
 - **`single_model`** — the fail-open Codex-FAILED prepend banner fired (Claude-only). Extract the failure reason from the existing `⚠️ WARNING: Codex audit unavailable (<error reason>)` banner and emit `evidence_blockers: ['codex audit unavailable: <reason>']` — single-quoted YAML scalar form.
 
-The cross-auditor NEVER writes `self_fallback` or `skipped` — those values are exclusively orchestrator territory (set when the cross-auditor itself could not complete or was bypassed).
+The cross-auditor NEVER writes `self_fallback`, `contract_violated`, or `skipped` — those values are exclusively orchestrator territory (set when the cross-auditor itself could not complete, violated its output contract, or was bypassed).
 
 ### YAML-safety serialization rule for blocker strings
 
@@ -418,7 +418,7 @@ evidence_class: single_model
 evidence_blockers: ['codex audit unavailable: connection refused']
 ```
 
-The orchestrator parses the two adjacent final lines using `grep -E '^(evidence_class|evidence_blockers): ' | tail -2`. If either line is absent or malformed, the orchestrator MUST treat the audit as `self_fallback` (cross-auditor return signal not parseable) and record the parse failure as a blocker — see SKILL.md §3.5b for the orchestrator-side read path.
+The orchestrator parses by reading the LAST two physical non-empty lines of the captured return text (`last_two=$(printf '%s\n' "$captured" | awk 'NF' | tail -2)`) and applying two prefix checks: the second of those two lines (the FINAL non-empty physical line of the response) MUST start with `evidence_blockers: `, and the first of the two (the immediately preceding non-empty physical line) MUST start with `evidence_class: `. If fewer than two non-empty lines exist OR either prefix check fails, the orchestrator MUST treat the audit as `contract_violated` (cross-auditor return signal not parseable) and record the parse failure as a blocker — see SKILL.md §3.5b Contract-violation rule for the orchestrator-side read path. This stricter shape (last-two-physical-non-empty + prefix-check, replacing the older `grep -E … | tail -2` form) closes two failure modes the loose parser missed: (a) **forgotten-footer-with-example-echo** — the agent omits the real footer but echoes documentation examples (such as the fenced examples earlier in this section) in its prose, where `grep | tail -2` would lift the example text and treat the audit as clean; (b) **trailing-prose** — the agent emits the real footer then appends a sentence (apology, summary), where the loose parser would still grab the right pair via `grep | tail -2` and the trailing-prose violation stays invisible. Adjacency-and-EOF enforcement is the load-bearing property both modes require.
 
 ## Step 4: Write Output Documents
 
