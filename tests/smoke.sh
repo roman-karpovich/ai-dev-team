@@ -2459,56 +2459,61 @@ echo "Fast-mode retirement guard:"
 
 check_codex_fast_absent() {
   # Single absence-asserting helper for the retired T-CF Codex Fast routing
-  # variant (PR A-3). 8 assertions per spec §3.6. Self-reference safety: this
-  # body and the registration line use Fast-mode (hyphenated) and Codex-Fast
-  # (hyphenated) compounds, byte-distinct from banned literals 'Codex Fast'
-  # (space), 'model_fast' (underscore), and 'T-CF' (with hyphen + suffix).
+  # variant (PR A-3). 7 assertions (was 8 — assertion #2 forbidding the
+  # `model_fast` literal in skills/ agents/ docs/ README.md
+  # .ai-dev-team.yml.example was retired by spec
+  # design/2026-04-29-removed-cli-flag-hard-fail.md §3.3.4 Path 4 because the
+  # new `Removed-key hard-fail` clause in docs/kb-discovery.md must contain
+  # the `codex.model_fast` literal byte-for-byte; equivalent silent-
+  # reintroduction protection now comes from the §3.4 presence pin
+  # `check_kb_discovery_codex_model_fast_hard_fail`). Self-reference safety:
+  # this body and the registration line use Fast-mode (hyphenated) and
+  # Codex-Fast (hyphenated) compounds, byte-distinct from banned literals
+  # 'Codex Fast' (space), 'model_fast' (underscore), and 'T-CF' (with hyphen
+  # + suffix).
   # 1. No `Codex Fast` literal in live skill prose / docs / agents / config.
   ! grep -rqF 'Codex Fast' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
     || { echo "absence #1 FAIL: 'Codex Fast' literal still present in live source"; return 1; }
-  # 2. No `model_fast` literal in live source.
-  ! grep -rqF 'model_fast' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
-    || { echo "absence #2 FAIL: 'model_fast' literal still present in live source"; return 1; }
-  # 3. No `T-CF` literal in live source.
+  # 2. No `T-CF` literal in live source.
   ! grep -rqE 'T-CF' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
-    || { echo "absence #3 FAIL: 'T-CF' literal still present in live source"; return 1; }
-  # 4. No retired check-helper definitions in tests/smoke-helpers.sh.
+    || { echo "absence #2 FAIL: 'T-CF' literal still present in live source"; return 1; }
+  # 3. No retired check-helper definitions in tests/smoke-helpers.sh.
   ! grep -qE '^check_(cross_audit_phase0_bans_model_fast|spec_template_codex_fast_rationale|agent_routing_codex_fast_rationale)\(\)' tests/smoke-helpers.sh \
-    || { echo "absence #4 FAIL: retired helper-fn def still present in tests/smoke-helpers.sh"; return 1; }
-  # 5. No retired check invocations or wrapper definitions in tests/smoke.sh
+    || { echo "absence #3 FAIL: retired helper-fn def still present in tests/smoke-helpers.sh"; return 1; }
+  # 4. No retired check invocations or wrapper definitions in tests/smoke.sh
   #    (anchored to ^check "..." registrations and ^<wrapper>() definitions).
   ! grep -qE '^check "(check_(cross_audit_phase0_bans_model_fast|spec_template_codex_fast_rationale|agent_routing_codex_fast_rationale))"' tests/smoke.sh \
-    || { echo "absence #5a FAIL: retired check registration still present in tests/smoke.sh"; return 1; }
+    || { echo "absence #4a FAIL: retired check registration still present in tests/smoke.sh"; return 1; }
   ! grep -qE '^check_smoke_helper_(phase0_cross_audit_rejected|p3_spec_template_no_codex_action_rejected|p3_agent_routing_no_codex_action_rejected)\(\)' tests/smoke.sh \
-    || { echo "absence #5b FAIL: retired wrapper-fn def still present in tests/smoke.sh"; return 1; }
+    || { echo "absence #4b FAIL: retired wrapper-fn def still present in tests/smoke.sh"; return 1; }
   ! grep -qE '^check "check_smoke_helper_(phase0_cross_audit_rejected|p3_spec_template_no_codex_action_rejected|p3_agent_routing_no_codex_action_rejected)"' tests/smoke.sh \
-    || { echo "absence #5c FAIL: retired wrapper-rejection registration still present in tests/smoke.sh"; return 1; }
-  # 6. No stale section-header comments containing the retired-variant literals.
+    || { echo "absence #4c FAIL: retired wrapper-rejection registration still present in tests/smoke.sh"; return 1; }
+  # 5. No stale section-header comments containing the retired-variant literals.
   ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke.sh \
-    || { echo "absence #6a FAIL: stale section-header comment with banned literal in tests/smoke.sh"; return 1; }
+    || { echo "absence #5a FAIL: stale section-header comment with banned literal in tests/smoke.sh"; return 1; }
   ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke-helpers.sh \
-    || { echo "absence #6b FAIL: stale section-header comment with banned literal in tests/smoke-helpers.sh"; return 1; }
-  # 7. Positive overcut guards (adjacent live surface survives).
+    || { echo "absence #5b FAIL: stale section-header comment with banned literal in tests/smoke-helpers.sh"; return 1; }
+  # 6. Positive overcut guards (adjacent live surface survives).
   grep -qF '#### Option 1: Codex (developer-codex agent)' skills/feature/SKILL.md \
-    || { echo "absence #7a FAIL: Option 1 menu subsection missing from skills/feature/SKILL.md"; return 1; }
+    || { echo "absence #6a FAIL: Option 1 menu subsection missing from skills/feature/SKILL.md"; return 1; }
   grep -qF '#### Option 2: Senior (developer-senior agent)' skills/feature/SKILL.md \
-    || { echo "absence #7b FAIL: Option 2 menu subsection missing from skills/feature/SKILL.md"; return 1; }
+    || { echo "absence #6b FAIL: Option 2 menu subsection missing from skills/feature/SKILL.md"; return 1; }
   grep -qF '## Codex (default)' skills/feature/references/agent-routing.md \
-    || { echo "absence #7c FAIL: ## Codex (default) section missing from agent-routing.md"; return 1; }
+    || { echo "absence #6c FAIL: ## Codex (default) section missing from agent-routing.md"; return 1; }
   grep -qF '## Senior' skills/feature/references/agent-routing.md \
-    || { echo "absence #7d FAIL: ## Senior section missing from agent-routing.md"; return 1; }
+    || { echo "absence #6d FAIL: ## Senior section missing from agent-routing.md"; return 1; }
   grep -qF '## Rationale logging' skills/feature/references/agent-routing.md \
-    || { echo "absence #7e FAIL: ## Rationale logging section missing from agent-routing.md"; return 1; }
+    || { echo "absence #6e FAIL: ## Rationale logging section missing from agent-routing.md"; return 1; }
   grep -qF 'codex_model' agents/developer-codex.md \
-    || { echo "absence #7f FAIL: codex_model agent input parameter missing from agents/developer-codex.md"; return 1; }
+    || { echo "absence #6f FAIL: codex_model agent input parameter missing from agents/developer-codex.md"; return 1; }
   grep -qF 'codex_model' agents/cross-auditor.md \
-    || { echo "absence #7g FAIL: codex_model agent input parameter missing from agents/cross-auditor.md"; return 1; }
-  # 8. Smoke-helpers integrity (trimmed helper survives + success-echo updated).
+    || { echo "absence #6g FAIL: codex_model agent input parameter missing from agents/cross-auditor.md"; return 1; }
+  # 7. Smoke-helpers integrity (trimmed helper survives + success-echo updated).
   grep -qF 'check_feature_phase0_mentions_codex_keys' tests/smoke-helpers.sh \
-    || { echo "absence #8a FAIL: trimmed helper check_feature_phase0_mentions_codex_keys missing"; return 1; }
+    || { echo "absence #7a FAIL: trimmed helper check_feature_phase0_mentions_codex_keys missing"; return 1; }
   grep -qF "Phase 0 extensions mention both codex.model and codex.reasoning_effort keys" tests/smoke-helpers.sh \
-    || { echo "absence #8b FAIL: success-echo update from Step 5 missing"; return 1; }
-  echo "check_codex_fast_absent: all 8 assertions OK"
+    || { echo "absence #7b FAIL: success-echo update from Step 5 missing"; return 1; }
+  echo "check_codex_fast_absent: all 7 assertions OK"
 }
 check "Codex-Fast routing variant absent" check_codex_fast_absent
 echo
