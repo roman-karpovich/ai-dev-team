@@ -135,6 +135,8 @@ The note is `CONCLUDED` (or `ARCHIVED`). Continuing requires flipping `status` b
 
 ## Conclude mode
 
+Argument form: `/research conclude [path] [--queue-spec]`. The optional `--queue-spec` flag triggers an interactive queue-publication prompt (step 4b below).
+
 1. Run Phase 0, read the note.
 2. If already `CONCLUDED`: ask the banner below.
 
@@ -168,8 +170,51 @@ Write the conclusion text. Multi-line is fine. It is appended verbatim under the
 - [ ] <derived follow-up items, if any>
 ```
 
+4b. **If `--queue-spec` was passed**, prompt the user for successor specs to publish in the note's frontmatter as a machine-readable queue (consumed by `/feature continue` and `/feature status` next session):
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Queue successor specs for next-session pickup. One per line, **pipe-delimited**.
+Two forms accepted (id is optional per the schema):
+
+  `<id> | <slug> | <scope>`          (3-field — id present)
+  `<slug> | <scope>`                 (2-field — id omitted)
+
+Examples:
+  `56 | removed-cli-flag-hard-fail | One-cycle deprecation with explicit error`
+  `q3-slice-2 | full-reliability-spec | Distribution rollup gated on 5-10 release window`
+  `q3-slice-2-full-reliability | Distribution rollup gated on 5-10 release window`
+
+Empty input = no queued specs.
+
+**What specs should be queued?**
+
+Parse non-empty input lines using **pipe-count branching** (matches the schema in `references/research-template.md` where `id` is OPTIONAL):
+
+- **2 pipes per line** → `(id, slug, scope)` triple (3-field form). Trim whitespace around each split field.
+- **1 pipe per line** → `(None, slug, scope)` — id-omitted form; the `id` key is omitted from the emitted YAML mapping.
+- **0 pipes or >2 pipes** → invalid line; skip with one-line warning `⚠ malformed --queue-spec line (expected 1 or 2 pipes): <line>` and continue parsing the rest.
+- **Empty required field after trim** (`slug` or `scope` empty/whitespace-only) → skip line with warning `⚠ malformed --queue-spec line (empty <slug|scope> field): <line>` and continue. Both `slug` and `scope` MUST be non-empty strings per the schema. The placeholder `<slug|scope>` is replaced with the literal name of the missing field (or `slug+scope` when both are empty).
+
+Effect on **frontmatter** (NOT body):
+
+- Append a `queued_specs:` block to the note's **frontmatter** (insert just before the closing `---` of the frontmatter block; preserve all other fields). Each parsed item becomes a YAML mapping with `slug:` + `scope:` (always) and optional `id:` (always emitted as a quoted string per the schema, e.g. `id: "56"`).
+- If `queued_specs:` already exists in the frontmatter (re-conclude with `--queue-spec`): **deduplicate on slug** — append new items only when the slug is not already present (skip duplicates silently). This preserves prior queue items and adds new ones; existing items are never modified.
+
+Example emitted block:
+
+```yaml
+queued_specs:
+  - id: "56"
+    slug: removed-cli-flag-hard-fail
+    scope: One-cycle deprecation with explicit error
+  - slug: q3-slice-2-full-reliability
+    scope: Distribution rollup gated on 5-10 release window
+```
+
 5. Flip frontmatter `status: CONCLUDED`.
-6. Report: > Note concluded.
+6. Report: > Note concluded. (If `--queue-spec` ran with non-empty input: also report `> Queued N successor specs in frontmatter: <slug-list>`.)
 
 ---
 
