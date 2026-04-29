@@ -59,9 +59,23 @@ At the beginning of any development session, before doing anything else:
 1. Check Claude memory for the KB path for this project
 2. If found: scan `<kb>/repos/<project>/design/` for specs with status IN_PROGRESS or AUDIT_PASSED
 3. If in-progress work exists: summarise it (feature name, current phase, next step) and ask whether to continue or start something new
-4. If nothing in progress: ask what the user wants to work on
+4. If nothing in progress: run the research-queue scan (below), then ask what the user wants to work on
 
 Do this proactively — do not wait for the user to ask.
+
+### Research-queue scan (no-in-flight branch)
+
+When step 2 finds no IN_PROGRESS / AUDIT_PASSED specs, the next session is at risk of being blind to a queue published by the prior session's `/research conclude --queue-spec`. Surface those queued specs before declaring "nothing in progress":
+
+- **Glob** (Continue mode is single-project by nature — it routes to a single resolved project): `<kb>/repos/<project>/research/**/*.md`. Status mode uses an all-projects glob — see §Status mode.
+- For each matched note, parse the **frontmatter** (NOT body — `queued_specs:` is a frontmatter list per `skills/research/references/research-template.md`). Skip silently when:
+  - `status: CONCLUDED` is not set (only CONCLUDED notes publish a stable queue), OR
+  - `queued_specs:` is null / missing / empty list.
+- Defensive handling for manually-edited frontmatter:
+  - If `queued_specs:` is **non-sequence** (string / scalar / mapping / malformed YAML), emit one-line warning `⚠ malformed queued_specs in <note path>: not a YAML sequence` and skip the note.
+  - If a list element is **missing required `slug` or `scope`** (or either is empty/whitespace-only), emit `⚠ malformed queued_specs item in <note path>: <reason>` and skip the offending item (continue with valid siblings).
+- For each valid item: look up materialization status by suffix-matching `<kb>/repos/<project>/design/*-<slug>.md` within the SAME project as the source note (the design slug usually carries a date prefix the queue item omits). Apply the **Materialization status** branching (see §Continue mode for the full table).
+- Render the queued items inline in the no-in-flight summary so the user sees the handoff queue before answering "what to work on".
 
 ## Phase 0: KB Discovery
 
