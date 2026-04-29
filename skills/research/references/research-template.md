@@ -6,10 +6,10 @@ subtype: exploration
 status: ACTIVE
 created: YYYY-MM-DD
 tags: [research, <project>, exploration]
-# queued_specs:                    # optional — populated at conclude-time via /research conclude --queue-spec
-#   - slug: <spec-slug>            # required
-#     scope: <one-line>            # required
-#     id: "<id>"                   # optional, ALWAYS quoted
+# queued_specs:                       # optional — populated at conclude-time via /research conclude --queue-spec
+#   - slug: <spec-slug>               # required, must match ^[a-z0-9][a-z0-9-]*$
+#     scope: "<one-line description>" # required, ALWAYS double-quoted (handles `:` / `#` / leading sigils)
+#     id: "<id>"                      # optional, ALWAYS quoted
 ---
 
 ## Context

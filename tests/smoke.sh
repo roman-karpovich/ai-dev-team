@@ -5537,6 +5537,18 @@ check_research_skill_queue_spec_contract() {
   done
   # 'dedup' matches both 'dedupe' and 'deduplicate'
   printf '%s' "$region" | grep -qF 'dedup' || missing="$missing dedup"
+  # X5 anti-regression: contract MUST name the quote-on-emit rule for `scope:`
+  # (catches future regression to unquoted scalars that corrupt frontmatter on
+  # `:` / `#` / leading sigils — empirically verified via Codex YAML.safe_load).
+  printf '%s' "$region" | grep -qF 'double-quoted YAML string' || missing="$missing double-quoted-scope-on-emit"
+  # X5 anti-regression: contract MUST name the slug validation regex
+  # (canonical filesystem-safe form; also used for materialization lookup).
+  printf '%s' "$region" | grep -qF '^[a-z0-9][a-z0-9-]*$' || missing="$missing slug-validation-regex"
+  # X5 anti-regression: contract MUST require post-emit YAML round-trip check
+  # (last-line defense: catches any corrupt-frontmatter case the quote rule missed).
+  if ! printf '%s' "$region" | grep -qE "re-parse the note's frontmatter|YAML round-trip"; then
+    missing="$missing yaml-round-trip-check"
+  fi
   if [ -n "$missing" ]; then
     echo "§Conclude region missing literals:$missing"
     return 1
