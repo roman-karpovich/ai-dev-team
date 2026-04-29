@@ -616,39 +616,43 @@ echo
 echo "Feature investigation-bridge retirement guard:"
 
 check_feature_from_investigation_absent() {
-  if grep -rqF -- '--from-investigation' skills/; then
-    echo "assertion 1 FAIL: --from-investigation literal present in skills/"
-    return 1
-  fi
+  # 5 absence assertions (was 6 — assertion #1 forbidding the
+  # `--from-investigation` literal in skills/ was retired by spec
+  # design/2026-04-29-removed-cli-flag-hard-fail.md §3.3.4 Path 4 because
+  # the new "Removed-flag hard-fail" block in skills/feature/SKILL.md must
+  # contain the flag literal byte-for-byte for the canonical hard-fail line;
+  # equivalent silent-reintroduction protection now comes from the §3.4
+  # presence pin check_feature_skill_from_investigation_hard_fail asserting
+  # the canonical line byte-for-byte).
   if grep -rqF 'investigation_source' skills/; then
-    echo "assertion 2 FAIL: investigation_source literal present in skills/"
+    echo "assertion 1 FAIL: investigation_source literal present in skills/"
     return 1
   fi
   if grep -qE '^check_feature_(from_investigation_flag|investigation_source_field)\(\)' tests/smoke.sh; then
-    echo "assertion 3 FAIL: retired check-function definition present in tests/smoke.sh"
+    echo "assertion 2 FAIL: retired check-function definition present in tests/smoke.sh"
     return 1
   fi
   if grep -qE 'check_feature_(from_investigation_flag|investigation_source_field)' tests/smoke.sh; then
-    echo "assertion 4 FAIL: retired check-function reference present in tests/smoke.sh"
+    echo "assertion 3 FAIL: retired check-function reference present in tests/smoke.sh"
     return 1
   fi
   if ! grep -qF '/research' skills/research/SKILL.md; then
-    echo "assertion 5 FAIL: /research entry-point missing from skills/research/SKILL.md"
+    echo "assertion 4 FAIL: /research entry-point missing from skills/research/SKILL.md"
     return 1
   fi
   if ! grep -qF '/feature new' skills/feature/SKILL.md; then
-    echo "assertion 5 FAIL: /feature new entry-point missing from skills/feature/SKILL.md"
+    echo "assertion 4 FAIL: /feature new entry-point missing from skills/feature/SKILL.md"
     return 1
   fi
   if grep -qE '^# .*--from-investigation' tests/smoke.sh; then
-    echo "assertion 6 FAIL: stale section-header comment in tests/smoke.sh contains retired-bridge literal"
+    echo "assertion 5 FAIL: stale section-header comment in tests/smoke.sh contains retired-bridge literal"
     return 1
   fi
   if grep -qE '^# .*--from-investigation' tests/smoke-helpers.sh; then
-    echo "assertion 6 FAIL: stale section-header comment in tests/smoke-helpers.sh contains retired-bridge literal"
+    echo "assertion 5 FAIL: stale section-header comment in tests/smoke-helpers.sh contains retired-bridge literal"
     return 1
   fi
-  echo "check_feature_from_investigation_absent: all 6 assertions OK"
+  echo "check_feature_from_investigation_absent: all 5 assertions OK"
 }
 
 check "feature --from-investigation absent" check_feature_from_investigation_absent
