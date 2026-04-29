@@ -151,19 +151,20 @@ Two audit modes run as two parallel agents:
 
 Per spec `2026-04-27-audit-evidence-enum.md`. Every spec records WHAT evidence backs each audit phase via two paired frontmatter fields per phase: `spec_audit_evidence` / `spec_audit_blockers` for the spec audit; `code_audit_evidence` / `code_audit_blockers` for the code audit. The enum value answers "did the dual-model gold standard actually hold?" so `status: AUDIT_PASSED` no longer hides whether one model failed or the orchestrator self-verified.
 
-Four canonical enum values:
+Five canonical enum values:
 
 - **`dual_model`** — gold standard. Both Claude and Codex halves of the cross-auditor returned. The audit is fully adversarial.
 - **`single_model`** — degraded but honest. One half failed (typically Codex unavailable) and the orchestrator proceeded under the documented fail-open rule. `*_audit_blockers` names the failure (e.g. `'codex audit unavailable: connection refused'`).
 - **`self_fallback`** — degraded but honest. The cross-auditor agent itself could not complete (stall, timeout, MCP failure) and the orchestrator performed manual self-verification per the iter-2 fallback rule (`feedback_iter_2_audit_fallback.md`). `*_audit_blockers` names the cause and a tracking entry (e.g. `'cross-auditor watchdog stall iter-6'`, `'BACKLOG #45'`).
+- **`contract_violated`** — degraded but honest. The cross-auditor *ran* but its output contract is broken: the inline return is missing/malformed `evidence_class:` / `evidence_blockers:` lines, an `evidence_blockers` entry fails YAML-safety scalar validation, OR (code/full mode) the expected `<kb>/repos/<project>/security/<audit_slug>-findings.md` file is missing on disk after the agent returns. `*_audit_blockers` names the specific violation (e.g. `'cross-auditor return missing evidence_class footer line'`, `'findings.md missing at <path>'`). Recovery (re-spawn, manual self-verify, or ship as-is) is a separate orchestrator decision that may further update the final evidence value.
 - **`skipped`** — no audit was performed against findings. Three branches share this value: the user clicked Skip on the spec-audit prompt, OR a mid-flow "skip / proceed anyway" override fired, OR the code-audit zero-diff branch fired (`no auditable files in diff`).
 
-**Reader rule for `null` (legacy specs).** All pre-enum specs lack these fields. Readers (filters, smoke pins, analytical scripts) MUST treat `null` / missing as `legacy_unknown` — distinct from any enum value, NOT flagged as degraded. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, skipped}`; legacy specs never match it, so nothing pre-enum gets flagged retroactively.
+**Reader rule for `null` (legacy specs).** All pre-enum specs lack these fields. Readers (filters, smoke pins, analytical scripts) MUST treat `null` / missing as `legacy_unknown` — distinct from any enum value, NOT flagged as degraded. The canonical degraded-flag predicate is `*_audit_evidence ∈ {single_model, self_fallback, contract_violated, skipped}`; legacy specs never match it, so nothing pre-enum gets flagged retroactively.
 
 How each value maps onto observable orchestrator behavior:
 
 - `dual_model` is the silent default — Status-mode renders `dual` with no warning glyph; nothing surfaces in `/feature status`.
-- `single_model` and `self_fallback` are visibility-only signals — Status-mode prepends a `⚠` glyph to the row's Audit column, but the routine flow does not pause for user approval (per `feedback_ai_dev_team_repo_autonomy.md` honesty-gate-not-approval-gate).
+- `single_model`, `self_fallback`, and `contract_violated` are visibility-only signals — Status-mode prepends a `⚠` glyph to the row's Audit column, but the routine flow does not pause for user approval (per `feedback_ai_dev_team_repo_autonomy.md` honesty-gate-not-approval-gate).
 - `skipped` renders the same warning glyph; review the blocker reason to decide whether to re-run the audit before merge.
 - `self_fallback` discipline (the six criteria from `feedback_iter_2_audit_fallback.md`) remains user-enforced — recording a `self_fallback` value means "I did manual review", NOT "the criteria were verified". A future spec adds the machine gate.
 

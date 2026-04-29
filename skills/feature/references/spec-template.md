@@ -14,10 +14,11 @@ shipped_at: null
 follows_up: null
 # Audit evidence enum — populated at audit-terminal sites (see SKILL.md §3.5b).
 # Canonical enum values:
-#   dual_model     — both Claude and Codex halves of the cross-auditor returned (gold standard)
-#   single_model   — one half failed; orchestrator proceeded under fail-open rule
-#   self_fallback  — cross-auditor itself could not complete; orchestrator self-verified
-#   skipped        — user skipped the audit OR code-audit zero-diff branch fired
+#   dual_model        — both Claude and Codex halves of the cross-auditor returned (gold standard)
+#   single_model      — one half failed; orchestrator proceeded under fail-open rule
+#   self_fallback     — cross-auditor itself could not complete; orchestrator self-verified
+#   contract_violated — cross-auditor ran but its output contract is broken (parse failure or missing findings.md)
+#   skipped           — user skipped the audit OR code-audit zero-diff branch fired
 # null = legacy_unknown (pre-enum specs); not flagged
 spec_audit_evidence: null
 spec_audit_blockers: []
