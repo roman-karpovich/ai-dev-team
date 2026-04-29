@@ -5498,10 +5498,12 @@ check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iter
 echo
 
 # --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---
-# Pins per spec §3.5: literal-presence checks for the contract surfaces.
-# Behavioral verification (multi-item handling, materialization-status branching,
-# malformed-frontmatter defensive paths) is out of scope here — see spec §3.5
-# behavioral coverage gap; tracked as Q3-slice-2 follow-up.
+# Pins per spec §3.5: literal-presence checks for the contract surfaces, plus
+# one fixture-driven behavioral pin that exercises the YAML emit-safety rule
+# end-to-end (`check_research_skill_queue_spec_emit_yaml_safe`, X5(e)).
+# Other behavioral classes — multi-item handling, materialization-status
+# branching, malformed-frontmatter defensive paths — remain out of scope here;
+# see spec §3.5 behavioral coverage gap, tracked as Q3-slice-2 follow-up.
 echo "Session-handoff queue visibility pins:"
 
 check_research_template_queued_specs_documented() {
@@ -5554,6 +5556,78 @@ check_research_skill_queue_spec_contract() {
     return 1
   fi
   echo "research SKILL §Conclude --queue-spec contract documented OK"
+}
+
+# X5(e) — fixture-driven behavioral pin (Codex iter-3 proposal). Drives the
+# `--queue-spec` YAML emit rule from skills/research/SKILL.md lines 200-214
+# end-to-end against scopes carrying YAML-hazardous punctuation:
+#   - `:`     (would parse as map-key in unquoted form → ScannerError)
+#   - `#`     (would silently truncate at the comment boundary in unquoted form)
+#   - `>`     (leading sigil → block-scalar indicator in unquoted form)
+# Emits frontmatter following the documented contract (slug unquoted iff regex
+# match; scope ALWAYS double-quoted with `\` and `"` backslash-escaped per
+# YAML 1.1), round-trips it via `yaml.safe_load`, and asserts each parsed
+# scope value equals its source byte-for-byte. Any divergence (parse failure,
+# key-shifted-by-`:`, truncated-at-`#`, block-scalar-over-`>`) fails the pin.
+check_research_skill_queue_spec_emit_yaml_safe() {
+  python3 - <<'PY' || return 1
+import sys, yaml
+
+# Three fixture --queue-spec lines (1-pipe / 2-field form: `slug | scope`).
+# Each scope contains exactly one of the YAML-hazardous characters that the
+# X5 (a) "double-quote scope on emit" rule was specifically designed to handle.
+fixtures = [
+    ("colon-scope", "API: remove v1"),
+    ("hash-scope", "pain #6 + replay mechanics"),
+    ("sigil-scope", "> replay mechanics"),
+]
+
+# Emit per the documented contract: slug unquoted iff regex matches (all three
+# pass `^[a-z0-9][a-z0-9-]*$`); scope ALWAYS double-quoted with `\` and `"`
+# backslash-escaped per YAML 1.1.
+def quote_scope(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+lines = ["queued_specs:"]
+for slug, scope in fixtures:
+    lines.append(f"  - slug: {slug}")
+    lines.append(f"    scope: {quote_scope(scope)}")
+emitted = "\n".join(lines) + "\n"
+
+try:
+    parsed = yaml.safe_load(emitted)
+except yaml.YAMLError as e:
+    print(f"YAML round-trip failed (parse error): {e}", file=sys.stderr)
+    print("--- emitted frontmatter ---", file=sys.stderr)
+    print(emitted, file=sys.stderr)
+    sys.exit(1)
+
+if not isinstance(parsed, dict) or "queued_specs" not in parsed:
+    print(f"missing 'queued_specs' key in parsed YAML: {parsed!r}", file=sys.stderr)
+    sys.exit(1)
+
+items = parsed["queued_specs"]
+if not isinstance(items, list) or len(items) != len(fixtures):
+    print(f"expected {len(fixtures)} items, got: {items!r}", file=sys.stderr)
+    sys.exit(1)
+
+for (slug, scope), item in zip(fixtures, items):
+    if not isinstance(item, dict):
+        print(f"item is not a mapping: {item!r}", file=sys.stderr)
+        sys.exit(1)
+    if item.get("slug") != slug:
+        print(f"slug mismatch: expected {slug!r}, got {item.get('slug')!r}", file=sys.stderr)
+        sys.exit(1)
+    # Byte-for-byte equality is the load-bearing assertion: catches the
+    # `:`-key-shift, `#`-truncation, and `>`-block-scalar regression classes.
+    if item.get("scope") != scope:
+        print(f"scope round-trip mismatch for slug {slug!r}:", file=sys.stderr)
+        print(f"  source:  {scope!r}", file=sys.stderr)
+        print(f"  parsed:  {item.get('scope')!r}", file=sys.stderr)
+        sys.exit(1)
+
+print(f"--queue-spec YAML emit round-trip OK ({len(fixtures)} fixtures)")
+PY
 }
 
 check_feature_skill_session_resume_research_scan() {
@@ -5625,6 +5699,7 @@ check_feature_skill_status_queued_render_rules() {
 
 check "session-handoff-queued-specs-template-schema"      check_research_template_queued_specs_documented
 check "session-handoff-research-skill-queue-spec-contract" check_research_skill_queue_spec_contract
+check "session-handoff-research-skill-queue-spec-emit-yaml-safe" check_research_skill_queue_spec_emit_yaml_safe
 check "session-handoff-feature-session-resume-research-scan" check_feature_skill_session_resume_research_scan
 check "session-handoff-feature-continue-research-scan"    check_feature_skill_continue_research_scan
 check "session-handoff-feature-status-queued-render-rules" check_feature_skill_status_queued_render_rules
