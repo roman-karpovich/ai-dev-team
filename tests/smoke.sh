@@ -5651,6 +5651,20 @@ check_feature_skill_session_resume_research_scan() {
   if ! printf '%s' "$region" | grep -qE 'find -type f|rglob|globstar'; then
     missing="$missing recursive-walk-literal"
   fi
+  # X7 anti-regression: contract MUST carry the canonical warning text for the
+  # reader-side slug regex re-validation (closes producer/reader asymmetry —
+  # manually-edited frontmatter slug like `slug: *` cannot smuggle glob metachars
+  # into the materialization-lookup form). Catches regression to "we documented
+  # the rule but lost the warning name" form.
+  if ! printf '%s' "$region" | grep -qF 'slug fails validation regex'; then
+    missing="$missing slug-fails-validation-regex-warning"
+  fi
+  # X7 anti-regression: contract MUST carry the literal validation regex shape
+  # (mirrors producer-side regex at skills/research/SKILL.md §Conclude mode).
+  # Catches regression to "we documented some validation but lost the regex shape" form.
+  if ! printf '%s' "$region" | grep -qF '^[a-z0-9][a-z0-9-]*$'; then
+    missing="$missing slug-validation-regex-literal"
+  fi
   if [ -n "$missing" ]; then
     echo "§Session resume — KB scan missing literals:$missing"
     return 1
