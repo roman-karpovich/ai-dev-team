@@ -731,6 +731,25 @@ delta with no spec mutation.
 When resuming (`/feature continue` or `/feature <spec-path>`):
 
 1. Run KB discovery (Phase 0)
+1a. **No-in-flight branch** — if `/feature continue` was invoked with no `<spec-path>` AND the §Session resume — KB scan found no IN_PROGRESS / AUDIT_PASSED specs, run the **research-queue scan** (per §Session resume — KB scan, primary surface) before declaring "nothing in progress". Read `queued_specs:` from CONCLUDED research-note frontmatter (single-project glob `<kb>/repos/<project>/research/**/*.md`), look up materialization status of each queued slug against `<kb>/repos/<project>/design/*-<slug>.md`, and apply the **Materialization status branching** below to decide whether to render or suppress each item.
+
+**Materialization status branching** (covers all design-spec lifecycle states + no-match + multi-match — used by both the no-in-flight branch above and Status mode's `### Queued from retrospectives` section):
+
+| Matched design status | Continue mode (no-in-flight branch) | Status mode (`### Queued from retrospectives` row) |
+|---|---|---|
+| (no match — no `*-<slug>.md` file exists) | render: `queued — not yet materialized` | render row |
+| `DRAFT` / `APPROVED` | render: `queued — spec drafted but not in flight: see design/<slug>.md` | render row (annotated) |
+| `BLOCKED` | render: `queued — spec drafted but BLOCKED: see design/<slug>.md` | render row (annotated) |
+| `IN_PROGRESS` / `AUDIT_PASSED` | suppress (already surfaced by in-flight scan) | suppress |
+| `VERIFIED` (or legacy `DONE`) / `SHIPPED` | suppress (terminal — work done) | suppress |
+| `DISCARDED` | render: `queued — prior attempt discarded; consider re-queue or remove` | render row (annotated) |
+
+Edge cases:
+- **Multi-match** (suffix `-<slug>.md` returns >1 result): pick the lexicographically newest match (date prefix sorts naturally) AND emit a one-line warning `⚠ multiple design files match slug <slug>; using newest <date-prefix>`.
+- **Same slug in N different research notes**: Continue mode renders once with a comma-joined source list; Status mode renders N rows preserving source-note attribution.
+- **No eager cache**: scan reads disk on every invocation (research notes are bounded; ≤100 expected at peak per project).
+- **No-mutation guarantee**: the scan never modifies source frontmatter. Render layer reflects current design state; source notes stay append-only.
+
 2. Read the spec file. Check the `status` field in frontmatter:
    - `DRAFT` → Spec not yet approved. Present it to the user and ask for approval. Resume from Step 3 (Get approval).
    - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
