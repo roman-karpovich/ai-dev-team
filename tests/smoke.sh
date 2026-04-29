@@ -5609,6 +5609,13 @@ check_feature_skill_status_queued_render_rules() {
   for lit in 'Source note' 'Project' 'Queued spec' 'Queued since' 'State' 'oldest first' 'Omit the section' 'created:'; do
     printf '%s' "$region" | grep -qF -- "$lit" || missing="$missing '$lit'"
   done
+  # X6 anti-regression: the load-bearing scan-semantics paragraph MUST state the
+  # correct project-attribution rule (path segment immediately after <kb>/repos/),
+  # not the buggy "parent directory of the matched note" form that mis-attributes
+  # nested research notes (e.g. release-retrospective/<note>.md → release-retrospective).
+  printf '%s' "$region" | grep -qF 'path segment immediately after' || missing="$missing 'path-segment-immediately-after'"
+  # X6 anti-regression: explicit nested-note coverage so depth-of-nesting drift is caught.
+  printf '%s' "$region" | grep -qF 'regardless of nesting depth' || missing="$missing 'regardless-of-nesting-depth'"
   if [ -n "$missing" ]; then
     echo "### Queued from retrospectives missing literals:$missing"
     return 1
