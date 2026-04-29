@@ -893,6 +893,26 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 | ... | ... | 7 days stable in prod | 2026-04-18 | 5 days |
 ```
 
+### Queued from retrospectives
+(CONCLUDED research notes with `queued_specs:` — items not yet at terminal `VERIFIED`/`SHIPPED` and not in active flight.)
+
+Scan glob is `<kb>/repos/*/research/**/*.md` (all projects, mirroring the existing all-project Status-mode contract on `<kb_path>/repos/*/design/YYYY-MM-DD-*.md`). Project attribution comes from the parent directory of the matched note (`<kb>/repos/<X>/research/...` → project `<X>`). Frontmatter `status: CONCLUDED` filter and `queued_specs:` parsing follow the same rules as §Session resume — KB scan (defensive handling for malformed YAML / missing-required-field; warning emission unchanged).
+
+| Source note | Project | Queued spec | Queued since | State |
+|------|------|---------|------|------|
+| 2026-04-28-investigator-round-2 | ai-dev-team | #56 removed-cli-flag-hard-fail | 2026-04-28 | not yet materialized |
+| 2026-04-28-investigator-round-2 | ai-dev-team | #57 shared-absence-helper-extraction | 2026-04-28 | DRAFT — see design/2026-04-30-shared-absence-helper-extraction.md |
+
+**Status mode render rules**:
+
+- **Source note**: filename without `.md` extension and without leading `release-retrospective/` directory. Hyperlinkable in Obsidian.
+- **Project**: parent-of-`research/` directory of the matched source note (`<kb>/repos/<X>/research/...` → `<X>`). Mirrors the existing all-project contract.
+- **Queued spec**: `<id> <slug>` if `id` is present in frontmatter; just `<slug>` otherwise (matching the schema's id-optional rule).
+- **Queued since**: the `created:` field of the source note (original publication date — NOT the latest update).
+- **State**: render decision from the Materialization status branching table in §Continue mode. Includes legacy `DONE` synonym treatment (terminal — work done; suppressed).
+- **Sort**: by Queued since, **oldest first** — surfaces backlog age.
+- **Omit the section entirely if no rows match** (consistent with other Status sections).
+
 **Audit column rendering (per §3.5b):** the `Audit` column on the `### Active` table renders `<spec_audit_evidence> / <code_audit_evidence>` from the spec frontmatter. Render rules:
 
 - `null` (legacy_unknown — pre-enum spec) → render `—` (em-dash). Do NOT flag.
