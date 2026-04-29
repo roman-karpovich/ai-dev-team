@@ -74,7 +74,7 @@ When step 2 finds no IN_PROGRESS / AUDIT_PASSED specs, the next session is at ri
 - Defensive handling for manually-edited frontmatter:
   - If `queued_specs:` is **non-sequence** (string / scalar / mapping / malformed YAML), emit one-line warning `⚠ malformed queued_specs in <note path>: not a YAML sequence` and skip the note.
   - If a list element is **missing required `slug` or `scope`** (or either is empty/whitespace-only), emit `⚠ malformed queued_specs item in <note path>: <reason>` and skip the offending item (continue with valid siblings).
-- For each valid item: look up materialization status by suffix-matching `<kb>/repos/<project>/design/*-<slug>.md` within the SAME project as the source note (the design slug usually carries a date prefix the queue item omits). Apply the **Materialization status** branching (see §Continue mode for the full table).
+- For each valid item: look up materialization status by matching the canonical date-prefixed form `<kb>/repos/<project>/design/<YYYY>-<MM>-<DD>-<slug>.md` within the SAME project as the source note (literal 4-2-2 numeric date prefix + `-` + the queued slug + `.md` — NOT a bare `*-<slug>.md` glob, which would over-match longer slugs ending in `-<slug>` such as `mandatory-audit-foo.md` matching the queued slug `audit-foo`). Apply the **Materialization status** branching (see §Continue mode for the full table).
 - Render the queued items inline in the no-in-flight summary so the user sees the handoff queue before answering "what to work on".
 
 ## Phase 0: KB Discovery
@@ -731,7 +731,7 @@ delta with no spec mutation.
 When resuming (`/feature continue` or `/feature <spec-path>`):
 
 1. Run KB discovery (Phase 0)
-1a. **No-in-flight branch** — if `/feature continue` was invoked with no `<spec-path>` AND the §Session resume — KB scan found no IN_PROGRESS / AUDIT_PASSED specs, run the **research-queue scan** (per §Session resume — KB scan, primary surface) before declaring "nothing in progress". Read `queued_specs:` from CONCLUDED research-note frontmatter (single-project glob `<kb>/repos/<project>/research/**/*.md`), look up materialization status of each queued slug against `<kb>/repos/<project>/design/*-<slug>.md`, and apply the **Materialization status branching** below to decide whether to render or suppress each item.
+1a. **No-in-flight branch** — if `/feature continue` was invoked with no `<spec-path>` AND the §Session resume — KB scan found no IN_PROGRESS / AUDIT_PASSED specs, run the **research-queue scan** (per §Session resume — KB scan, primary surface) before declaring "nothing in progress". Read `queued_specs:` from CONCLUDED research-note frontmatter (single-project glob `<kb>/repos/<project>/research/**/*.md`), look up materialization status of each queued slug against the canonical date-prefixed form `<kb>/repos/<project>/design/<YYYY>-<MM>-<DD>-<slug>.md` (literal 4-2-2 numeric date prefix + `-` + queued slug + `.md` — NOT a bare `*-<slug>.md` glob), and apply the **Materialization status branching** below to decide whether to render or suppress each item.
 
 **Materialization status branching** (covers all design-spec lifecycle states + no-match + multi-match — used by both the no-in-flight branch above and Status mode's `### Queued from retrospectives` section):
 
@@ -747,7 +747,7 @@ When resuming (`/feature continue` or `/feature <spec-path>`):
 `<matched-design-relative-path>` is the project-relative path returned by the lookup glob in §Session resume — KB scan (e.g. `design/2026-04-30-shared-absence-helper-extraction.md` — the full date-prefixed basename, NOT a bare `<slug>.md`). Following the bare-slug form would emit a broken Obsidian link because the actual file on disk carries the date prefix.
 
 Edge cases:
-- **Multi-match** (suffix `-<slug>.md` returns >1 result): pick the lexicographically newest match (date prefix sorts naturally) AND emit a one-line warning `⚠ multiple design files match slug <slug>; using newest <date-prefix>`.
+- **Multi-match** (date-prefixed lookup `<YYYY>-<MM>-<DD>-<slug>.md` returns >1 result — i.e. the same slug shipped on different dates): pick the lexicographically newest match (date prefix sorts naturally) AND emit a one-line warning `⚠ multiple design files match slug <slug>; using newest <date-prefix>`. The date-prefix anchor narrows multi-match risk to genuine duplicates (same slug across different date prefixes) — it eliminates the slug-suffix-collision class (e.g. queued slug `audit-foo` vs longer existing slug `mandatory-audit-foo`), which the prior `*-<slug>.md` glob would have silently matched.
 - **Same slug in N different research notes**: Continue mode renders once with a comma-joined source list; Status mode renders N rows preserving source-note attribution.
 - **No eager cache**: scan reads disk on every invocation (research notes are bounded; ≤100 expected at peak per project).
 - **No-mutation guarantee**: the scan never modifies source frontmatter. Render layer reflects current design state; source notes stay append-only.
@@ -898,7 +898,7 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 ### Queued from retrospectives
 (CONCLUDED research notes with `queued_specs:` — items not yet at terminal `VERIFIED`/`SHIPPED` and not in active flight.)
 
-Scan glob is `<kb>/repos/*/research/**/*.md` (all projects, mirroring the existing all-project Status-mode contract on `<kb_path>/repos/*/design/YYYY-MM-DD-*.md`). Project attribution comes from the parent directory of the matched note (`<kb>/repos/<X>/research/...` → project `<X>`). Frontmatter `status: CONCLUDED` filter and `queued_specs:` parsing follow the same rules as §Session resume — KB scan (defensive handling for malformed YAML / missing-required-field; warning emission unchanged).
+Scan glob is `<kb>/repos/*/research/**/*.md` (all projects, mirroring the existing all-project Status-mode contract on `<kb_path>/repos/*/design/YYYY-MM-DD-*.md`). Project attribution comes from the parent directory of the matched note (`<kb>/repos/<X>/research/...` → project `<X>`). Frontmatter `status: CONCLUDED` filter and `queued_specs:` parsing follow the same rules as §Session resume — KB scan (defensive handling for malformed YAML / missing-required-field; warning emission unchanged). Materialization lookup uses the same date-prefix-anchored canonical form `<kb>/repos/<X>/design/<YYYY>-<MM>-<DD>-<slug>.md` as §Session resume — KB scan (NOT a bare `*-<slug>.md` glob — that would over-match longer slugs ending in `-<slug>`).
 
 | Source note | Project | Queued spec | Queued since | State |
 |------|------|---------|------|------|
