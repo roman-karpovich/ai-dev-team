@@ -5550,9 +5550,21 @@ check_feature_skill_session_resume_research_scan() {
   local region
   region=$(awk 'p && /^## Phase 0:/{exit} /^## Session resume — KB scan$/{p=1} p' "$f")
   local missing=""
-  for lit in 'research/**/*.md' 'status: CONCLUDED' 'queued_specs' 'frontmatter'; do
+  for lit in 'status: CONCLUDED' 'queued_specs' 'frontmatter'; do
     printf '%s' "$region" | grep -qF -- "$lit" || missing="$missing $lit"
   done
+  # X4 anti-regression: contract MUST name the depth-0 / any-depth requirement
+  # (catches future regression to a bare '**/*.md' glob that silently misses
+  # direct-child notes under default bash without `shopt -s globstar`).
+  if ! printf '%s' "$region" | grep -qE 'depth-0|direct child|any depth|direct children'; then
+    missing="$missing depth-0-or-any-depth"
+  fi
+  # X4 anti-regression: contract MUST name a recursive-walk implementation literal
+  # (one of: `find -type f`, `rglob`, `globstar`) — these are depth-0-safe;
+  # a bare `**/*.md` glob without an enabling literal is the broken form.
+  if ! printf '%s' "$region" | grep -qE 'find -type f|rglob|globstar'; then
+    missing="$missing recursive-walk-literal"
+  fi
   if [ -n "$missing" ]; then
     echo "§Session resume — KB scan missing literals:$missing"
     return 1
