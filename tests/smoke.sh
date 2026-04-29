@@ -5498,8 +5498,10 @@ check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iter
 echo
 
 # --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---
-# Pins per spec §3.5: each catches one specific class of broken implementation
-# (R3 — strong tests, no substring-existence false-greens).
+# Pins per spec §3.5: literal-presence checks for the contract surfaces.
+# Behavioral verification (multi-item handling, materialization-status branching,
+# malformed-frontmatter defensive paths) is out of scope here — see spec §3.5
+# behavioral coverage gap; tracked as Q3-slice-2 follow-up.
 echo "Session-handoff queue visibility pins:"
 
 check_research_template_queued_specs_documented() {
