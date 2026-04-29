@@ -3361,11 +3361,14 @@ check_spec_template_code_findings_paragraph() {
     echo "$f has bare findings.md path without /security/ segment — diverges from agents/cross-auditor.md:430 write contract"
     return 1
   fi
-  # `grep -c` always prints a count to stdout (even 0); the non-zero exit on
-  # zero-match is harmless here (no `set -e`). Capture stdout directly.
+  # X9 fix: count OCCURRENCES via `grep -oE | wc -l`, not matching LINES via
+  # `grep -cE`. A single line that mentions both a canonical /security/ path
+  # AND a bare path would otherwise yield bad=1, good=1 (line counts) and pass
+  # this guard despite carrying a forbidden bare form. Per-occurrence counting
+  # makes that bypass impossible: such a line yields bad=2, good=1.
   local bad good
-  bad=$(grep -cE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f")
-  good=$(grep -cE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f")
+  bad=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
+  good=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
   if [ "$bad" != "$good" ]; then
     local missing=$((bad - good))
     echo "$f has $missing findings.md path mention(s) missing /security/ segment (bad=$bad, good=$good — bad MUST equal good)"
@@ -5396,11 +5399,15 @@ check_skill_findings_path_coherence() {
   # Negative guard: every full-prefix `-code-findings.md` mention (at either
   # <kb> or <kb_path> placeholder) must include /security/. Compute bad = total
   # mentions vs good = mentions with /security/. They must be equal.
-  # `grep -c` always prints a count to stdout (even 0); the non-zero exit on
-  # zero-match is harmless here (no `set -e`). Capture stdout directly.
+  # X9 fix: count OCCURRENCES (`grep -oE | wc -l`), not matching LINES
+  # (`grep -cE`). A single line carrying both a canonical /security/ mention
+  # AND a bare mention would contribute 1 to both bad and good under -cE
+  # (line counts), so equality holds and the bare path slips through. Under
+  # -oE | wc -l, each occurrence is on its own output line, so the same
+  # mutated line yields bad=2, good=1 and the pin correctly FAILs.
   local bad good
-  bad=$(grep -cE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f")
-  good=$(grep -cE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f")
+  bad=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
+  good=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
   if [ "$bad" != "$good" ]; then
     local missing=$((bad - good))
     echo "SKILL.md has $missing findings.md path mention(s) missing /security/ segment (bad=$bad, good=$good — bad MUST equal good — diverges from agents/cross-auditor.md:430 write contract)"
@@ -5433,10 +5440,13 @@ check_repo_findings_path_coherence() {
   local drift_files=()
   local f bad good
   for f in "${files[@]}"; do
-    # `grep -c` always prints a count to stdout (even 0); the non-zero exit
-    # on zero-match is harmless here (no `set -e`). Capture stdout directly.
-    bad=$(grep -cE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f")
-    good=$(grep -cE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f")
+    # X9 fix: count OCCURRENCES (`grep -oE | wc -l`), not matching LINES
+    # (`grep -cE`). A single line carrying both a canonical /security/ mention
+    # AND a bare mention would otherwise contribute 1 to both counters under
+    # -cE, the equality holds, and the bare path slips through. Per-occurrence
+    # counting makes that bypass impossible.
+    bad=$(grep -oE '<kb(_path)?>/repos/<project>/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
+    good=$(grep -oE '<kb(_path)?>/repos/<project>/security/[^[:space:]`]*-code-findings\.md' "$f" | wc -l | tr -d ' ')
     total_bad=$((total_bad + bad))
     total_good=$((total_good + good))
     if [ "$bad" != "$good" ]; then
