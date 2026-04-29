@@ -37,6 +37,8 @@ Parse `$ARGUMENTS` to determine the mode:
 | `new <description> --follows-up <spec-path>` | **New (follow-up)** | Like **New**, but links the new spec to a prior one via `follows_up` |
 | `discard [spec-path]` | **Discard** | Delete feature branch + set spec DISCARDED (explicit; not tied to hand-off) |
 
+**Removed-flag hard-fail** (per `docs/cut-spec-policy.md`). If `$ARGUMENTS` contains `--from-investigation`, hard-stop with `ERROR: --from-investigation was removed in cut spec design/2026-04-27-cut-from-investigation.md. Read that spec for the migration path.` Do NOT route the input through any of the existing modes.
+
 ---
 
 ## Workflow phases overview

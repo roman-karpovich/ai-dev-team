@@ -3619,44 +3619,46 @@ check_mission_r_enforcement_claim_narrow() {
 }
 
 check_probe_downgrade_flag_absent() {
-  # Spec 2026-04-26-cut-probe-downgrade §3.6 — 6 absence assertions guarding
-  # the retired `--probe-downgrade <id>=<mode>` CLI flag against silent
-  # reintroduction. The YAML kill-switch `cross_audit.probes.<id>.mode`
-  # remains load-bearing and is asserted PRESENT (assertion 5).
+  # Spec 2026-04-26-cut-probe-downgrade §3.6 — 5 absence assertions (was 6;
+  # assertion #1 forbidding the `--probe-downgrade` literal in
+  # skills/cross-audit/SKILL.md was retired by spec
+  # design/2026-04-29-removed-cli-flag-hard-fail.md §3.3.4 Path 4 because
+  # the new "Removed-flag hard-fail" block in that SKILL.md must contain
+  # the flag literal byte-for-byte for the canonical hard-fail line;
+  # equivalent silent-reintroduction protection now comes from the §3.4
+  # presence pin check_cross_audit_probe_downgrade_hard_fail asserting
+  # the canonical line byte-for-byte). The YAML kill-switch
+  # cross_audit.probes.<id>.mode remains load-bearing and is asserted
+  # PRESENT (assertion 4).
   local skill="skills/cross-audit/SKILL.md"
   local agent="agents/cross-auditor.md"
   local kb_doc="docs/kb-discovery.md"
-  # 1. No CLI flag literal in skill prose.
-  if grep -qF -- '--probe-downgrade' "$skill"; then
-    echo "assertion 1 FAILED: --probe-downgrade literal present in $skill"
-    return 1
-  fi
-  # 2. No CLI flag literal in cross-auditor agent prose.
+  # 1. No CLI flag literal in cross-auditor agent prose.
   if grep -qF -- '--probe-downgrade' "$agent"; then
-    echo "assertion 2 FAILED: --probe-downgrade literal present in $agent"
+    echo "assertion 1 FAILED: --probe-downgrade literal present in $agent"
     return 1
   fi
-  # 3. No CLI flag literal in kb-discovery docs.
+  # 2. No CLI flag literal in kb-discovery docs.
   if grep -qF -- '--probe-downgrade' "$kb_doc"; then
-    echo "assertion 3 FAILED: --probe-downgrade literal present in $kb_doc"
+    echo "assertion 2 FAILED: --probe-downgrade literal present in $kb_doc"
     return 1
   fi
-  # 4. No retired helper-function definitions in tests/smoke-helpers.sh.
+  # 3. No retired helper-function definitions in tests/smoke-helpers.sh.
   if grep -qE '^check_(skill_md_probe_downgrade_(flag|off_floor_refusal)|probe_[ef]_(cli_downgrade|downgrade_upgrade_refused_when_yaml_off))\(\)' tests/smoke-helpers.sh; then
-    echo "assertion 4 FAILED: retired helper-function definition(s) present in tests/smoke-helpers.sh"
+    echo "assertion 3 FAILED: retired helper-function definition(s) present in tests/smoke-helpers.sh"
     return 1
   fi
-  # 5. Positive overcut guard — YAML kill-switch must survive.
+  # 4. Positive overcut guard — YAML kill-switch must survive.
   if ! grep -qF 'cross_audit.probes' "$skill"; then
-    echo "assertion 5 FAILED: cross_audit.probes YAML kill-switch missing from $skill (positive overcut guard)"
+    echo "assertion 4 FAILED: cross_audit.probes YAML kill-switch missing from $skill (positive overcut guard)"
     return 1
   fi
-  # 6. No stale section-header comments — only matches comment lines (^#),
+  # 5. No stale section-header comments — only matches comment lines (^#),
   #    so the body code in this helper that references --probe-downgrade as
   #    the assertion target is excluded by construction.
   if grep -qE '^# .*--probe-downgrade' tests/smoke.sh tests/smoke-helpers.sh; then
-    echo "assertion 6 FAILED: stale ^# .*--probe-downgrade comment header(s) present in tests/smoke.sh or tests/smoke-helpers.sh"
+    echo "assertion 5 FAILED: stale ^# .*--probe-downgrade comment header(s) present in tests/smoke.sh or tests/smoke-helpers.sh"
     return 1
   fi
-  echo "check_probe_downgrade_flag_absent: all 6 assertions OK"
+  echo "check_probe_downgrade_flag_absent: all 5 assertions OK"
 }

@@ -42,6 +42,23 @@ project: my-project-name
 
 If no valid config resolved `kb_path` and a sibling KB is auto-discovered, confirm with the user before using it. After explicit confirmation in the legacy flow, save `kb_path` and `project` to memory (`reference_kb_<project>.md`).
 
+### Removed-key hard-fail (per `docs/cut-spec-policy.md`)
+
+The general "warn once and continue" tolerance at step 6 above does NOT apply to keys explicitly listed below. These keys were removed by named cut specs and must be flagged with a hard-stop so users discover stale configs early instead of having their input silently dropped.
+
+Hard-stop on observation of any of:
+
+- `codex.model_fast` (top-level config key) — emit:
+  ```
+  ERROR: codex.model_fast was removed in cut spec design/2026-04-27-cut-codex-fast.md. Read that spec for the migration path.
+  ```
+- `github:` (top-level config block — ANY child key under it triggers the same hard-stop; the cut spec enumerates the specific child-key set, so this clause does not name them and avoids re-introducing retired literals into this file) — emit:
+  ```
+  ERROR: github: config block was removed in cut spec design/2026-04-27-cut-multi-gh-account.md. Read that spec for the migration path.
+  ```
+
+Hard-stop = stop reading the config, surface the error to the user verbatim, do not continue with partial config. This is an explicit override of the step-6 tolerance for these named keys only; unknown keys outside this list still follow the "warn once and continue" rule.
+
 ## Post-discovery yml save prompt
 
 After legacy discovery succeeds (step 9 resolved via memory / sibling / ask), if `.ai-dev-team.yml` does not exist in the repo root, prompt: **"Save `kb_path` and `project` to `.ai-dev-team.yml` so future sessions skip discovery? [Y/n]"**. On yes: write a file containing the resolved `kb_path` and `project` fields (copy-and-substitute from `.ai-dev-team.yml.example` if present). If the file exists but lacks one of these fields, print a one-line warning with the value to add — never overwrite user config automatically.

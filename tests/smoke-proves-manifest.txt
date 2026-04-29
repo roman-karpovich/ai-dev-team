@@ -96,3 +96,11 @@ check_research_skill_queue_spec_emit_yaml_safe behavioral
 check_feature_skill_session_resume_research_scan prompt-text
 check_feature_skill_continue_research_scan prompt-text
 check_feature_skill_status_queued_render_rules prompt-text
+
+# Cut-spec hard-fail (BACKLOG #56, spec 2026-04-29)
+check_cut_spec_policy_doc_present schema
+check_kb_discovery_codex_model_fast_hard_fail prompt-text
+check_kb_discovery_github_block_hard_fail prompt-text
+check_cross_audit_probe_downgrade_hard_fail prompt-text
+check_cross_audit_account_flag_hard_fail prompt-text
+check_feature_skill_from_investigation_hard_fail prompt-text
