@@ -59,9 +59,24 @@ At the beginning of any development session, before doing anything else:
 1. Check Claude memory for the KB path for this project
 2. If found: scan `<kb>/repos/<project>/design/` for specs with status IN_PROGRESS or AUDIT_PASSED
 3. If in-progress work exists: summarise it (feature name, current phase, next step) and ask whether to continue or start something new
-4. If nothing in progress: ask what the user wants to work on
+4. If nothing in progress: run the research-queue scan (below), then ask what the user wants to work on
 
 Do this proactively — do not wait for the user to ask.
+
+### Research-queue scan (no-in-flight branch)
+
+When step 2 finds no IN_PROGRESS / AUDIT_PASSED specs, the next session is at risk of being blind to a queue published by the prior session's `/research conclude --queue-spec`. Surface those queued specs before declaring "nothing in progress":
+
+- **Scan semantics** (Continue mode is single-project by nature — it routes to a single resolved project): recursively walk `<kb>/repos/<project>/research/` and include every `.md` file at **any depth, including direct children** (depth-0 like `<research>/<slug>.md` — the canonical write path of `/research new` per `skills/research/SKILL.md`). Implementations MUST cover depth-0 and deeper. Examples: `find <root> -type f -name '*.md'`; Python `pathlib.Path(<root>).rglob('*.md')`; bash with `shopt -s globstar` AND explicit dual-pattern `<root>/*.md` + `<root>/**/*.md` to handle direct children. A bare `**/*.md` glob without `globstar` enabled (e.g. macOS system bash 3.2 default) silently misses depth-0 — do NOT spell the contract that way. Status mode uses an all-projects scan — see §Status mode.
+- For each matched note, parse the **frontmatter** (NOT body — `queued_specs:` is a frontmatter list per `skills/research/references/research-template.md`). Skip silently when:
+  - `status: CONCLUDED` is not set (only CONCLUDED notes publish a stable queue), OR
+  - `queued_specs:` is null / missing / empty list.
+- Defensive handling for manually-edited frontmatter:
+  - If `queued_specs:` is **non-sequence** (string / scalar / mapping / malformed YAML), emit one-line warning `⚠ malformed queued_specs in <note path>: not a YAML sequence` and skip the note.
+  - If a list element is **missing required `slug` or `scope`** (or either is empty/whitespace-only), emit `⚠ malformed queued_specs item in <note path>: <reason>` and skip the offending item (continue with valid siblings).
+  - If `queued_specs[].slug` fails the validation regex `^[a-z0-9][a-z0-9-]*$` (lowercase ASCII alphanumerics + hyphens; no leading hyphen — same producer-side rule at `skills/research/SKILL.md` §Conclude mode), emit one-line warning `⚠ malformed queued_specs item in <note path>: slug fails validation regex (got <slug>)` and skip the offending item. Closes the producer/reader asymmetry: producer validates at write; reader re-validates at read so a manually-edited frontmatter (e.g. `slug: *` or `slug: real*`) cannot smuggle glob metachars into the materialization-lookup form `<kb>/repos/<project>/design/<YYYY>-<MM>-<DD>-<slug>.md`.
+- For each valid item: look up materialization status by matching the canonical date-prefixed form `<kb>/repos/<project>/design/<YYYY>-<MM>-<DD>-<slug>.md` within the SAME project as the source note (literal 4-2-2 numeric date prefix + `-` + the queued slug + `.md` — NOT a bare `*-<slug>.md` glob, which would over-match longer slugs ending in `-<slug>` such as `mandatory-audit-foo.md` matching the queued slug `audit-foo`). Apply the **Materialization status** branching (see §Continue mode for the full table).
+- Render the queued items inline in the no-in-flight summary so the user sees the handoff queue before answering "what to work on".
 
 ## Phase 0: KB Discovery
 
@@ -717,6 +732,27 @@ delta with no spec mutation.
 When resuming (`/feature continue` or `/feature <spec-path>`):
 
 1. Run KB discovery (Phase 0)
+1a. **No-in-flight branch** — if `/feature continue` was invoked with no `<spec-path>` AND the §Session resume — KB scan found no IN_PROGRESS / AUDIT_PASSED specs, run the **research-queue scan** (per §Session resume — KB scan, primary surface) before declaring "nothing in progress". Read `queued_specs:` from CONCLUDED research-note frontmatter via a recursive walk of `<kb>/repos/<project>/research/` covering all `.md` files at any depth, including direct children (depth-0 and deeper — implementations MUST cover both; e.g. `find -type f -name '*.md'` or Python `rglob('*.md')` or bash with `shopt -s globstar` plus explicit dual-pattern `<root>/*.md` + `<root>/**/*.md`); look up materialization status of each queued slug against the canonical date-prefixed form `<kb>/repos/<project>/design/<YYYY>-<MM>-<DD>-<slug>.md` (literal 4-2-2 numeric date prefix + `-` + queued slug + `.md` — NOT a bare `*-<slug>.md` glob), and apply the **Materialization status branching** below to decide whether to render or suppress each item.
+
+**Materialization status branching** (covers all design-spec lifecycle states + no-match + multi-match — used by both the no-in-flight branch above and Status mode's `### Queued from retrospectives` section):
+
+| Matched design status | Continue mode (no-in-flight branch) | Status mode (`### Queued from retrospectives` row) |
+|---|---|---|
+| (no match — no `*-<slug>.md` file exists) | render: `queued — not yet materialized` | render row |
+| `DRAFT` / `APPROVED` | render: `queued — spec drafted but not in flight: see <matched-design-relative-path>` | render row (annotated) |
+| `BLOCKED` | render: `queued — spec drafted but BLOCKED: see <matched-design-relative-path>` | render row (annotated) |
+| `IN_PROGRESS` / `AUDIT_PASSED` | suppress (already surfaced by in-flight scan) | suppress |
+| `VERIFIED` (or legacy `DONE`) / `SHIPPED` | suppress (terminal — work done) | suppress |
+| `DISCARDED` | render: `queued — prior attempt discarded; consider re-queue or remove` | render row (annotated) |
+
+`<matched-design-relative-path>` is the project-relative path returned by the lookup glob in §Session resume — KB scan (e.g. `design/2026-04-30-shared-absence-helper-extraction.md` — the full date-prefixed basename, NOT a bare `<slug>.md`). Following the bare-slug form would emit a broken Obsidian link because the actual file on disk carries the date prefix.
+
+Edge cases:
+- **Multi-match** (date-prefixed lookup `<YYYY>-<MM>-<DD>-<slug>.md` returns >1 result — i.e. the same slug shipped on different dates): pick the lexicographically newest match (date prefix sorts naturally) AND emit a one-line warning `⚠ multiple design files match slug <slug>; using newest <date-prefix>`. The date-prefix anchor narrows multi-match risk to genuine duplicates (same slug across different date prefixes) — it eliminates the slug-suffix-collision class (e.g. queued slug `audit-foo` vs longer existing slug `mandatory-audit-foo`), which the prior `*-<slug>.md` glob would have silently matched.
+- **Same slug in N different research notes**: Continue mode renders once with a comma-joined source list; Status mode renders N rows preserving source-note attribution.
+- **No eager cache**: scan reads disk on every invocation (research notes are bounded; ≤100 expected at peak per project).
+- **No-mutation guarantee**: the scan never modifies source frontmatter. Render layer reflects current design state; source notes stay append-only.
+
 2. Read the spec file. Check the `status` field in frontmatter:
    - `DRAFT` → Spec not yet approved. Present it to the user and ask for approval. Resume from Step 3 (Get approval).
    - `APPROVED` → Resume from Step 3.5 (spec self-review → cross-audit).
@@ -859,6 +895,26 @@ This will permanently delete branch `<branch>` and all commits listed above. The
 |------|---------|------|---------|-----------|
 | ... | ... | 7 days stable in prod | 2026-04-18 | 5 days |
 ```
+
+### Queued from retrospectives
+(CONCLUDED research notes with `queued_specs:` — items not yet at terminal `VERIFIED`/`SHIPPED` and not in active flight.)
+
+Scan semantics: recursively walk `<kb>/repos/*/research/` (all projects, mirroring the existing all-project Status-mode contract on `<kb_path>/repos/*/design/YYYY-MM-DD-*.md`) and include every `.md` file at **any depth, including direct children** (depth-0 like `<research>/<slug>.md` — the canonical `/research new` write path). Implementations MUST cover depth-0 and deeper (e.g. `find -type f -name '*.md'` or Python `rglob('*.md')` or bash with `shopt -s globstar` plus explicit dual-pattern `<root>/*.md` + `<root>/**/*.md`); a bare `**/*.md` glob without `globstar` silently misses direct children. Project attribution: take the path segment immediately after `<kb>/repos/` (equivalently, the directory containing `research/`) — this is the project name regardless of nesting depth inside `research/`. For example: `<kb>/repos/ai-dev-team/research/release-retrospective/2026-04-28-investigator-round-2.md` resolves to project `ai-dev-team`, NOT `release-retrospective`. Frontmatter `status: CONCLUDED` filter and `queued_specs:` parsing follow the same rules as §Session resume — KB scan (defensive handling for malformed YAML / missing-required-field; warning emission unchanged). Materialization lookup uses the same date-prefix-anchored canonical form `<kb>/repos/<X>/design/<YYYY>-<MM>-<DD>-<slug>.md` as §Session resume — KB scan (NOT a bare `*-<slug>.md` glob — that would over-match longer slugs ending in `-<slug>`).
+
+| Source note | Project | Queued spec | Queued since | State |
+|------|------|---------|------|------|
+| 2026-04-28-investigator-round-2 | ai-dev-team | #56 removed-cli-flag-hard-fail | 2026-04-28 | not yet materialized |
+| 2026-04-28-investigator-round-2 | ai-dev-team | #57 shared-absence-helper-extraction | 2026-04-28 | DRAFT — see design/2026-04-30-shared-absence-helper-extraction.md |
+
+**Status mode render rules**:
+
+- **Source note**: filename without `.md` extension and without leading `release-retrospective/` directory. Hyperlinkable in Obsidian.
+- **Project**: parent-of-`research/` directory of the matched source note (`<kb>/repos/<X>/research/...` → `<X>`). Mirrors the existing all-project contract.
+- **Queued spec**: `<id> <slug>` if `id` is present in frontmatter; just `<slug>` otherwise (matching the schema's id-optional rule).
+- **Queued since**: the `created:` field of the source note (original publication date — NOT the latest update).
+- **State**: render decision from the Materialization status branching table in §Continue mode. Includes legacy `DONE` synonym treatment (terminal — work done; suppressed). When the branching table emits a `see <matched-design-relative-path>` reference, use the full date-prefixed basename returned by the lookup (matching the example row at `2026-04-30-shared-absence-helper-extraction.md`), never a bare `<slug>.md` form — that would produce a broken Obsidian link.
+- **Sort**: by Queued since, **oldest first** — surfaces backlog age.
+- **Omit the section entirely if no rows match** (consistent with other Status sections).
 
 **Audit column rendering (per §3.5b):** the `Audit` column on the `### Active` table renders `<spec_audit_evidence> / <code_audit_evidence>` from the spec frontmatter. Render rules:
 

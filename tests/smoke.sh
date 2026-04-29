@@ -1296,11 +1296,11 @@ check_cross_audit_awaiting_count_1() {
 check_research_awaiting_count_4() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/research/SKILL.md)
-  if [ "$n" != "4" ]; then
-    echo "research AWAITING count=$n expected 4"
+  if [ "$n" != "5" ]; then
+    echo "research AWAITING count=$n expected 5"
     return 1
   fi
-  echo "research AWAITING count=4 OK"
+  echo "research AWAITING count=5 OK"
 }
 
 # (f) investigate SKILL.md must have exactly 1 AWAITING banner line.
@@ -1415,8 +1415,9 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 24 — includes the
-# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1).
+# (r) ruler-prefix count matches total banner count (expected 25 — includes the
+# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1
+# and the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2).
 check_awaiting_ruler_prefix_count_matches() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1425,15 +1426,16 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "24" ]; then
-    echo "ruler-prefix count=$c expected 24"
+  if [ "$c" != "25" ]; then
+    echo "ruler-prefix count=$c expected 25"
     return 1
   fi
-  echo "ruler-prefix count=24 OK"
+  echo "ruler-prefix count=25 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 24 — includes the
-# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1).
+# (s) each banner has trailing bold question within 15 lines (expected 25 — includes the
+# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1
+# and the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1444,11 +1446,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "24" ]; then
-    echo "trailing-bold-present-each count=$c expected 24"
+  if [ "$c" != "25" ]; then
+    echo "trailing-bold-present-each count=$c expected 25"
     return 1
   fi
-  echo "trailing-bold-present-each=24 OK"
+  echo "trailing-bold-present-each=25 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -5493,6 +5495,228 @@ check "findings-path-coherence"                            check_skill_findings_
 check "repo-findings-path-coherence"                       check_repo_findings_path_coherence
 check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
+echo
+
+# --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---
+# Pins per spec §3.5: literal-presence checks for the contract surfaces, plus
+# one fixture-driven behavioral pin that exercises the YAML emit-safety rule
+# end-to-end (`check_research_skill_queue_spec_emit_yaml_safe`, X5(e)).
+# Other behavioral classes — multi-item handling, materialization-status
+# branching, malformed-frontmatter defensive paths — remain out of scope here;
+# see spec §3.5 behavioral coverage gap, tracked as Q3-slice-2 follow-up.
+echo "Session-handoff queue visibility pins:"
+
+check_research_template_queued_specs_documented() {
+  local f="skills/research/references/research-template.md"
+  # POSITIVE: YAML-comment block documents schema (catches: schema not documented,
+  # body-vs-frontmatter mistake — comment lives inside frontmatter, before closing ---).
+  grep -qE '^# queued_specs:' "$f" \
+    || { echo "missing YAML-comment header '^# queued_specs:' in $f"; return 1; }
+  grep -qE '^#   - slug:' "$f" \
+    || { echo "missing '#   - slug:' field-name in $f"; return 1; }
+  grep -qE '^#     scope:' "$f" \
+    || { echo "missing '#     scope:' field-name in $f"; return 1; }
+  grep -qE '^#     id:' "$f" \
+    || { echo "missing '#     id:' field-name in $f"; return 1; }
+  # NEGATIVE: literal active key MUST NOT be set in template — opt-in only
+  # (catches: schema accidentally promoted to mandatory field).
+  if grep -qE '^queued_specs:' "$f"; then
+    echo "literal active 'queued_specs:' present in $f (template is opt-in only)"
+    return 1
+  fi
+  echo "research-template queued_specs schema documented as YAML comment OK"
+}
+
+check_research_skill_queue_spec_contract() {
+  local f="skills/research/SKILL.md"
+  # Extract §Conclude mode region with BSD-portable next-mode-anchored pattern
+  # (avoids truncation on in-region '## ⏸ AWAITING YOUR INPUT' H2 banners).
+  local region
+  region=$(awk 'p && /^## Archive mode$/{exit} /^## Conclude mode$/{p=1} p' "$f")
+  local missing=""
+  for lit in '--queue-spec' 'pipe-delimited' 'frontmatter' 'slug' 'scope'; do
+    printf '%s' "$region" | grep -qF -- "$lit" || missing="$missing $lit"
+  done
+  # 'dedup' matches both 'dedupe' and 'deduplicate'
+  printf '%s' "$region" | grep -qF 'dedup' || missing="$missing dedup"
+  # X5 anti-regression: contract MUST name the quote-on-emit rule for `scope:`
+  # (catches future regression to unquoted scalars that corrupt frontmatter on
+  # `:` / `#` / leading sigils — empirically verified via Codex YAML.safe_load).
+  printf '%s' "$region" | grep -qF 'double-quoted YAML string' || missing="$missing double-quoted-scope-on-emit"
+  # X5 anti-regression: contract MUST name the slug validation regex
+  # (canonical filesystem-safe form; also used for materialization lookup).
+  printf '%s' "$region" | grep -qF '^[a-z0-9][a-z0-9-]*$' || missing="$missing slug-validation-regex"
+  # X5 anti-regression: contract MUST require post-emit YAML round-trip check
+  # (last-line defense: catches any corrupt-frontmatter case the quote rule missed).
+  if ! printf '%s' "$region" | grep -qE "re-parse the note's frontmatter|YAML round-trip"; then
+    missing="$missing yaml-round-trip-check"
+  fi
+  if [ -n "$missing" ]; then
+    echo "§Conclude region missing literals:$missing"
+    return 1
+  fi
+  echo "research SKILL §Conclude --queue-spec contract documented OK"
+}
+
+# X5(e) — fixture-driven behavioral pin (Codex iter-3 proposal). Drives the
+# `--queue-spec` YAML emit rule from skills/research/SKILL.md lines 200-214
+# end-to-end against scopes carrying YAML-hazardous punctuation:
+#   - `:`     (would parse as map-key in unquoted form → ScannerError)
+#   - `#`     (would silently truncate at the comment boundary in unquoted form)
+#   - `>`     (leading sigil → block-scalar indicator in unquoted form)
+# Emits frontmatter following the documented contract (slug unquoted iff regex
+# match; scope ALWAYS double-quoted with `\` and `"` backslash-escaped per
+# YAML 1.1), round-trips it via `yaml.safe_load`, and asserts each parsed
+# scope value equals its source byte-for-byte. Any divergence (parse failure,
+# key-shifted-by-`:`, truncated-at-`#`, block-scalar-over-`>`) fails the pin.
+check_research_skill_queue_spec_emit_yaml_safe() {
+  python3 - <<'PY' || return 1
+import sys, yaml
+
+# Three fixture --queue-spec lines (1-pipe / 2-field form: `slug | scope`).
+# Each scope contains exactly one of the YAML-hazardous characters that the
+# X5 (a) "double-quote scope on emit" rule was specifically designed to handle.
+fixtures = [
+    ("colon-scope", "API: remove v1"),
+    ("hash-scope", "pain #6 + replay mechanics"),
+    ("sigil-scope", "> replay mechanics"),
+]
+
+# Emit per the documented contract: slug unquoted iff regex matches (all three
+# pass `^[a-z0-9][a-z0-9-]*$`); scope ALWAYS double-quoted with `\` and `"`
+# backslash-escaped per YAML 1.1.
+def quote_scope(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+lines = ["queued_specs:"]
+for slug, scope in fixtures:
+    lines.append(f"  - slug: {slug}")
+    lines.append(f"    scope: {quote_scope(scope)}")
+emitted = "\n".join(lines) + "\n"
+
+try:
+    parsed = yaml.safe_load(emitted)
+except yaml.YAMLError as e:
+    print(f"YAML round-trip failed (parse error): {e}", file=sys.stderr)
+    print("--- emitted frontmatter ---", file=sys.stderr)
+    print(emitted, file=sys.stderr)
+    sys.exit(1)
+
+if not isinstance(parsed, dict) or "queued_specs" not in parsed:
+    print(f"missing 'queued_specs' key in parsed YAML: {parsed!r}", file=sys.stderr)
+    sys.exit(1)
+
+items = parsed["queued_specs"]
+if not isinstance(items, list) or len(items) != len(fixtures):
+    print(f"expected {len(fixtures)} items, got: {items!r}", file=sys.stderr)
+    sys.exit(1)
+
+for (slug, scope), item in zip(fixtures, items):
+    if not isinstance(item, dict):
+        print(f"item is not a mapping: {item!r}", file=sys.stderr)
+        sys.exit(1)
+    if item.get("slug") != slug:
+        print(f"slug mismatch: expected {slug!r}, got {item.get('slug')!r}", file=sys.stderr)
+        sys.exit(1)
+    # Byte-for-byte equality is the load-bearing assertion: catches the
+    # `:`-key-shift, `#`-truncation, and `>`-block-scalar regression classes.
+    if item.get("scope") != scope:
+        print(f"scope round-trip mismatch for slug {slug!r}:", file=sys.stderr)
+        print(f"  source:  {scope!r}", file=sys.stderr)
+        print(f"  parsed:  {item.get('scope')!r}", file=sys.stderr)
+        sys.exit(1)
+
+print(f"--queue-spec YAML emit round-trip OK ({len(fixtures)} fixtures)")
+PY
+}
+
+check_feature_skill_session_resume_research_scan() {
+  local f="skills/feature/SKILL.md"
+  # Extract §Session resume — KB scan with next-mode-anchored pattern.
+  local region
+  region=$(awk 'p && /^## Phase 0:/{exit} /^## Session resume — KB scan$/{p=1} p' "$f")
+  local missing=""
+  for lit in 'status: CONCLUDED' 'queued_specs' 'frontmatter'; do
+    printf '%s' "$region" | grep -qF -- "$lit" || missing="$missing $lit"
+  done
+  # X4 anti-regression: contract MUST name the depth-0 / any-depth requirement
+  # (catches future regression to a bare '**/*.md' glob that silently misses
+  # direct-child notes under default bash without `shopt -s globstar`).
+  if ! printf '%s' "$region" | grep -qE 'depth-0|direct child|any depth|direct children'; then
+    missing="$missing depth-0-or-any-depth"
+  fi
+  # X4 anti-regression: contract MUST name a recursive-walk implementation literal
+  # (one of: `find -type f`, `rglob`, `globstar`) — these are depth-0-safe;
+  # a bare `**/*.md` glob without an enabling literal is the broken form.
+  if ! printf '%s' "$region" | grep -qE 'find -type f|rglob|globstar'; then
+    missing="$missing recursive-walk-literal"
+  fi
+  # X7 anti-regression: contract MUST carry the canonical warning text for the
+  # reader-side slug regex re-validation (closes producer/reader asymmetry —
+  # manually-edited frontmatter slug like `slug: *` cannot smuggle glob metachars
+  # into the materialization-lookup form). Catches regression to "we documented
+  # the rule but lost the warning name" form.
+  if ! printf '%s' "$region" | grep -qF 'slug fails validation regex'; then
+    missing="$missing slug-fails-validation-regex-warning"
+  fi
+  # X7 anti-regression: contract MUST carry the literal validation regex shape
+  # (mirrors producer-side regex at skills/research/SKILL.md §Conclude mode).
+  # Catches regression to "we documented some validation but lost the regex shape" form.
+  if ! printf '%s' "$region" | grep -qF '^[a-z0-9][a-z0-9-]*$'; then
+    missing="$missing slug-validation-regex-literal"
+  fi
+  if [ -n "$missing" ]; then
+    echo "§Session resume — KB scan missing literals:$missing"
+    return 1
+  fi
+  echo "feature SKILL §Session resume research-queue scan contract documented OK"
+}
+
+check_feature_skill_continue_research_scan() {
+  local f="skills/feature/SKILL.md"
+  # Extract §Continue mode with next-mode-anchored pattern (Discard avoids in-region AWAITING H2 banners).
+  local region
+  region=$(awk 'p && /^## Discard mode$/{exit} /^## Continue mode$/{p=1} p' "$f")
+  local missing=""
+  printf '%s' "$region" | grep -qF 'queued_specs' || missing="$missing queued_specs"
+  printf '%s' "$region" | grep -qF 'aterialization status' || missing="$missing materialization-status-cross-ref"
+  if [ -n "$missing" ]; then
+    echo "§Continue mode missing literals:$missing"
+    return 1
+  fi
+  echo "feature SKILL §Continue mode materialization-status cross-reference documented OK"
+}
+
+check_feature_skill_status_queued_render_rules() {
+  local f="skills/feature/SKILL.md"
+  # Extract `### Queued from retrospectives` block with BSD-portable next-H3-anchored pattern
+  # (H3-only terminator is provably safe — AWAITING banners are H2 and cannot truncate).
+  local region
+  region=$(awk 'p && /^### /{exit} /^### Queued from retrospectives$/{p=1} p' "$f")
+  local missing=""
+  for lit in 'Source note' 'Project' 'Queued spec' 'Queued since' 'State' 'oldest first' 'Omit the section' 'created:'; do
+    printf '%s' "$region" | grep -qF -- "$lit" || missing="$missing '$lit'"
+  done
+  # X6 anti-regression: the load-bearing scan-semantics paragraph MUST state the
+  # correct project-attribution rule (path segment immediately after <kb>/repos/),
+  # not the buggy "parent directory of the matched note" form that mis-attributes
+  # nested research notes (e.g. release-retrospective/<note>.md → release-retrospective).
+  printf '%s' "$region" | grep -qF 'path segment immediately after' || missing="$missing 'path-segment-immediately-after'"
+  # X6 anti-regression: explicit nested-note coverage so depth-of-nesting drift is caught.
+  printf '%s' "$region" | grep -qF 'regardless of nesting depth' || missing="$missing 'regardless-of-nesting-depth'"
+  if [ -n "$missing" ]; then
+    echo "### Queued from retrospectives missing literals:$missing"
+    return 1
+  fi
+  echo "feature SKILL §Status mode ### Queued from retrospectives render rules documented OK"
+}
+
+check "session-handoff-queued-specs-template-schema"      check_research_template_queued_specs_documented
+check "session-handoff-research-skill-queue-spec-contract" check_research_skill_queue_spec_contract
+check "session-handoff-research-skill-queue-spec-emit-yaml-safe" check_research_skill_queue_spec_emit_yaml_safe
+check "session-handoff-feature-session-resume-research-scan" check_feature_skill_session_resume_research_scan
+check "session-handoff-feature-continue-research-scan"    check_feature_skill_continue_research_scan
+check "session-handoff-feature-status-queued-render-rules" check_feature_skill_status_queued_render_rules
 echo
 
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
