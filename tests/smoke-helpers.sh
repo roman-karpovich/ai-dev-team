@@ -3656,10 +3656,8 @@ check_probe_downgrade_flag_absent() {
   # 5. No stale section-header comments — only matches comment lines (^#),
   #    so the body code in this helper that references --probe-downgrade as
   #    the assertion target is excluded by construction.
-  if grep -qE '^# .*--probe-downgrade' tests/smoke.sh tests/smoke-helpers.sh; then
-    echo "assertion 5 FAILED: stale ^# .*--probe-downgrade comment header(s) present in tests/smoke.sh or tests/smoke-helpers.sh"
-    return 1
-  fi
+  assert_no_stale_section_header_comments '--probe-downgrade' 'assertion 5' \
+    || { echo "assertion 5 FAIL: stale --probe-downgrade header in smoke files"; return 1; }
   echo "check_probe_downgrade_flag_absent: all 5 assertions OK"
 }
 
