@@ -2535,15 +2535,15 @@ check_multi_gh_account_absent() {
   # registration lines (NOT arbitrary substring) — prevents PR A-2 X1 / A-3 X1
   # self-trigger. Assertion #6 scoped to ^# comment lines only.
   # 1. No `default_account` literal in live source surface.
-  ! grep -rqF 'default_account' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'default_account' 'absence #1' \
     || { echo "absence #1 FAIL: 'default_account' literal still present in live source"; return 1; }
   # 2. No `gh_token_env` literal in live source.
-  ! grep -rqF 'gh_token_env' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'gh_token_env' 'absence #2' \
     || { echo "absence #2 FAIL: 'gh_token_env' literal still present in live source"; return 1; }
   # 3. No `gh_host` literal AND no `gh_account_context` literal in live source.
-  ! grep -rqF 'gh_host' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'gh_host' 'absence #3a' \
     || { echo "absence #3a FAIL: 'gh_host' literal still present in live source"; return 1; }
-  ! grep -rqF 'gh_account_context' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'gh_account_context' 'absence #3b' \
     || { echo "absence #3b FAIL: 'gh_account_context' literal still present in live source"; return 1; }
   # 4. No retired check-helper definitions in tests/smoke.sh (anchored to
   #    ^<name>() definitions). Includes both 27 F-helpers + 2 internal helpers.
@@ -2561,10 +2561,8 @@ check_multi_gh_account_absent() {
   #    Self-reference safety: this section header uses Multi-GH-account
   #    (byte-distinct from Multi-account); helper-fn name multi_gh_account
   #    is snake_case (lowercase, underscores) and lives in body lines, not ^# .
-  ! grep -qE '^# .*(default_account|gh_token_env|gh_host|gh_account_context|--account |Multi-account)' tests/smoke.sh \
-    || { echo "absence #6a FAIL: stale section-header comment with banned literal in tests/smoke.sh"; return 1; }
-  ! grep -qE '^# .*(default_account|gh_token_env|gh_host|gh_account_context|--account |Multi-account)' tests/smoke-helpers.sh \
-    || { echo "absence #6b FAIL: stale section-header comment with banned literal in tests/smoke-helpers.sh"; return 1; }
+  assert_no_stale_section_header_comments 'default_account|gh_token_env|gh_host|gh_account_context|--account |Multi-account' 'absence #6' \
+    || { echo "absence #6 FAIL: stale multi-gh-account header in smoke files"; return 1; }
   # 7. Positive overcut guards — adjacent live surface MUST survive.
   grep -qF '## Phase 0.5: PR discovery (PR mode only)' skills/cross-audit/SKILL.md \
     || { echo "absence #7a FAIL: ## Phase 0.5 H2 missing from skills/cross-audit/SKILL.md"; return 1; }
