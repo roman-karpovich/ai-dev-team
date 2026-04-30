@@ -3720,6 +3720,11 @@ assert_no_stale_section_header_comments() {
   return 0
 }
 
+check_publish_md_f7_legacy_sentence_survives() {
+  grep -qF -- 'All gh api calls pass --repo <pr_repo> AND --include' skills/cross-audit/references/publish.md \
+    || { echo "publish.md F7 legacy sentence missing" >&2; return 1; }
+}
+
 check_new_pin_classified() {
   local smoke_file="${1:-tests/smoke.sh}"
   local manifest_file="${2:-tests/smoke-proves-manifest.txt}"
@@ -3740,6 +3745,14 @@ check_new_pin_classified() {
   unclassified=$(comm -23 \
     <(printf '%s\n' "$registered") \
     <(printf '%s\n%s\n' "$manifest" "$baseline" | sort -u))
+
+  local multiline_offenders
+  multiline_offenders=$(grep -nE '^[[:space:]]*check "[^"]+"[[:space:]]*\\$' "$smoke_file")
+  if [ -n "$multiline_offenders" ]; then
+    echo "absence #5 FAIL: multiline check registrations not supported (line-continuation \`\\\` is not a valid helper name); refactor into named helper:" >&2
+    printf '%s\n' "$multiline_offenders" | sed 's/^/  /' >&2
+    return 1
+  fi
 
   if [ -n "$unclassified" ]; then
     echo "absence #4 FAIL: new pins missing manifest classification:" >&2

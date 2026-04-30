@@ -64,6 +64,7 @@ check_stop_hook_registered behavioral
 # Thin session prompt and recent feature pins
 check_skill_bodies_have_migrated_content prompt-text
 check_inject_coexistence_section prompt-text
+check_publish_md_f7_legacy_sentence_survives prompt-text
 check_session_prompt_compressed_size_cap behavioral
 check_session_prompt_kb_persistence_kept prompt-text
 check_confirmation_cadence_shared_doc_canonical prompt-text

@@ -1,4 +1,3 @@
-\
 check_agent_claims_doc_exists_and_classified
 check_agent_refs_dev_workflow
 check_agents_cross_auditor_schema_cut_fields
