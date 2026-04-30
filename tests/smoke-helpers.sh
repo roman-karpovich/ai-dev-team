@@ -3500,9 +3500,13 @@ check_cross_auditor_uses_async_codex_dispatch() {
   [ "$count" -ge 2 ] \
     || { echo "$agent missing BashOutput in body (count=$count, expected >= 2 including frontmatter)"; return 1; }
 
-  line5=$(sed -n '5p' "$agent")
-  [ "$line5" = 'effort: xhigh' ] \
-    || { echo "$agent line 5 must be 'effort: xhigh' (got '$line5')"; return 1; }
+  local model_line effort_line
+  model_line=$(grep -nF 'model: opus' "$agent" | head -1 | cut -d: -f1)
+  effort_line=$(grep -nF 'effort: xhigh' "$agent" | head -1 | cut -d: -f1)
+  [ -n "$model_line" ] || { echo "$agent missing 'model: opus' in frontmatter"; return 1; }
+  [ -n "$effort_line" ] || { echo "$agent missing 'effort: xhigh' in frontmatter"; return 1; }
+  [ "$effort_line" = "$((model_line + 1))" ] \
+    || { echo "$agent 'effort: xhigh' must immediately follow 'model: opus' (model@$model_line, effort@$effort_line)"; return 1; }
 
   count=$(grep -cF 'codex_audit_dispatch.sh exits non-zero' "$agent")
   [ "$count" -ge 1 ] \
