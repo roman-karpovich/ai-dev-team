@@ -3760,7 +3760,7 @@ check_new_pin_classified() {
   # (column-anchored `check "double-quoted label" helper_function_token`).
   local grammar_offenders
   grammar_offenders=$(grep -nE '^[[:space:]]*check[[:space:]]' "$smoke_file" \
-    | grep -vE '^[0-9]+:[[:space:]]*check "[^"]*"[[:space:]]+[A-Za-z_][A-Za-z_0-9]+([[:space:]]|$)' \
+    | grep -vE '^[0-9]+:[[:space:]]*check "[^"]+"[[:space:]]+[A-Za-z_][A-Za-z_0-9]+([[:space:]]|$)' \
     || true)
   if [ -n "$grammar_offenders" ]; then
     echo "absence #6 FAIL: check registration form not recognized by gate (extraction grammar = registration grammar invariant; only canonical \`check \"label\" helper_function_token\` is supported); refactor to canonical form:" >&2
