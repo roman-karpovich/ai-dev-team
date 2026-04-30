@@ -1,5 +1,6 @@
 ---
 name: developer-senior
+# 40k: Space Marine Captain (Opus-bro) — see docs/wh40k-cast.md
 description: >
   Senior developer. Use for complex, cross-cutting, or ambiguous tasks:
   new abstractions, Soroban contract logic, security-sensitive code, large refactors,

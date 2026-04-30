@@ -1,5 +1,6 @@
 ---
 name: librarian
+# 40k: Space Marine Librarius — see docs/wh40k-cast.md
 description: >
   Optional helper for KB layout discovery and MOC index maintenance.
   Searches KB on request, can create documents with proper formatting,

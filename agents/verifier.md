@@ -1,5 +1,6 @@
 ---
 name: verifier
+# 40k: Adeptus Mechanicus Tech-Priest — see docs/wh40k-cast.md
 description: >
   Runs the project test suite and build checks after implementation or fixes.
   Reports pass/fail, regressions, and build errors. Never writes source code.
