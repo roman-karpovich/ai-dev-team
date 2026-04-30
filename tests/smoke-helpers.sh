@@ -3719,3 +3719,35 @@ assert_no_stale_section_header_comments() {
   fi
   return 0
 }
+
+check_new_pin_classified() {
+  local smoke_file="${1:-tests/smoke.sh}"
+  local manifest_file="${2:-tests/smoke-proves-manifest.txt}"
+  local baseline_file="${3:-tests/smoke-classification-baseline.txt}"
+
+  test -f "$smoke_file" || { echo "absence #1 FAIL: $smoke_file missing" >&2; return 1; }
+  test -f "$manifest_file" || { echo "absence #2 FAIL: $manifest_file missing" >&2; return 1; }
+  test -f "$baseline_file" || { echo "absence #3 FAIL: $baseline_file missing" >&2; return 1; }
+
+  local registered manifest baseline unclassified
+  # X1+X5 fix: extract helper-function token (column 2), tolerate leading whitespace.
+  registered=$(grep -E '^[[:space:]]*check "[^"]+"' "$smoke_file" \
+    | sed -nE 's/^[[:space:]]*check "[^"]+"[[:space:]]+([^[:space:]]+).*/\1/p' \
+    | sort -u)
+  manifest=$(grep -vE '^#|^$' "$manifest_file" | awk '{print $1}' | sort -u)
+  baseline=$(grep -vE '^#|^$' "$baseline_file" | sort -u)
+
+  unclassified=$(comm -23 \
+    <(printf '%s\n' "$registered") \
+    <(printf '%s\n%s\n' "$manifest" "$baseline" | sort -u))
+
+  if [ -n "$unclassified" ]; then
+    echo "absence #4 FAIL: new pins missing manifest classification:" >&2
+    printf '%s\n' "$unclassified" | sed 's/^/  - /' >&2
+    echo "Add a line to tests/smoke-proves-manifest.txt: <helper_name> <class>" >&2
+    echo "See docs/smoke-pin-classification.md for the 3-class rubric." >&2
+    return 1
+  fi
+
+  return 0
+}
