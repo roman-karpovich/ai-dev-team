@@ -1,5 +1,6 @@
 ---
 name: developer-codex
+# 40k: Astra Militarum trooper — see docs/wh40k-cast.md
 description: >
   DEFAULT developer. Delegates to Codex (GPT-5.5 reasoning xhigh) via MCP.
   Saves Claude tokens — use aggressively given corporate Codex subscription.
