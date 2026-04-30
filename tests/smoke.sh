@@ -641,18 +641,12 @@ check_feature_from_investigation_absent() {
     return 1
   fi
   if ! grep -qF '/feature new' skills/feature/SKILL.md; then
-    echo "assertion 4 FAIL: /feature new entry-point missing from skills/feature/SKILL.md"
+    echo "assertion 5 FAIL: /feature new entry-point missing from skills/feature/SKILL.md"
     return 1
   fi
-  if grep -qE '^# .*--from-investigation' tests/smoke.sh; then
-    echo "assertion 5 FAIL: stale section-header comment in tests/smoke.sh contains retired-bridge literal"
-    return 1
-  fi
-  if grep -qE '^# .*--from-investigation' tests/smoke-helpers.sh; then
-    echo "assertion 5 FAIL: stale section-header comment in tests/smoke-helpers.sh contains retired-bridge literal"
-    return 1
-  fi
-  echo "check_feature_from_investigation_absent: all 5 assertions OK"
+  assert_no_stale_section_header_comments '--from-investigation' 'assertion 6' \
+    || { echo "assertion 6 FAIL: stale --from-investigation header in smoke files"; return 1; }
+  echo "check_feature_from_investigation_absent: all 6 assertions OK"
 }
 
 check "feature --from-investigation absent" check_feature_from_investigation_absent
