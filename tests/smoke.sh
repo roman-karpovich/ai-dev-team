@@ -2518,8 +2518,7 @@ echo
 echo "Multi-account auth-routing retirement guard:"
 
 # F7-legacy preserved: generic PR-mode publish-guard, independent of multi-account.
-check "publish.md F7 legacy sentence survives" \
-  bash -c "grep -qF -- 'All gh api calls pass --repo <pr_repo> AND --include' skills/cross-audit/references/publish.md"
+check "publish.md F7 legacy sentence survives"   check_publish_md_f7_legacy_sentence_survives
 
 check_multi_gh_account_absent() {
   # 8 assertions per spec 2026-04-27-cut-multi-gh-account §3.6.
@@ -5858,6 +5857,7 @@ check "smoke_summary_breaks_down_by_class"    check_smoke_summary_breaks_down_by
 check "agent_claims_doc_exists_and_classified" check_agent_claims_doc_exists_and_classified
 check "spec_compliance_checker_description_narrow" check_spec_compliance_checker_description_narrow
 check "mission_r_enforcement_claim_narrow"         check_mission_r_enforcement_claim_narrow
+check "check_new_pin_classified" check_new_pin_classified
 echo
 
 

@@ -1,0 +1,11 @@
+# smoke-classification-baseline.txt
+
+The sibling baseline file is for pre-existing unclassified smoke helper names.
+It is grandfathering data for BACKLOG #61, not the place to classify new work.
+
+New pins go to manifest, not baseline: add `<helper_name> <class>` to
+`tests/smoke-proves-manifest.txt` using `docs/smoke-pin-classification.md`.
+
+Deliberate baseline edits are review-visible convention debt, not
+machine-rejected. Treat a baseline diff as something reviewers should notice and
+ask about.
