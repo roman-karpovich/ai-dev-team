@@ -2476,10 +2476,10 @@ check_codex_fast_absent() {
   # 'Codex Fast' (space), 'model_fast' (underscore), and 'T-CF' (with hyphen
   # + suffix).
   # 1. No `Codex Fast` literal in live skill prose / docs / agents / config.
-  ! grep -rqF 'Codex Fast' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'Codex Fast' 'absence #1' \
     || { echo "absence #1 FAIL: 'Codex Fast' literal still present in live source"; return 1; }
   # 2. No `T-CF` literal in live source.
-  ! grep -rqE 'T-CF' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'T-CF' 'absence #2' \
     || { echo "absence #2 FAIL: 'T-CF' literal still present in live source"; return 1; }
   # 3. No retired check-helper definitions in tests/smoke-helpers.sh.
   ! grep -qE '^check_(cross_audit_phase0_bans_model_fast|spec_template_codex_fast_rationale|agent_routing_codex_fast_rationale)\(\)' tests/smoke-helpers.sh \
@@ -2493,10 +2493,8 @@ check_codex_fast_absent() {
   ! grep -qE '^check "check_smoke_helper_(phase0_cross_audit_rejected|p3_spec_template_no_codex_action_rejected|p3_agent_routing_no_codex_action_rejected)"' tests/smoke.sh \
     || { echo "absence #4c FAIL: retired wrapper-rejection registration still present in tests/smoke.sh"; return 1; }
   # 5. No stale section-header comments containing the retired-variant literals.
-  ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke.sh \
-    || { echo "absence #5a FAIL: stale section-header comment with banned literal in tests/smoke.sh"; return 1; }
-  ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke-helpers.sh \
-    || { echo "absence #5b FAIL: stale section-header comment with banned literal in tests/smoke-helpers.sh"; return 1; }
+  assert_no_stale_section_header_comments 'Codex Fast|model_fast|T-CF' 'absence #5' \
+    || { echo "absence #5 FAIL: stale Codex Fast/model_fast/T-CF header in smoke files"; return 1; }
   # 6. Positive overcut guards (adjacent live surface survives).
   grep -qF '#### Option 1: Codex (developer-codex agent)' skills/feature/SKILL.md \
     || { echo "absence #6a FAIL: Option 1 menu subsection missing from skills/feature/SKILL.md"; return 1; }
