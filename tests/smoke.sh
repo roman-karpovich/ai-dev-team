@@ -641,18 +641,12 @@ check_feature_from_investigation_absent() {
     return 1
   fi
   if ! grep -qF '/feature new' skills/feature/SKILL.md; then
-    echo "assertion 4 FAIL: /feature new entry-point missing from skills/feature/SKILL.md"
+    echo "assertion 5 FAIL: /feature new entry-point missing from skills/feature/SKILL.md"
     return 1
   fi
-  if grep -qE '^# .*--from-investigation' tests/smoke.sh; then
-    echo "assertion 5 FAIL: stale section-header comment in tests/smoke.sh contains retired-bridge literal"
-    return 1
-  fi
-  if grep -qE '^# .*--from-investigation' tests/smoke-helpers.sh; then
-    echo "assertion 5 FAIL: stale section-header comment in tests/smoke-helpers.sh contains retired-bridge literal"
-    return 1
-  fi
-  echo "check_feature_from_investigation_absent: all 5 assertions OK"
+  assert_no_stale_section_header_comments '--from-investigation' 'assertion 6' \
+    || { echo "assertion 6 FAIL: stale --from-investigation header in smoke files"; return 1; }
+  echo "check_feature_from_investigation_absent: all 6 assertions OK"
 }
 
 check "feature --from-investigation absent" check_feature_from_investigation_absent
@@ -2476,10 +2470,10 @@ check_codex_fast_absent() {
   # 'Codex Fast' (space), 'model_fast' (underscore), and 'T-CF' (with hyphen
   # + suffix).
   # 1. No `Codex Fast` literal in live skill prose / docs / agents / config.
-  ! grep -rqF 'Codex Fast' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'Codex Fast' 'absence #1' \
     || { echo "absence #1 FAIL: 'Codex Fast' literal still present in live source"; return 1; }
   # 2. No `T-CF` literal in live source.
-  ! grep -rqE 'T-CF' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'T-CF' 'absence #2' \
     || { echo "absence #2 FAIL: 'T-CF' literal still present in live source"; return 1; }
   # 3. No retired check-helper definitions in tests/smoke-helpers.sh.
   ! grep -qE '^check_(cross_audit_phase0_bans_model_fast|spec_template_codex_fast_rationale|agent_routing_codex_fast_rationale)\(\)' tests/smoke-helpers.sh \
@@ -2493,10 +2487,8 @@ check_codex_fast_absent() {
   ! grep -qE '^check "check_smoke_helper_(phase0_cross_audit_rejected|p3_spec_template_no_codex_action_rejected|p3_agent_routing_no_codex_action_rejected)"' tests/smoke.sh \
     || { echo "absence #4c FAIL: retired wrapper-rejection registration still present in tests/smoke.sh"; return 1; }
   # 5. No stale section-header comments containing the retired-variant literals.
-  ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke.sh \
-    || { echo "absence #5a FAIL: stale section-header comment with banned literal in tests/smoke.sh"; return 1; }
-  ! grep -qE '^# .*(Codex Fast|model_fast|T-CF)' tests/smoke-helpers.sh \
-    || { echo "absence #5b FAIL: stale section-header comment with banned literal in tests/smoke-helpers.sh"; return 1; }
+  assert_no_stale_section_header_comments 'Codex Fast|model_fast|T-CF' 'absence #5' \
+    || { echo "absence #5 FAIL: stale Codex Fast/model_fast/T-CF header in smoke files"; return 1; }
   # 6. Positive overcut guards (adjacent live surface survives).
   grep -qF '#### Option 1: Codex (developer-codex agent)' skills/feature/SKILL.md \
     || { echo "absence #6a FAIL: Option 1 menu subsection missing from skills/feature/SKILL.md"; return 1; }
@@ -2537,15 +2529,15 @@ check_multi_gh_account_absent() {
   # registration lines (NOT arbitrary substring) — prevents PR A-2 X1 / A-3 X1
   # self-trigger. Assertion #6 scoped to ^# comment lines only.
   # 1. No `default_account` literal in live source surface.
-  ! grep -rqF 'default_account' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'default_account' 'absence #1' \
     || { echo "absence #1 FAIL: 'default_account' literal still present in live source"; return 1; }
   # 2. No `gh_token_env` literal in live source.
-  ! grep -rqF 'gh_token_env' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'gh_token_env' 'absence #2' \
     || { echo "absence #2 FAIL: 'gh_token_env' literal still present in live source"; return 1; }
   # 3. No `gh_host` literal AND no `gh_account_context` literal in live source.
-  ! grep -rqF 'gh_host' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'gh_host' 'absence #3a' \
     || { echo "absence #3a FAIL: 'gh_host' literal still present in live source"; return 1; }
-  ! grep -rqF 'gh_account_context' skills/ agents/ docs/ README.md .ai-dev-team.yml.example \
+  assert_literal_absent_in_live_source 'gh_account_context' 'absence #3b' \
     || { echo "absence #3b FAIL: 'gh_account_context' literal still present in live source"; return 1; }
   # 4. No retired check-helper definitions in tests/smoke.sh (anchored to
   #    ^<name>() definitions). Includes both 27 F-helpers + 2 internal helpers.
@@ -2563,10 +2555,8 @@ check_multi_gh_account_absent() {
   #    Self-reference safety: this section header uses Multi-GH-account
   #    (byte-distinct from Multi-account); helper-fn name multi_gh_account
   #    is snake_case (lowercase, underscores) and lives in body lines, not ^# .
-  ! grep -qE '^# .*(default_account|gh_token_env|gh_host|gh_account_context|--account |Multi-account)' tests/smoke.sh \
-    || { echo "absence #6a FAIL: stale section-header comment with banned literal in tests/smoke.sh"; return 1; }
-  ! grep -qE '^# .*(default_account|gh_token_env|gh_host|gh_account_context|--account |Multi-account)' tests/smoke-helpers.sh \
-    || { echo "absence #6b FAIL: stale section-header comment with banned literal in tests/smoke-helpers.sh"; return 1; }
+  assert_no_stale_section_header_comments 'default_account|gh_token_env|gh_host|gh_account_context|--account |Multi-account' 'absence #6' \
+    || { echo "absence #6 FAIL: stale multi-gh-account header in smoke files"; return 1; }
   # 7. Positive overcut guards — adjacent live surface MUST survive.
   grep -qF '## Phase 0.5: PR discovery (PR mode only)' skills/cross-audit/SKILL.md \
     || { echo "absence #7a FAIL: ## Phase 0.5 H2 missing from skills/cross-audit/SKILL.md"; return 1; }
@@ -5824,6 +5814,41 @@ check "kb-discovery-github-block-hard-fail"                check_kb_discovery_gi
 check "cross-audit-probe-downgrade-hard-fail"              check_cross_audit_probe_downgrade_hard_fail
 check "cross-audit-account-flag-hard-fail"                 check_cross_audit_account_flag_hard_fail
 check "feature-skill-from-investigation-hard-fail"         check_feature_skill_from_investigation_hard_fail
+echo
+
+# --- Shared absence-helper rejection wrappers (BACKLOG #57) ---
+echo "Shared absence-helper rejection wrappers (2026-04-30):"
+
+# Helper A rejection wrapper — exercises assert_literal_absent_in_live_source
+# against a fixture file containing the unique tamper literal. The wrapper
+# passes the fixture path as the helper's optional trailing path arg, so the
+# helper scans the fixture (NOT the production live-source path-set), finds
+# the tamper literal, returns 1; wrapper's `! ...` becomes true; success.
+check_smoke_helper_assert_literal_absent_in_live_source_rejects_stale() {
+  local fixture='tests/fixtures/shared-absence-helper-extraction/live-source-tamper.txt'
+  if ! assert_literal_absent_in_live_source 'TAMPER_LITERAL_FOR_HELPER_REJECTION_TEST' 'rejection-test' "$fixture" >/dev/null 2>&1; then
+    echo "assert_literal_absent_in_live_source correctly rejected stale live-source-tamper.txt fixture"
+    return 0
+  fi
+  echo "assert_literal_absent_in_live_source wrongly accepted live-source-tamper.txt"
+  return 1
+}
+
+# Helper B rejection wrapper — exercises assert_no_stale_section_header_comments
+# against a fixture file containing a `^# ` top-of-line comment matching the
+# tamper pattern. Same shape as Helper A wrapper.
+check_smoke_helper_assert_no_stale_section_header_comments_rejects_stale() {
+  local fixture='tests/fixtures/shared-absence-helper-extraction/stale-comment-tamper.sh'
+  if ! assert_no_stale_section_header_comments 'TAMPER_PATTERN_HELPER_B_REJECTION_TEST' 'rejection-test' "$fixture" >/dev/null 2>&1; then
+    echo "assert_no_stale_section_header_comments correctly rejected stale stale-comment-tamper.sh fixture"
+    return 0
+  fi
+  echo "assert_no_stale_section_header_comments wrongly accepted stale-comment-tamper.sh"
+  return 1
+}
+
+check "check_smoke_helper_assert_literal_absent_in_live_source_rejects_stale" check_smoke_helper_assert_literal_absent_in_live_source_rejects_stale
+check "check_smoke_helper_assert_no_stale_section_header_comments_rejects_stale" check_smoke_helper_assert_no_stale_section_header_comments_rejects_stale
 echo
 
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
