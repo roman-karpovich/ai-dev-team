@@ -1,5 +1,6 @@
 ---
 name: investigator
+# 40k: High Lords' Conclave — see docs/wh40k-cast.md
 description: Runs adversarial debate rounds between Claude and Codex. Returns convergence report with agreements, disagreements, and recommendations. Use when /investigate is invoked.
 model: opus
 effort: xhigh

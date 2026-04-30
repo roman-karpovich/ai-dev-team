@@ -1,5 +1,6 @@
 ---
 name: haiku-finding-scorer
+# 40k: Sister of Silence — see docs/wh40k-cast.md
 description: Independent Haiku-model scorer for pure-LLM cross-audit findings. Invoked by cross-auditor Step 3 Consolidation via Task tool. Returns per-finding {confidence: 0-100, rationale} — rubric-based, CLAUDE.md-cited evidence required for ≥90.
 model: haiku
 effort: default
