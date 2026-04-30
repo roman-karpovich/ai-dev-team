@@ -5826,6 +5826,41 @@ check "cross-audit-account-flag-hard-fail"                 check_cross_audit_acc
 check "feature-skill-from-investigation-hard-fail"         check_feature_skill_from_investigation_hard_fail
 echo
 
+# --- Shared absence-helper rejection wrappers (BACKLOG #57) ---
+echo "Shared absence-helper rejection wrappers (2026-04-30):"
+
+# Helper A rejection wrapper — exercises assert_literal_absent_in_live_source
+# against a fixture file containing the unique tamper literal. The wrapper
+# passes the fixture path as the helper's optional trailing path arg, so the
+# helper scans the fixture (NOT the production live-source path-set), finds
+# the tamper literal, returns 1; wrapper's `! ...` becomes true; success.
+check_smoke_helper_assert_literal_absent_in_live_source_rejects_stale() {
+  local fixture='tests/fixtures/shared-absence-helper-extraction/live-source-tamper.txt'
+  if ! assert_literal_absent_in_live_source 'TAMPER_LITERAL_FOR_HELPER_REJECTION_TEST' 'rejection-test' "$fixture" >/dev/null 2>&1; then
+    echo "assert_literal_absent_in_live_source correctly rejected stale live-source-tamper.txt fixture"
+    return 0
+  fi
+  echo "assert_literal_absent_in_live_source wrongly accepted live-source-tamper.txt"
+  return 1
+}
+
+# Helper B rejection wrapper — exercises assert_no_stale_section_header_comments
+# against a fixture file containing a `^# ` top-of-line comment matching the
+# tamper pattern. Same shape as Helper A wrapper.
+check_smoke_helper_assert_no_stale_section_header_comments_rejects_stale() {
+  local fixture='tests/fixtures/shared-absence-helper-extraction/stale-comment-tamper.sh'
+  if ! assert_no_stale_section_header_comments 'TAMPER_PATTERN_HELPER_B_REJECTION_TEST' 'rejection-test' "$fixture" >/dev/null 2>&1; then
+    echo "assert_no_stale_section_header_comments correctly rejected stale stale-comment-tamper.sh fixture"
+    return 0
+  fi
+  echo "assert_no_stale_section_header_comments wrongly accepted stale-comment-tamper.sh"
+  return 1
+}
+
+check "check_smoke_helper_assert_literal_absent_in_live_source_rejects_stale" check_smoke_helper_assert_literal_absent_in_live_source_rejects_stale
+check "check_smoke_helper_assert_no_stale_section_header_comments_rejects_stale" check_smoke_helper_assert_no_stale_section_header_comments_rejects_stale
+echo
+
 # --- Plugin claims-vs-runtime audit (BACKLOG #46) ---
 echo "Plugin claims-vs-runtime audit pins:"
 check "smoke_proves_manifest_canonical"       check_smoke_proves_manifest_canonical

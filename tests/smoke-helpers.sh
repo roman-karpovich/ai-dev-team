@@ -3662,3 +3662,58 @@ check_probe_downgrade_flag_absent() {
   fi
   echo "check_probe_downgrade_flag_absent: all 5 assertions OK"
 }
+
+# Asserts the given literal does NOT appear in any of the scanned files.
+# Default scan-set (no trailing args): skills/ agents/ docs/ README.md
+# .ai-dev-team.yml.example — the canonical live-source surface.
+# When trailing args are given, they REPLACE the default scan-set entirely
+# (the path-list arg form is for tamper-fixture rejection wrappers).
+#
+# Args:
+#   $1 — literal (passed to grep -F as fixed string)
+#   $2 — failure-message prefix (e.g. "absence #2", caller-controlled)
+#   $3+ — OPTIONAL: path-list arg form (overrides default scan-set)
+#
+# Exits 0 if literal is absent; 1 with diagnostic on stderr if present.
+assert_literal_absent_in_live_source() {
+  local literal="$1"
+  local prefix="$2"
+  shift 2
+  local paths=("$@")
+  if [ ${#paths[@]} -eq 0 ]; then
+    paths=(skills/ agents/ docs/ README.md .ai-dev-team.yml.example)
+  fi
+  if grep -rqF -- "$literal" "${paths[@]}"; then
+    echo "$prefix FAIL: '$literal' literal still present in live source" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Asserts no top-level (^#) comment line in any scanned file matches the
+# given ERE pattern. Default scan-set (no trailing args): tests/smoke.sh
+# tests/smoke-helpers.sh — the only smoke files this rule applies to in
+# production. When trailing args are given, they REPLACE the default
+# scan-set entirely (the path-list arg form is for tamper-fixture
+# rejection wrappers).
+#
+# Args:
+#   $1 — ERE regex pattern (no anchors needed — caller-controlled body)
+#   $2 — failure-message prefix
+#   $3+ — OPTIONAL: path-list arg form (overrides default scan-set)
+#
+# Exits 0 if no stale comment; 1 with diagnostic on stderr otherwise.
+assert_no_stale_section_header_comments() {
+  local pattern="$1"
+  local prefix="$2"
+  shift 2
+  local files=("$@")
+  if [ ${#files[@]} -eq 0 ]; then
+    files=(tests/smoke.sh tests/smoke-helpers.sh)
+  fi
+  if grep -qE "^# .*($pattern)" "${files[@]}"; then
+    echo "$prefix FAIL: stale ^# .*$pattern comment header(s) present" >&2
+    return 1
+  fi
+  return 0
+}

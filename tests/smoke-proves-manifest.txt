@@ -104,3 +104,7 @@ check_kb_discovery_github_block_hard_fail prompt-text
 check_cross_audit_probe_downgrade_hard_fail prompt-text
 check_cross_audit_account_flag_hard_fail prompt-text
 check_feature_skill_from_investigation_hard_fail prompt-text
+
+# Shared absence-helper extraction (BACKLOG #57, spec 2026-04-30)
+check_smoke_helper_assert_literal_absent_in_live_source_rejects_stale behavioral
+check_smoke_helper_assert_no_stale_section_header_comments_rejects_stale behavioral
