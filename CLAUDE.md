@@ -45,6 +45,10 @@ for this repo). The flow:
   sections — they look ugly.
 - Every change is traceable to a titled, labeled PR.
 
+### Public-output hygiene (R8)
+
+KB is internal documentation. Commit messages, PR titles, PR bodies, and PR review comments — in this repo and in any other repo touched by an `ai-dev-team` workflow — MUST NOT reference KB paths (`<kb>/...`), spec paths, workdoc paths, finding-file paths, audit slugs, or footers like "Spec: …" / "Audit trail: …" / "Workdoc: …". Describe changes in repo-internal terms (files, behaviour, tests). Default Claude Code PR-template sections that don't fit this repo's flow ("Test plan", "Generated with Claude Code" footer) are also omitted by user standing instruction. Full rule + cleanup discipline + cross-audit publish carve-out: R8 in `skills/feature/references/code-quality-rules.md`.
+
 ### When to skip the flow
 
 Only when the user explicitly says so (e.g. "just push this to main"). Default is PR flow.
