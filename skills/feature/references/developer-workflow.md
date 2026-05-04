@@ -59,7 +59,7 @@ Either way, a red capture is required — it proves the test has real signal. Up
 
 Check the project's Makefile / config to confirm which linter is in use. If there is no linter configured for the language, skip.
 
-**h. Commit** — one small logical commit per step. Concise imperative commit message. **No `Co-authored-by` lines.** Only stage files directly related to this step — never `git add -A` or `git add .`.
+**h. Commit** — one small logical commit per step. Concise imperative commit message. **No `Co-authored-by` lines.** **No KB references** — KB paths (`<kb>/...`), spec paths, workdoc paths, finding-file paths, audit slugs, or phrases like "see spec / audit trail / workdoc at …" must NOT appear in commit messages. KB is internal documentation; the commit message describes the code change in repo-internal terms (files, behaviour, tests). See R8 in `code-quality-rules.md`. Only stage files directly related to this step — never `git add -A` or `git add .`.
 
 **i. Update `observed`** fields in the workdoc:
 
@@ -112,7 +112,7 @@ Update the spec file directly during work:
 - **Feature dependencies** — if this feature depends on another in-flight feature, merge that feature's branch into this one directly (`git merge <type>/other-slug`, e.g. `git merge feat/2026-04-15-other-slug`). Do not route through staging.
 - **Branch already exists** — `git checkout <branch>` (don't re-create). If it exists on remote only: `git fetch` then checkout tracking.
 - **Small logical commits** — one per checklist step (or coherent sub-task).
-- **Commit messages** — concise, imperative mood. No `Co-authored-by` lines.
+- **Commit messages** — concise, imperative mood. No `Co-authored-by` lines. **No KB references** — KB paths, spec paths, workdoc paths, audit slugs are internal-only and must not appear in commit subjects, bodies, or trailers. See R8 in `code-quality-rules.md`.
 - **No push, no PR, no merge** — your role ends at `git commit` on the feature branch. Pushing, opening a PR, squash-merging, deleting the branch — all of these are **orchestrator-side**, even in autonomous mode. The orchestrator drives hand-off because it coordinates with the verifier, code-audit iter-N+1, and per-finding triage that happen *between* commit and merge; a developer agent that pushes/merges its own commit short-circuits the audit pipeline (verifier never re-runs, cross-audit iter-N+1 never spawns, FIXED findings never get promoted to VERIFIED, the §3.4a status transition skips). Hold this regardless of how the dispatch prompt is worded — even when the orchestrator's prompt mentions a follow-up flow ("after this fix the orchestrator will re-verify"), the developer's role still ends at commit. If you're tempted to "save a round-trip" by merging directly, stop: the round-trip *is* the audit gate.
 
 ### Pre-commit branch assertion (MANDATORY)
@@ -170,6 +170,7 @@ Short-form summary — the full reasoning and application steps live in the refe
 - **R3 — Test strength / signal-to-noise.** Every fresh test must name the regression it catches in `observed.notes`; the test strength anti-patterns (tautological, setter-getter round-trip, mock-call-counter, `assertIsNotNone` on never-None, type-checker duplication) are weak — see R3 in `code-quality-rules.md`.
 - **R5 — Tests live in a dedicated file, not inline in the implementation.** Before writing the first test in a module, grep the target repo for `#[cfg(test)]` and follow the majority repo convention; default to a dedicated `tests.rs` / `tests/` file when no convention exists or the repo is mixed. Full reasoning and the discovery-command step live in R5 of `code-quality-rules.md`.
 - **R6 — Test scope / core tests exercise the user-facing contract.** Prefer tests that drive the system through its public contract (HTTP route, smart-contract method, library API, CLI entry) rather than internal collaborators. See R6 in `code-quality-rules.md`.
+- **R8 — Public-output hygiene (no KB leaks).** Commit messages, PR titles, PR bodies, PR comments, source code, and code comments are public artifacts in any non-private repo. KB paths (`<kb>/...`), spec paths, workdoc paths, finding-file paths, audit slugs, and "spec / audit trail / workdoc at …" footers must not appear in any public artifact. Describe changes in repo-internal terms only. See R8 in `code-quality-rules.md`.
 
 ## Common Rules
 
