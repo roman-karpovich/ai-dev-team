@@ -253,3 +253,35 @@ R7 refines R5 — R5 says "mirror the repo convention, including an inline-is-co
 5. Reviewers verify: a new source file landing with inline tests >40 lines is a review block, not a warning — fix before APPROVED. Trivial single-test inline blocks are fine per the exception. When extracting opportunistically during a feature spec, the extraction commit is separate from the behaviour-change commits per R4-style single-responsibility.
 
 ---
+
+## R8 — Public-output hygiene (no KB leaks)
+
+**Rule**: KB is internal documentation. References to KB — paths (`<kb>/...`, `~/dev/.../<vault>/...`), spec paths, workdoc paths, finding-file paths, audit slugs, or phrases like "see spec / audit trail / workdoc at …" — MUST NOT appear in any public artifact. Public artifacts are: commit subjects, commit bodies, commit trailers, PR titles, PR bodies, PR review comments, replies to bots/reviewers on PRs, source code, code comments, public design docs / READMEs / CHANGELOGs / release notes.
+
+**Why**: KB is the user's private layer for cross-session context. Leaking KB paths into PRs (especially in third-party repos like `AquaToken/soroban-amm`) exposes internal workflow structure to outside collaborators, clutters review threads with paths nobody outside the workflow can navigate, and pollutes release-notes generated from PR titles/labels. The cited incident: PR #165 on `AquaToken/soroban-amm` (2026-05-04) shipped with a "Spec + audit trail:" footer in the PR body that linked to `<kb>/repos/soroban-amm/...`; the user had to clean both the PR description and a follow-up bot reply that mirrored the same footer. The default Claude Code PR template (system prompt) similarly tends to inject a "Test plan" section + "Generated with Claude Code" footer; both are public-output noise that R8 generalises against.
+
+R8 sits orthogonal to R1–R7 (which govern test/code quality). It is an **output-hygiene** rule rather than a test-quality rule, but it lives in this file because every developer agent that writes a commit message must follow it, and `spec-compliance-checker` is the natural enforcement seam.
+
+**How to apply**:
+
+1. **Commit messages**. Before every `git commit`, sanity-check the subject and body. The subject describes the code change in conventional-commit form (`feat(scope): …`, `fix: …`). The body, if present, describes *why* in repo-internal terms — files touched, behaviour changed, tests added. Do NOT include:
+   - KB paths (`<kb>/repos/<project>/design/<spec>.md`, `<kb>/repos/<project>/security/<slug>-findings.md`, etc.)
+   - Spec paths or spec slugs (`2026-04-21-probe-e-diff-scope-leak`)
+   - Workdoc paths (`design/workdocs/<slug>/exec.md`)
+   - Audit slugs (`<audit_slug>-findings`, `<audit_slug>-workdoc-iter<N>`)
+   - Footer phrases: "Spec: …", "Audit trail: …", "Workdoc: …", "see KB at …"
+   - Tooling footers: "Generated with Claude Code", "Co-authored-by: Claude …" — already covered by §Git Workflow but worth restating.
+
+2. **PR titles and bodies**. The PR is the user's responsibility to author, but the developer agent's commit messages flow into squash-merge titles and the auto-generated PR body via `gh pr create`. Anything that violates rule (1) for commits also violates R8 for PRs. If a PR body is being drafted in this session (e.g. inside the orchestrator prompting for one), apply rule (1) to the body. The default Claude Code PR template's "Test plan" section and "Generated with Claude Code" footer are public-output noise — omit them by default; the user has standing instructions against both. Never add a "Spec + audit trail:" / "Workdoc:" footer linking to KB.
+
+3. **PR review comments (cross-audit publish)**. The `cross-audit publish` flow posts findings as inline review comments. Finding bodies (`title`, `description`, `fix`) are written for the PR audience and must describe the issue in terms of the repo's code, not KB. The cross-auditor's prompt template already produces code-focused findings; if a future change tempts you to add a "see findings file at <kb>/…" footer to published comments, block it. This applies equally to replies posted to PR bots (e.g. `chatgpt-codex-connector[bot]` comments): paraphrase the KB-derived reasoning into in-PR terms (cite repo files, behaviour, tests) instead of pasting KB excerpts or paths.
+
+4. **Source code and code comments**. Production code, tests, and inline comments must not reference KB paths. If a non-obvious "why" comment is genuinely needed (per the project comment-discipline rules), it should describe the constraint or invariant directly, not point at a KB document. The KB lives outside the repo and outside checkout space; a comment pointing there is dead on arrival for anyone reading the file from GitHub.
+
+5. **Internal-only artifacts that ARE allowed to reference KB**. The `ai-dev-team` repo's own internal docs (this file, `CLAUDE.md`, plugin skill specs that describe `<kb>/...` semantics), workdocs, findings files, research notes, spec files — all of these live inside KB or describe how KB works. R8 does not constrain them. The boundary is "is this artifact going to surface in a non-private repo's GitHub UI / release notes / external review tooling?" — if yes, R8 applies.
+
+6. **Cleanup discipline**. If KB-leaking text has already shipped to a public artifact, treat the cleanup as a single atomic operation: rewrite the PR body / amend the bot reply / edit the comment in one pass, then verify with `gh pr view <N> --json body,comments` that no KB path remains. Do NOT amend prior commits to remove KB references unless those commits have not yet been pushed — rewriting published history is a worse outcome than leaving the leak in commit history (which is far less visible than the PR body and review thread).
+
+7. **Spec-compliance-checker enforcement seam**. After step h. **Commit**, the checker SHOULD run a quick grep against the new commit's `git show -s --format=%B <sha>` for the patterns listed in rule (1) — KB-style paths and footer phrases. A hit is a FAIL with remediation "rewrite the commit message without KB references". Implementation lives in `agents/spec-compliance-checker.md`; the rule itself is canonical here.
+
+---

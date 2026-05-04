@@ -81,6 +81,11 @@ Save all output to: <workdoc_dir>/captures/
 
 6. Commit (one logical commit for this step, no "Co-authored-by" lines,
    stage only files directly related to this step — never `git add -A`).
+   **No KB references in the commit message** — no KB paths (`<kb>/...`),
+   spec paths, workdoc paths, audit slugs, or footers like
+   "Spec: …" / "Audit trail: …" / "Workdoc: …". KB is internal documentation;
+   describe the change in repo-internal terms (files, behaviour, tests).
+   See R8 in `skills/feature/references/code-quality-rules.md`.
 
 7. Update observed.actual_files_touched and observed.commit_shas in the workdoc (after commit).
 

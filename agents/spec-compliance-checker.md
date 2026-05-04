@@ -2,7 +2,7 @@
 name: spec-compliance-checker
 # 40k: Officio Prefectus Commissar — see docs/wh40k-cast.md
 description: >
-  Compliance reviewer for R1, R2, R3, the workdoc DONE rule, branch convention, and git workflow.
+  Compliance reviewer for R1, R2, R3, R8, the workdoc DONE rule, branch convention, and git workflow.
   R4-R7 are convention-text references in `code-quality-rules.md`, not gated here.
   Runs after each task-level step during implementation. Has authority to BLOCK step completion.
   Fresh context per invocation — never inherits session history.
@@ -135,6 +135,32 @@ v1 covers two regex-detectable shapes from the R3 anti-pattern list in `code-qua
    - Otherwise → no flag (advisory in report only).
 5. Anti-pattern list is a floor; v1 covers 2 shapes. Future iterations may add more (tautological, setter-getter, type-checker-duplication) — append-only, do not mutate v1.
 
+#### R8 — Public-output hygiene (no KB leaks in commit messages)
+
+Commit messages are public artifacts (squash-merge titles surface in release notes; PR auto-bodies aggregate commit messages). KB references in commit text leak internal workflow structure into third-party repos. This check grep-scans each commit's full message for KB-leak patterns; LLM-side judgment confirms the hit is a real leak versus an in-source-code reference (e.g. a commit message describing a code change that itself adds a doc string mentioning a path).
+
+**How to apply**:
+
+1. For each SHA in `observed.commit_shas` for this step (or, if the field is missing, the SHAs resolved via the §1c fallback tiers), run:
+   ```
+   git -C <project_path> show -s --format=%B <sha>
+   ```
+   Concatenate the outputs into a single block.
+
+2. Grep the block for the v1 R8 pattern set:
+   - **KB-path patterns**: `<kb>` literal, `repos/<project>/design/`, `repos/<project>/security/`, `repos/<project>/research/`, `design/workdocs/`, `<audit_slug>-findings`, `<audit_slug>-workdoc`.
+   - **Footer-phrase patterns** (case-insensitive line-anchored): `^Spec:\s`, `^Audit\s+trail:\s`, `^Workdoc:\s`, `^Findings:\s`, `^Generated\s+with\s+Claude\s+Code\b`, `^Co-authored-by:\s+Claude\b`.
+   - **Spec-slug patterns**: a date-prefixed slug `\b\d{4}-\d{2}-\d{2}-[a-z0-9-]+\b` IS allowed when it appears as a code identifier (function name, file name in the diff) but flagged when it sits as a standalone token in a footer line — LLM-side judgment.
+
+3. **Verdict per hit**:
+   - Footer-phrase hit (any of `Spec:`, `Audit trail:`, `Workdoc:`, `Findings:`, `Generated with Claude Code`, `Co-authored-by: Claude`) → automatic **FAIL — R8**: "Commit `<sha>` message contains R8-prohibited footer line `<line>`. Per R8, KB references and tooling footers must not appear in commit messages. Rewrite the commit message and force-push (if the branch is unshared) or add a follow-up `chore: cleanup` commit if already published."
+   - KB-path hit not inside a code-block / quoted-diff context → **FAIL — R8**: "Commit `<sha>` message references KB path `<match>`. Rewrite the message in repo-internal terms (files, behaviour, tests)."
+   - Spec-slug hit in a non-footer position → flag as **DRIFT — R8** advisory: "Commit `<sha>` message references spec slug `<match>`. Confirm this is a code identifier, not a KB pointer; if KB pointer, rewrite the message."
+
+4. **Remediation discipline**: if the offending commit has not been pushed (`git -C <project_path> branch -r --contains <sha>` returns nothing for `origin/<branch>`), the developer SHOULD `git commit --amend` (or `git rebase -i` for non-HEAD) to rewrite the message. If it has been pushed AND merged into a public branch, prefer a follow-up cleanup commit over rewriting published history; the FAIL stays until the cleanup lands.
+
+5. Anti-pattern list is a floor — append new R8-leak shapes here as they surface in the wild (e.g. new footer phrases, new KB-path conventions). Do not mutate existing entries.
+
 ### 6. Return verdict
 
 ```markdown
@@ -167,6 +193,7 @@ v1 covers two regex-detectable shapes from the R3 anti-pattern list in `code-qua
 - R1 (dead-code cleanup): <clean | DRIFT — list helpers>
 - R2 (fresh tests in green capture): <none | advisory — list test files>
 - R3 (weak-phrase fresh tests): <clean | DRIFT — list test functions with sole weak-phrase assertion>
+- R8 (commit-message KB-leak / tooling-footer scan): <clean | FAIL — list `<sha>: <line>` hits | DRIFT — list spec-slug advisories>
 
 ### Recommendation (if integration probe absent)
 <if applicable>
@@ -189,5 +216,6 @@ v1 covers two regex-detectable shapes from the R3 anti-pattern list in `code-qua
 - Code quality R1 violations are DRIFT — developer must delete the orphaned helper + its tests, or add a public-API note to the spec Log, before proceeding.
 - Code quality R2 has two modes: (a) new fresh tests in the green capture is advisory only and never the sole reason for DRIFT; (b) a modified core test without spec §3 backing + Log entry is always DRIFT — core assertion changes are load-bearing and must be traceable to the spec's declared behaviour change.
 - Code quality R3 violations are DRIFT — flag a fresh test whose sole assertion matches a v1 weak-phrase regex (`assertIsNotNone` family or `call_count` / `assert_called_once` / `assert_called_with` family) and whose function body has no observable-effect assertion. Sole-assertion judgment is LLM-side; never auto-FAIL on regex hit alone.
+- Code quality R8 violations: footer-phrase or KB-path hits in commit messages are FAIL (load-bearing — KB references in public artifacts is the core failure R8 prevents). Spec-slug-as-token hits are DRIFT advisory pending LLM judgment of whether the slug is a code identifier or a KB pointer. Remediation lives in §5 R8 step 4 — amend if unpushed, follow-up `chore` commit if already published.
 - Be specific. Every issue must name the file, the deviation, and what was expected.
 - Do not soften findings. A partial implementation is not a "good start" — it's DRIFT.
