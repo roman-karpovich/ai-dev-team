@@ -3814,8 +3814,8 @@ rules = fm.get("rules") if isinstance(fm, dict) else None
 if not isinstance(rules, list):
     print(f"{path}: frontmatter `rules:` is not a list (assertion a)", file=sys.stderr)
     sys.exit(1)
-if len(rules) != 8:
-    print(f"{path}: rules length={len(rules)}, expected 8 (assertion a)", file=sys.stderr)
+if len(rules) != 14:
+    print(f"{path}: rules length={len(rules)}, expected 14 (assertion a)", file=sys.stderr)
     sys.exit(1)
 
 required_fields = {"id", "short", "category", "applies_to", "enforced_by"}
@@ -3902,6 +3902,12 @@ golden = {
     "R6": ("quality", ["all"], ["none"]),
     "R7": ("quality", ["all"], ["none"]),
     "R8": ("process", ["all"], ["spec-compliance-checker"]),
+    "R9": ("security", ["backend"], ["cross-auditor:security"]),
+    "R10": ("security", ["backend"], ["cross-auditor:security"]),
+    "R11": ("security", ["backend"], ["cross-auditor:security"]),
+    "R12": ("security", ["backend"], ["cross-auditor:security"]),
+    "R13": ("security", ["backend"], ["cross-auditor:security"]),
+    "R14": ("security", ["backend"], ["cross-auditor:security"]),
 }
 by_id = {r["id"]: r for r in rules}
 for rid, (cat, apply, enf) in golden.items():
@@ -3920,30 +3926,38 @@ for rid, (cat, apply, enf) in golden.items():
         sys.exit(1)
 
 # (k) Taxonomy placement: exactly one `^## Taxonomy$` heading; line number > line
-# number of the first `^---$` divider AFTER the `^## R8 —` heading.
+# number of the first `^---$` divider AFTER the LAST `^## R<N> — ` heading
+# (max R-id by integer parse). Tracking the last R-rule's closing divider —
+# rather than R8's — defends against a regression that inserts `## Taxonomy`
+# between two R-rules deeper in the cluster (e.g. between R10 and R11).
 lines = text.splitlines()
 taxonomy_lines = [i for i, ln in enumerate(lines) if ln == "## Taxonomy"]
 if len(taxonomy_lines) != 1:
     print(f"{path}: expected exactly one `## Taxonomy` heading; found {len(taxonomy_lines)} (assertion k)", file=sys.stderr)
     sys.exit(1)
-r8_lines = [i for i, ln in enumerate(lines) if ln.startswith("## R8 — ")]
-if len(r8_lines) != 1:
-    print(f"{path}: expected exactly one `## R8 — ` heading; found {len(r8_lines)} (assertion k)", file=sys.stderr)
+r_heading_re = re.compile(r"^## R(\d+) — ")
+r_headings = []  # list of (rid_int, line_index)
+for i, ln in enumerate(lines):
+    m = r_heading_re.match(ln)
+    if m:
+        r_headings.append((int(m.group(1)), i))
+if not r_headings:
+    print(f"{path}: no `## R<N> — ` headings found (assertion k)", file=sys.stderr)
     sys.exit(1)
-r8_line = r8_lines[0]
+last_rid, last_r_line = max(r_headings, key=lambda t: t[0])
 divider_line = None
-for i in range(r8_line + 1, len(lines)):
+for i in range(last_r_line + 1, len(lines)):
     if lines[i] == "---":
         divider_line = i
         break
 if divider_line is None:
-    print(f"{path}: no `---` divider found after `## R8 —` heading (assertion k)", file=sys.stderr)
+    print(f"{path}: no `---` divider found after last R-rule heading `## R{last_rid} — ` (assertion k)", file=sys.stderr)
     sys.exit(1)
 if taxonomy_lines[0] <= divider_line:
-    print(f"{path}: `## Taxonomy` at line {taxonomy_lines[0]+1} is not AFTER the post-R8 `---` divider at line {divider_line+1} (assertion k)", file=sys.stderr)
+    print(f"{path}: `## Taxonomy` at line {taxonomy_lines[0]+1} is not AFTER the closing `---` divider of the last R-rule (R{last_rid}) at line {divider_line+1} (assertion k)", file=sys.stderr)
     sys.exit(1)
 
-print(f"R-rules taxonomy schema OK ({len(rules)} rules; placement after post-R8 divider verified)")
+print(f"R-rules taxonomy schema OK ({len(rules)} rules; placement after last R-rule's closing divider verified)")
 PY
 }
 
@@ -3991,4 +4005,384 @@ check_spec_compliance_filter_preamble() {
   printf '%s\n' "$section" | grep -qE '§3\.4|Trigger A|Trigger B' \
     || { echo "$path §5 preamble missing §3.4 / Trigger A / Trigger B reference" >&2; return 1; }
   echo "spec-compliance-checker §5 preamble has all three matcher tokens"
+}
+
+# Security cluster R9-R14 content invariants (R-rules web-security cluster
+# Pin 4 — class: schema). Asserts (a) frontmatter entries for {R9..R14} present;
+# (b) golden metadata category=security/applies_to=[backend]/enforced_by=[cross-auditor:security];
+# (c) `^## R<N> —` body heading per id; (d) Bad/Good code markers in each body section;
+# (e) Radaro / POL-ENG-AIDEV-001 anchor present per body; (f) backend filter returns 14;
+# (g) smart_contract filter returns 8; (h) per-rule canonical-pattern presence in the
+# **Good code block specifically** — block-level extraction defeats Bad/Good content-shift
+# bypass for BOTH directions. R10 also checks two negative regex assertions in Good code
+# (X6 + X7/X14 closures); (i) per-rule canonical-anti-pattern presence in the **Bad code
+# block specifically** — locks the educational anti-pattern shape so a regression cannot
+# silently weaken Bad code (e.g. dropping the f-string SQLi shape, the literal sk_live_
+# secret, or the logger.info-as-audit anti-pattern).
+check_security_cluster_rules_present() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import re
+import sys
+
+path = sys.argv[1]
+try:
+    import yaml
+except ImportError:
+    print("PyYAML not available (required by check_security_cluster_rules_present)", file=sys.stderr)
+    sys.exit(1)
+
+text = open(path, encoding="utf-8").read()
+m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+if not m:
+    print(f"{path}: missing YAML frontmatter", file=sys.stderr)
+    sys.exit(1)
+fm = yaml.safe_load(m.group(1))
+rules = fm.get("rules") if isinstance(fm, dict) else None
+if not isinstance(rules, list):
+    print(f"{path}: frontmatter `rules:` is not a list", file=sys.stderr)
+    sys.exit(1)
+by_id = {r["id"]: r for r in rules if isinstance(r, dict) and "id" in r}
+
+cluster_ids = ["R9", "R10", "R11", "R12", "R13", "R14"]
+
+# (a) frontmatter entries present
+for rid in cluster_ids:
+    if rid not in by_id:
+        print(f"{path}: cluster id {rid} missing from frontmatter rules: list (assertion a)", file=sys.stderr)
+        sys.exit(1)
+
+# (b) golden metadata
+for rid in cluster_ids:
+    r = by_id[rid]
+    if r.get("category") != "security":
+        print(f"{path}: {rid}.category={r.get('category')!r}, expected 'security' (assertion b)", file=sys.stderr)
+        sys.exit(1)
+    if list(r.get("applies_to") or []) != ["backend"]:
+        print(f"{path}: {rid}.applies_to={r.get('applies_to')!r}, expected ['backend'] (assertion b)", file=sys.stderr)
+        sys.exit(1)
+    if list(r.get("enforced_by") or []) != ["cross-auditor:security"]:
+        print(f"{path}: {rid}.enforced_by={r.get('enforced_by')!r}, expected ['cross-auditor:security'] (assertion b)", file=sys.stderr)
+        sys.exit(1)
+
+# Helpers — extract a body section as the substring from the `## R<N> — ` heading
+# through the next `^---$` divider line. Returns the full slice (heading + body
+# + divider). For block extraction we then carve Bad code and Good code slices.
+def extract_section(rid):
+    pat = re.compile(r"(?m)^## " + re.escape(rid) + r" — ")
+    m_h = pat.search(text)
+    if not m_h:
+        return None
+    start = m_h.start()
+    # find first standalone `---` after start
+    div_pat = re.compile(r"(?m)^---$")
+    m_d = div_pat.search(text, m_h.end())
+    if not m_d:
+        return text[start:]
+    return text[start:m_d.end()]
+
+def extract_block_after(section, marker):
+    """Return text from the marker line through the next `^---$` divider
+    (exclusive). Used for Good code block extraction (assertion h)."""
+    if section is None:
+        return ""
+    idx = section.find(marker)
+    if idx == -1:
+        return ""
+    rest = section[idx:]
+    # next standalone `---` line
+    m_d = re.search(r"(?m)^---$", rest)
+    if not m_d:
+        return rest
+    return rest[:m_d.start()]
+
+# (c) body heading per id
+for rid in cluster_ids:
+    sec = extract_section(rid)
+    if sec is None:
+        print(f"{path}: no `## {rid} — ` body heading found (assertion c)", file=sys.stderr)
+        sys.exit(1)
+
+# (d) Bad/Good code markers
+for rid in cluster_ids:
+    sec = extract_section(rid)
+    if "**Bad code**" not in sec:
+        print(f"{path}: {rid} body missing `**Bad code**` marker (assertion d)", file=sys.stderr)
+        sys.exit(1)
+    if "**Good code**" not in sec:
+        print(f"{path}: {rid} body missing `**Good code**` marker (assertion d)", file=sys.stderr)
+        sys.exit(1)
+
+# (e) Radaro AND POL-ENG-AIDEV-001 anchors — both required per spec; the
+# previous OR-of-positives let a regression remove one anchor while keeping
+# the other (anchor-downgrade silently undetected).
+for rid in cluster_ids:
+    sec = extract_section(rid)
+    if ("Radaro" not in sec) or ("POL-ENG-AIDEV-001" not in sec):
+        print(f"{path}: {rid} body missing Radaro AND/OR POL-ENG-AIDEV-001 anchor (both required) (assertion e)", file=sys.stderr)
+        sys.exit(1)
+
+# (f) backend filter returns 14 (R1..R8 [all] + R9..R14 [backend])
+def trigger_a_filter(rules_list, project_type):
+    return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
+
+filtered_backend = trigger_a_filter(rules, "backend")
+if len(filtered_backend) != 14:
+    print(f"{path}: backend filter returned {len(filtered_backend)}, expected 14 (assertion f)", file=sys.stderr)
+    sys.exit(1)
+
+# (g) smart_contract filter returns 8 (R1..R8 only — R9..R14 are [backend])
+filtered_sc = trigger_a_filter(rules, "smart_contract")
+if len(filtered_sc) != 8:
+    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 8 (assertion g)", file=sys.stderr)
+    sys.exit(1)
+
+# (h) Per-rule canonical-pattern presence — Good code block ONLY (block-level
+# extraction defeats Bad/Good content-shift bypass).
+def good_block(rid):
+    sec = extract_section(rid)
+    return extract_block_after(sec, "**Good code**")
+
+def bad_block(rid):
+    """Extract text from `**Bad code**` marker through the next `**Good code**`
+    marker. If `**Good code**` is missing, fall through to the next `^---$`
+    divider via extract_block_after's default behaviour. Symmetric to
+    good_block(rid) — used by assertion (i)."""
+    sec = extract_section(rid)
+    if sec is None:
+        return ""
+    idx = sec.find("**Bad code**")
+    if idx == -1:
+        return ""
+    rest = sec[idx:]
+    g_idx = rest.find("**Good code**")
+    if g_idx != -1:
+        return rest[:g_idx]
+    # No Good code marker — bound by next `^---$` divider instead
+    m_d = re.search(r"(?m)^---$", rest)
+    if not m_d:
+        return rest
+    return rest[:m_d.start()]
+
+# R9: request.user.id AND (PermissionDenied OR .filter()
+g9 = good_block("R9")
+if "request.user.id" not in g9:
+    print(f"{path}: R9 Good code block missing 'request.user.id' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+if ("PermissionDenied" not in g9) and (".filter(" not in g9):
+    print(f"{path}: R9 Good code block missing both 'PermissionDenied' and '.filter(' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+
+# R10: cursor.execute( AND %s AND (psycopg2.sql OR sql.Identifier);
+# negative: NOT 'assert table_name in', NOT `if[[:space:]].*;[[:space:]]*cursor\.execute`
+g10 = good_block("R10")
+if "cursor.execute(" not in g10:
+    print(f"{path}: R10 Good code block missing 'cursor.execute(' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+if "%s" not in g10:
+    print(f"{path}: R10 Good code block missing '%s' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+if ("psycopg2.sql" not in g10) and ("sql.Identifier" not in g10):
+    print(f"{path}: R10 Good code block missing both 'psycopg2.sql' and 'sql.Identifier' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+if "assert table_name in" in g10:
+    print(f"{path}: R10 Good code block contains forbidden 'assert table_name in' — strips under python -O (X6 closure, assertion h)", file=sys.stderr)
+    sys.exit(1)
+# Single-line `;`-chained guard: any line containing 'if ', then ';', then 'cursor.execute'
+chain_re = re.compile(r"if\s.*;\s*cursor\.execute")
+for line in g10.splitlines():
+    if chain_re.search(line):
+        print(f"{path}: R10 Good code block contains forbidden ';'-chained guard line: {line!r} (X7/X14 closure, assertion h)", file=sys.stderr)
+        sys.exit(1)
+
+# R11: os.environ AND (monkeypatch OR setenv)
+g11 = good_block("R11")
+if "os.environ" not in g11:
+    print(f"{path}: R11 Good code block missing 'os.environ' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+if ("monkeypatch" not in g11) and ("setenv" not in g11):
+    print(f"{path}: R11 Good code block missing both 'monkeypatch' and 'setenv' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+
+# R12: httponly=True AND secure=True AND samesite=
+g12 = good_block("R12")
+for tok in ("httponly=True", "secure=True", "samesite="):
+    if tok not in g12:
+        print(f"{path}: R12 Good code block missing '{tok}' (assertion h)", file=sys.stderr)
+        sys.exit(1)
+
+# R13: ${{ secrets. AND (OIDC OR id-token)
+g13 = good_block("R13")
+if "${{ secrets." not in g13:
+    print(f"{path}: R13 Good code block missing '${{{{ secrets.' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+if ("OIDC" not in g13) and ("id-token" not in g13):
+    print(f"{path}: R13 Good code block missing both 'OIDC' and 'id-token' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+
+# R14: (audit_log.emit( OR audit.record( OR AuditEvent.create() AND actor= AND outcome=
+g14 = good_block("R14")
+if not (("audit_log.emit(" in g14) or ("audit.record(" in g14) or ("AuditEvent.create(" in g14)):
+    print(f"{path}: R14 Good code block missing audit_log.emit(/audit.record(/AuditEvent.create( (assertion h)", file=sys.stderr)
+    sys.exit(1)
+if "actor=" not in g14:
+    print(f"{path}: R14 Good code block missing 'actor=' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+if "outcome=" not in g14:
+    print(f"{path}: R14 Good code block missing 'outcome=' (assertion h)", file=sys.stderr)
+    sys.exit(1)
+
+# (i) Per-rule canonical anti-pattern presence — Bad code block ONLY. Block-level
+# extraction defeats Bad/Good content-shift bypass for BOTH directions; without (i)
+# a regression that drops the f-string SQLi shape from R10 Bad, the literal sk_live_
+# from R11 Bad, the no-flags set_cookie from R12 Bad, or the logger.info-as-audit
+# from R14 Bad would silently pass while the rule loses its educational core.
+
+# R9: unconditional fetch shape — Order.objects.get(id=order_id) OR findById(req.params.id)
+b9 = bad_block("R9")
+if ("Order.objects.get(id=order_id)" not in b9) and ("findById(req.params.id)" not in b9):
+    print(f"{path}: R9 Bad code block missing IDOR anti-pattern (Order.objects.get(id=order_id) OR findById(req.params.id)) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R10: f-string SQL pattern — `f"...WHERE...{...}"` shape OR `% user_id` formatted SQL
+b10 = bad_block("R10")
+fstring_sql = re.search(r'f"[^"\n]*WHERE[^"\n]*\{', b10)
+if (fstring_sql is None) and ("% user_id" not in b10):
+    print(f"{path}: R10 Bad code block missing SQLi anti-pattern (f-string SQL with WHERE...{{...}} OR % user_id formatting) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R11: literal secret-shaped string — sk_live_ OR sk_test_ OR ghs_ OR ghp_ OR realpassword
+b11 = bad_block("R11")
+if not any(tok in b11 for tok in ("sk_live_", "sk_test_", "ghs_", "ghp_", "realpassword")):
+    print(f"{path}: R11 Bad code block missing literal secret-shaped string (sk_live_ / sk_test_ / ghs_ / ghp_ / realpassword) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R12: bare set_cookie() / res.cookie() with NO httponly flag in the same call.
+# Positive shape: a `set_cookie(...)` or `res.cookie(...)` call whose argument list
+# does not contain `httponly` / `httpOnly`. We scan call sites within the Bad block.
+r12_call_re = re.compile(r"(set_cookie|res\.cookie)\s*\(([^)]*)\)", re.DOTALL)
+r12_bad_found = False
+for m_call in r12_call_re.finditer(bad_block("R12")):
+    args = m_call.group(2)
+    if "httponly" not in args.lower():
+        r12_bad_found = True
+        break
+if not r12_bad_found:
+    print(f"{path}: R12 Bad code block missing no-flags set_cookie(...)/res.cookie(...) anti-pattern (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R13: literal token-shaped value — explicit anti-pattern strings the spec writes
+b13 = bad_block("R13")
+if not any(tok in b13 for tok in ("ghs_realtokenhere", "ghp_realtokenhere", "sk_live_realtokenshape", "sk_live_", "ghp_", "ghs_")):
+    print(f"{path}: R13 Bad code block missing literal token-shaped anti-pattern (ghs_/ghp_/sk_live_ shape) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R14: logger.info( near a state-change verb — relaxed positive: `logger.info(`
+# substring sufficient for the v1 anti-pattern shape (operational logger treated
+# as audit coverage).
+b14 = bad_block("R14")
+if "logger.info(" not in b14:
+    print(f"{path}: R14 Bad code block missing logger.info( anti-pattern (operational logger as audit coverage) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+print(f"R-rules security cluster {cluster_ids} present with canonical conventions in Good code blocks AND canonical anti-patterns in Bad code blocks")
+PY
+}
+
+# Cross-auditor §security mode load-the-cluster pin (R-rules web-security cluster
+# Pin 5 — class: prompt-text). Asserts the §`security` mode block in
+# agents/cross-auditor.md (a) names all six R-ids R9..R14 individually as
+# standalone substrings; (b) carries applies_to + backend tokens; (c) carries an
+# action verb (load|apply|read); (d) does NOT contain the obsolete "Today no such
+# rules exist" clause; (e) keeps the `**Smart Contracts / DeFi:**` heading; (f)
+# keeps the `**Backend Services:**` heading; (g) preserves all 9 distinguishing
+# bullet phrases verbatim (full-list pinning).
+check_cross_auditor_loads_security_cluster() {
+  local path="${1:-agents/cross-auditor.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  local section
+  section=$(awk '
+    /^### `security` mode$/ { in_s=1; print; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+
+  # (a) R-ids R9..R14 individually
+  local rid
+  for rid in R9 R10 R11 R12 R13 R14; do
+    printf '%s\n' "$section" | grep -qF "$rid" \
+      || { echo "$path §security mode missing R-id '$rid' (assertion a)" >&2; return 1; }
+  done
+
+  # (b) applies_to AND backend
+  printf '%s\n' "$section" | grep -qF 'applies_to' \
+    || { echo "$path §security mode missing 'applies_to' token (assertion b)" >&2; return 1; }
+  printf '%s\n' "$section" | grep -qF 'backend' \
+    || { echo "$path §security mode missing 'backend' token (assertion b)" >&2; return 1; }
+
+  # (c) action verb (case-insensitive substring) tied to R-rule consumption
+  printf '%s\n' "$section" | grep -qiE 'load|apply|read' \
+    || { echo "$path §security mode missing action verb (load/apply/read) (assertion c)" >&2; return 1; }
+
+  # (d) NEGATIVE — obsolete clause must be absent
+  if printf '%s\n' "$section" | grep -qF 'Today no such rules exist'; then
+    echo "$path §security mode still contains obsolete 'Today no such rules exist' clause (assertion d)" >&2
+    return 1
+  fi
+
+  # (e) Smart Contracts / DeFi heading
+  printf '%s\n' "$section" | grep -qF '**Smart Contracts / DeFi:**' \
+    || { echo "$path §security mode missing '**Smart Contracts / DeFi:**' heading (assertion e)" >&2; return 1; }
+
+  # (f) Backend Services heading
+  printf '%s\n' "$section" | grep -qF '**Backend Services:**' \
+    || { echo "$path §security mode missing '**Backend Services:**' heading (assertion f)" >&2; return 1; }
+
+  # (g) full-list pinning — all 9 distinguishing bullet phrases verbatim
+  local phrase
+  for phrase in 'Fund loss vectors' 'Math precision' 'Flash loan safety' 'Private key' 'Transaction signing' 'Slippage' 'Input validation' 'Race conditions' 'Resource exhaustion'; do
+    printf '%s\n' "$section" | grep -qF "$phrase" \
+      || { echo "$path §security mode missing distinguishing bullet phrase '$phrase' (assertion g — full-list pinning)" >&2; return 1; }
+  done
+
+  echo "cross-auditor §security mode loads R9-R14 cluster with all 9 supplemental bullets preserved"
+}
+
+# Cross-auditor Step 1 + Step 2 load-instructions pin (R-rules web-security
+# cluster Pin 6 — class: prompt-text). Gates
+# §3.4 sub-edits (b) and (c). Asserts the `## Step 1: Launch Codex` section
+# carries 7 load-bearing substrings AND the `## Step 2: Claude Audit (you)`
+# section carries 5 load-bearing substrings.
+check_cross_auditor_step1_step2_load_instructions() {
+  local path="${1:-agents/cross-auditor.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  local s1 s2
+  s1=$(awk '
+    /^## Step 1: Launch Codex/ { in_s=1; print; next }
+    in_s && /^## Step 2: Claude Audit/ { exit }
+    in_s { print }
+  ' "$path")
+  s2=$(awk '
+    /^## Step 2: Claude Audit/ { in_s=1; print; next }
+    in_s && /^## Step 3:/ { exit }
+    in_s { print }
+  ' "$path")
+
+  # (a) Step 1 — seven load-bearing substrings
+  local tok
+  for tok in 'code-quality-rules.md' 'category: security' 'Security R-rule cluster (project_type=' 'mode ∈ {security, full}' 'Trigger B' 'DO NOT paraphrase'; do
+    printf '%s\n' "$s1" | grep -qF "$tok" \
+      || { echo "$path §Step 1 section missing load-bearing token: '$tok' (Pin 6 assertion a)" >&2; return 1; }
+  done
+  printf '%s\n' "$s1" | grep -qE 'not reachable|focus-areas-only fallback' \
+    || { echo "$path §Step 1 section missing 'not reachable' / 'focus-areas-only fallback' token (Pin 6 assertion a)" >&2; return 1; }
+
+  # (b) Step 2 — five load-bearing substrings
+  for tok in 'code-quality-rules.md' 'Bad code' 'Good code' 'mode ∈ {security, full}' 'additively'; do
+    printf '%s\n' "$s2" | grep -qF "$tok" \
+      || { echo "$path §Step 2 section missing load-bearing token: '$tok' (Pin 6 assertion b)" >&2; return 1; }
+  done
+
+  echo "cross-auditor §Step 1 (7 substrings) + §Step 2 (5 substrings) load-instructions present"
 }
