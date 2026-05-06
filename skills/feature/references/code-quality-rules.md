@@ -57,6 +57,21 @@ rules:
     category: security
     applies_to: [backend]
     enforced_by: [cross-auditor:security]
+  - id: R12
+    short: missing-cookie-security-flags
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
+  - id: R13
+    short: plain-text-secrets-in-ci
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
+  - id: R14
+    short: missing-audit-logging-on-sensitive-actions
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
 ---
 
 # Code Quality Rules
@@ -511,6 +526,189 @@ def test_api_call(monkeypatch):
 // JS — process.env with explicit hard-fail
 const apiKey = process.env.API_KEY;
 if (!apiKey) throw new Error("API_KEY required");
+```
+
+---
+
+## R12 — Missing cookie security flags
+
+**Rule**: cookies that carry session identifiers, auth tokens, CSRF tokens, or any other security-sensitive value MUST set `HttpOnly`, `Secure`, and `SameSite` (one of `Lax` / `Strict`; `None` is permitted only when accompanied by `Secure` AND a documented cross-site need). Plain `set_cookie(name, value)` calls are forbidden for these cookie classes.
+
+**Why**: the framework default for `set_cookie` in most stacks is no flags. JavaScript can read a missing-`HttpOnly` cookie and exfiltrate the session via XSS. A missing-`Secure` cookie travels over HTTP if the user lands on a non-HTTPS URL. Missing `SameSite` lets cross-site requests carry the cookie, enabling CSRF. AI-assist code samples seen in the wild copy the framework's most-permissive form because it works in dev; the security flags get added "later" and "later" never arrives.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.3 (Session management). POL-ENG-AIDEV-001.
+
+**How to apply**: any session / auth / CSRF cookie sets all three flags explicitly at the call site. Framework-level defaults (`SESSION_COOKIE_HTTPONLY = True` in Django settings) count as compliance for the session cookie specifically, but bespoke `set_cookie` calls in views must still set the flags explicitly — the framework default is not a guarantee for cookies set by handler code. For `SameSite=None`, the comment at the call site MUST justify the cross-site need.
+
+**Bad code**:
+
+```python
+# Django — bespoke session cookie with no flags
+response.set_cookie("session", session_id)
+```
+
+```javascript
+// Express — no options object, framework defaults to permissive
+res.cookie("session", id);
+```
+
+**Good code**:
+
+```python
+# Django handler — all three flags explicit at the call site
+response.set_cookie(
+    "session",
+    session_id,
+    httponly=True,
+    secure=True,
+    samesite="Lax",
+)
+```
+
+```javascript
+// Express — full options object
+res.cookie("session", id, { httpOnly: true, secure: true, sameSite: "lax" });
+```
+
+```python
+# Django settings — framework-level defaults for the framework session cookie
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = "Lax"
+# AND any bespoke set_cookie() in handler code still sets httponly=True,
+# secure=True, samesite="Lax" explicitly.
+```
+
+---
+
+## R13 — Plain-text secrets in CI / pipeline files
+
+**Rule**: secrets referenced in CI workflow files (GitHub Actions, GitLab CI, CircleCI, etc.) MUST come from the CI provider's secret store (`${{ secrets.X }}` for GitHub Actions, `$VARNAME` from masked CI variables, OIDC short-lived tokens). Plain-text secret values in YAML — `env:` blocks, `with:` action inputs, shell `echo` chains — are forbidden, even for "low-value" tokens.
+
+**Why**: CI YAML sits in version control and is readable by anyone with repo read access (often a wider set than production credential holders). A token committed in `.github/workflows/deploy.yml` is exfil-friendly: searchable by org-wide GitHub Code Search, scraped by any fork, indexed by GitHub's secret scanner only after the fact. The pattern often slips in via debugging — a developer adds `env: { TOKEN: "ghs_…" }` to test a workflow change locally and forgets to revert. AI-assist is especially prone here because the natural autocompletion is the literal token shape from the API docs.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §11.2 (Pipeline hygiene). POL-ENG-AIDEV-001.
+
+**How to apply**: every secret-shaped value in CI YAML resolves at runtime via `${{ secrets.<NAME> }}` (GitHub Actions) or the equivalent secret-store reference for the CI provider. OIDC short-lived tokens (`permissions: id-token: write` + `aws-actions/configure-aws-credentials@v4` style) are preferred over long-lived secrets where the deploy target supports them. Local-test secrets stay in the developer's local `.env` which is gitignored — never committed, never copy-pasted into a workflow YAML "just to test".
+
+**Bad code**:
+
+```yaml
+# .github/workflows/deploy.yml — literal token committed to git
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: "ghs_realtokenhere"
+    steps:
+      - run: curl -H "Authorization: Bearer ghp_realtokenhere" https://api.example.com
+      - uses: some-action@v1
+        with:
+          api_key: "sk_live_realtokenshape"
+```
+
+**Good code**:
+
+```yaml
+# Reference secrets through the CI provider's secret store
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: curl -H "Authorization: Bearer ${API_TOKEN}" https://api.example.com
+```
+
+```yaml
+# OIDC short-lived token — no long-lived secret committed at all
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ci-deploy
+          aws-region: us-east-1
+```
+
+---
+
+## R14 — Missing audit-logging on sensitive actions
+
+**Rule**: state-changing actions on security-sensitive resources MUST emit a structured audit-log entry capturing actor, action, target, timestamp, and outcome. Sensitive resources include user accounts (create/delete/disable, role / permission changes), authentication state (login/logout/MFA enable-disable), authorization grants (API token issue/revoke, share-link grant), payment-bearing state (charge, refund, payout), and any privileged-operator action (impersonation, manual data edit, config change). Application logs (`logger.info(...)`) are NOT audit logs — audit logs go to a dedicated structured-event sink whose retention and integrity guarantees are separate from operational logs.
+
+**Why**: post-incident forensics fail at the resource layer when nobody can answer "who did this, when, with which permissions?" The application-logger heuristic — `print` / `logger.info` calls scattered through the handler — drops messages on log rotation, doesn't capture actor context, and gets filtered out at the aggregation layer. Audit logs are a separate stream because they are the source of truth for accountability under both internal incident review and regulatory disclosure (SOC 2, ISO 27001, sector-specific requirements). AI-assist tends to omit audit-log emit calls because the surrounding code already "logs" via the operational logger.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.4 (Audit logging). POL-ENG-AIDEV-001.
+
+**How to apply**: every handler that performs a sensitive state change emits one audit-log call, adjacent to the side-effect (same function, after the mutation succeeds, before returning). The call uses a dedicated `audit_log.emit(...)` (or whatever the project's audit sink is named — `audit.record(...)`, `AuditEvent.create(...)`, etc.) carrying `actor` (request principal), `action` (verb — `user.disable`, `payment.refund`, `apitoken.revoke`), `target` (resource id or path), `ts` (timestamp), `outcome` (`success` / `failure` with reason). On failure paths, emit the audit log with the failure outcome — failed-attempt records are evidence too.
+
+**Bad code**:
+
+```python
+# Handler disables the user but emits no audit-log entry
+def disable_user(request, user_id):
+    user = User.objects.get(id=user_id)
+    user.disable()
+    return Response(status=204)
+```
+
+```python
+# Operational logger treated as audit coverage — wrong stream, wrong retention
+def disable_user(request, user_id):
+    user = User.objects.get(id=user_id)
+    user.disable()
+    logger.info(f"disabled user {user.id}")
+    return Response(status=204)
+```
+
+**Good code**:
+
+```python
+# Dedicated audit sink — actor, action, target, timestamp, outcome
+def disable_user(request, user_id):
+    user = User.objects.get(id=user_id)
+    user.disable()
+    audit_log.emit(
+        actor=request.user.id,
+        action="user.disable",
+        target=user.id,
+        ts=now(),
+        outcome="success",
+    )
+    return Response(status=204)
+```
+
+```python
+# Failure path — emit on the exception with outcome="failure"
+def charge_order(request, order_id):
+    order = Order.objects.get(id=order_id)
+    try:
+        charge(order)
+    except StripeError as e:
+        audit_log.emit(
+            actor=request.user.id,
+            action="payment.charge",
+            target=order.id,
+            ts=now(),
+            outcome="failure",
+            reason=str(e),
+        )
+        raise
+    audit_log.emit(
+        actor=request.user.id,
+        action="payment.charge",
+        target=order.id,
+        ts=now(),
+        outcome="success",
+    )
+    return Response(status=200)
 ```
 
 ---
