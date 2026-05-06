@@ -54,6 +54,8 @@ You receive a prompt with:
 
 ### `security` mode
 
+When R-rules with `category: security` and `enforced_by` containing `cross-auditor:security` exist in `code-quality-rules.md`, those rules are the cluster source for the active `project_type` (filtered via the `applies_to` list per §Taxonomy / Trigger A in `code-quality-rules.md`). Today no such rules exist, so the inline focus-areas list below is the active source. When the first audience-restricted security rule lands, it filters into this cluster automatically based on its `applies_to`; the inline list below is the bridge until rule coverage is complete.
+
 **Smart Contracts / DeFi:**
 - Fund loss vectors, reentrancy, access control
 - Math precision (overflow, rounding, fee calculations)

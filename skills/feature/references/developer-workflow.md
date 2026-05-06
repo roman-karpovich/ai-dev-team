@@ -151,8 +151,7 @@ The checker enforces this: any commit whose HEAD-at-time-of-commit is `main` / `
 
 ## Code Quality Rules
 
-Read `skills/feature/references/code-quality-rules.md` before the first step and re-check it
-whenever a step removes behaviour or rewrites tests. It is append-only; new rules land there.
+Read `skills/feature/references/code-quality-rules.md` before the first step and re-check it whenever a step removes behaviour or rewrites tests. It is append-only; new rules land there. Loading is conditional: parse the file's frontmatter `rules:` index, resolve `project_type` (orchestrator-threaded; defaults to the literal string `"all"` when missing — see §Taxonomy / Trigger A in `code-quality-rules.md`), and read body sections only for rules whose `applies_to` list contains `"all"` or the resolved `project_type`. Today every R1–R8 is `applies_to: [all]` so the filter is a no-op and every rule loads — the short-form summaries below cover the universal set. Trigger B (frontmatter parse failure) is a separate degrade path with the opposite outcome (load every body section verbatim, emit a stderr warning); see §Taxonomy in `code-quality-rules.md` for the canonical contract — do not paraphrase.
 
 Short-form summary — the full reasoning and application steps live in the reference:
 
