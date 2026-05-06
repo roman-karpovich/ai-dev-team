@@ -4014,7 +4014,11 @@ check_spec_compliance_filter_preamble() {
 # (e) Radaro / POL-ENG-AIDEV-001 anchor present per body; (f) backend filter returns 14;
 # (g) smart_contract filter returns 8; (h) per-rule canonical-pattern presence in the
 # **Good code block specifically** — block-level extraction defeats Bad/Good content-shift
-# bypass. R10 also checks two negative regex assertions in Good code (X6 + X7/X14 closures).
+# bypass for BOTH directions. R10 also checks two negative regex assertions in Good code
+# (X6 + X7/X14 closures); (i) per-rule canonical-anti-pattern presence in the **Bad code
+# block specifically** — locks the educational anti-pattern shape so a regression cannot
+# silently weaken Bad code (e.g. dropping the f-string SQLi shape, the literal sk_live_
+# secret, or the logger.info-as-audit anti-pattern).
 check_security_cluster_rules_present() {
   local path="${1:-skills/feature/references/code-quality-rules.md}"
   test -f "$path" || { echo "$path missing" >&2; return 1; }
@@ -4138,6 +4142,27 @@ def good_block(rid):
     sec = extract_section(rid)
     return extract_block_after(sec, "**Good code**")
 
+def bad_block(rid):
+    """Extract text from `**Bad code**` marker through the next `**Good code**`
+    marker. If `**Good code**` is missing, fall through to the next `^---$`
+    divider via extract_block_after's default behaviour. Symmetric to
+    good_block(rid) — used by assertion (i)."""
+    sec = extract_section(rid)
+    if sec is None:
+        return ""
+    idx = sec.find("**Bad code**")
+    if idx == -1:
+        return ""
+    rest = sec[idx:]
+    g_idx = rest.find("**Good code**")
+    if g_idx != -1:
+        return rest[:g_idx]
+    # No Good code marker — bound by next `^---$` divider instead
+    m_d = re.search(r"(?m)^---$", rest)
+    if not m_d:
+        return rest
+    return rest[:m_d.start()]
+
 # R9: request.user.id AND (PermissionDenied OR .filter()
 g9 = good_block("R9")
 if "request.user.id" not in g9:
@@ -4206,7 +4231,60 @@ if "outcome=" not in g14:
     print(f"{path}: R14 Good code block missing 'outcome=' (assertion h)", file=sys.stderr)
     sys.exit(1)
 
-print(f"R-rules security cluster {cluster_ids} present with canonical conventions in Good code blocks")
+# (i) Per-rule canonical anti-pattern presence — Bad code block ONLY. Block-level
+# extraction defeats Bad/Good content-shift bypass for BOTH directions; without (i)
+# a regression that drops the f-string SQLi shape from R10 Bad, the literal sk_live_
+# from R11 Bad, the no-flags set_cookie from R12 Bad, or the logger.info-as-audit
+# from R14 Bad would silently pass while the rule loses its educational core.
+
+# R9: unconditional fetch shape — Order.objects.get(id=order_id) OR findById(req.params.id)
+b9 = bad_block("R9")
+if ("Order.objects.get(id=order_id)" not in b9) and ("findById(req.params.id)" not in b9):
+    print(f"{path}: R9 Bad code block missing IDOR anti-pattern (Order.objects.get(id=order_id) OR findById(req.params.id)) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R10: f-string SQL pattern — `f"...WHERE...{...}"` shape OR `% user_id` formatted SQL
+b10 = bad_block("R10")
+fstring_sql = re.search(r'f"[^"\n]*WHERE[^"\n]*\{', b10)
+if (fstring_sql is None) and ("% user_id" not in b10):
+    print(f"{path}: R10 Bad code block missing SQLi anti-pattern (f-string SQL with WHERE...{{...}} OR % user_id formatting) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R11: literal secret-shaped string — sk_live_ OR sk_test_ OR ghs_ OR ghp_ OR realpassword
+b11 = bad_block("R11")
+if not any(tok in b11 for tok in ("sk_live_", "sk_test_", "ghs_", "ghp_", "realpassword")):
+    print(f"{path}: R11 Bad code block missing literal secret-shaped string (sk_live_ / sk_test_ / ghs_ / ghp_ / realpassword) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R12: bare set_cookie() / res.cookie() with NO httponly flag in the same call.
+# Positive shape: a `set_cookie(...)` or `res.cookie(...)` call whose argument list
+# does not contain `httponly` / `httpOnly`. We scan call sites within the Bad block.
+r12_call_re = re.compile(r"(set_cookie|res\.cookie)\s*\(([^)]*)\)", re.DOTALL)
+r12_bad_found = False
+for m_call in r12_call_re.finditer(bad_block("R12")):
+    args = m_call.group(2)
+    if "httponly" not in args.lower():
+        r12_bad_found = True
+        break
+if not r12_bad_found:
+    print(f"{path}: R12 Bad code block missing no-flags set_cookie(...)/res.cookie(...) anti-pattern (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R13: literal token-shaped value — explicit anti-pattern strings the spec writes
+b13 = bad_block("R13")
+if not any(tok in b13 for tok in ("ghs_realtokenhere", "ghp_realtokenhere", "sk_live_realtokenshape", "sk_live_", "ghp_", "ghs_")):
+    print(f"{path}: R13 Bad code block missing literal token-shaped anti-pattern (ghs_/ghp_/sk_live_ shape) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# R14: logger.info( near a state-change verb — relaxed positive: `logger.info(`
+# substring sufficient for the v1 anti-pattern shape (operational logger treated
+# as audit coverage).
+b14 = bad_block("R14")
+if "logger.info(" not in b14:
+    print(f"{path}: R14 Bad code block missing logger.info( anti-pattern (operational logger as audit coverage) (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+print(f"R-rules security cluster {cluster_ids} present with canonical conventions in Good code blocks AND canonical anti-patterns in Bad code blocks")
 PY
 }
 
