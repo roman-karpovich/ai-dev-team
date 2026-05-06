@@ -95,6 +95,8 @@ If `planned.integration_probe_cmd` is empty AND the step's goal involves wiring 
 
 ### 5. Code quality rule checks
 
+The rule scan reads the `code-quality-rules.md` frontmatter `rules:` index and applies the `applies_to` filter against the active spec's `project_type` (orchestrator-threaded; defaults to the literal string `"all"` when missing — Trigger A in §3.4 of the taxonomy spec / §Taxonomy in `code-quality-rules.md`). Today every R1–R8 is `applies_to: [all]`, so behavior is unchanged: R1/R2/R3/R8 stay enforced exactly as below. Future rules whose `applies_to` excludes the spec's `project_type` are skipped from the scan; the canonical contract for both Trigger A (project_type missing) and Trigger B (frontmatter parse failure) lives in `code-quality-rules.md` §Taxonomy and MUST NOT be paraphrased here.
+
 Read `skills/feature/references/code-quality-rules.md` before running these checks — rules are append-only and the file is the source of truth.
 
 #### R1 — Dead code kept alive by its own tests

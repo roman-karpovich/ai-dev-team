@@ -3778,3 +3778,217 @@ check_new_pin_classified() {
 
   return 0
 }
+
+# R-rules taxonomy schema validator (spec 2026-05-06-r-rules-taxonomy Pin 1).
+# Validates the `rules:` frontmatter block in code-quality-rules.md against the
+# §3.3 schema: 11 assertions (a)-(k). Uses python3+yaml; fails clearly on each
+# violation. Also enforces the §3.3 golden table for R1-R8 metadata, and the
+# load-bearing placement check that `## Taxonomy` lands AFTER R8 (assertion k).
+check_r_rules_taxonomy_schema() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import re
+import sys
+
+path = sys.argv[1]
+try:
+    import yaml
+except ImportError:
+    print("PyYAML not available (required by check_r_rules_taxonomy_schema)", file=sys.stderr)
+    sys.exit(1)
+
+text = open(path, encoding="utf-8").read()
+m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+if not m:
+    print(f"{path}: missing YAML frontmatter (assertion a)", file=sys.stderr)
+    sys.exit(1)
+try:
+    fm = yaml.safe_load(m.group(1))
+except yaml.YAMLError as exc:
+    print(f"{path}: frontmatter YAML parse failed (assertion a): {exc}", file=sys.stderr)
+    sys.exit(1)
+
+# (a) frontmatter parses and rules is a list of length 8
+rules = fm.get("rules") if isinstance(fm, dict) else None
+if not isinstance(rules, list):
+    print(f"{path}: frontmatter `rules:` is not a list (assertion a)", file=sys.stderr)
+    sys.exit(1)
+if len(rules) != 8:
+    print(f"{path}: rules length={len(rules)}, expected 8 (assertion a)", file=sys.stderr)
+    sys.exit(1)
+
+required_fields = {"id", "short", "category", "applies_to", "enforced_by"}
+category_enum = {"quality", "security", "style", "process"}
+applies_enum = {"all", "smart_contract", "backend", "frontend", "data_pipeline"}
+enforcer_enum = {"spec-compliance-checker", "cross-auditor:logic", "cross-auditor:security", "none"}
+slug_re = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+id_re = re.compile(r"^R[1-9][0-9]*$")
+
+seen_ids = set()
+for i, entry in enumerate(rules):
+    if not isinstance(entry, dict):
+        print(f"{path}: rules[{i}] is not a mapping (assertion b)", file=sys.stderr)
+        sys.exit(1)
+    keys = set(entry.keys())
+    if keys != required_fields:
+        missing = required_fields - keys
+        extras = keys - required_fields
+        print(f"{path}: rules[{i}] field-set mismatch (assertion b); missing={sorted(missing)} extras={sorted(extras)}", file=sys.stderr)
+        sys.exit(1)
+    rid = entry["id"]
+    if not isinstance(rid, str) or not id_re.match(rid):
+        print(f"{path}: rules[{i}].id={rid!r} fails ^R[1-9][0-9]*$ (assertion c)", file=sys.stderr)
+        sys.exit(1)
+    if rid in seen_ids:
+        print(f"{path}: rules[{i}].id={rid} is duplicated (assertion c)", file=sys.stderr)
+        sys.exit(1)
+    seen_ids.add(rid)
+    short = entry["short"]
+    if not isinstance(short, str) or not slug_re.match(short):
+        print(f"{path}: rules[{i}].short={short!r} fails slug regex (assertion d)", file=sys.stderr)
+        sys.exit(1)
+    cat = entry["category"]
+    if cat not in category_enum:
+        print(f"{path}: rules[{i}].category={cat!r} not in {sorted(category_enum)} (assertion e)", file=sys.stderr)
+        sys.exit(1)
+    applies = entry["applies_to"]
+    if not isinstance(applies, list) or len(applies) == 0:
+        print(f"{path}: rules[{i}].applies_to must be non-empty list (assertion f)", file=sys.stderr)
+        sys.exit(1)
+    bad_apply = [a for a in applies if a not in applies_enum]
+    if bad_apply:
+        print(f"{path}: rules[{i}].applies_to has invalid elements {bad_apply} (assertion f)", file=sys.stderr)
+        sys.exit(1)
+    if "all" in applies and len(applies) > 1:
+        print(f"{path}: rules[{i}].applies_to mixes `all` with named project_types (assertion f)", file=sys.stderr)
+        sys.exit(1)
+    enf = entry["enforced_by"]
+    if not isinstance(enf, list) or len(enf) == 0:
+        print(f"{path}: rules[{i}].enforced_by must be non-empty list (assertion g)", file=sys.stderr)
+        sys.exit(1)
+    bad_enf = [e for e in enf if e not in enforcer_enum]
+    if bad_enf:
+        print(f"{path}: rules[{i}].enforced_by has invalid elements {bad_enf} (assertion g)", file=sys.stderr)
+        sys.exit(1)
+    if "none" in enf and len(enf) > 1:
+        print(f"{path}: rules[{i}].enforced_by mixes `none` with real enforcers (assertion g)", file=sys.stderr)
+        sys.exit(1)
+
+# (h) frontmatter <-> body-section correspondence
+for entry in rules:
+    rid = entry["id"]
+    pattern = re.compile(r"^## " + re.escape(rid) + r" — ", re.MULTILINE)
+    if not pattern.search(text):
+        print(f"{path}: no `## {rid} — ` body heading found (assertion h)", file=sys.stderr)
+        sys.exit(1)
+
+# (i) Trigger A worked example: filter(rules, project_type="all") returns all 8 today
+def trigger_a_filter(rules_list, project_type):
+    return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
+
+filtered_all = trigger_a_filter(rules, "all")
+if len(filtered_all) != 8:
+    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 8 (assertion i)", file=sys.stderr)
+    sys.exit(1)
+
+# (j) per-rule golden mapping
+golden = {
+    "R1": ("quality", ["all"], ["spec-compliance-checker"]),
+    "R2": ("quality", ["all"], ["spec-compliance-checker"]),
+    "R3": ("quality", ["all"], ["spec-compliance-checker"]),
+    "R4": ("process", ["all"], ["none"]),
+    "R5": ("quality", ["all"], ["none"]),
+    "R6": ("quality", ["all"], ["none"]),
+    "R7": ("quality", ["all"], ["none"]),
+    "R8": ("process", ["all"], ["spec-compliance-checker"]),
+}
+by_id = {r["id"]: r for r in rules}
+for rid, (cat, apply, enf) in golden.items():
+    if rid not in by_id:
+        print(f"{path}: golden table entry {rid} absent from rules (assertion j)", file=sys.stderr)
+        sys.exit(1)
+    r = by_id[rid]
+    if r["category"] != cat:
+        print(f"{path}: {rid}.category={r['category']!r}, golden={cat!r} (assertion j)", file=sys.stderr)
+        sys.exit(1)
+    if list(r["applies_to"]) != apply:
+        print(f"{path}: {rid}.applies_to={r['applies_to']!r}, golden={apply!r} (assertion j)", file=sys.stderr)
+        sys.exit(1)
+    if list(r["enforced_by"]) != enf:
+        print(f"{path}: {rid}.enforced_by={r['enforced_by']!r}, golden={enf!r} (assertion j)", file=sys.stderr)
+        sys.exit(1)
+
+# (k) Taxonomy placement: exactly one `^## Taxonomy$` heading; line number > line
+# number of the first `^---$` divider AFTER the `^## R8 —` heading.
+lines = text.splitlines()
+taxonomy_lines = [i for i, ln in enumerate(lines) if ln == "## Taxonomy"]
+if len(taxonomy_lines) != 1:
+    print(f"{path}: expected exactly one `## Taxonomy` heading; found {len(taxonomy_lines)} (assertion k)", file=sys.stderr)
+    sys.exit(1)
+r8_lines = [i for i, ln in enumerate(lines) if ln.startswith("## R8 — ")]
+if len(r8_lines) != 1:
+    print(f"{path}: expected exactly one `## R8 — ` heading; found {len(r8_lines)} (assertion k)", file=sys.stderr)
+    sys.exit(1)
+r8_line = r8_lines[0]
+divider_line = None
+for i in range(r8_line + 1, len(lines)):
+    if lines[i] == "---":
+        divider_line = i
+        break
+if divider_line is None:
+    print(f"{path}: no `---` divider found after `## R8 —` heading (assertion k)", file=sys.stderr)
+    sys.exit(1)
+if taxonomy_lines[0] <= divider_line:
+    print(f"{path}: `## Taxonomy` at line {taxonomy_lines[0]+1} is not AFTER the post-R8 `---` divider at line {divider_line+1} (assertion k)", file=sys.stderr)
+    sys.exit(1)
+
+print(f"R-rules taxonomy schema OK ({len(rules)} rules; placement after post-R8 divider verified)")
+PY
+}
+
+# Cross-auditor security mode preamble pin (spec 2026-05-06-r-rules-taxonomy
+# Pin 2 — class: prompt-text). Asserts the §`security` mode block in
+# agents/cross-auditor.md contains the load-bearing matcher tokens
+# `category: security`, `cross-auditor:security`, and `project_type` between
+# the `### \`security\` mode` heading and the next `### ` heading.
+check_cross_auditor_security_preamble() {
+  local path="${1:-agents/cross-auditor.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  local section
+  section=$(awk '
+    /^### `security` mode$/ { in_s=1; print; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$section" | grep -qF 'category: security' \
+    || { echo "$path §security mode preamble missing 'category: security' token" >&2; return 1; }
+  printf '%s\n' "$section" | grep -qF 'cross-auditor:security' \
+    || { echo "$path §security mode preamble missing 'cross-auditor:security' token" >&2; return 1; }
+  printf '%s\n' "$section" | grep -qF 'project_type' \
+    || { echo "$path §security mode preamble missing 'project_type' token" >&2; return 1; }
+  echo "cross-auditor §security mode preamble has all three matcher tokens"
+}
+
+# Spec-compliance-checker §5 preamble pin (spec 2026-05-06-r-rules-taxonomy
+# Pin 3 — class: prompt-text). Asserts the §5 (Code quality rule checks)
+# section in agents/spec-compliance-checker.md contains the load-bearing
+# matcher tokens `applies_to`, `project_type`, AND a reference to §3.4 (or the
+# literal string `Trigger A`/`Trigger B`).
+check_spec_compliance_filter_preamble() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  local section
+  section=$(awk '
+    /^### 5\. Code quality rule checks$/ { in_s=1; print; next }
+    in_s && /^### 6\. Return verdict$/ { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$section" | grep -qF 'applies_to' \
+    || { echo "$path §5 preamble missing 'applies_to' token" >&2; return 1; }
+  printf '%s\n' "$section" | grep -qF 'project_type' \
+    || { echo "$path §5 preamble missing 'project_type' token" >&2; return 1; }
+  printf '%s\n' "$section" | grep -qE '§3\.4|Trigger A|Trigger B' \
+    || { echo "$path §5 preamble missing §3.4 / Trigger A / Trigger B reference" >&2; return 1; }
+  echo "spec-compliance-checker §5 preamble has all three matcher tokens"
+}

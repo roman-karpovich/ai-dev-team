@@ -1,3 +1,49 @@
+---
+title: Code Quality Rules
+type: reference
+rules:
+  - id: R1
+    short: dead-code-not-kept-by-tests
+    category: quality
+    applies_to: [all]
+    enforced_by: [spec-compliance-checker]
+  - id: R2
+    short: trust-tiers-for-tests
+    category: quality
+    applies_to: [all]
+    enforced_by: [spec-compliance-checker]
+  - id: R3
+    short: test-strength
+    category: quality
+    applies_to: [all]
+    enforced_by: [spec-compliance-checker]
+  - id: R4
+    short: branch-prefix-matches-change-type
+    category: process
+    applies_to: [all]
+    enforced_by: [none]
+  - id: R5
+    short: tests-in-dedicated-file
+    category: quality
+    applies_to: [all]
+    enforced_by: [none]
+  - id: R6
+    short: test-scope-user-facing-contract
+    category: quality
+    applies_to: [all]
+    enforced_by: [none]
+  - id: R7
+    short: sibling-test-files
+    category: quality
+    applies_to: [all]
+    enforced_by: [none]
+  - id: R8
+    short: public-output-hygiene
+    category: process
+    applies_to: [all]
+    enforced_by: [spec-compliance-checker]
+---
+
 # Code Quality Rules
 
 Rules every developer agent (`developer-codex`, `developer-senior`) must
@@ -285,3 +331,43 @@ R8 sits orthogonal to R1–R7 (which govern test/code quality). It is an **outpu
 7. **Spec-compliance-checker enforcement seam**. After step h. **Commit**, the checker SHOULD run a quick grep against the new commit's `git show -s --format=%B <sha>` for the patterns listed in rule (1) — KB-style paths and footer phrases. A hit is a FAIL with remediation "rewrite the commit message without KB references". Implementation lives in `agents/spec-compliance-checker.md`; the rule itself is canonical here.
 
 ---
+
+## Taxonomy
+
+The frontmatter `rules:` block at the top of this file is the source of truth for rule metadata. Consumers (dev-agents, `spec-compliance-checker`, `cross-auditor`) parse the index, filter by the active spec's `project_type`, and only process rules whose `applies_to` list matches.
+
+### Field enums (closed sets)
+
+- `id` — string `R<N>` where `<N>` ≥ 1 and unique within the file.
+- `short` — slug `[a-z0-9][a-z0-9-]*` for grep / log usage; not user-facing.
+- `category` ∈ `{quality, security, style, process}`. Closed set; new categories require a spec.
+- `applies_to` — non-empty list whose elements are from `{all, smart_contract, backend, frontend, data_pipeline}`. `all` is mutually exclusive with named project_types — i.e. `[all]` OR a list of named types, never both. The named-type set mirrors `cross-auditor` `project_type` enum verbatim.
+- `enforced_by` — list whose elements are from `{spec-compliance-checker, cross-auditor:logic, cross-auditor:security, none}`. `[none]` means convention-text-only (current state of R4–R7) and is mutually exclusive with every other enforcer (i.e. `[none]` is a singleton; never `[none, spec-compliance-checker]`). Multiple non-`none` enforcers are allowed (e.g. a future rule checked by both compliance-checker and cross-auditor).
+
+### Cross-auditor mode-matching contract
+
+`cross-auditor`'s `mode` enum is `logic | security | full | spec`. To avoid the `mode=full` silent-skip class (a rule tagged `cross-auditor:security` falling through under full-mode literal matching), the matching contract is:
+
+- `cross-auditor:logic` is consumed when active mode ∈ `{logic, full}`.
+- `cross-auditor:security` is consumed when active mode ∈ `{security, full}`.
+
+`cross-auditor:full` is intentionally NOT in the enum: the value would be unreachable (no mode is `full`-only), and adding it would invite confusion with the `mode=full` literal. A rule that genuinely should fire in only one of the single-axis modes uses `cross-auditor:logic` or `cross-auditor:security` directly; full-mode coverage falls out of the mapping above. The `mode=spec` consumer is `spec-compliance-checker` style and consumes neither `cross-auditor:logic` nor `cross-auditor:security` tokens — spec-mode operates on the spec document, not on R-rule clusters.
+
+### Loading and filtering semantics
+
+Consumer pseudocode:
+
+```
+project_type = resolve_project_type()  # orchestrator-threaded; defaults to "all" (Trigger A)
+rules = parse_frontmatter(code-quality-rules.md).rules  # may raise on malformed YAML (Trigger B)
+applicable = [r for r in rules if "all" in r.applies_to or project_type in r.applies_to]
+read_body_sections_for(applicable)
+```
+
+There are two distinct degrade paths with two distinct triggers and **opposite** outcomes. The contract names them explicitly so consumer agents do not converge on different defaults.
+
+**Trigger A — `project_type` is missing or unknown**. Consumer was invoked without an orchestrator-threaded `project_type` value (legacy invocation, ad-hoc use, configuration drift). Set `project_type` internally to the literal string `"all"` and run the filter normally. Result: rules with `applies_to: [all]` load (every R1–R8 today); rules with `applies_to: [backend]` (or any audience-restricted list that does not contain `"all"`) do NOT load. Worked example: `filter(rules, "all")` returns the R1–R8 set today. When R9 lands as `applies_to: [backend]`, R9 does NOT load under Trigger A — that is the intended backwards-compat semantics ("today's R1–R8 always load", not "every rule always loads"). The asymmetry is deliberate.
+
+**Trigger B — frontmatter `rules:` block fails to parse**. The YAML is malformed, the `rules:` field is missing, or `parse_frontmatter` raises. Consumer cannot determine `applies_to` for any rule. In this path, emit a one-line warning to stderr (`⚠️ code-quality-rules.md frontmatter rules block failed to parse — loading all body sections regardless of applies_to`) and load every `## R<N>` body section verbatim, ignoring the filter entirely. Worked example: a future contributor accidentally introduces a YAML indentation error in the `rules:` block — Trigger B fires, every rule body section loads (including audience-restricted rules that should NOT have loaded for the active project_type) until the parse error is fixed.
+
+**Triggers must not collapse**. A consumer that defaults to Trigger B's load-all behavior under Trigger A's "project_type missing" condition silently disables audience filtering forever. A consumer that defaults to Trigger A's `"all"`-filter behavior under Trigger B's parse-failure condition silently de-cards every rule (because no `applies_to` value is parseable). Both wrong outcomes are precisely what the explicit-labelling rule prevents. Consumer prose in `developer-workflow.md` / `spec-compliance-checker.md` / `cross-auditor.md` quotes this section by reference (NOT paraphrase) so the contract stays single-source.

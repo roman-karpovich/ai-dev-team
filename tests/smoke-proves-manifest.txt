@@ -110,3 +110,8 @@ check_feature_skill_from_investigation_hard_fail prompt-text
 check_smoke_helper_assert_literal_absent_in_live_source_rejects_stale behavioral
 check_smoke_helper_assert_no_stale_section_header_comments_rejects_stale behavioral
 check_new_pin_classified schema
+
+# R-rules taxonomy + conditional-loading seam (spec 2026-05-06)
+check_r_rules_taxonomy_schema schema
+check_cross_auditor_security_preamble prompt-text
+check_spec_compliance_filter_preamble prompt-text
