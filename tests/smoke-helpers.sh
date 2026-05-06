@@ -3926,30 +3926,38 @@ for rid, (cat, apply, enf) in golden.items():
         sys.exit(1)
 
 # (k) Taxonomy placement: exactly one `^## Taxonomy$` heading; line number > line
-# number of the first `^---$` divider AFTER the `^## R8 —` heading.
+# number of the first `^---$` divider AFTER the LAST `^## R<N> — ` heading
+# (max R-id by integer parse). Tracking the last R-rule's closing divider —
+# rather than R8's — defends against a regression that inserts `## Taxonomy`
+# between two R-rules deeper in the cluster (e.g. between R10 and R11).
 lines = text.splitlines()
 taxonomy_lines = [i for i, ln in enumerate(lines) if ln == "## Taxonomy"]
 if len(taxonomy_lines) != 1:
     print(f"{path}: expected exactly one `## Taxonomy` heading; found {len(taxonomy_lines)} (assertion k)", file=sys.stderr)
     sys.exit(1)
-r8_lines = [i for i, ln in enumerate(lines) if ln.startswith("## R8 — ")]
-if len(r8_lines) != 1:
-    print(f"{path}: expected exactly one `## R8 — ` heading; found {len(r8_lines)} (assertion k)", file=sys.stderr)
+r_heading_re = re.compile(r"^## R(\d+) — ")
+r_headings = []  # list of (rid_int, line_index)
+for i, ln in enumerate(lines):
+    m = r_heading_re.match(ln)
+    if m:
+        r_headings.append((int(m.group(1)), i))
+if not r_headings:
+    print(f"{path}: no `## R<N> — ` headings found (assertion k)", file=sys.stderr)
     sys.exit(1)
-r8_line = r8_lines[0]
+last_rid, last_r_line = max(r_headings, key=lambda t: t[0])
 divider_line = None
-for i in range(r8_line + 1, len(lines)):
+for i in range(last_r_line + 1, len(lines)):
     if lines[i] == "---":
         divider_line = i
         break
 if divider_line is None:
-    print(f"{path}: no `---` divider found after `## R8 —` heading (assertion k)", file=sys.stderr)
+    print(f"{path}: no `---` divider found after last R-rule heading `## R{last_rid} — ` (assertion k)", file=sys.stderr)
     sys.exit(1)
 if taxonomy_lines[0] <= divider_line:
-    print(f"{path}: `## Taxonomy` at line {taxonomy_lines[0]+1} is not AFTER the post-R8 `---` divider at line {divider_line+1} (assertion k)", file=sys.stderr)
+    print(f"{path}: `## Taxonomy` at line {taxonomy_lines[0]+1} is not AFTER the closing `---` divider of the last R-rule (R{last_rid}) at line {divider_line+1} (assertion k)", file=sys.stderr)
     sys.exit(1)
 
-print(f"R-rules taxonomy schema OK ({len(rules)} rules; placement after post-R8 divider verified)")
+print(f"R-rules taxonomy schema OK ({len(rules)} rules; placement after last R-rule's closing divider verified)")
 PY
 }
 
