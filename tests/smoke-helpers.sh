@@ -4007,7 +4007,7 @@ check_spec_compliance_filter_preamble() {
   echo "spec-compliance-checker §5 preamble has all three matcher tokens"
 }
 
-# Security cluster R9-R14 content invariants (spec 2026-05-06-r-rules-web-security-cluster
+# Security cluster R9-R14 content invariants (R-rules web-security cluster
 # Pin 4 — class: schema). Asserts (a) frontmatter entries for {R9..R14} present;
 # (b) golden metadata category=security/applies_to=[backend]/enforced_by=[cross-auditor:security];
 # (c) `^## R<N> —` body heading per id; (d) Bad/Good code markers in each body section;
@@ -4290,7 +4290,7 @@ print(f"R-rules security cluster {cluster_ids} present with canonical convention
 PY
 }
 
-# Cross-auditor §security mode load-the-cluster pin (spec 2026-05-06-r-rules-web-security-cluster
+# Cross-auditor §security mode load-the-cluster pin (R-rules web-security cluster
 # Pin 5 — class: prompt-text). Asserts the §`security` mode block in
 # agents/cross-auditor.md (a) names all six R-ids R9..R14 individually as
 # standalone substrings; (b) carries applies_to + backend tokens; (c) carries an
@@ -4349,8 +4349,8 @@ check_cross_auditor_loads_security_cluster() {
   echo "cross-auditor §security mode loads R9-R14 cluster with all 9 supplemental bullets preserved"
 }
 
-# Cross-auditor Step 1 + Step 2 load-instructions pin (spec
-# 2026-05-06-r-rules-web-security-cluster Pin 6 — class: prompt-text). Gates
+# Cross-auditor Step 1 + Step 2 load-instructions pin (R-rules web-security
+# cluster Pin 6 — class: prompt-text). Gates
 # §3.4 sub-edits (b) and (c). Asserts the `## Step 1: Launch Codex` section
 # carries 7 load-bearing substrings AND the `## Step 2: Claude Audit (you)`
 # section carries 5 load-bearing substrings.
