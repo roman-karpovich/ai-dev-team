@@ -54,7 +54,7 @@ You receive a prompt with:
 
 ### `security` mode
 
-When R-rules with `category: security` and `enforced_by` containing `cross-auditor:security` exist in `code-quality-rules.md`, those rules are the cluster source for the active `project_type` (filtered via the `applies_to` list per §Taxonomy / Trigger A in `code-quality-rules.md`). Today no such rules exist, so the inline focus-areas list below is the active source. When the first audience-restricted security rule lands, it filters into this cluster automatically based on its `applies_to`; the inline list below is the bridge until rule coverage is complete.
+When R-rules with `category: security` and `enforced_by` containing `cross-auditor:security` exist in `code-quality-rules.md`, those rules are the cluster source for the active `project_type` (filtered via the `applies_to` list per §Taxonomy / Trigger A in `code-quality-rules.md`; Trigger B — frontmatter parse failure — loads every body section verbatim with a stderr warning per the same §Taxonomy contract). For `project_type=backend`, the active cluster is R9, R10, R11, R12, R13, R14: load their body sections (Rule / Why / How to apply / Bad code / Good code) and treat them as the canonical bad-code patterns to flag and good-code conventions to verify. The Smart Contracts / DeFi and Backend Services bullet lists below stay as supplemental coverage — they cover defect classes (race conditions, deadlocks, DoS, oracle manipulation, etc.) not yet codified as R-rules; for any project_type they apply alongside the filtered R-rules, never as a replacement.
 
 **Smart Contracts / DeFi:**
 - Fund loss vectors, reentrancy, access control
@@ -281,6 +281,8 @@ Codex audits run via the `hooks/lib/codex_audit_dispatch.sh` helper invoked thro
 
 **Step 1c — Proceed to Step 2**: Codex is now running in the background. Do NOT wait. Proceed immediately to your own audit (Step 2). Poll `BashOutput(shell_id_codex)` between significant blocks of Step 2 work and at the start of Step 3 to keep the watchdog alive and check progress.
 
+When `mode ∈ {security, full}` and `project_type` is set, before assembling the prompt: parse the frontmatter `rules:` block in `skills/feature/references/code-quality-rules.md` (the path resolves relative to the agent's launch cwd, which is the ai-dev-team plugin root in legacy invocations and the cross-auditor's isolated worktree of the plugin in PR-mode dispatch — the same worktree where the agent prompt itself lives). Filter for entries where `category: security` AND `enforced_by` contains `cross-auditor:security` AND `applies_to` includes `"all"` OR the active `project_type`, then for each matched entry read its body section (`## R<N> —` heading through the next `^---$` divider) and append the body verbatim to the Codex prompt under a new section `### Security R-rule cluster (project_type=<value>):` BEFORE the Files-to-audit list. Pass-through is verbatim — DO NOT paraphrase. If the frontmatter parse fails (Trigger B), emit the stderr warning and load every body section regardless of filter; the Codex prompt receives the full set under the same heading. If `code-quality-rules.md` is not reachable from the agent's cwd (e.g. PR-mode worktree of a non-plugin repo), emit `⚠ code-quality-rules.md not reachable — applying focus-areas-only fallback per §security mode bullet lists below` and skip the cluster load.
+
 **Code mode** Codex prompt template:
 ```
 AUDIT of [scope] in [project].
@@ -316,7 +318,7 @@ Include the resulting file list as "Files to audit" in the prompt template above
 
 While Codex runs, perform your own systematic review of all files in scope.
 
-Apply focus areas from the specified mode. Use the mode-appropriate severity ladder above. Collect only CRITICAL and HIGH.
+Apply focus areas from the specified mode. For `mode ∈ {security, full}` runs, also apply the filtered R-rule body sections from `skills/feature/references/code-quality-rules.md` per §security mode bridge above (path-resolution and unreachable-fallback as documented there). Each filtered rule contributes one or more bad-code anti-patterns (the rule's `**Bad code**` block) and one or more good-code conventions (the rule's `**Good code**` block). Flag any file in scope matching a bad-code anti-pattern as a finding with severity per the §Severity Ladder, citing the rule id (e.g. `R10 SQLi`) and the bad-code shape. The supplemental focus-areas bullet lists (Smart Contracts / DeFi, Backend Services, Frontend if added) cover classes not yet codified as R-rules and apply additively. Use the mode-appropriate severity ladder above. Collect only CRITICAL and HIGH.
 
 ## Step 3: Consolidation
 
