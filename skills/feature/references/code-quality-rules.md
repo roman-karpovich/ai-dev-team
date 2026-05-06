@@ -42,6 +42,36 @@ rules:
     category: process
     applies_to: [all]
     enforced_by: [spec-compliance-checker]
+  - id: R9
+    short: idor-missing-ownership-check
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
+  - id: R10
+    short: sqli-raw-string-concatenation
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
+  - id: R11
+    short: hardcoded-secrets-in-source
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
+  - id: R12
+    short: missing-cookie-security-flags
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
+  - id: R13
+    short: plain-text-secrets-in-ci
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
+  - id: R14
+    short: missing-audit-logging-on-sensitive-actions
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
 ---
 
 # Code Quality Rules
@@ -329,6 +359,357 @@ R8 sits orthogonal to R1–R7 (which govern test/code quality). It is an **outpu
 6. **Cleanup discipline**. If KB-leaking text has already shipped to a public artifact, treat the cleanup as a single atomic operation: rewrite the PR body / amend the bot reply / edit the comment in one pass, then verify with `gh pr view <N> --json body,comments` that no KB path remains. Do NOT amend prior commits to remove KB references unless those commits have not yet been pushed — rewriting published history is a worse outcome than leaving the leak in commit history (which is far less visible than the PR body and review thread).
 
 7. **Spec-compliance-checker enforcement seam**. After step h. **Commit**, the checker SHOULD run a quick grep against the new commit's `git show -s --format=%B <sha>` for the patterns listed in rule (1) — KB-style paths and footer phrases. A hit is a FAIL with remediation "rewrite the commit message without KB references". Implementation lives in `agents/spec-compliance-checker.md`; the rule itself is canonical here.
+
+---
+
+## R9 — IDOR / missing ownership check on user-scoped endpoints
+
+**Rule**: any HTTP endpoint (REST handler, GraphQL resolver, RPC method) that returns user-scoped data MUST verify the resource is owned by — or shared with — the authenticated caller before returning it. A primary-key lookup keyed on a path / query parameter (`/orders/<id>`, `?user_id=…`) without a scope filter against `request.user` is IDOR.
+
+**Why**: the auth check happens at "is the user logged in" granularity, not "does this user own this resource" granularity. The auth middleware passes; the handler reads by primary key without filtering by `current_user_id`; any authenticated user enumerates other users' data by changing the URL parameter. Real-world incidents: customer order leakage (sequential order ids), file-server cross-tenant reads, DM-thread cross-account reads. The defect is invisible at code-review pace because each line reads correct on its own — the pattern only surfaces when the missing filter is named explicitly.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §6 (Access control) + §7.1.1 (Authorization). POL-ENG-AIDEV-001.
+
+**How to apply**: every endpoint that returns a user-owned resource MUST do one of: (a) **scoped query** — filter by `user_id=request.user.id` directly in the lookup, returning 404 on miss (`Order.objects.filter(id=order_id, user_id=request.user.id).first()`); (b) **explicit ownership assertion** — fetch then immediately raise on mismatch (`if order.user_id != request.user.id: raise PermissionDenied()`) before any return / serialization step; (c) **policy / row-level-security at the data layer** that enforces tenant scoping for the request before the query runs. The check sits AT the endpoint boundary — never deferred to a downstream service or wrapped in "we check it later in the response serializer".
+
+**Bad code**:
+
+```python
+# Django view — IDOR: any logged-in user can read any order by id
+def get_order(request, order_id):
+    order = Order.objects.get(id=order_id)
+    return JsonResponse(serialize(order))
+```
+
+```javascript
+// Express handler — IDOR: no req.user.id check
+app.get("/orders/:id", async (req, res) => {
+  const order = await db.orders.findById(req.params.id);
+  res.json(order);
+});
+```
+
+**Good code**:
+
+```python
+# Scoped query — the filter binds to request.user.id, miss → None → 404
+def get_order(request, order_id):
+    order = Order.objects.filter(id=order_id, user_id=request.user.id).first()
+    if order is None:
+        raise Http404()
+    return JsonResponse(serialize(order))
+```
+
+```python
+# Explicit ownership assertion — fetch then immediately raise
+def get_order(request, order_id):
+    order = Order.objects.get(id=order_id)
+    if order.user_id != request.user.id:
+        raise PermissionDenied()
+    return JsonResponse(serialize(order))
+```
+
+---
+
+## R10 — SQLi / raw string concatenation into SQL
+
+**Rule**: SQL queries MUST use parameterised values bound via the driver (`cursor.execute(sql, params)`), the ORM (`Model.objects.filter(field=value)`), or a prepared-statement API. F-string / `.format()` / template-literal interpolation of any non-literal value into the SQL string is forbidden, even with type coercion, even for "internal" endpoints.
+
+**Why**: the AI-assist pattern is to write SQL that reads naturally (`f"SELECT * FROM users WHERE id = {user_id}"`) — same shape as the prose around it — and the fixer's "improvement" reflexively adds `int(user_id)` instead of binding. Type coercion is not parameterisation: a TEXT column with `f"WHERE name = '{name}'"` is wide open even after `name = str(name)`. ORMs hide this by default; raw queries do not. Internal-only services age into externally-reachable services through new front doors and the SQL string survives the migration.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.1.1 (Injection). POL-ENG-AIDEV-001.
+
+**How to apply**: when a query has any input from `request`, environment, file, or any non-literal source, the value goes through driver bind parameters or an ORM filter. Passing user input as a literal string in the SQL is a defect even if the value is coerced or whitelisted upstream — the rule is structural, not stylistic. If the query needs dynamic identifiers (table name, column name) that cannot be bound, prefer driver-side identifier quoting (e.g. `psycopg2.sql.Identifier`) so the protocol layer escapes the identifier; if driver-side quoting is unavailable, the identifiers come from a fixed allowlist enumerated in code, never from request input. Never use `assert` for input validation or allowlist enforcement — Python strips assertions under `-O` / `PYTHONOPTIMIZE`, which silently disables the check in production. Never compress a guard and the protected statement onto a single line via `;` — `if cond: raise; protected_call()` puts the protected call inside the if-true suite, so the protected call never executes when the guard passes; express guards as explicit multi-line `if` / `raise` blocks.
+
+**Bad code**:
+
+```python
+# F-string interpolation — classic SQLi
+cursor.execute(f"SELECT * FROM orders WHERE user_id = {user_id}")
+```
+
+```python
+# %-formatting into the SQL string — same defect, different syntax
+cursor.execute("SELECT * FROM orders WHERE user_id = %s" % user_id)
+```
+
+```python
+# `assert` guard "protects" the dynamic identifier — assert evaporates under
+# python -O / PYTHONOPTIMIZE, leaving raw f-string interpolation in production
+assert table_name in ALLOWED_TABLES
+cursor.execute(f"SELECT * FROM {table_name} WHERE user_id = %s", (user_id,))
+```
+
+**Good code**:
+
+```python
+# Parameterised query — the driver binds user_id at the protocol level
+cursor.execute("SELECT * FROM orders WHERE user_id = %s", (user_id,))
+```
+
+```python
+# ORM equivalent — the framework binds the value
+Order.objects.filter(user_id=user_id)
+```
+
+```python
+# Dynamic identifier via driver-side quoting — psycopg2.sql.Identifier
+# escapes table_name at the protocol level
+from psycopg2 import sql
+cursor.execute(
+    sql.SQL("SELECT * FROM {} WHERE user_id = %s").format(sql.Identifier(table_name)),
+    (user_id,),
+)
+```
+
+```python
+# Multi-line allowlist guard — guard on its own line, execute on a separate
+# line. Never compress these onto one line via `;`.
+if table_name not in ALLOWED_TABLES:
+    raise ValueError(f"unknown table {table_name!r}")
+cursor.execute("SELECT * FROM " + table_name + " WHERE user_id = %s", (user_id,))
+```
+
+---
+
+## R11 — Hardcoded secrets in source
+
+**Rule**: API keys, database passwords, JWT signing keys, third-party access tokens, and any other secret MUST come from environment variables, a secrets manager (Vault, AWS Secrets Manager, KMS), or runtime injection. Literal secret strings in source code — including in test fixtures committed to VCS — are forbidden. Test secrets follow the same rule: tests use environment-injected fakes, never hardcoded strings shaped like real secrets.
+
+**Why**: a secret in source is a secret in git history forever — `git filter-repo` is damage control, not remediation. AI-assist pasting an example credential (`sk_test_…`) into a working file creates indexable strings on GitHub before the developer notices. The "but it's a test key" defense fails: live and test keys share format, scanners flag both, and the lesson "test-mode secrets in code are fine" generalises into "production-mode secrets in code are sometimes fine".
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.2 (Secrets management) + §11.2 (Repository hygiene). POL-ENG-AIDEV-001.
+
+**How to apply**: secrets read from `os.environ`, `process.env`, settings-bound config that loads from env / Vault, or an injected runtime context. Default values for missing env vars MUST be either `None` (with a hard fail at startup) or a value that obviously does not work outside the dev environment — never a real key shape. Tests use `monkeypatch.setenv(...)` / `pytest.fixture` injection, not literal credentials. CI workflow files use `${{ secrets.X }}` (covered separately by R13).
+
+**Bad code**:
+
+```python
+# Literal API key at module scope — committed to git, indexable on GitHub
+API_KEY = "sk_live_abc123def456"
+
+# Even with the test prefix — same shape, same scanner hit
+STRIPE_KEY = "sk_test_realtokenshape_abc123"
+
+# DB password baked into the URL
+DATABASE_URL = "postgres://user:realpassword@host/db"
+```
+
+```javascript
+// JS module — same defect, same indexable shape
+const apiKey = "ak_realtokenshape_xyz";
+```
+
+**Good code**:
+
+```python
+# Read from environment — hard-fail on missing
+import os
+API_KEY = os.environ["API_KEY"]
+```
+
+```python
+# Pydantic settings — env-bound SecretStr
+from pydantic import BaseSettings, Field, SecretStr
+class Settings(BaseSettings):
+    api_key: SecretStr = Field(..., env="API_KEY")
+```
+
+```python
+# Test — monkeypatch.setenv injects a fake, never a real-shape literal
+def test_api_call(monkeypatch):
+    monkeypatch.setenv("API_KEY", "test-fake-not-a-real-shape")
+    ...
+```
+
+```javascript
+// JS — process.env with explicit hard-fail
+const apiKey = process.env.API_KEY;
+if (!apiKey) throw new Error("API_KEY required");
+```
+
+---
+
+## R12 — Missing cookie security flags
+
+**Rule**: cookies that carry session identifiers, auth tokens, CSRF tokens, or any other security-sensitive value MUST set `HttpOnly`, `Secure`, and `SameSite` (one of `Lax` / `Strict`; `None` is permitted only when accompanied by `Secure` AND a documented cross-site need). Plain `set_cookie(name, value)` calls are forbidden for these cookie classes.
+
+**Why**: the framework default for `set_cookie` in most stacks is no flags. JavaScript can read a missing-`HttpOnly` cookie and exfiltrate the session via XSS. A missing-`Secure` cookie travels over HTTP if the user lands on a non-HTTPS URL. Missing `SameSite` lets cross-site requests carry the cookie, enabling CSRF. AI-assist code samples seen in the wild copy the framework's most-permissive form because it works in dev; the security flags get added "later" and "later" never arrives.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.3 (Session management). POL-ENG-AIDEV-001.
+
+**How to apply**: any session / auth / CSRF cookie sets all three flags explicitly at the call site. Framework-level defaults (`SESSION_COOKIE_HTTPONLY = True` in Django settings) count as compliance for the session cookie specifically, but bespoke `set_cookie` calls in views must still set the flags explicitly — the framework default is not a guarantee for cookies set by handler code. For `SameSite=None`, the comment at the call site MUST justify the cross-site need.
+
+**Bad code**:
+
+```python
+# Django — bespoke session cookie with no flags
+response.set_cookie("session", session_id)
+```
+
+```javascript
+// Express — no options object, framework defaults to permissive
+res.cookie("session", id);
+```
+
+**Good code**:
+
+```python
+# Django handler — all three flags explicit at the call site
+response.set_cookie(
+    "session",
+    session_id,
+    httponly=True,
+    secure=True,
+    samesite="Lax",
+)
+```
+
+```javascript
+// Express — full options object
+res.cookie("session", id, { httpOnly: true, secure: true, sameSite: "lax" });
+```
+
+```python
+# Django settings — framework-level defaults for the framework session cookie
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = "Lax"
+# AND any bespoke set_cookie() in handler code still sets httponly=True,
+# secure=True, samesite="Lax" explicitly.
+```
+
+---
+
+## R13 — Plain-text secrets in CI / pipeline files
+
+**Rule**: secrets referenced in CI workflow files (GitHub Actions, GitLab CI, CircleCI, etc.) MUST come from the CI provider's secret store (`${{ secrets.X }}` for GitHub Actions, `$VARNAME` from masked CI variables, OIDC short-lived tokens). Plain-text secret values in YAML — `env:` blocks, `with:` action inputs, shell `echo` chains — are forbidden, even for "low-value" tokens.
+
+**Why**: CI YAML sits in version control and is readable by anyone with repo read access (often a wider set than production credential holders). A token committed in `.github/workflows/deploy.yml` is exfil-friendly: searchable by org-wide GitHub Code Search, scraped by any fork, indexed by GitHub's secret scanner only after the fact. The pattern often slips in via debugging — a developer adds `env: { TOKEN: "ghs_…" }` to test a workflow change locally and forgets to revert. AI-assist is especially prone here because the natural autocompletion is the literal token shape from the API docs.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §11.2 (Pipeline hygiene). POL-ENG-AIDEV-001.
+
+**How to apply**: every secret-shaped value in CI YAML resolves at runtime via `${{ secrets.<NAME> }}` (GitHub Actions) or the equivalent secret-store reference for the CI provider. OIDC short-lived tokens (`permissions: id-token: write` + `aws-actions/configure-aws-credentials@v4` style) are preferred over long-lived secrets where the deploy target supports them. Local-test secrets stay in the developer's local `.env` which is gitignored — never committed, never copy-pasted into a workflow YAML "just to test".
+
+**Bad code**:
+
+```yaml
+# .github/workflows/deploy.yml — literal token committed to git
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: "ghs_realtokenhere"
+    steps:
+      - run: curl -H "Authorization: Bearer ghp_realtokenhere" https://api.example.com
+      - uses: some-action@v1
+        with:
+          api_key: "sk_live_realtokenshape"
+```
+
+**Good code**:
+
+```yaml
+# Reference secrets through the CI provider's secret store
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: curl -H "Authorization: Bearer ${API_TOKEN}" https://api.example.com
+```
+
+```yaml
+# OIDC short-lived token — no long-lived secret committed at all
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ci-deploy
+          aws-region: us-east-1
+```
+
+---
+
+## R14 — Missing audit-logging on sensitive actions
+
+**Rule**: state-changing actions on security-sensitive resources MUST emit a structured audit-log entry capturing actor, action, target, timestamp, and outcome. Sensitive resources include user accounts (create/delete/disable, role / permission changes), authentication state (login/logout/MFA enable-disable), authorization grants (API token issue/revoke, share-link grant), payment-bearing state (charge, refund, payout), and any privileged-operator action (impersonation, manual data edit, config change). Application logs (`logger.info(...)`) are NOT audit logs — audit logs go to a dedicated structured-event sink whose retention and integrity guarantees are separate from operational logs.
+
+**Why**: post-incident forensics fail at the resource layer when nobody can answer "who did this, when, with which permissions?" The application-logger heuristic — `print` / `logger.info` calls scattered through the handler — drops messages on log rotation, doesn't capture actor context, and gets filtered out at the aggregation layer. Audit logs are a separate stream because they are the source of truth for accountability under both internal incident review and regulatory disclosure (SOC 2, ISO 27001, sector-specific requirements). AI-assist tends to omit audit-log emit calls because the surrounding code already "logs" via the operational logger.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.4 (Audit logging). POL-ENG-AIDEV-001.
+
+**How to apply**: every handler that performs a sensitive state change emits one audit-log call, adjacent to the side-effect (same function, after the mutation succeeds, before returning). The call uses a dedicated `audit_log.emit(...)` (or whatever the project's audit sink is named — `audit.record(...)`, `AuditEvent.create(...)`, etc.) carrying `actor` (request principal), `action` (verb — `user.disable`, `payment.refund`, `apitoken.revoke`), `target` (resource id or path), `ts` (timestamp), `outcome` (`success` / `failure` with reason). On failure paths, emit the audit log with the failure outcome — failed-attempt records are evidence too.
+
+**Bad code**:
+
+```python
+# Handler disables the user but emits no audit-log entry
+def disable_user(request, user_id):
+    user = User.objects.get(id=user_id)
+    user.disable()
+    return Response(status=204)
+```
+
+```python
+# Operational logger treated as audit coverage — wrong stream, wrong retention
+def disable_user(request, user_id):
+    user = User.objects.get(id=user_id)
+    user.disable()
+    logger.info(f"disabled user {user.id}")
+    return Response(status=204)
+```
+
+**Good code**:
+
+```python
+# Dedicated audit sink — actor, action, target, timestamp, outcome
+def disable_user(request, user_id):
+    user = User.objects.get(id=user_id)
+    user.disable()
+    audit_log.emit(
+        actor=request.user.id,
+        action="user.disable",
+        target=user.id,
+        ts=now(),
+        outcome="success",
+    )
+    return Response(status=204)
+```
+
+```python
+# Failure path — emit on the exception with outcome="failure"
+def charge_order(request, order_id):
+    order = Order.objects.get(id=order_id)
+    try:
+        charge(order)
+    except StripeError as e:
+        audit_log.emit(
+            actor=request.user.id,
+            action="payment.charge",
+            target=order.id,
+            ts=now(),
+            outcome="failure",
+            reason=str(e),
+        )
+        raise
+    audit_log.emit(
+        actor=request.user.id,
+        action="payment.charge",
+        target=order.id,
+        ts=now(),
+        outcome="success",
+    )
+    return Response(status=200)
+```
 
 ---
 
