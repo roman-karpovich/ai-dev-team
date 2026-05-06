@@ -4114,11 +4114,13 @@ for rid in cluster_ids:
         print(f"{path}: {rid} body missing `**Good code**` marker (assertion d)", file=sys.stderr)
         sys.exit(1)
 
-# (e) Radaro / POL-ENG-AIDEV-001 anchor
+# (e) Radaro AND POL-ENG-AIDEV-001 anchors — both required per spec; the
+# previous OR-of-positives let a regression remove one anchor while keeping
+# the other (anchor-downgrade silently undetected).
 for rid in cluster_ids:
     sec = extract_section(rid)
-    if ("Radaro" not in sec) and ("POL-ENG-AIDEV-001" not in sec):
-        print(f"{path}: {rid} body missing Radaro / POL-ENG-AIDEV-001 anchor (assertion e)", file=sys.stderr)
+    if ("Radaro" not in sec) or ("POL-ENG-AIDEV-001" not in sec):
+        print(f"{path}: {rid} body missing Radaro AND/OR POL-ENG-AIDEV-001 anchor (both required) (assertion e)", file=sys.stderr)
         sys.exit(1)
 
 # (f) backend filter returns 14 (R1..R8 [all] + R9..R14 [backend])
