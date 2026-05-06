@@ -42,6 +42,16 @@ rules:
     category: process
     applies_to: [all]
     enforced_by: [spec-compliance-checker]
+  - id: R9
+    short: idor-missing-ownership-check
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
+  - id: R10
+    short: sqli-raw-string-concatenation
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
 ---
 
 # Code Quality Rules
@@ -329,6 +339,116 @@ R8 sits orthogonal to R1–R7 (which govern test/code quality). It is an **outpu
 6. **Cleanup discipline**. If KB-leaking text has already shipped to a public artifact, treat the cleanup as a single atomic operation: rewrite the PR body / amend the bot reply / edit the comment in one pass, then verify with `gh pr view <N> --json body,comments` that no KB path remains. Do NOT amend prior commits to remove KB references unless those commits have not yet been pushed — rewriting published history is a worse outcome than leaving the leak in commit history (which is far less visible than the PR body and review thread).
 
 7. **Spec-compliance-checker enforcement seam**. After step h. **Commit**, the checker SHOULD run a quick grep against the new commit's `git show -s --format=%B <sha>` for the patterns listed in rule (1) — KB-style paths and footer phrases. A hit is a FAIL with remediation "rewrite the commit message without KB references". Implementation lives in `agents/spec-compliance-checker.md`; the rule itself is canonical here.
+
+---
+
+## R9 — IDOR / missing ownership check on user-scoped endpoints
+
+**Rule**: any HTTP endpoint (REST handler, GraphQL resolver, RPC method) that returns user-scoped data MUST verify the resource is owned by — or shared with — the authenticated caller before returning it. A primary-key lookup keyed on a path / query parameter (`/orders/<id>`, `?user_id=…`) without a scope filter against `request.user` is IDOR.
+
+**Why**: the auth check happens at "is the user logged in" granularity, not "does this user own this resource" granularity. The auth middleware passes; the handler reads by primary key without filtering by `current_user_id`; any authenticated user enumerates other users' data by changing the URL parameter. Real-world incidents: customer order leakage (sequential order ids), file-server cross-tenant reads, DM-thread cross-account reads. The defect is invisible at code-review pace because each line reads correct on its own — the pattern only surfaces when the missing filter is named explicitly.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §6 (Access control) + §7.1.1 (Authorization). POL-ENG-AIDEV-001.
+
+**How to apply**: every endpoint that returns a user-owned resource MUST do one of: (a) **scoped query** — filter by `user_id=request.user.id` directly in the lookup, returning 404 on miss (`Order.objects.filter(id=order_id, user_id=request.user.id).first()`); (b) **explicit ownership assertion** — fetch then immediately raise on mismatch (`if order.user_id != request.user.id: raise PermissionDenied()`) before any return / serialization step; (c) **policy / row-level-security at the data layer** that enforces tenant scoping for the request before the query runs. The check sits AT the endpoint boundary — never deferred to a downstream service or wrapped in "we check it later in the response serializer".
+
+**Bad code**:
+
+```python
+# Django view — IDOR: any logged-in user can read any order by id
+def get_order(request, order_id):
+    order = Order.objects.get(id=order_id)
+    return JsonResponse(serialize(order))
+```
+
+```javascript
+// Express handler — IDOR: no req.user.id check
+app.get("/orders/:id", async (req, res) => {
+  const order = await db.orders.findById(req.params.id);
+  res.json(order);
+});
+```
+
+**Good code**:
+
+```python
+# Scoped query — the filter binds to request.user.id, miss → None → 404
+def get_order(request, order_id):
+    order = Order.objects.filter(id=order_id, user_id=request.user.id).first()
+    if order is None:
+        raise Http404()
+    return JsonResponse(serialize(order))
+```
+
+```python
+# Explicit ownership assertion — fetch then immediately raise
+def get_order(request, order_id):
+    order = Order.objects.get(id=order_id)
+    if order.user_id != request.user.id:
+        raise PermissionDenied()
+    return JsonResponse(serialize(order))
+```
+
+---
+
+## R10 — SQLi / raw string concatenation into SQL
+
+**Rule**: SQL queries MUST use parameterised values bound via the driver (`cursor.execute(sql, params)`), the ORM (`Model.objects.filter(field=value)`), or a prepared-statement API. F-string / `.format()` / template-literal interpolation of any non-literal value into the SQL string is forbidden, even with type coercion, even for "internal" endpoints.
+
+**Why**: the AI-assist pattern is to write SQL that reads naturally (`f"SELECT * FROM users WHERE id = {user_id}"`) — same shape as the prose around it — and the fixer's "improvement" reflexively adds `int(user_id)` instead of binding. Type coercion is not parameterisation: a TEXT column with `f"WHERE name = '{name}'"` is wide open even after `name = str(name)`. ORMs hide this by default; raw queries do not. Internal-only services age into externally-reachable services through new front doors and the SQL string survives the migration.
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.1.1 (Injection). POL-ENG-AIDEV-001.
+
+**How to apply**: when a query has any input from `request`, environment, file, or any non-literal source, the value goes through driver bind parameters or an ORM filter. Passing user input as a literal string in the SQL is a defect even if the value is coerced or whitelisted upstream — the rule is structural, not stylistic. If the query needs dynamic identifiers (table name, column name) that cannot be bound, prefer driver-side identifier quoting (e.g. `psycopg2.sql.Identifier`) so the protocol layer escapes the identifier; if driver-side quoting is unavailable, the identifiers come from a fixed allowlist enumerated in code, never from request input. Never use `assert` for input validation or allowlist enforcement — Python strips assertions under `-O` / `PYTHONOPTIMIZE`, which silently disables the check in production. Never compress a guard and the protected statement onto a single line via `;` — `if cond: raise; protected_call()` puts the protected call inside the if-true suite, so the protected call never executes when the guard passes; express guards as explicit multi-line `if` / `raise` blocks.
+
+**Bad code**:
+
+```python
+# F-string interpolation — classic SQLi
+cursor.execute(f"SELECT * FROM orders WHERE user_id = {user_id}")
+```
+
+```python
+# %-formatting into the SQL string — same defect, different syntax
+cursor.execute("SELECT * FROM orders WHERE user_id = %s" % user_id)
+```
+
+```python
+# `assert` guard "protects" the dynamic identifier — assert evaporates under
+# python -O / PYTHONOPTIMIZE, leaving raw f-string interpolation in production
+assert table_name in ALLOWED_TABLES
+cursor.execute(f"SELECT * FROM {table_name} WHERE user_id = %s", (user_id,))
+```
+
+**Good code**:
+
+```python
+# Parameterised query — the driver binds user_id at the protocol level
+cursor.execute("SELECT * FROM orders WHERE user_id = %s", (user_id,))
+```
+
+```python
+# ORM equivalent — the framework binds the value
+Order.objects.filter(user_id=user_id)
+```
+
+```python
+# Dynamic identifier via driver-side quoting — psycopg2.sql.Identifier
+# escapes table_name at the protocol level
+from psycopg2 import sql
+cursor.execute(
+    sql.SQL("SELECT * FROM {} WHERE user_id = %s").format(sql.Identifier(table_name)),
+    (user_id,),
+)
+```
+
+```python
+# Multi-line allowlist guard — guard on its own line, execute on a separate
+# line. Never compress these onto one line via `;`.
+if table_name not in ALLOWED_TABLES:
+    raise ValueError(f"unknown table {table_name!r}")
+cursor.execute("SELECT * FROM " + table_name + " WHERE user_id = %s", (user_id,))
+```
 
 ---
 
