@@ -5860,6 +5860,13 @@ check "mission_r_enforcement_claim_narrow"         check_mission_r_enforcement_c
 check "check_new_pin_classified" check_new_pin_classified
 echo
 
+# --- R-rules taxonomy + conditional-loading seam pins ---
+echo "R-rules taxonomy pins:"
+check "r-rules-taxonomy-schema"               check_r_rules_taxonomy_schema
+check "cross-auditor-security-preamble"       check_cross_auditor_security_preamble
+check "spec-compliance-filter-preamble"       check_spec_compliance_filter_preamble
+echo
+
 
 echo
 echo "Passed: $PASS"
