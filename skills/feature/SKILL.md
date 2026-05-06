@@ -231,6 +231,88 @@ If the user names any, populate the `items:` YAML block in spec section `## 8. P
 
 Spawn **Librarian** only if you need to update MOC indexes afterward.
 
+**Attack-surface profile slot-filling.** Before moving to approval, present 5 banners in sequence:
+
+**Banner 1 — caller_identity** (also acts as the `not_applicable` short-circuit gate):
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+Attack-surface profile (1/5) — Caller identity. Who calls this code path? Pick one:
+
+- `anonymous-public` — accessible without auth (public API, web form, signup endpoint)
+- `authenticated-user` — end-user behind auth (logged-in session, OAuth-bearing request)
+- `service-account` — internal service-to-service call (machine credential, mTLS)
+- `cron` — scheduled job / background worker
+- `webhook-external` — incoming webhook from a third-party service we don't control
+- `mixed` — multiple callers; describe in §3 Design
+- `unspecified` — caller_identity not relevant or skip
+- `n/a` — entire attack-surface profile not applicable (smart-contract, doc-only, internal CLI without network surface). Sets `not_applicable: true` and skips remaining prompts.
+
+**Caller identity?**
+```
+
+If user answers `n/a`: set `not_applicable: true`, all other fields set to literal `null` per §3.3 canonical rule, skip Banners 2–5, write §1.1 with `not_applicable: true` AND every other field as `null`, proceed to Step 3 HARD GATE.
+
+Otherwise: parse answer against the enum (lowercase, leading/trailing whitespace stripped). On match, store the value. On mismatch (anything not in the enum and not `n/a` / `skip`), re-prompt with the same banner and an "invalid value" preamble. Empty answer → `unspecified`.
+
+**Banner 2 — external_input**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+Attack-surface profile (2/5) — External input. Does any code path accept user-uploaded files, externally-provided URLs, third-party-API parsed data, or any data crossing a trust boundary? `yes` / `no` / `skip` (default no).
+
+**External input?**
+```
+
+`yes` → `external_input: true`. `no` / `skip` / empty → `external_input: false`.
+
+**Banner 3 — rate_limit**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+Attack-surface profile (3/5) — Rate limit. Is the entry point rate-limited and per what dimension?
+
+- `per-ip` — limit by source IP
+- `per-user` — limit by authenticated user
+- `per-api-key` — limit by API key
+- `per-tenant` — limit by tenant/org
+- `none` — no rate limiting
+- `unspecified` — rate-limit policy unclear or out-of-scope, or `skip`
+
+**Rate limit?**
+```
+
+Parse against enum. Empty / `skip` → `unspecified`.
+
+**Banner 4 — abuse_scenarios**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+Attack-surface profile (4/5) — Abuse scenarios. What would a malicious caller try? 1-3 sentences in free form. Empty / `skip` = no abuse scenarios captured (slot stays `null`).
+
+**Abuse scenarios?**
+```
+
+Free-form. Whitespace-trim. Empty / `skip` → `abuse_scenarios: null`. Otherwise the orchestrator MUST serialize the answer via a YAML library's safe-dump (`yaml.safe_dump` in Python, `js-yaml` `dump` in JS) with default flow style — NOT manual string concatenation. The library handles single-quote doubling, double-quote escaping, embedded colons, leading dashes, multi-byte unicode, and embedded newlines correctly. Reject answers containing the U+0000 NUL byte before passing to the dumper.
+
+**Banner 5 — framework_version_target**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+Attack-surface profile (5/5) — Framework version target. For backend specs: framework + version (e.g. `Django 5.0`, `Express 4.x`, `FastAPI 0.110+`). Empty / `skip` / not-backend = `null`.
+
+**Framework version target?**
+```
+
+Free-form. Empty / `skip` → `null`. Otherwise the orchestrator MUST serialize the answer via a YAML library's safe-dump (`yaml.safe_dump` in Python, `js-yaml dump` in JS) with default flow style — NOT manual string concatenation. Same protocol as Banner 4 abuse_scenarios. The library handles single-quote doubling, double-quote escaping, embedded colons, leading dashes, multi-byte unicode, and embedded newlines correctly. Reject answers containing the U+0000 NUL byte before passing to the dumper.
+
+After all 5 prompts (or after the n/a short-circuit on Banner 1), the orchestrator writes the answers into spec `## 1.1 Attack-surface profile` block, appends one Log line `- YYYY-MM-DD: attack-surface profile recorded (caller_identity=<v>; external_input=<v>; rate_limit=<v>; framework=<v>)` (or for short-circuit: `- YYYY-MM-DD: attack-surface profile not applicable`), then proceeds to Step 3 HARD GATE.
+
 ### Step 3 — Get approval
 
 Present a summary and wait for user approval before implementing.
