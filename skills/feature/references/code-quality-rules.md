@@ -52,6 +52,11 @@ rules:
     category: security
     applies_to: [backend]
     enforced_by: [cross-auditor:security]
+  - id: R11
+    short: hardcoded-secrets-in-source
+    category: security
+    applies_to: [backend]
+    enforced_by: [cross-auditor:security]
 ---
 
 # Code Quality Rules
@@ -448,6 +453,64 @@ cursor.execute(
 if table_name not in ALLOWED_TABLES:
     raise ValueError(f"unknown table {table_name!r}")
 cursor.execute("SELECT * FROM " + table_name + " WHERE user_id = %s", (user_id,))
+```
+
+---
+
+## R11 — Hardcoded secrets in source
+
+**Rule**: API keys, database passwords, JWT signing keys, third-party access tokens, and any other secret MUST come from environment variables, a secrets manager (Vault, AWS Secrets Manager, KMS), or runtime injection. Literal secret strings in source code — including in test fixtures committed to VCS — are forbidden. Test secrets follow the same rule: tests use environment-injected fakes, never hardcoded strings shaped like real secrets.
+
+**Why**: a secret in source is a secret in git history forever — `git filter-repo` is damage control, not remediation. AI-assist pasting an example credential (`sk_test_…`) into a working file creates indexable strings on GitHub before the developer notices. The "but it's a test key" defense fails: live and test keys share format, scanners flag both, and the lesson "test-mode secrets in code are fine" generalises into "production-mode secrets in code are sometimes fine".
+
+**Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.2 (Secrets management) + §11.2 (Repository hygiene). POL-ENG-AIDEV-001.
+
+**How to apply**: secrets read from `os.environ`, `process.env`, settings-bound config that loads from env / Vault, or an injected runtime context. Default values for missing env vars MUST be either `None` (with a hard fail at startup) or a value that obviously does not work outside the dev environment — never a real key shape. Tests use `monkeypatch.setenv(...)` / `pytest.fixture` injection, not literal credentials. CI workflow files use `${{ secrets.X }}` (covered separately by R13).
+
+**Bad code**:
+
+```python
+# Literal API key at module scope — committed to git, indexable on GitHub
+API_KEY = "sk_live_abc123def456"
+
+# Even with the test prefix — same shape, same scanner hit
+STRIPE_KEY = "sk_test_realtokenshape_abc123"
+
+# DB password baked into the URL
+DATABASE_URL = "postgres://user:realpassword@host/db"
+```
+
+```javascript
+// JS module — same defect, same indexable shape
+const apiKey = "ak_realtokenshape_xyz";
+```
+
+**Good code**:
+
+```python
+# Read from environment — hard-fail on missing
+import os
+API_KEY = os.environ["API_KEY"]
+```
+
+```python
+# Pydantic settings — env-bound SecretStr
+from pydantic import BaseSettings, Field, SecretStr
+class Settings(BaseSettings):
+    api_key: SecretStr = Field(..., env="API_KEY")
+```
+
+```python
+# Test — monkeypatch.setenv injects a fake, never a real-shape literal
+def test_api_call(monkeypatch):
+    monkeypatch.setenv("API_KEY", "test-fake-not-a-real-shape")
+    ...
+```
+
+```javascript
+// JS — process.env with explicit hard-fail
+const apiKey = process.env.API_KEY;
+if (!apiKey) throw new Error("API_KEY required");
 ```
 
 ---
