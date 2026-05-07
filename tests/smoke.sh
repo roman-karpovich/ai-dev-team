@@ -5884,6 +5884,14 @@ check "probe-g-detector-clean-at-current-major" check_probe_g_detector_clean_at_
 check "probe-g-detector-ineligible-no-lockfile" check_probe_g_detector_ineligible_no_lockfile
 echo
 
+# --- Typosquatting probe (Probe H — supply-chain layer) ---
+echo "Typosquatting probe (Probe H):"
+check "probe-h-corpus-path-resolution" check_probe_h_corpus_path_resolution
+check "probe-h-detector-fires-on-typosquat" check_probe_h_detector_fires_on_typosquat
+check "probe-h-detector-clean-canonical-name" check_probe_h_detector_clean_canonical_name
+check "probe-h-detector-clean-distant-name" check_probe_h_detector_clean_distant_name
+echo
+
 # --- STRIDE-lite spec-template slot pins ---
 echo "STRIDE-lite spec-template slot pins:"
 check "skill-stride-lite-block-gated" check_skill_stride_lite_block_gated
