@@ -4644,6 +4644,65 @@ check_probe_g_detector_ineligible_no_lockfile() {
   _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/03-ineligible-no-lockfile
 }
 
+_probe_h_byte_diff() {
+  # $1 = fixture dir (relative to plugin root)
+  local fdir="$1"
+  local input="$fdir/input.json"
+  local expected="$fdir/expected_stdout.json"
+  [ -r "$input" ] || { echo "$input not readable"; return 1; }
+  [ -r "$expected" ] || { echo "$expected not readable"; return 1; }
+  local plugin_root
+  plugin_root="$(pwd)"
+  local out_tmp="/tmp/smoke-probe-h-out.$$"
+  local exit_code=0
+  ( cd "$fdir" \
+    && PROBE_H_FAKE_NOW="2026-05-07T00:00:00Z" \
+    CLAUDE_PLUGIN_ROOT="$plugin_root" \
+    bash "$plugin_root/hooks/lib/probe_h.sh" < input.json ) >"$out_tmp" 2>/tmp/smoke-probe-h-err.$$ || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "probe_h.sh exited $exit_code against $fdir; stderr:"
+    head -5 /tmp/smoke-probe-h-err.$$
+    rm -f "$out_tmp" /tmp/smoke-probe-h-err.$$
+    return 1
+  fi
+  rm -f /tmp/smoke-probe-h-err.$$
+  # Canonicalize actual + expected via sort_keys.
+  local actual exp
+  actual=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
+  exp=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected")
+  rm -f "$out_tmp"
+  if [ "$actual" != "$exp" ]; then
+    echo "probe_h output mismatch for $fdir:"
+    diff <(printf '%s\n' "$actual") <(printf '%s\n' "$exp") | head -20
+    return 1
+  fi
+  echo "probe_h output byte-matches expected for $fdir"
+}
+
+check_probe_h_corpus_path_resolution() {
+  local probe="hooks/lib/probe_h.sh"
+  [ -f "$probe" ] || { echo "$probe missing"; return 1; }
+  [ -x "$probe" ] || { echo "$probe not executable"; return 1; }
+  local first_line
+  first_line=$(head -1 "$probe")
+  [ "$first_line" = "#!/usr/bin/env bash" ] || { echo "$probe first line is not #!/usr/bin/env bash"; return 1; }
+  grep -qF 'CLAUDE_PLUGIN_ROOT' "$probe" || { echo "$probe missing CLAUDE_PLUGIN_ROOT path-resolution token"; return 1; }
+  grep -qF 'Radaro AI-Assisted Development Policy v1.3 §8.2' "$probe" || { echo "$probe missing traceability anchor"; return 1; }
+  echo "probe_h corpus path resolution schema valid"
+}
+
+check_probe_h_detector_fires_on_typosquat() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/01-positive-typosquat
+}
+
+check_probe_h_detector_clean_canonical_name() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/02-clean-canonical-name
+}
+
+check_probe_h_detector_clean_distant_name() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/03-clean-distant-name
+}
+
 check_skill_stride_lite_block_gated() {
   local f="skills/feature/SKILL.md"
   local sub
