@@ -313,6 +313,86 @@ Free-form. Empty / `skip` → `null`. Otherwise the orchestrator MUST serialize 
 
 After all 5 prompts (or after the n/a short-circuit on Banner 1), the orchestrator writes the answers into spec `## 1.1 Attack-surface profile` block, appends one Log line `- YYYY-MM-DD: attack-surface profile recorded (caller_identity=<v>; external_input=<v>; rate_limit=<v>; framework=<v>)` (or for short-circuit: `- YYYY-MM-DD: attack-surface profile not applicable`), then proceeds to Step 3 HARD GATE.
 
+### §1.2 STRIDE-lite threat model prompts
+
+**Gating**: if `not_applicable: true` OR `external_input != true` (from Banner 2 above), skip this section entirely — do not prompt, do not write §1.2 to the spec — and proceed to Step 3 HARD GATE.
+
+If `external_input == true`, present the following 6 banners in sequence:
+
+**Banner STRIDE-1 — Spoofing**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+STRIDE-lite (1/6) — Spoofing. How could an attacker impersonate a legitimate caller for this feature? 1-3 sentences in free form, or `skip` (default null). External_input is true, so this row is recommended but not required.
+
+**Spoofing mitigation?**
+```
+
+Free-form. Empty / `skip` → `spoofing: null`. Otherwise serialize via `yaml.safe_dump` / `js-yaml dump` — NOT manual string concatenation.
+
+**Banner STRIDE-2 — Tampering**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+STRIDE-lite (2/6) — Tampering. What data could an attacker modify in transit or at rest for this feature? 1-3 sentences, or `skip` (default null).
+
+**Tampering mitigation?**
+```
+
+Free-form. Empty / `skip` → `tampering: null`. Otherwise serialize via `yaml.safe_dump` / `js-yaml dump` — NOT manual string concatenation.
+
+**Banner STRIDE-3 — Repudiation**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+STRIDE-lite (3/6) — Repudiation. What action could a caller perform and then deny for this feature? 1-3 sentences, or `skip` (default null).
+
+**Repudiation mitigation?**
+```
+
+Free-form. Empty / `skip` → `repudiation: null`. Otherwise serialize via `yaml.safe_dump` / `js-yaml dump` — NOT manual string concatenation.
+
+**Banner STRIDE-4 — InfoDisclosure**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+STRIDE-lite (4/6) — InfoDisclosure. What sensitive data could leak via logs, responses, or error messages for this feature? 1-3 sentences, or `skip` (default null).
+
+**InfoDisclosure mitigation?**
+```
+
+Free-form. Empty / `skip` → `info_disclosure: null`. Otherwise serialize via `yaml.safe_dump` / `js-yaml dump` — NOT manual string concatenation. Reject U+0000 NUL byte.
+
+**Banner STRIDE-5 — DoS**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+STRIDE-lite (5/6) — DoS. What cheap input could exhaust resources for this feature? 1-3 sentences, or `skip` (default null).
+
+**DoS mitigation?**
+```
+
+Free-form. Empty / `skip` → `dos: null`. Otherwise serialize via `yaml.safe_dump` / `js-yaml dump` — NOT manual string concatenation.
+
+**Banner STRIDE-6 — EoP**:
+
+```
+## ⏸ AWAITING YOUR INPUT
+
+STRIDE-lite (6/6) — EoP. What bug could let an unprivileged caller perform a privileged action for this feature? 1-3 sentences, or `skip` (default null).
+
+**EoP mitigation?**
+```
+
+Free-form. Empty / `skip` → `eop: null`. Otherwise serialize via `yaml.safe_dump` / `js-yaml dump` — NOT manual string concatenation.
+
+After all 6 banners, the orchestrator writes `## 1.2 STRIDE-lite threat model` section into the spec with the collected `stride_lite` answers (serialized via library safe-dump), appends one Log line `- YYYY-MM-DD: stride-lite threat model recorded (spoofing=<truthy?>; tampering=<truthy?>; repudiation=<truthy?>; info_disclosure=<truthy?>; dos=<truthy?>; eop=<truthy?>)`, and proceeds to Step 3 HARD GATE.
+
 ### Step 3 — Get approval
 
 Present a summary and wait for user approval before implementing.
