@@ -131,3 +131,7 @@ check_probe_g_corpus_fixture_valid schema
 check_probe_g_detector_fires_on_major_drift behavioral
 check_probe_g_detector_clean_at_current_major behavioral
 check_probe_g_detector_ineligible_no_lockfile behavioral
+
+# STRIDE-lite spec-template slot pins (Pin A prompt-text + Pin B prompt-text — SKILL.md gating + cross-auditor consumption)
+check_skill_stride_lite_block_gated prompt-text
+check_cross_auditor_consumes_stride_lite prompt-text

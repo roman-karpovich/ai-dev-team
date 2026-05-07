@@ -1256,16 +1256,16 @@ check_banner_convention_doc_valid() {
   echo "banner convention doc has all 7 required substrings"
 }
 
-# (b) feature SKILL.md must have exactly 22 AWAITING banner lines. The total includes
-# the §Code audit triage banner plus the 5 Attack-surface profile slot prompts.
+# (b) feature SKILL.md must have exactly 28 AWAITING banner lines. The total includes
+# the §Code audit triage banner, 5 Attack-surface profile slot prompts, and 6 STRIDE-lite prompts.
 check_feature_awaiting_count_17() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "22" ]; then
-    echo "feature AWAITING count=$n expected 22"
+  if [ "$n" != "28" ]; then
+    echo "feature AWAITING count=$n expected 28"
     return 1
   fi
-  echo "feature AWAITING count=22 OK"
+  echo "feature AWAITING count=28 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1431,8 +1431,8 @@ check_awaiting_ruler_prefix_count_matches() {
   echo "ruler-prefix count=25 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 30 — includes
-# the feature Attack-surface profile slot prompts).
+# (s) each banner has trailing bold question within 15 lines (expected 36 — includes
+# the feature Attack-surface profile and STRIDE-lite slot prompts).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1443,15 +1443,15 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "30" ]; then
-    echo "trailing-bold-present-each count=$c expected 30"
+  if [ "$c" != "36" ]; then
+    echo "trailing-bold-present-each count=$c expected 36"
     return 1
   fi
-  echo "trailing-bold-present-each=30 OK"
+  echo "trailing-bold-present-each=36 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
-check "feature-AWAITING-count-22"               check_feature_awaiting_count_17
+check "feature-AWAITING-count-28"               check_feature_awaiting_count_17
 check "feature-APPROVAL-count-1"                check_feature_approval_count_1
 check "cross-audit-AWAITING-count-1"            check_cross_audit_awaiting_count_1
 check "research-AWAITING-count-4"               check_research_awaiting_count_4
@@ -5882,6 +5882,12 @@ check "probe-g-corpus-fixture-valid" check_probe_g_corpus_fixture_valid
 check "probe-g-detector-fires-on-major-drift" check_probe_g_detector_fires_on_major_drift
 check "probe-g-detector-clean-at-current-major" check_probe_g_detector_clean_at_current_major
 check "probe-g-detector-ineligible-no-lockfile" check_probe_g_detector_ineligible_no_lockfile
+echo
+
+# --- STRIDE-lite spec-template slot pins ---
+echo "STRIDE-lite spec-template slot pins:"
+check "skill-stride-lite-block-gated" check_skill_stride_lite_block_gated
+check "cross-auditor-consumes-stride-lite" check_cross_auditor_consumes_stride_lite
 echo
 
 

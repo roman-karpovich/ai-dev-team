@@ -97,6 +97,8 @@ Reviews a **feature spec document** (not code) before implementation begins. The
   - Do NOT flag if `external_input: false` (no input-validation discussion required).
   - Do NOT extend this rule beyond the external_input axis without a follow-up spec — the other slots (caller_identity, rate_limit, abuse_scenarios, framework_version_target) inform reviewer judgement but do not produce automatic HIGH flags in v1.
 
+- **STRIDE-lite threat model**: read `## 1.2 STRIDE-lite threat model` from the spec when `## 1.1 Attack-surface profile` carries `external_input: true`. If `external_input: false` (or `not_applicable: true`), skip this check (the §1.2 section is correctly absent on non-external-input specs). If `external_input: true` AND `## 1.2 STRIDE-lite threat model` section is absent OR all 6 row values are `null`, flag MEDIUM with finding text "Spec declares external_input=true (§1.1 attack_surface) but §1.2 STRIDE-lite threat model is absent or all 6 rows null; populate at least 2 rows (Spoofing/Tampering/Repudiation/InfoDisclosure/DoS/EoP) with 1-3 sentence mitigation prose, or document why STRIDE-lite is not applicable in §3 Design." MEDIUM (NOT HIGH) because STRIDE-lite is recommended, not mandatory — partial coverage is acceptable.
+
 ## Severity Ladder (mode-dependent)
 
 Use this for both your own findings and the Codex prompt:

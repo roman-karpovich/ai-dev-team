@@ -47,6 +47,22 @@ attack_surface:
 ```
 ````
 
+## 1.2 STRIDE-lite threat model
+
+OPTIONAL section — included only when `attack_surface.external_input: true` (see §1.1). Specs with `external_input: false` or `not_applicable: true` omit this section entirely; the SKILL.md New mode flow gates the prompts on the §1.1 Banner 2 answer per `skills/feature/SKILL.md` Step 2 §STRIDE-lite prompts.
+
+````markdown
+```yaml
+stride_lite:
+  spoofing: null          # how could an attacker impersonate a legitimate caller?
+  tampering: null         # what data could an attacker modify in transit or at rest?
+  repudiation: null       # what action could a caller perform and then deny?
+  info_disclosure: null   # what sensitive data could leak via logs / responses / error messages?
+  dos: null               # what cheap input could exhaust resources?
+  eop: null               # what bug could let an unprivileged caller perform a privileged action?
+```
+````
+
 ## 2. Current State
 
 How the system works today. Reference KB pages and source files.
