@@ -68,6 +68,10 @@ For projects using this plugin via the marketplace:
 ```yaml
 kb_path: /absolute/path/to/knowledge-base
 project: my-project-name
+# Optional: project_type gates the security R-rule cluster at /feature code-audit time.
+# Allowlist: smart_contract | backend | frontend | data_pipeline.
+# Resolution chain: spec frontmatter → .ai-dev-team.local.yml → .ai-dev-team.yml → None.
+# project_type: backend
 ```
 
 Committing `.ai-dev-team.yml` makes the KB path team-shared across all developers.

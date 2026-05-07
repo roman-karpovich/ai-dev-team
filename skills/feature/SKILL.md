@@ -127,6 +127,11 @@ status: DRAFT
 branch: <type>/YYYY-MM-DD-<slug>
 change_type: <type>
 created: YYYY-MM-DD
+# Optional: project_type gates the security R-rule cluster at code-audit time.
+# Allowlist: smart_contract | backend | frontend | data_pipeline.
+# Resolution chain: spec frontmatter → .ai-dev-team.local.yml → .ai-dev-team.yml → None.
+# See references/spec-template.md for the full fallback contract.
+# project_type: <smart_contract|backend|frontend|data_pipeline>
 tags: [spec, <project>]
 ---
 ```

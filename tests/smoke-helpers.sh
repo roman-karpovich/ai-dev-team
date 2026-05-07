@@ -4766,3 +4766,19 @@ check_cross_auditor_consumes_stride_lite() {
   [ "$has_dos" -ge 1 ] || { echo "missing DoS in cross-auditor spec mode"; return 1; }
   [ "$has_eop" -ge 1 ] || { echo "missing EoP in cross-auditor spec mode"; return 1; }
 }
+
+check_project_type_documented_in_config_surfaces() {
+  local tpl kbd ymle rdme aiov skl_skel
+  tpl=$(grep -c project_type skills/feature/references/spec-template.md)
+  kbd=$(grep -c project_type docs/kb-discovery.md)
+  ymle=$(grep -c project_type .ai-dev-team.yml.example)
+  rdme=$(grep -c project_type README.md)
+  aiov=$(grep -c project_type docs/AI_Dev_Team_Overview.md)
+  skl_skel=$(awk '/^YAML frontmatter:$/,/^```$/' skills/feature/SKILL.md | grep -c project_type)
+  [ "$tpl" -ge 1 ] || { echo "missing project_type in skills/feature/references/spec-template.md"; return 1; }
+  [ "$kbd" -ge 1 ] || { echo "missing project_type in docs/kb-discovery.md"; return 1; }
+  [ "$ymle" -ge 1 ] || { echo "missing project_type in .ai-dev-team.yml.example"; return 1; }
+  [ "$rdme" -ge 1 ] || { echo "missing project_type in README.md"; return 1; }
+  [ "$aiov" -ge 1 ] || { echo "missing project_type in docs/AI_Dev_Team_Overview.md"; return 1; }
+  [ "$skl_skel" -ge 1 ] || { echo "missing project_type inside SKILL.md YAML frontmatter skeleton"; return 1; }
+}

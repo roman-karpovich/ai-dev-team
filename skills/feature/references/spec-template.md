@@ -8,6 +8,17 @@ change_type: {change_type}
 created: YYYY-MM-DD
 # Populated on hand-off (Option 1/2/3). Null while feature is still in development.
 shipped_at: null
+# Optional: project type — gates the security R-rule cluster at code-audit time.
+# Allowlist values: smart_contract | backend | frontend | data_pipeline.
+# Resolution chain (highest priority first):
+#   spec_frontmatter.project_type
+#     → .ai-dev-team.local.yml (gitignored personal override)
+#     → .ai-dev-team.yml (team-shared)
+#     → None (cross-auditor emits a degraded warning at audit time and
+#       normalizes the active filter to "all" per code-quality-rules.md
+#       §Taxonomy Trigger A; rules with applies_to: [all] continue to load,
+#       project-specific rules do not match).
+project_type: null
 # Optional: set when this spec was split off from another via `/feature new --follows-up`.
 # Points at the prior spec relative to <kb_path>/repos/<project>/, e.g.
 #   follows_up: design/2026-03-10-claim-fees-event.md

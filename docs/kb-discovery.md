@@ -30,6 +30,12 @@ If either config file is malformed, missing `kb_path`, or points at a non-existe
 ```yaml
 kb_path: /absolute/path/to/knowledge-base
 project: my-project-name
+# Optional: gates the security R-rule cluster at /feature code-audit time.
+# Allowlist: smart_contract | backend | frontend | data_pipeline.
+# Resolution chain: spec_frontmatter.project_type → .ai-dev-team.local.yml → .ai-dev-team.yml → None.
+# When unresolved, the cross-auditor emits a degraded warning and normalizes the filter
+# to "all" per code-quality-rules.md §Taxonomy Trigger A.
+project_type: backend
 ```
 
 5. Read top-level `kb_path` and `project` independently. `per-field resolution: local → shared → memory → sibling → ask, continue on per-file parse error`
