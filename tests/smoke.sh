@@ -5876,6 +5876,14 @@ check "spec-template-attack-surface-section" check_spec_template_attack_surface_
 check "cross-auditor-consumes-attack-surface-profile" check_cross_auditor_consumes_attack_surface_profile
 echo
 
+# --- Dependency freshness probe (Probe G — supply-chain layer) ---
+echo "Dependency freshness probe (Probe G):"
+check "probe-g-corpus-fixture-valid" check_probe_g_corpus_fixture_valid
+check "probe-g-detector-fires-on-major-drift" check_probe_g_detector_fires_on_major_drift
+check "probe-g-detector-clean-at-current-major" check_probe_g_detector_clean_at_current_major
+check "probe-g-detector-ineligible-no-lockfile" check_probe_g_detector_ineligible_no_lockfile
+echo
+
 
 echo
 echo "Passed: $PASS"

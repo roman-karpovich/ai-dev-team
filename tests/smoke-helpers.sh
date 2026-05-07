@@ -4570,3 +4570,76 @@ check_cross_auditor_consumes_attack_surface_profile() {
 
   echo "cross-auditor spec mode carries Attack-surface profile consumption rules with all required fingerprints"
 }
+
+# Shared helper: run hooks/lib/probe_g.sh against a fixture dir and byte-diff
+# the full JSON output against expected_stdout.json. The probe is invoked with
+# cwd = $fixture_dir so repo_root paths resolve inside the fixture.
+# PROBE_G_FAKE_NOW is set for determinism so emitted_at byte-matches expected.
+_probe_g_byte_diff() {
+  # $1 = fixture dir (relative to plugin root)
+  local fdir="$1"
+  local input="$fdir/input.json"
+  local expected="$fdir/expected_stdout.json"
+  [ -r "$input" ] || { echo "$input not readable"; return 1; }
+  [ -r "$expected" ] || { echo "$expected not readable"; return 1; }
+  local plugin_root
+  plugin_root="$(pwd)"
+  local out_tmp="/tmp/smoke-probe-g-out.$$"
+  local exit_code=0
+  ( cd "$fdir" \
+    && PROBE_G_FAKE_NOW="2026-05-07T00:00:00Z" \
+    CLAUDE_PLUGIN_ROOT="$plugin_root" \
+    bash "$plugin_root/hooks/lib/probe_g.sh" < input.json ) >"$out_tmp" 2>/tmp/smoke-probe-g-err.$$ || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "probe_g.sh exited $exit_code against $fdir; stderr:"
+    head -5 /tmp/smoke-probe-g-err.$$
+    rm -f "$out_tmp" /tmp/smoke-probe-g-err.$$
+    return 1
+  fi
+  rm -f /tmp/smoke-probe-g-err.$$
+  # Canonicalize actual + expected via sort_keys.
+  local actual exp
+  actual=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
+  exp=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected")
+  rm -f "$out_tmp"
+  if [ "$actual" != "$exp" ]; then
+    echo "probe_g output mismatch for $fdir:"
+    diff <(printf '%s\n' "$actual") <(printf '%s\n' "$exp") | head -20
+    return 1
+  fi
+  echo "probe_g output byte-matches expected for $fdir"
+}
+
+check_probe_g_corpus_fixture_valid() {
+  local corpus="hooks/lib/freshness_corpus.json"
+  [ -f "$corpus" ] || { echo "$corpus missing"; return 1; }
+  python3 -c "import json; json.load(open('$corpus'))" 2>/dev/null \
+    || { echo "$corpus is not valid JSON"; return 1; }
+  python3 - "$corpus" <<'PYEOF'
+import json, sys
+corpus = json.load(open(sys.argv[1]))
+allowed = {"npm", "pypi", "cargo", "go"}
+bad_keys = set(corpus.keys()) - allowed
+if bad_keys:
+    print(f"unexpected top-level keys in corpus: {bad_keys}")
+    sys.exit(1)
+for eco, pkgs in corpus.items():
+    for pkg, val in pkgs.items():
+        if not isinstance(val.get("latest_major"), int):
+            print(f"corpus[{eco}][{pkg}].latest_major is not an integer")
+            sys.exit(1)
+print("corpus schema valid")
+PYEOF
+}
+
+check_probe_g_detector_fires_on_major_drift() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/01-positive-major-drift
+}
+
+check_probe_g_detector_clean_at_current_major() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/02-clean-current-major
+}
+
+check_probe_g_detector_ineligible_no_lockfile() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/03-ineligible-no-lockfile
+}
