@@ -31,6 +31,22 @@ tags: [spec, {project-name}]
 
 Why this feature is needed. Link to proposal, issue, or discussion.
 
+## 1.1 Attack-surface profile
+
+Populated by the /feature New mode slot-filling step before HARD-GATE approval (see `skills/feature/SKILL.md` Step 2 §Attack-surface profile prompts). Captures security-relevant context for spec-mode cross-audit. When `not_applicable: true`, every other slot field MUST be the literal `null` per §3.3 canonical rule.
+
+````markdown
+```yaml
+attack_surface:
+  not_applicable: false  # true → all other slot fields MUST be null (smart-contract / doc-only / non-network specs)
+  caller_identity: unspecified  # anonymous-public | authenticated-user | service-account | cron | webhook-external | mixed | unspecified
+  external_input: false          # true if any code path crosses a trust boundary
+  rate_limit: unspecified        # per-ip | per-user | per-api-key | per-tenant | none | unspecified
+  abuse_scenarios: null          # 1-3 sentence string serialized via yaml.safe_dump (NOT manual concat) or null
+  framework_version_target: null # framework + version string or null
+```
+````
+
 ## 2. Current State
 
 How the system works today. Reference KB pages and source files.

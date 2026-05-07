@@ -1256,16 +1256,16 @@ check_banner_convention_doc_valid() {
   echo "banner convention doc has all 7 required substrings"
 }
 
-# (b) feature SKILL.md must have exactly 17 AWAITING banner lines. The total includes
-# the §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1.
+# (b) feature SKILL.md must have exactly 22 AWAITING banner lines. The total includes
+# the §Code audit triage banner plus the 5 Attack-surface profile slot prompts.
 check_feature_awaiting_count_17() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "17" ]; then
-    echo "feature AWAITING count=$n expected 17"
+  if [ "$n" != "22" ]; then
+    echo "feature AWAITING count=$n expected 22"
     return 1
   fi
-  echo "feature AWAITING count=17 OK"
+  echo "feature AWAITING count=22 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1431,9 +1431,8 @@ check_awaiting_ruler_prefix_count_matches() {
   echo "ruler-prefix count=25 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 25 — includes the
-# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1
-# and the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2).
+# (s) each banner has trailing bold question within 15 lines (expected 30 — includes
+# the feature Attack-surface profile slot prompts).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1444,15 +1443,15 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "25" ]; then
-    echo "trailing-bold-present-each count=$c expected 25"
+  if [ "$c" != "30" ]; then
+    echo "trailing-bold-present-each count=$c expected 30"
     return 1
   fi
-  echo "trailing-bold-present-each=25 OK"
+  echo "trailing-bold-present-each=30 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
-check "feature-AWAITING-count-17"               check_feature_awaiting_count_17
+check "feature-AWAITING-count-22"               check_feature_awaiting_count_17
 check "feature-APPROVAL-count-1"                check_feature_approval_count_1
 check "cross-audit-AWAITING-count-1"            check_cross_audit_awaiting_count_1
 check "research-AWAITING-count-4"               check_research_awaiting_count_4
@@ -5868,6 +5867,13 @@ check "spec-compliance-filter-preamble"       check_spec_compliance_filter_pream
 check "security-cluster-rules-present"             check_security_cluster_rules_present
 check "cross-auditor-loads-security-cluster"       check_cross_auditor_loads_security_cluster
 check "cross-auditor-step1-step2-load-instructions" check_cross_auditor_step1_step2_load_instructions
+echo
+
+# --- Attack-surface profile pins ---
+echo "Attack-surface profile pins:"
+check "skill-attack-surface-slot-prompts" check_skill_attack_surface_slot_prompts
+check "spec-template-attack-surface-section" check_spec_template_attack_surface_section
+check "cross-auditor-consumes-attack-surface-profile" check_cross_auditor_consumes_attack_surface_profile
 echo
 
 

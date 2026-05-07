@@ -4386,3 +4386,187 @@ check_cross_auditor_step1_step2_load_instructions() {
 
   echo "cross-auditor §Step 1 (7 substrings) + §Step 2 (5 substrings) load-instructions present"
 }
+
+check_skill_attack_surface_slot_prompts() {
+  # Pin A (prompt-text): Asserts the Attack-surface profile slot-filling block
+  # in skills/feature/SKILL.md contains the required banners and tokens.
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing" >&2; return 1; }
+
+  local subrange
+  subrange=$(awk '/Spawn \*\*Librarian\*\* only if you need/,/^### Step 3 — Get approval/' "$skill")
+
+  # 5 slot tokens
+  printf '%s\n' "$subrange" | grep -qF 'caller_identity' \
+    || { echo "$skill attack-surface subrange missing 'caller_identity'" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF 'external_input' \
+    || { echo "$skill attack-surface subrange missing 'external_input'" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF 'rate_limit' \
+    || { echo "$skill attack-surface subrange missing 'rate_limit'" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF 'abuse_scenarios' \
+    || { echo "$skill attack-surface subrange missing 'abuse_scenarios'" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF 'framework_version_target' \
+    || { echo "$skill attack-surface subrange missing 'framework_version_target'" >&2; return 1; }
+
+  # Banner-numbering tokens (1/5) through (5/5)
+  printf '%s\n' "$subrange" | grep -qF '(1/5)' \
+    || { echo "$skill attack-surface subrange missing '(1/5)' banner token" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF '(2/5)' \
+    || { echo "$skill attack-surface subrange missing '(2/5)' banner token" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF '(3/5)' \
+    || { echo "$skill attack-surface subrange missing '(3/5)' banner token" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF '(4/5)' \
+    || { echo "$skill attack-surface subrange missing '(4/5)' banner token" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF '(5/5)' \
+    || { echo "$skill attack-surface subrange missing '(5/5)' banner token" >&2; return 1; }
+
+  # At least 5 AWAITING YOUR INPUT banners
+  local banner_count
+  banner_count=$(printf '%s\n' "$subrange" | grep -cF 'AWAITING YOUR INPUT')
+  [ "$banner_count" -ge 5 ] \
+    || { echo "$skill attack-surface subrange has only $banner_count 'AWAITING YOUR INPUT' occurrences (need >= 5)" >&2; return 1; }
+
+  # §1.1 write-target reference
+  printf '%s\n' "$subrange" | grep -qF '## 1.1 Attack-surface profile' \
+    || { echo "$skill attack-surface subrange missing '## 1.1 Attack-surface profile' write-target reference" >&2; return 1; }
+
+  # n/a short-circuit tokens
+  printf '%s\n' "$subrange" | grep -qF 'n/a' \
+    || { echo "$skill attack-surface subrange missing 'n/a' token" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF 'not_applicable: true' \
+    || { echo "$skill attack-surface subrange missing 'not_applicable: true' token" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF 'skip Banners 2' \
+    || { echo "$skill attack-surface subrange missing 'skip Banners 2' token" >&2; return 1; }
+
+  # Library-serialization tokens (Banner 4/5 mandate)
+  printf '%s\n' "$subrange" | grep -qF 'yaml.safe_dump' \
+    || { echo "$skill attack-surface subrange missing 'yaml.safe_dump' library-serialization token" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF 'js-yaml' \
+    || { echo "$skill attack-surface subrange missing 'js-yaml' library-serialization token" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF 'NOT manual string concatenation' \
+    || { echo "$skill attack-surface subrange missing 'NOT manual string concatenation' token" >&2; return 1; }
+  printf '%s\n' "$subrange" | grep -qF 'U+0000' \
+    || { echo "$skill attack-surface subrange missing 'U+0000' NUL-byte rejection token" >&2; return 1; }
+
+  echo "SKILL.md Attack-surface profile subrange carries all required slot tokens, banners, and serialization mandates"
+}
+
+check_spec_template_attack_surface_section() {
+  # Pin B (schema): Asserts skills/feature/references/spec-template.md carries
+  # the §1.1 Attack-surface profile section with fenced YAML and canonical defaults.
+  local tmpl='skills/feature/references/spec-template.md'
+  test -f "$tmpl" || { echo "$tmpl missing" >&2; return 1; }
+
+  # Heading present
+  grep -qF '## 1.1 Attack-surface profile' "$tmpl" \
+    || { echo "$tmpl missing '## 1.1 Attack-surface profile' heading" >&2; return 1; }
+
+  # Line-order: Context < §1.1 < Current State
+  local ctx_line as_line cs_line
+  ctx_line=$(grep -n '^## 1\. Context' "$tmpl" | head -1 | cut -d: -f1)
+  as_line=$(grep -n '^## 1\.1 Attack-surface profile' "$tmpl" | head -1 | cut -d: -f1)
+  cs_line=$(grep -n '^## 2\. Current State' "$tmpl" | head -1 | cut -d: -f1)
+  [ -n "$ctx_line" ] || { echo "$tmpl missing '## 1. Context' heading" >&2; return 1; }
+  [ -n "$as_line" ] || { echo "$tmpl missing '## 1.1 Attack-surface profile' heading (line lookup)" >&2; return 1; }
+  [ -n "$cs_line" ] || { echo "$tmpl missing '## 2. Current State' heading" >&2; return 1; }
+  [ "$as_line" -gt "$ctx_line" ] \
+    || { echo "$tmpl §1.1 heading is not after ## 1. Context" >&2; return 1; }
+  [ "$cs_line" -gt "$as_line" ] \
+    || { echo "$tmpl §1.1 heading is not before ## 2. Current State" >&2; return 1; }
+
+  # Extract section between §1.1 and ## 2. Current State
+  local section
+  section=$(awk '/^## 1\.1 Attack-surface profile/,/^## 2\. Current State/' "$tmpl")
+
+  # MUST be null docstring
+  printf '%s\n' "$section" | grep -qF 'MUST be null' \
+    || { echo "$tmpl §1.1 section missing 'MUST be null' canonical-rule docstring" >&2; return 1; }
+
+  # Fenced YAML block (3-backtick yaml fence) within section
+  local yaml_block
+  yaml_block=$(printf '%s\n' "$section" | awk '/^```ya?ml$/{flag=1;next}/^```$/{flag=0}flag')
+  [ -n "$yaml_block" ] \
+    || { echo "$tmpl §1.1 section has no fenced yaml/yml code block" >&2; return 1; }
+
+  # attack_surface: root key
+  printf '%s\n' "$yaml_block" | grep -q '^attack_surface:' \
+    || { echo "$tmpl §1.1 fenced YAML missing 'attack_surface:' root key" >&2; return 1; }
+
+  # 6 canonical default lines
+  printf '%s\n' "$yaml_block" | grep -qE '^[[:space:]]*not_applicable:[[:space:]]+false' \
+    || { echo "$tmpl §1.1 fenced YAML missing canonical default 'not_applicable: false'" >&2; return 1; }
+  printf '%s\n' "$yaml_block" | grep -qE '^[[:space:]]*caller_identity:[[:space:]]+unspecified' \
+    || { echo "$tmpl §1.1 fenced YAML missing canonical default 'caller_identity: unspecified'" >&2; return 1; }
+  printf '%s\n' "$yaml_block" | grep -qE '^[[:space:]]*external_input:[[:space:]]+false' \
+    || { echo "$tmpl §1.1 fenced YAML missing canonical default 'external_input: false'" >&2; return 1; }
+  printf '%s\n' "$yaml_block" | grep -qE '^[[:space:]]*rate_limit:[[:space:]]+unspecified' \
+    || { echo "$tmpl §1.1 fenced YAML missing canonical default 'rate_limit: unspecified'" >&2; return 1; }
+  printf '%s\n' "$yaml_block" | grep -qE '^[[:space:]]*abuse_scenarios:[[:space:]]+null' \
+    || { echo "$tmpl §1.1 fenced YAML missing canonical default 'abuse_scenarios: null'" >&2; return 1; }
+  printf '%s\n' "$yaml_block" | grep -qE '^[[:space:]]*framework_version_target:[[:space:]]+null' \
+    || { echo "$tmpl §1.1 fenced YAML missing canonical default 'framework_version_target: null'" >&2; return 1; }
+
+  echo "spec-template.md §1.1 Attack-surface profile section present with fenced YAML and canonical defaults"
+}
+
+check_cross_auditor_consumes_attack_surface_profile() {
+  # Pin C (prompt-text): Asserts agents/cross-auditor.md spec mode block carries
+  # the Attack-surface profile consumption rules with all required fingerprints.
+  local path="${1:-agents/cross-auditor.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+
+  local sec
+  sec=$(awk '/^### `spec` mode/,/^## Severity Ladder/' "$path")
+
+  # 4 base tokens
+  printf '%s\n' "$sec" | grep -qF 'Attack-surface profile' \
+    || { echo "$path spec mode missing 'Attack-surface profile' token" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'external_input' \
+    || { echo "$path spec mode missing 'external_input' token" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'not_applicable' \
+    || { echo "$path spec mode missing 'not_applicable' token" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'input validation' \
+    || { echo "$path spec mode missing 'input validation' token" >&2; return 1; }
+
+  # HIGH-flag finding-text fingerprints
+  printf '%s\n' "$sec" | grep -qF 'Spec declares external_input=true' \
+    || { echo "$path spec mode missing 'Spec declares external_input=true' finding-text fingerprint" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'Spec missing required §1.1 Attack-surface profile section' \
+    || { echo "$path spec mode missing absent-section finding-text fingerprint" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'outside fenced code blocks' \
+    || { echo "$path spec mode missing 'outside fenced code blocks' absent-section tightening token" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'missing or carry non-null values' \
+    || { echo "$path spec mode missing cross-field consistency finding-text fingerprint" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'violates §3.3 schema' \
+    || { echo "$path spec mode missing schema-validity finding-text fingerprint" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'not_applicable must be a boolean' \
+    || { echo "$path spec mode missing discriminator type-gate fingerprint" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'first fenced' \
+    || { echo "$path spec mode missing YAML-block-locator disambiguation fingerprint" >&2; return 1; }
+
+  # 12 input-validation alternates
+  printf '%s\n' "$sec" | grep -qF 'validate input' \
+    || { echo "$path spec mode missing 'validate input' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qiF 'sanitization' \
+    || { echo "$path spec mode missing 'sanitization' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qiF 'sanitize' \
+    || { echo "$path spec mode missing 'sanitize' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'schema validation' \
+    || { echo "$path spec mode missing 'schema validation' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'JSON schema' \
+    || { echo "$path spec mode missing 'JSON schema' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'type validation' \
+    || { echo "$path spec mode missing 'type validation' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'parameterised query' \
+    || { echo "$path spec mode missing 'parameterised query' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'parameterized query' \
+    || { echo "$path spec mode missing 'parameterized query' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'bound parameter' \
+    || { echo "$path spec mode missing 'bound parameter' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qF 'prepared statement' \
+    || { echo "$path spec mode missing 'prepared statement' input-validation alternate" >&2; return 1; }
+  printf '%s\n' "$sec" | grep -qiF 'pydantic' \
+    || { echo "$path spec mode missing 'pydantic' input-validation alternate" >&2; return 1; }
+
+  echo "cross-auditor spec mode carries Attack-surface profile consumption rules with all required fingerprints"
+}
