@@ -4851,7 +4851,7 @@ check_cross_auditor_replaces_silent_skip_gate() {
   local old_gate new_branch
   # Negative clause: the old `When mode ∈ {security, full} and project_type is set` gate prose
   # MUST be gone — its presence means the silent-skip path is still wired and the unset-project_type
-  # branch never fires (recurring the original Z3 defect class).
+  # branch never fires (recurring the original silent-skip defect class).
   old_gate=$(grep -cE 'When .?mode ∈ \{security, full\}.? and .?project_type.? is set' "$f")
   # Positive clause: the new branch literal must be present. Grep -F so the backticks are taken
   # literally — the new prose introduces this exact clause.
