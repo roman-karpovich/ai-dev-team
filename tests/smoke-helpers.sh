@@ -4766,3 +4766,96 @@ check_cross_auditor_consumes_stride_lite() {
   [ "$has_dos" -ge 1 ] || { echo "missing DoS in cross-auditor spec mode"; return 1; }
   [ "$has_eop" -ge 1 ] || { echo "missing EoP in cross-auditor spec mode"; return 1; }
 }
+
+check_project_type_documented_in_config_surfaces() {
+  local tpl kbd ymle rdme aiov skl_skel
+  tpl=$(grep -c project_type skills/feature/references/spec-template.md)
+  kbd=$(grep -c project_type docs/kb-discovery.md)
+  ymle=$(grep -c project_type .ai-dev-team.yml.example)
+  rdme=$(grep -c project_type README.md)
+  aiov=$(grep -c project_type docs/AI_Dev_Team_Overview.md)
+  skl_skel=$(awk '/^YAML frontmatter:$/,/^```$/' skills/feature/SKILL.md | grep -c project_type)
+  [ "$tpl" -ge 1 ] || { echo "missing project_type in skills/feature/references/spec-template.md"; return 1; }
+  [ "$kbd" -ge 1 ] || { echo "missing project_type in docs/kb-discovery.md"; return 1; }
+  [ "$ymle" -ge 1 ] || { echo "missing project_type in .ai-dev-team.yml.example"; return 1; }
+  [ "$rdme" -ge 1 ] || { echo "missing project_type in README.md"; return 1; }
+  [ "$aiov" -ge 1 ] || { echo "missing project_type in docs/AI_Dev_Team_Overview.md"; return 1; }
+  [ "$skl_skel" -ge 1 ] || { echo "missing project_type inside SKILL.md YAML frontmatter skeleton"; return 1; }
+}
+
+check_skill_threads_project_type_at_spec_audit_spawn() {
+  local f="skills/feature/SKILL.md"
+  local block count
+  block=$(awk '/^Spawn `cross-auditor` subagent with:$/,/^- \(omit `kb_path` — spec mode does not write to KB\)$/' "$f")
+  count=$(echo "$block" | grep -c project_type)
+  [ "$count" -ge 1 ] || { echo "spec-mode spawn block missing project_type parameter"; return 1; }
+  # Site A MUST NOT reference the degraded warning — that is a code/full-mode artifact
+  if echo "$block" | grep -qF 'degraded warning'; then
+    echo "spec-mode spawn block must not mention degraded warning (code/full mode only)"
+    return 1
+  fi
+}
+
+check_skill_threads_project_type_at_code_audit_spawn() {
+  local f="skills/feature/SKILL.md"
+  local block count
+  block=$(awk '/^Spawn `cross-auditor` with mode: full on the diff/,/^The cross-auditor persists code findings in KB/' "$f")
+  count=$(echo "$block" | grep -c project_type)
+  [ "$count" -ge 1 ] || { echo "full-mode spawn block missing project_type parameter"; return 1; }
+}
+
+check_skill_threads_project_type_at_code_audit_respawn() {
+  local f="skills/feature/SKILL.md"
+  local block count
+  block=$(awk '/^7\. Re-spawn `cross-auditor`/,/^8\. After the cross-auditor returns, append:$/' "$f")
+  count=$(echo "$block" | grep -c project_type)
+  [ "$count" -ge 1 ] || { echo "narrative re-spawn paragraph missing project_type carry-forward"; return 1; }
+}
+
+check_skill_threads_project_type_at_code_audit_resume_routing() {
+  local f="skills/feature/SKILL.md"
+  local count
+  count=$(grep -F 'code audit decisions recorded; iteration=N; pending_*' "$f" | grep -c project_type)
+  [ "$count" -ge 1 ] || { echo "resume-routing table cell missing project_type carry-forward"; return 1; }
+}
+
+check_cross_auditor_emits_degraded_warning_when_project_type_unset() {
+  local f="agents/cross-auditor.md"
+  local block warn norm runfilter
+  # Scope all three clauses to the gate paragraph (between the `When mode ∈ {security, full}` opener
+  # and the `**Code mode** Codex prompt template:` close marker) to prevent pre-existing prose at
+  # other locations in the agent doc (e.g. mentions of "filtered" rule sections elsewhere) from
+  # accidentally satisfying any of the AND clauses.
+  block=$(awk '/^When .?mode ∈ \{security, full\}/,/^\*\*Code mode\*\* Codex prompt template:$/' "$f")
+  warn=$(echo "$block" | grep -cF 'R-rule cluster NOT loaded')
+  norm=$(echo "$block" | grep -cE 'normaliz.*["\x27]?all["\x27]?')
+  runfilter=$(echo "$block" | grep -cE 'run.*filter|then run|filter runs')
+  [ "$warn" -ge 1 ] || { echo "gate paragraph missing 'R-rule cluster NOT loaded' warning literal"; return 1; }
+  [ "$norm" -ge 1 ] || { echo "gate paragraph missing normalize-to-all (Trigger A) clause"; return 1; }
+  [ "$runfilter" -ge 1 ] || { echo "gate paragraph missing run-the-filter clause"; return 1; }
+}
+
+check_cross_auditor_documents_warning_emit_location() {
+  local f="agents/cross-auditor.md"
+  local rendered marker
+  rendered=$(grep -cF 'R-rule cluster: NOT loaded' "$f")
+  # The marker locks the conditional-emit comment so the bullet is documented as gate-conditional,
+  # not always-on. Regex order matches the spec example byte-for-byte: emitted only when ... R-rule cluster.
+  marker=$(grep -cE 'emitted only when.*R-rule cluster' "$f")
+  [ "$rendered" -ge 1 ] || { echo "missing rendered-bullet literal 'R-rule cluster: NOT loaded' (with colon)"; return 1; }
+  [ "$marker" -ge 1 ] || { echo "missing 'emitted only when ... R-rule cluster' conditional-emit comment marker"; return 1; }
+}
+
+check_cross_auditor_replaces_silent_skip_gate() {
+  local f="agents/cross-auditor.md"
+  local old_gate new_branch
+  # Negative clause: the old `When mode ∈ {security, full} and project_type is set` gate prose
+  # MUST be gone — its presence means the silent-skip path is still wired and the unset-project_type
+  # branch never fires (recurring the original silent-skip defect class).
+  old_gate=$(grep -cE 'When .?mode ∈ \{security, full\}.? and .?project_type.? is set' "$f")
+  # Positive clause: the new branch literal must be present. Grep -F so the backticks are taken
+  # literally — the new prose introduces this exact clause.
+  new_branch=$(grep -cF 'If `project_type` is unset OR has a non-allowlist value' "$f")
+  [ "$old_gate" = "0" ] || { echo "old silent-skip gate prose still present (negative clause failed)"; return 1; }
+  [ "$new_branch" -ge 1 ] || { echo "new explicit-branch prose absent (positive clause failed)"; return 1; }
+}

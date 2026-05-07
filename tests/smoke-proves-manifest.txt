@@ -141,3 +141,13 @@ check_probe_h_detector_clean_distant_name behavioral
 # STRIDE-lite spec-template slot pins (Pin A prompt-text + Pin B prompt-text — SKILL.md gating + cross-auditor consumption)
 check_skill_stride_lite_block_gated prompt-text
 check_cross_auditor_consumes_stride_lite prompt-text
+
+# project_type threading — docs surfaces, spawn-site wiring, and cross-auditor degraded-warning gate
+check_project_type_documented_in_config_surfaces behavioral
+check_skill_threads_project_type_at_spec_audit_spawn behavioral
+check_skill_threads_project_type_at_code_audit_spawn behavioral
+check_skill_threads_project_type_at_code_audit_respawn behavioral
+check_skill_threads_project_type_at_code_audit_resume_routing behavioral
+check_cross_auditor_emits_degraded_warning_when_project_type_unset behavioral
+check_cross_auditor_documents_warning_emit_location behavioral
+check_cross_auditor_replaces_silent_skip_gate behavioral

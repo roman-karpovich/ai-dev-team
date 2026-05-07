@@ -5898,6 +5898,18 @@ check "skill-stride-lite-block-gated" check_skill_stride_lite_block_gated
 check "cross-auditor-consumes-stride-lite" check_cross_auditor_consumes_stride_lite
 echo
 
+# --- project_type threading: docs surfaces + SKILL.md spawn sites + cross-auditor degraded warning ---
+echo "project_type threading pins:"
+check "project-type-documented-in-config-surfaces" check_project_type_documented_in_config_surfaces
+check "skill-threads-project-type-at-spec-audit-spawn" check_skill_threads_project_type_at_spec_audit_spawn
+check "skill-threads-project-type-at-code-audit-spawn" check_skill_threads_project_type_at_code_audit_spawn
+check "skill-threads-project-type-at-code-audit-respawn" check_skill_threads_project_type_at_code_audit_respawn
+check "skill-threads-project-type-at-code-audit-resume-routing" check_skill_threads_project_type_at_code_audit_resume_routing
+check "cross-auditor-emits-degraded-warning-when-project-type-unset" check_cross_auditor_emits_degraded_warning_when_project_type_unset
+check "cross-auditor-documents-warning-emit-location" check_cross_auditor_documents_warning_emit_location
+check "cross-auditor-replaces-silent-skip-gate" check_cross_auditor_replaces_silent_skip_gate
+echo
+
 
 echo
 echo "Passed: $PASS"
