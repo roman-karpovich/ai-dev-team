@@ -4818,3 +4818,44 @@ check_skill_threads_project_type_at_code_audit_resume_routing() {
   count=$(grep -F 'code audit decisions recorded; iteration=N; pending_*' "$f" | grep -c project_type)
   [ "$count" -ge 1 ] || { echo "resume-routing table cell missing project_type carry-forward"; return 1; }
 }
+
+check_cross_auditor_emits_degraded_warning_when_project_type_unset() {
+  local f="agents/cross-auditor.md"
+  local block warn norm runfilter
+  # Scope all three clauses to the gate paragraph (between the `When mode ∈ {security, full}` opener
+  # and the `**Code mode** Codex prompt template:` close marker) to prevent pre-existing prose at
+  # other locations in the agent doc (e.g. mentions of "filtered" rule sections elsewhere) from
+  # accidentally satisfying any of the AND clauses.
+  block=$(awk '/^When .?mode ∈ \{security, full\}/,/^\*\*Code mode\*\* Codex prompt template:$/' "$f")
+  warn=$(echo "$block" | grep -cF 'R-rule cluster NOT loaded')
+  norm=$(echo "$block" | grep -cE 'normaliz.*["\x27]?all["\x27]?')
+  runfilter=$(echo "$block" | grep -cE 'run.*filter|then run|filter runs')
+  [ "$warn" -ge 1 ] || { echo "gate paragraph missing 'R-rule cluster NOT loaded' warning literal"; return 1; }
+  [ "$norm" -ge 1 ] || { echo "gate paragraph missing normalize-to-all (Trigger A) clause"; return 1; }
+  [ "$runfilter" -ge 1 ] || { echo "gate paragraph missing run-the-filter clause"; return 1; }
+}
+
+check_cross_auditor_documents_warning_emit_location() {
+  local f="agents/cross-auditor.md"
+  local rendered marker
+  rendered=$(grep -cF 'R-rule cluster: NOT loaded' "$f")
+  # The marker locks the conditional-emit comment so the bullet is documented as gate-conditional,
+  # not always-on. Regex order matches the spec example byte-for-byte: emitted only when ... R-rule cluster.
+  marker=$(grep -cE 'emitted only when.*R-rule cluster' "$f")
+  [ "$rendered" -ge 1 ] || { echo "missing rendered-bullet literal 'R-rule cluster: NOT loaded' (with colon)"; return 1; }
+  [ "$marker" -ge 1 ] || { echo "missing 'emitted only when ... R-rule cluster' conditional-emit comment marker"; return 1; }
+}
+
+check_cross_auditor_replaces_silent_skip_gate() {
+  local f="agents/cross-auditor.md"
+  local old_gate new_branch
+  # Negative clause: the old `When mode ∈ {security, full} and project_type is set` gate prose
+  # MUST be gone — its presence means the silent-skip path is still wired and the unset-project_type
+  # branch never fires (recurring the original Z3 defect class).
+  old_gate=$(grep -cE 'When .?mode ∈ \{security, full\}.? and .?project_type.? is set' "$f")
+  # Positive clause: the new branch literal must be present. Grep -F so the backticks are taken
+  # literally — the new prose introduces this exact clause.
+  new_branch=$(grep -cF 'If `project_type` is unset OR has a non-allowlist value' "$f")
+  [ "$old_gate" = "0" ] || { echo "old silent-skip gate prose still present (negative clause failed)"; return 1; }
+  [ "$new_branch" -ge 1 ] || { echo "new explicit-branch prose absent (positive clause failed)"; return 1; }
+}
