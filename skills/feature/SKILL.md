@@ -467,6 +467,7 @@ Spawn `cross-auditor` subagent with:
 - `working_directory`: `<cwd>`
 - `previously_fixed`: `<spec_audit_fixed_ids>` (empty list on first pass)
 - `next_finding_id`: `<spec_audit_next_id>` (ensures IDs don't collide across rounds when no findings doc exists)
+- `project_type`: resolve via `spec_frontmatter.project_type → .ai-dev-team.local.yml → .ai-dev-team.yml → None` (parameter-block symmetry with full-mode spawn — spec mode does not load the R-rule cluster per the cross-auditor `mode ∈ {security, full}` gate, so the cross-auditor receives the value but never consults it for cluster loading in this mode)
 - (omit `kb_path` — spec mode does not write to KB)
 
 The cross-auditor returns findings inline (no KB writes in spec mode).
@@ -686,6 +687,9 @@ Spawn `cross-auditor` with mode: full on the diff (dual-model). Parameters:
 - `project`: `<project>`
 - `working_directory`: `<cwd>`
 - `base_branch`: `<base>`
+- `project_type`: resolve via `spec_frontmatter.project_type → .ai-dev-team.local.yml → .ai-dev-team.yml → None` (the cross-auditor emits a degraded warning at the H1-bullet emit location in findings.md when this resolves to `None` or a non-allowlist value — see `agents/cross-auditor.md` §R-rule cluster gate)
+
+If `project_type` resolves to `None`, the cross-auditor normalizes the R-rule filter to `"all"` per `references/code-quality-rules.md` Trigger A, emits a degraded warning header in the findings document at the H1 bullet block (per `agents/cross-auditor.md` §R-rule cluster gate "Warning emit location"), and runs the filter as usual — rules with `applies_to: ["all"]` continue to load; rules with project-specific `applies_to` lists do not match. This is by design — silent skip ships R-rules dead. To activate full project-specific R-rule loading, set `project_type:` in spec frontmatter (recommended), in the project's `.ai-dev-team.local.yml`, or in `.ai-dev-team.yml`.
 
 The cross-auditor persists code findings in KB. After the cross-auditor
 returns findings for round `N`, write this Log marker immediately. Do
@@ -767,9 +771,7 @@ the rationale `false positive — both auditors erred: <explanation>`.
      Once it returns `PASS`, continue to the next audit round.
    - `NO_TESTS`: use the Verify NO_TESTS manual sign-off rules, then
      continue.
-7. Re-spawn `cross-auditor` with `iteration=N+1`,
-   `previously_fixed=pending_fixed`, and
-   `accepted_ids=(pending_accepted ∪ pending_deferred)`.
+7. Re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`.
 8. After the cross-auditor returns, append:
 `- YYYY-MM-DD: code audit iteration=N+1; fixed_ids=[...]; accepted_ids=[...]`
 
@@ -932,7 +934,7 @@ Edge cases:
      |---|---|
      | `code audit passed` | Skip straight to hand-off. Code audit already complete. |
      | `code audit: no auditable files in diff; skipping` | Skip to hand-off — deterministic empty-diff skip already applied. |
-     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. |
+     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. |
      | `code audit iteration=N` (without a later `decisions recorded` or `passed` marker) | Round N findings were returned but triage is pending — **do not** re-spawn the cross-auditor. Re-read the findings file at `<kb>/repos/<project>/security/<slug>-code-findings.md`, collect the findings whose status is `OPEN` or `REOPENED`, re-present them to the user, and resume the §Code audit triage loop from step 1 with those findings. |
      | No code-audit Log entry at all | Fresh code-audit run: re-run the verifier first to confirm the baseline is still green (defensive), then spawn `iteration=1` with `previously_fixed=[]` and `accepted_ids=[]`. |
 

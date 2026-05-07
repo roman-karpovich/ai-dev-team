@@ -4782,3 +4782,39 @@ check_project_type_documented_in_config_surfaces() {
   [ "$aiov" -ge 1 ] || { echo "missing project_type in docs/AI_Dev_Team_Overview.md"; return 1; }
   [ "$skl_skel" -ge 1 ] || { echo "missing project_type inside SKILL.md YAML frontmatter skeleton"; return 1; }
 }
+
+check_skill_threads_project_type_at_spec_audit_spawn() {
+  local f="skills/feature/SKILL.md"
+  local block count
+  block=$(awk '/^Spawn `cross-auditor` subagent with:$/,/^- \(omit `kb_path` — spec mode does not write to KB\)$/' "$f")
+  count=$(echo "$block" | grep -c project_type)
+  [ "$count" -ge 1 ] || { echo "spec-mode spawn block missing project_type parameter"; return 1; }
+  # Site A MUST NOT reference the degraded warning — that is a code/full-mode artifact
+  if echo "$block" | grep -qF 'degraded warning'; then
+    echo "spec-mode spawn block must not mention degraded warning (code/full mode only)"
+    return 1
+  fi
+}
+
+check_skill_threads_project_type_at_code_audit_spawn() {
+  local f="skills/feature/SKILL.md"
+  local block count
+  block=$(awk '/^Spawn `cross-auditor` with mode: full on the diff/,/^The cross-auditor persists code findings in KB/' "$f")
+  count=$(echo "$block" | grep -c project_type)
+  [ "$count" -ge 1 ] || { echo "full-mode spawn block missing project_type parameter"; return 1; }
+}
+
+check_skill_threads_project_type_at_code_audit_respawn() {
+  local f="skills/feature/SKILL.md"
+  local block count
+  block=$(awk '/^7\. Re-spawn `cross-auditor`/,/^8\. After the cross-auditor returns, append:$/' "$f")
+  count=$(echo "$block" | grep -c project_type)
+  [ "$count" -ge 1 ] || { echo "narrative re-spawn paragraph missing project_type carry-forward"; return 1; }
+}
+
+check_skill_threads_project_type_at_code_audit_resume_routing() {
+  local f="skills/feature/SKILL.md"
+  local count
+  count=$(grep -F 'code audit decisions recorded; iteration=N; pending_*' "$f" | grep -c project_type)
+  [ "$count" -ge 1 ] || { echo "resume-routing table cell missing project_type carry-forward"; return 1; }
+}

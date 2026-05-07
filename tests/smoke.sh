@@ -5901,6 +5901,10 @@ echo
 # --- project_type threading: docs surfaces + SKILL.md spawn sites + cross-auditor degraded warning ---
 echo "project_type threading pins:"
 check "project-type-documented-in-config-surfaces" check_project_type_documented_in_config_surfaces
+check "skill-threads-project-type-at-spec-audit-spawn" check_skill_threads_project_type_at_spec_audit_spawn
+check "skill-threads-project-type-at-code-audit-spawn" check_skill_threads_project_type_at_code_audit_spawn
+check "skill-threads-project-type-at-code-audit-respawn" check_skill_threads_project_type_at_code_audit_respawn
+check "skill-threads-project-type-at-code-audit-resume-routing" check_skill_threads_project_type_at_code_audit_resume_routing
 echo
 
 

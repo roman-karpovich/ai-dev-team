@@ -144,3 +144,7 @@ check_cross_auditor_consumes_stride_lite prompt-text
 
 # project_type threading — docs surfaces, spawn-site wiring, and cross-auditor degraded-warning gate
 check_project_type_documented_in_config_surfaces behavioral
+check_skill_threads_project_type_at_spec_audit_spawn behavioral
+check_skill_threads_project_type_at_code_audit_spawn behavioral
+check_skill_threads_project_type_at_code_audit_respawn behavioral
+check_skill_threads_project_type_at_code_audit_resume_routing behavioral
