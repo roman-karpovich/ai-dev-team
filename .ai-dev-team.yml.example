@@ -9,6 +9,13 @@ kb_path: <set-me>
 # Optional: project name override (defaults to basename of repo directory)
 # project: my-project-name
 
+# Optional: project_type gates the security R-rule cluster (R9-R14 today) during
+# /feature code-audit. Allowlist values: smart_contract | backend | frontend | data_pipeline.
+# Resolution chain: spec frontmatter `project_type:` → .ai-dev-team.local.yml → .ai-dev-team.yml → None.
+# When unresolved, the cross-auditor emits a degraded warning at audit time and
+# normalizes the active filter to "all" per code-quality-rules.md §Taxonomy Trigger A.
+# project_type: backend
+
 # Optional: Codex MCP overrides — apply to developer-codex and cross-auditor
 # when they invoke `mcp__codex__codex`. Both fields are optional.
 # codex:

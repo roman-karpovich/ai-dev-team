@@ -174,6 +174,6 @@ How each value maps onto observable orchestrator behavior:
 
 Agents resolve the KB in this compact order: `.ai-dev-team.yml → memory → sibling heuristic → ask`.
 
-At the concept level, the project can declare the KB explicitly in a repo-root `.ai-dev-team.yml` file. The key field is `kb_path`, for example: `kb_path: /absolute/path/to/knowledge-base`.
+At the concept level, the project can declare the KB explicitly in a repo-root `.ai-dev-team.yml` file. The key field is `kb_path`, for example: `kb_path: /absolute/path/to/knowledge-base`. An additional optional key `project_type:` (one of `smart_contract | backend | frontend | data_pipeline`) gates R-rule cluster activation in security-mode audits — see `skills/feature/references/spec-template.md` and `docs/kb-discovery.md` for the full fallback chain.
 
 Prompt/override details stay in the skill files; this overview only documents the shared discovery chain and config shape.
