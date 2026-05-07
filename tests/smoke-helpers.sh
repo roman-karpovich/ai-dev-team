@@ -4643,3 +4643,67 @@ check_probe_g_detector_clean_at_current_major() {
 check_probe_g_detector_ineligible_no_lockfile() {
   _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/03-ineligible-no-lockfile
 }
+
+check_skill_stride_lite_block_gated() {
+  local f="skills/feature/SKILL.md"
+  local sub
+  sub=$(awk '/Spawn \*\*Librarian\*\* only if you need/,/^### Step 3 — Get approval/' "$f")
+  local has_stride has_spoof has_tamper has_repud has_info has_dos has_eop
+  local has_b1_6 has_b6_6 has_section has_gate banner_count has_safedump
+  has_stride=$(echo "$sub" | grep -cF 'stride_lite')
+  has_spoof=$(echo "$sub" | grep -ciF 'spoofing')
+  has_tamper=$(echo "$sub" | grep -ciF 'tampering')
+  has_repud=$(echo "$sub" | grep -ciF 'repudiation')
+  has_info=$(echo "$sub" | grep -cF 'info_disclosure')
+  has_dos=$(echo "$sub" | grep -ciF 'DoS')
+  has_eop=$(echo "$sub" | grep -ciF 'EoP')
+  has_b1_6=$(echo "$sub" | grep -cF '(1/6)')
+  has_b6_6=$(echo "$sub" | grep -cF '(6/6)')
+  has_section=$(echo "$sub" | grep -cF '## 1.2 STRIDE-lite threat model')
+  has_gate=$(echo "$sub" | grep -cE 'external_input != true|external_input == true|external_input.*true')
+  banner_count=$(echo "$sub" | grep -cF 'AWAITING YOUR INPUT')
+  has_safedump=$(echo "$sub" | grep -cF 'yaml.safe_dump')
+  [ "$has_stride" -ge 1 ] || { echo "missing stride_lite token in SKILL.md subrange"; return 1; }
+  [ "$has_spoof" -ge 1 ] || { echo "missing spoofing token in SKILL.md subrange"; return 1; }
+  [ "$has_tamper" -ge 1 ] || { echo "missing tampering token in SKILL.md subrange"; return 1; }
+  [ "$has_repud" -ge 1 ] || { echo "missing repudiation token in SKILL.md subrange"; return 1; }
+  [ "$has_info" -ge 1 ] || { echo "missing info_disclosure token in SKILL.md subrange"; return 1; }
+  [ "$has_dos" -ge 1 ] || { echo "missing dos/DoS token in SKILL.md subrange"; return 1; }
+  [ "$has_eop" -ge 1 ] || { echo "missing eop/EoP token in SKILL.md subrange"; return 1; }
+  [ "$has_b1_6" -ge 1 ] || { echo "missing (1/6) banner numbering in SKILL.md subrange"; return 1; }
+  [ "$has_b6_6" -ge 1 ] || { echo "missing (6/6) banner numbering in SKILL.md subrange"; return 1; }
+  [ "$has_section" -ge 1 ] || { echo "missing '## 1.2 STRIDE-lite threat model' write-target in SKILL.md subrange"; return 1; }
+  [ "$has_gate" -ge 1 ] || { echo "missing external_input gating reference in SKILL.md subrange"; return 1; }
+  [ "$banner_count" -ge 11 ] || { echo "expected >=11 AWAITING YOUR INPUT banners in subrange, got $banner_count"; return 1; }
+  [ "$has_safedump" -ge 1 ] || { echo "missing yaml.safe_dump library-serialization token in SKILL.md subrange"; return 1; }
+}
+
+check_cross_auditor_consumes_stride_lite() {
+  local f="agents/cross-auditor.md"
+  local sec
+  sec=$(awk '/^### `spec` mode/,/^## Severity Ladder/' "$f")
+  local has_strttm has_section has_gate has_med has_finding
+  local has_spoof has_tamper has_repud has_info has_dos has_eop
+  has_strttm=$(echo "$sec" | grep -cF 'STRIDE-lite threat model')
+  has_section=$(echo "$sec" | grep -cF '## 1.2')
+  has_gate=$(echo "$sec" | grep -cF 'external_input: true')
+  has_med=$(echo "$sec" | grep -cF 'MEDIUM')
+  has_finding=$(echo "$sec" | grep -cF 'STRIDE-lite threat model is absent or all 6 rows null')
+  has_spoof=$(echo "$sec" | grep -cF 'Spoofing')
+  has_tamper=$(echo "$sec" | grep -cF 'Tampering')
+  has_repud=$(echo "$sec" | grep -cF 'Repudiation')
+  has_info=$(echo "$sec" | grep -cF 'InfoDisclosure')
+  has_dos=$(echo "$sec" | grep -cF 'DoS')
+  has_eop=$(echo "$sec" | grep -cF 'EoP')
+  [ "$has_strttm" -ge 1 ] || { echo "missing 'STRIDE-lite threat model' in cross-auditor spec mode"; return 1; }
+  [ "$has_section" -ge 1 ] || { echo "missing '## 1.2' reference in cross-auditor spec mode"; return 1; }
+  [ "$has_gate" -ge 1 ] || { echo "missing 'external_input: true' gating in cross-auditor spec mode"; return 1; }
+  [ "$has_med" -ge 1 ] || { echo "missing MEDIUM severity in cross-auditor spec mode"; return 1; }
+  [ "$has_finding" -ge 1 ] || { echo "missing finding-text fingerprint in cross-auditor spec mode"; return 1; }
+  [ "$has_spoof" -ge 1 ] || { echo "missing Spoofing in cross-auditor spec mode"; return 1; }
+  [ "$has_tamper" -ge 1 ] || { echo "missing Tampering in cross-auditor spec mode"; return 1; }
+  [ "$has_repud" -ge 1 ] || { echo "missing Repudiation in cross-auditor spec mode"; return 1; }
+  [ "$has_info" -ge 1 ] || { echo "missing InfoDisclosure in cross-auditor spec mode"; return 1; }
+  [ "$has_dos" -ge 1 ] || { echo "missing DoS in cross-auditor spec mode"; return 1; }
+  [ "$has_eop" -ge 1 ] || { echo "missing EoP in cross-auditor spec mode"; return 1; }
+}
