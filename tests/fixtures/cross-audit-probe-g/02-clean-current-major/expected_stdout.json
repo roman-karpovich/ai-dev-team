@@ -1,0 +1,1 @@
+{"findings":[],"receipt_metadata":{"degraded_mode":false,"eligible_reason":"scanned 1 lockfile(s); 13 packages in corpus; 0 findings","emitted_at":"2026-05-07T00:00:00Z","probe_id":"G","probe_version":"g.1.0","scope_files_read":["repo/requirements.txt"],"skipped_files":[],"trigger_input_hash":"bbc482d919b7fe67f936f8695da36f97c9a4c6e19f7003c2c6941e61d20db66c"}}
