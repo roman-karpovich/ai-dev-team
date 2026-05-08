@@ -4859,3 +4859,29 @@ check_cross_auditor_replaces_silent_skip_gate() {
   [ "$old_gate" = "0" ] || { echo "old silent-skip gate prose still present (negative clause failed)"; return 1; }
   [ "$new_branch" -ge 1 ] || { echo "new explicit-branch prose absent (positive clause failed)"; return 1; }
 }
+
+check_cross_auditor_r_rule_path_env_first_precedence() {
+  local f="agents/cross-auditor.md"
+  local block uncond realp stale_l296 stale_l303 stale_l340 l303_post l340_post
+  # Stateful awk anchor: open at the new env-first paragraph, close at the next anchor.
+  # Robust to either physical layout (single paragraph or split into multiple physical lines)
+  # because the close pattern is a definite sentinel introduced by the rewrite itself.
+  block=$(awk '/^Path resolution: when/{p=1; print; next} p && /^If both resolutions fail/{print; exit} p{print}' "$f")
+  uncond=$(echo "$block" | grep -cF 'UNCONDITIONALLY to `${CLAUDE_PLUGIN_ROOT}')
+  realp=$(echo "$block" | grep -cF 'realpath')
+  # Stale-prose pre-negatives (locks pre-rewrite literals absent at L296/L303/L340 surfaces).
+  stale_l296=$(grep -cF "legacy invocations the agent's launch cwd is the ai-dev-team plugin root" "$f")
+  stale_l303=$(grep -cF 'not reachable at the relative path' "$f")
+  stale_l340=$(grep -cF 'relative path from agent cwd' "$f")
+  # Post-rewrite positives (locks the new wording at parallel surfaces L303 + L340 — the L296
+  # awk-bounded range exits before L303, so global grep is the right scope for those parallel sites).
+  l303_post=$(grep -cF 'not reachable at the env-var path' "$f")
+  l340_post=$(grep -cF 'env-first per §security mode bridge above' "$f")
+  [ "$uncond" -ge 1 ] || { echo "L296 paragraph missing 'UNCONDITIONALLY to \${CLAUDE_PLUGIN_ROOT}' env-first directive"; return 1; }
+  [ "$realp" -ge 1 ] || { echo "L296 paragraph missing 'realpath' fallback safety check"; return 1; }
+  [ "$stale_l296" = "0" ] || { echo "L296 stale pre-rewrite prose still present (legacy-cwd phrasing)"; return 1; }
+  [ "$stale_l303" = "0" ] || { echo "L303 stale 'not reachable at the relative path' wording still present"; return 1; }
+  [ "$stale_l340" = "0" ] || { echo "L340 stale 'relative path from agent cwd' parenthetical still present"; return 1; }
+  [ "$l303_post" -ge 1 ] || { echo "L303 missing post-rewrite 'not reachable at the env-var path' literal"; return 1; }
+  [ "$l340_post" -ge 1 ] || { echo "L340 missing post-rewrite 'env-first per §security mode bridge above' literal"; return 1; }
+}
