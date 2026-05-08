@@ -5242,6 +5242,14 @@ check_probe_h_pnpm_v9_quoted_scoped() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/20-pnpm-v9-quoted-scoped
 }
 
+check_probe_g_yarn_scoped_alias_target() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/21-yarn-scoped-alias-target
+}
+
+check_probe_h_yarn_scoped_alias_target() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/21-yarn-scoped-alias-target
+}
+
 check_probe_h_levenshtein_length_cap() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/15-levenshtein-length-cap
 }

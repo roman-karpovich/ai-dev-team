@@ -295,9 +295,23 @@ def parse_yarn_lock(abs_path):
                     for proto in YARN_PROTOS:
                         if proto in current_package:
                             left, right = current_package.split(proto, 1)
-                            if proto == "@npm:" and "@" in right:
-                                inner_at = right.index("@")
-                                real_pkg = right[:inner_at]
+                            if proto == "@npm:":
+                                # Right may be: "real-pkg@<version>" (alias unscoped),
+                                # "@scope/real-pkg@<version>" (alias scoped),
+                                # or "<version-range>" (NOT an alias — left is the package).
+                                # Discriminator: alias requires a version separator (@) after
+                                # any leading scope's slash.
+                                real_pkg = ""
+                                if right.startswith("@"):
+                                    slash = right.find("/")
+                                    if slash >= 0:
+                                        after_scope_at = right.find("@", slash + 1)
+                                        if after_scope_at >= 0:
+                                            real_pkg = right[:after_scope_at]
+                                else:
+                                    first_at = right.find("@")
+                                    if first_at >= 0:
+                                        real_pkg = right[:first_at]
                                 if real_pkg:
                                     aliased_metadata.append({
                                         "alias": left,
