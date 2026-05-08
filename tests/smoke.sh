@@ -5915,6 +5915,7 @@ check "probe-h-detector-in-diff-lockfile-evaluated" check_probe_h_detector_in_di
 check "probe-h-yarn-berry-peer-dep" check_probe_h_yarn_berry_peer_dep
 check "probe-h-yarn-scoped-npm-protocol" check_probe_h_yarn_scoped_npm_protocol
 check "probe-h-pnpm-v9-format" check_probe_h_pnpm_v9_format
+check "probe-h-levenshtein-length-cap" check_probe_h_levenshtein_length_cap
 echo
 
 # --- STRIDE-lite spec-template slot pins ---

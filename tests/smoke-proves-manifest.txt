@@ -162,6 +162,7 @@ check_probe_h_detector_in_diff_lockfile_evaluated behavioral
 check_probe_h_yarn_berry_peer_dep behavioral
 check_probe_h_yarn_scoped_npm_protocol behavioral
 check_probe_h_pnpm_v9_format behavioral
+check_probe_h_levenshtein_length_cap behavioral
 
 # STRIDE-lite spec-template slot pins (Pin A prompt-text + Pin B prompt-text — SKILL.md gating + cross-auditor consumption)
 check_skill_stride_lite_block_gated prompt-text

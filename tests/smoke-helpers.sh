@@ -5189,6 +5189,10 @@ check_probe_h_pnpm_v9_format() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/14-pnpm-v9-format
 }
 
+check_probe_h_levenshtein_length_cap() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/15-levenshtein-length-cap
+}
+
 check_probe_h_detector_rejects_malformed_requirements() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
 }

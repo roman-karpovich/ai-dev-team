@@ -327,6 +327,8 @@ def parse_lockfile(abs_path, name, rel, skipped_files):
 
 
 def levenshtein(a, b):
+    if abs(len(a) - len(b)) > 2:
+        return abs(len(a) - len(b))
     if len(a) < len(b):
         a, b = b, a
     if not b:
@@ -422,6 +424,13 @@ for rel, abs_path, name in lockfiles:
             continue
         key = (ecosystem, pinned_name, rel)
         if key in seen_findings:
+            continue
+        if len(pinned_name) > 200:
+            skipped_files.append({
+                "file": rel,
+                "reason": "package-name-length-cap-exceeded",
+                "pinned_name": pinned_name[:50] + "…",
+            })
             continue
         for canonical_name in ecosystem_packages:
             if len(canonical_name) < 4:
