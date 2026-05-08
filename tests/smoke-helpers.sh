@@ -5117,6 +5117,38 @@ check_probe_h_detector_clean_distant_name() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/03-clean-distant-name
 }
 
+check_probe_g_detector_fires_on_major_only_no_dot() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/06-major-only-no-dot
+}
+
+check_probe_h_detector_fires_on_major_only_no_dot() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/06-major-only-no-dot
+}
+
+check_probe_g_detector_fires_on_extras_syntax() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/08-extras-syntax
+}
+
+check_probe_h_detector_fires_on_extras_syntax() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/08-extras-syntax
+}
+
+check_probe_g_detector_fires_on_whitespace_eq() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/09-whitespace-eq
+}
+
+check_probe_h_detector_fires_on_whitespace_eq() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/09-whitespace-eq
+}
+
+check_probe_g_detector_rejects_malformed_requirements() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/19-malformed-requirements
+}
+
+check_probe_h_detector_rejects_malformed_requirements() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
+}
+
 check_skill_stride_lite_block_gated() {
   local f="skills/feature/SKILL.md"
   local sub

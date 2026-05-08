@@ -61,7 +61,9 @@ LOCKFILE_NAMES = frozenset({
     "go.sum",
 })
 
-RE_REQUIREMENTS = re.compile(r"^([A-Za-z0-9_.-]+)==([0-9]+)\.")
+RE_REQUIREMENTS = re.compile(
+    r"^([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?\s*==\s*([0-9]+)(?:[.+\s!;#]|$)"
+)
 RE_YARN_ENTRY = re.compile(r'^"?([A-Za-z0-9@_.-][A-Za-z0-9@/_.-]*)@')
 RE_YARN_VERSION = re.compile(r'^\s+version\s+"([^"]+)"')
 RE_PNPM_PACKAGE = re.compile(r"^\s{2}/([^/@][^@:\s]*|@[^/]+/[^@:\s]+)@([^:\s]+):")

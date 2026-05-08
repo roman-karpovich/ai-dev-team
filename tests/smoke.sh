@@ -5888,6 +5888,10 @@ check "probe-g-corpus-fixture-valid" check_probe_g_corpus_fixture_valid
 check "probe-g-detector-fires-on-major-drift" check_probe_g_detector_fires_on_major_drift
 check "probe-g-detector-clean-at-current-major" check_probe_g_detector_clean_at_current_major
 check "probe-g-detector-ineligible-no-lockfile" check_probe_g_detector_ineligible_no_lockfile
+check "probe-g-detector-fires-on-major-only-no-dot" check_probe_g_detector_fires_on_major_only_no_dot
+check "probe-g-detector-fires-on-extras-syntax" check_probe_g_detector_fires_on_extras_syntax
+check "probe-g-detector-fires-on-whitespace-eq" check_probe_g_detector_fires_on_whitespace_eq
+check "probe-g-detector-rejects-malformed-requirements" check_probe_g_detector_rejects_malformed_requirements
 echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---
@@ -5896,6 +5900,10 @@ check "probe-h-corpus-path-resolution" check_probe_h_corpus_path_resolution
 check "probe-h-detector-fires-on-typosquat" check_probe_h_detector_fires_on_typosquat
 check "probe-h-detector-clean-canonical-name" check_probe_h_detector_clean_canonical_name
 check "probe-h-detector-clean-distant-name" check_probe_h_detector_clean_distant_name
+check "probe-h-detector-fires-on-major-only-no-dot" check_probe_h_detector_fires_on_major_only_no_dot
+check "probe-h-detector-fires-on-extras-syntax" check_probe_h_detector_fires_on_extras_syntax
+check "probe-h-detector-fires-on-whitespace-eq" check_probe_h_detector_fires_on_whitespace_eq
+check "probe-h-detector-rejects-malformed-requirements" check_probe_h_detector_rejects_malformed_requirements
 echo
 
 # --- STRIDE-lite spec-template slot pins ---
