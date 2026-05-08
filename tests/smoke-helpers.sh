@@ -5250,6 +5250,14 @@ check_probe_h_yarn_scoped_alias_target() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/21-yarn-scoped-alias-target
 }
 
+check_probe_g_yarn_portal_and_github() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/22-yarn-portal-and-github
+}
+
+check_probe_h_yarn_portal_and_github() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/22-yarn-portal-and-github
+}
+
 check_probe_h_levenshtein_length_cap() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/15-levenshtein-length-cap
 }

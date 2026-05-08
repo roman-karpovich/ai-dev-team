@@ -75,9 +75,9 @@ RE_PNPM_PATCH = re.compile(
     r"^\s+'?/?([^/@\s'][^@:\s']*|@[^/]+/[^@:\s']+)@patch:"
 )
 YARN_PROTOS = (
-    "@npm:", "@workspace:", "@patch:", "@file:", "@link:",
+    "@npm:", "@workspace:", "@patch:", "@portal:", "@file:", "@link:",
     "@git+ssh:", "@git+https:", "@git+http:", "@git:",
-    "@http:", "@https:",
+    "@http:", "@https:", "@github:",
 )
 RE_GO_SUM = re.compile(r"^(\S+)\s+v([0-9]+(?:\.[0-9A-Za-z_.-]+)*)")
 RE_CARGO_NAME = re.compile(r'^name\s*=\s*"([^"]+)"')

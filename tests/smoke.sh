@@ -5900,6 +5900,7 @@ check "probe-g-yarn-scoped-npm-protocol" check_probe_g_yarn_scoped_npm_protocol
 check "probe-g-pnpm-v9-format" check_probe_g_pnpm_v9_format
 check "probe-g-pnpm-v9-quoted-scoped" check_probe_g_pnpm_v9_quoted_scoped
 check "probe-g-yarn-scoped-alias-target" check_probe_g_yarn_scoped_alias_target
+check "probe-g-yarn-portal-and-github" check_probe_g_yarn_portal_and_github
 check "probe-g-vendored-excluded" check_probe_g_vendored_excluded
 check "probe-g-boundary-drift-2-suppressed" check_probe_g_boundary_drift_2_suppressed
 check "probe-g-boundary-drift-3-fired" check_probe_g_boundary_drift_3_fired
@@ -5925,6 +5926,7 @@ check "probe-h-yarn-scoped-npm-protocol" check_probe_h_yarn_scoped_npm_protocol
 check "probe-h-pnpm-v9-format" check_probe_h_pnpm_v9_format
 check "probe-h-pnpm-v9-quoted-scoped" check_probe_h_pnpm_v9_quoted_scoped
 check "probe-h-yarn-scoped-alias-target" check_probe_h_yarn_scoped_alias_target
+check "probe-h-yarn-portal-and-github" check_probe_h_yarn_portal_and_github
 check "probe-h-levenshtein-length-cap" check_probe_h_levenshtein_length_cap
 check "probe-h-vendored-excluded" check_probe_h_vendored_excluded
 check "probe-h-npm-v7-packages-walk-and-dep-classes" check_probe_h_npm_v7_packages_walk_and_dep_classes
