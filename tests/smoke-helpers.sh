@@ -5042,6 +5042,9 @@ for eco, pkgs in corpus.items():
         if not isinstance(val.get("latest_major"), int):
             print(f"corpus[{eco}][{pkg}].latest_major is not an integer")
             sys.exit(1)
+        if "pre_1_0" in val and not isinstance(val["pre_1_0"], bool):
+            print(f"corpus[{eco}][{pkg}].pre_1_0 must be bool when present")
+            sys.exit(1)
 print("corpus schema valid")
 PYEOF
 }
@@ -5223,6 +5226,10 @@ check_probe_g_npm_range_vs_resolved_dedup() {
 
 check_probe_h_npm_range_vs_resolved_dedup() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/17-range-vs-resolved-dedup
+}
+
+check_probe_g_pre_1_0_skipped() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/18-pre-1-0-skipped
 }
 
 check_probe_h_detector_rejects_malformed_requirements() {

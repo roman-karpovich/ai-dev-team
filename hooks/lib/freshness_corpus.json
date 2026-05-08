@@ -13,7 +13,7 @@
   "pypi": {
     "cryptography": {"latest_major": 44},
     "django": {"latest_major": 5},
-    "fastapi": {"latest_major": 0},
+    "fastapi": {"latest_major": 0, "pre_1_0": true},
     "flask": {"latest_major": 3},
     "requests": {"latest_major": 2},
     "urllib3": {"latest_major": 2}

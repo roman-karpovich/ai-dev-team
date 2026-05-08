@@ -459,6 +459,13 @@ for rel, abs_path, name in lockfiles:
         corpus_entry = ecosystem_packages.get(package.lower())
         if not isinstance(corpus_entry, dict):
             continue
+        if corpus_entry.get("pre_1_0") is True:
+            skipped_files.append({
+                "file": rel,
+                "reason": "pre_1_0_corpus_entry",
+                "package": package,
+            })
+            continue
         latest_major = corpus_entry.get("latest_major")
         if not isinstance(latest_major, int):
             continue

@@ -152,6 +152,7 @@ check_probe_g_boundary_drift_2_suppressed behavioral
 check_probe_g_boundary_drift_3_fired behavioral
 check_probe_g_npm_v7_packages_walk_and_dep_classes behavioral
 check_probe_g_npm_range_vs_resolved_dedup behavioral
+check_probe_g_pre_1_0_skipped behavioral
 
 # Typosquatting probe (Probe H — supply-chain layer)
 check_probe_h_corpus_path_resolution schema

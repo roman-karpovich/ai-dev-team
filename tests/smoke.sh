@@ -5903,6 +5903,7 @@ check "probe-g-boundary-drift-2-suppressed" check_probe_g_boundary_drift_2_suppr
 check "probe-g-boundary-drift-3-fired" check_probe_g_boundary_drift_3_fired
 check "probe-g-npm-v7-packages-walk-and-dep-classes" check_probe_g_npm_v7_packages_walk_and_dep_classes
 check "probe-g-npm-range-vs-resolved-dedup" check_probe_g_npm_range_vs_resolved_dedup
+check "probe-g-pre-1-0-skipped" check_probe_g_pre_1_0_skipped
 echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---
