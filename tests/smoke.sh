@@ -5901,6 +5901,8 @@ check "probe-g-pnpm-v9-format" check_probe_g_pnpm_v9_format
 check "probe-g-vendored-excluded" check_probe_g_vendored_excluded
 check "probe-g-boundary-drift-2-suppressed" check_probe_g_boundary_drift_2_suppressed
 check "probe-g-boundary-drift-3-fired" check_probe_g_boundary_drift_3_fired
+check "probe-g-npm-v7-packages-walk-and-dep-classes" check_probe_g_npm_v7_packages_walk_and_dep_classes
+check "probe-g-npm-range-vs-resolved-dedup" check_probe_g_npm_range_vs_resolved_dedup
 echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---
@@ -5920,6 +5922,8 @@ check "probe-h-yarn-scoped-npm-protocol" check_probe_h_yarn_scoped_npm_protocol
 check "probe-h-pnpm-v9-format" check_probe_h_pnpm_v9_format
 check "probe-h-levenshtein-length-cap" check_probe_h_levenshtein_length_cap
 check "probe-h-vendored-excluded" check_probe_h_vendored_excluded
+check "probe-h-npm-v7-packages-walk-and-dep-classes" check_probe_h_npm_v7_packages_walk_and_dep_classes
+check "probe-h-npm-range-vs-resolved-dedup" check_probe_h_npm_range_vs_resolved_dedup
 echo
 
 # --- STRIDE-lite spec-template slot pins ---

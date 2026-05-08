@@ -5209,6 +5209,22 @@ check_probe_g_boundary_drift_3_fired() {
   _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/05-boundary-drift-3-fired
 }
 
+check_probe_g_npm_v7_packages_walk_and_dep_classes() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/16-npm-v7-and-dep-classes
+}
+
+check_probe_h_npm_v7_packages_walk_and_dep_classes() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/16-npm-v7-and-dep-classes
+}
+
+check_probe_g_npm_range_vs_resolved_dedup() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/17-range-vs-resolved-dedup
+}
+
+check_probe_h_npm_range_vs_resolved_dedup() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/17-range-vs-resolved-dedup
+}
+
 check_probe_h_detector_rejects_malformed_requirements() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
 }

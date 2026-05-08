@@ -214,21 +214,68 @@ def parse_package_lock(abs_path):
     with open(abs_path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
 
+    seen_names = set()
     packages = data.get("packages") or {}
+
+    # Pass 1: npm v7+ canonical entries — walk node_modules/<name> keys FIRST
+    # so resolved versions take precedence over range-form root devDeps.
+    if isinstance(packages, dict):
+        for key, meta in packages.items():
+            if not isinstance(meta, dict):
+                continue
+            if key == "":
+                continue
+            marker = "node_modules/"
+            idx = key.rfind(marker)
+            if idx < 0:
+                continue
+            name = key[idx + len(marker):]
+            if not name:
+                continue
+            version = meta.get("version")
+            if not isinstance(version, str):
+                continue
+            if name in seen_names:
+                continue
+            seen_names.add(name)
+            parsed.append(("npm", name, version))
+
+    # Pass 2: root packages[""] dep classes — added ONLY for names NOT already
+    # present from Pass 1 (resolved canonical takes precedence over range form).
     if isinstance(packages, dict):
         root = packages.get("") or {}
         if isinstance(root, dict):
-            dependencies = root.get("dependencies") or {}
-            if isinstance(dependencies, dict):
-                for package, version in dependencies.items():
-                    if isinstance(version, str):
-                        parsed.append(("npm", package, version))
+            for dep_class in (
+                "dependencies", "devDependencies",
+                "peerDependencies", "optionalDependencies",
+            ):
+                deps = root.get(dep_class) or {}
+                if isinstance(deps, dict):
+                    for package, ver in deps.items():
+                        if not isinstance(ver, str):
+                            continue
+                        if package in seen_names:
+                            continue
+                        seen_names.add(package)
+                        parsed.append(("npm", package, ver))
 
-    dependencies = data.get("dependencies") or {}
-    if isinstance(dependencies, dict):
-        for package, meta in dependencies.items():
-            if isinstance(meta, dict) and isinstance(meta.get("version"), str):
-                parsed.append(("npm", package, meta["version"]))
+    # Pass 3: legacy npm v6 root-level dep classes (no `packages` map).
+    for dep_class in (
+        "dependencies", "devDependencies",
+        "peerDependencies", "optionalDependencies",
+    ):
+        legacy = data.get(dep_class) or {}
+        if isinstance(legacy, dict):
+            for package, meta in legacy.items():
+                if package in seen_names:
+                    continue
+                if isinstance(meta, dict) and isinstance(meta.get("version"), str):
+                    seen_names.add(package)
+                    parsed.append(("npm", package, meta["version"]))
+                elif isinstance(meta, str):
+                    if meta and meta[0].isdigit():
+                        seen_names.add(package)
+                        parsed.append(("npm", package, meta))
     return parsed
 
 
