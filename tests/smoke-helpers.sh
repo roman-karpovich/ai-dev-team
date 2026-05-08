@@ -5097,15 +5097,57 @@ _probe_h_byte_diff() {
 }
 
 check_probe_h_corpus_path_resolution() {
-  local probe="hooks/lib/probe_h.sh"
-  [ -f "$probe" ] || { echo "$probe missing"; return 1; }
-  [ -x "$probe" ] || { echo "$probe not executable"; return 1; }
-  local first_line
-  first_line=$(head -1 "$probe")
-  [ "$first_line" = "#!/usr/bin/env bash" ] || { echo "$probe first line is not #!/usr/bin/env bash"; return 1; }
-  grep -qF 'CLAUDE_PLUGIN_ROOT' "$probe" || { echo "$probe missing CLAUDE_PLUGIN_ROOT path-resolution token"; return 1; }
-  grep -qF 'Radaro AI-Assisted Development Policy v1.3 §8.2' "$probe" || { echo "$probe missing traceability anchor"; return 1; }
-  echo "probe_h corpus path resolution schema valid"
+  local plugin_root
+  plugin_root="$(pwd)"
+  local fdir="tests/fixtures/cross-audit-probe-h/01-positive-typosquat"
+  [ -d "$fdir" ] || { echo "fixture $fdir missing"; return 1; }
+  local out_tmp="/tmp/smoke-probe-h-corpus-path.$$"
+  local exit_code=0
+
+  # (1) Env-set path: CLAUDE_PLUGIN_ROOT pointed at plugin checkout.
+  ( cd "$fdir" \
+    && PROBE_H_FAKE_NOW="2026-05-07T00:00:00Z" \
+    CLAUDE_PLUGIN_ROOT="$plugin_root" \
+    bash "$plugin_root/hooks/lib/probe_h.sh" < input.json ) >"$out_tmp" 2>/dev/null || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "probe_h.sh failed under CLAUDE_PLUGIN_ROOT=$plugin_root (env-set path)"
+    rm -f "$out_tmp"
+    return 1
+  fi
+  python3 -c "
+import json, sys, re
+d = json.load(open('$out_tmp'))
+reason = d.get('receipt_metadata', {}).get('eligible_reason', '')
+m = re.search(r'(\d+) pinned packages', reason)
+if not m or int(m.group(1)) <= 0:
+    print(f'env-set: eligible_reason did not report positive pinned-package count: {reason}')
+    sys.exit(1)
+" || { rm -f "$out_tmp"; return 1; }
+
+  # (2) Env-unset path: CLAUDE_PLUGIN_ROOT explicitly removed via `env -u`
+  # so the probe falls back to $PROBE_H_SCRIPT_DIR/freshness_corpus.json.
+  exit_code=0
+  ( cd "$fdir" \
+    && env -u CLAUDE_PLUGIN_ROOT \
+       PROBE_H_FAKE_NOW="2026-05-07T00:00:00Z" \
+       bash "$plugin_root/hooks/lib/probe_h.sh" < input.json ) >"$out_tmp" 2>/dev/null || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "probe_h.sh failed with CLAUDE_PLUGIN_ROOT unset (script-dir fallback)"
+    rm -f "$out_tmp"
+    return 1
+  fi
+  python3 -c "
+import json, sys, re
+d = json.load(open('$out_tmp'))
+reason = d.get('receipt_metadata', {}).get('eligible_reason', '')
+m = re.search(r'(\d+) pinned packages', reason)
+if not m or int(m.group(1)) <= 0:
+    print(f'env-unset: eligible_reason did not report positive pinned-package count: {reason}')
+    sys.exit(1)
+" || { rm -f "$out_tmp"; return 1; }
+
+  rm -f "$out_tmp"
+  echo "probe_h corpus path resolution verified under env-set + env-unset"
 }
 
 check_probe_h_detector_fires_on_typosquat() {
