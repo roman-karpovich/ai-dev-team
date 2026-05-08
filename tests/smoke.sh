@@ -5893,6 +5893,8 @@ check "probe-g-detector-fires-on-extras-syntax" check_probe_g_detector_fires_on_
 check "probe-g-detector-fires-on-whitespace-eq" check_probe_g_detector_fires_on_whitespace_eq
 check "probe-g-detector-rejects-malformed-requirements" check_probe_g_detector_rejects_malformed_requirements
 check "probe-g-detector-fires-on-uppercase-name-package-lock" check_probe_g_detector_fires_on_uppercase_name_package_lock
+check "probe-g-detector-out-of-diff-lockfile-ignored" check_probe_g_detector_out_of_diff_lockfile_ignored
+check "probe-g-detector-in-diff-lockfile-evaluated" check_probe_g_detector_in_diff_lockfile_evaluated
 echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---
@@ -5905,6 +5907,8 @@ check "probe-h-detector-fires-on-major-only-no-dot" check_probe_h_detector_fires
 check "probe-h-detector-fires-on-extras-syntax" check_probe_h_detector_fires_on_extras_syntax
 check "probe-h-detector-fires-on-whitespace-eq" check_probe_h_detector_fires_on_whitespace_eq
 check "probe-h-detector-rejects-malformed-requirements" check_probe_h_detector_rejects_malformed_requirements
+check "probe-h-detector-out-of-diff-lockfile-ignored" check_probe_h_detector_out_of_diff_lockfile_ignored
+check "probe-h-detector-in-diff-lockfile-evaluated" check_probe_h_detector_in_diff_lockfile_evaluated
 echo
 
 # --- STRIDE-lite spec-template slot pins ---

@@ -1,0 +1,9 @@
+{
+  "audit_slug": "fixture-11-out",
+  "base_ref": "main",
+  "changed_python_files": ["some-other-file.py"],
+  "changed_yaml_files": [],
+  "diff": {"added_lines": {"some-other-file.py": [1]}},
+  "mode": "warn",
+  "repo_root": "repo"
+}

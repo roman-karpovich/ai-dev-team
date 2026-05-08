@@ -5149,6 +5149,22 @@ check_probe_g_detector_fires_on_uppercase_name_package_lock() {
   _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/07-uppercase-name-package-lock
 }
 
+check_probe_g_detector_out_of_diff_lockfile_ignored() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/11-out-of-diff-lockfile-ignored
+}
+
+check_probe_h_detector_out_of_diff_lockfile_ignored() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/11-out-of-diff-lockfile-ignored
+}
+
+check_probe_g_detector_in_diff_lockfile_evaluated() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/11-in-diff-lockfile-evaluated
+}
+
+check_probe_h_detector_in_diff_lockfile_evaluated() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/11-in-diff-lockfile-evaluated
+}
+
 check_probe_h_detector_rejects_malformed_requirements() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
 }

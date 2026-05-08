@@ -323,6 +323,15 @@ if not isinstance(changed_yaml_files, list):
 _ = (audit_slug, base_ref)
 
 lockfiles = find_lockfiles(repo_root) if os.path.isdir(repo_root) else []
+diff = payload.get("diff") or {}
+added_lines = diff.get("added_lines") or {}
+if isinstance(added_lines, dict) and added_lines:
+    diff_keys = set(added_lines.keys())
+    lockfiles = [
+        (rel, abs_path, name)
+        for (rel, abs_path, name) in lockfiles
+        if os.path.relpath(abs_path, repo_root).replace(os.sep, "/") in diff_keys
+    ]
 if mode == "off" or (
         not lockfiles and not has_changed_lockfile(changed_python_files,
                                                    changed_yaml_files)):
