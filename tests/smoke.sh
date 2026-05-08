@@ -5865,6 +5865,12 @@ check "r-rules-taxonomy-schema"               check_r_rules_taxonomy_schema
 check "cross-auditor-security-preamble"       check_cross_auditor_security_preamble
 check "spec-compliance-filter-preamble"       check_spec_compliance_filter_preamble
 check "security-cluster-rules-present"             check_security_cluster_rules_present
+check "r9-idor-covers-state-changing-endpoints"    check_r9_idor_covers_state_changing_endpoints
+check "r10-allowlist-literal-set-definition"       check_r10_allowlist_literal_set_definition
+check "r-rule-metadata-consistency"                check_r_rule_metadata_consistency
+check "r11-audience-all-and-encoded-secret-shapes" check_r11_audience_all_and_encoded_secret_shapes
+check "r13-oidc-minimal-permissions"               check_r13_oidc_minimal_permissions
+check "r14-sensitive-reads-and-access-denied-audit" check_r14_sensitive_reads_and_access_denied_audit
 check "cross-auditor-loads-security-cluster"       check_cross_auditor_loads_security_cluster
 check "cross-auditor-step1-step2-load-instructions" check_cross_auditor_step1_step2_load_instructions
 echo

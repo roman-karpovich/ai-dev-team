@@ -55,7 +55,7 @@ rules:
   - id: R11
     short: hardcoded-secrets-in-source
     category: security
-    applies_to: [backend]
+    applies_to: [all]
     enforced_by: [cross-auditor:security]
   - id: R12
     short: missing-cookie-security-flags
@@ -65,7 +65,7 @@ rules:
   - id: R13
     short: plain-text-secrets-in-ci
     category: security
-    applies_to: [backend]
+    applies_to: [all]
     enforced_by: [cross-auditor:security]
   - id: R14
     short: missing-audit-logging-on-sensitive-actions
@@ -364,13 +364,13 @@ R8 sits orthogonal to R1–R7 (which govern test/code quality). It is an **outpu
 
 ## R9 — IDOR / missing ownership check on user-scoped endpoints
 
-**Rule**: any HTTP endpoint (REST handler, GraphQL resolver, RPC method) that returns user-scoped data MUST verify the resource is owned by — or shared with — the authenticated caller before returning it. A primary-key lookup keyed on a path / query parameter (`/orders/<id>`, `?user_id=…`) without a scope filter against `request.user` is IDOR.
+**Rule**: any HTTP endpoint (REST handler, GraphQL resolver, RPC method) that returns or mutates user-scoped data MUST verify the resource is owned by — or shared with — the authenticated caller before returning or mutating it. A primary-key lookup keyed on a path / query parameter (`/orders/<id>`, `?user_id=…`, `POST /users/<id>/disable`, `DELETE /orders/<id>`) without a scope filter against `request.user` is IDOR — the read-side and the mutate-side have the same defect.
 
-**Why**: the auth check happens at "is the user logged in" granularity, not "does this user own this resource" granularity. The auth middleware passes; the handler reads by primary key without filtering by `current_user_id`; any authenticated user enumerates other users' data by changing the URL parameter. Real-world incidents: customer order leakage (sequential order ids), file-server cross-tenant reads, DM-thread cross-account reads. The defect is invisible at code-review pace because each line reads correct on its own — the pattern only surfaces when the missing filter is named explicitly.
+**Why**: the auth check happens at "is the user logged in" granularity, not "does this user own this resource" granularity. The auth middleware passes; the handler reads or mutates by primary key without filtering by `current_user_id`; any authenticated user enumerates, mutates, or deletes other users' data by changing the URL parameter. Real-world incidents: customer order leakage (sequential order ids), file-server cross-tenant reads, DM-thread cross-account reads, unauthorized account-disable via stale URL parameter, cross-tenant subscription-cancellation. The defect is invisible at code-review pace because each line reads correct on its own — the pattern only surfaces when the missing filter is named explicitly.
 
 **Anchor**: Radaro AI-Assisted Development Policy v1.3 §6 (Access control) + §7.1.1 (Authorization). POL-ENG-AIDEV-001.
 
-**How to apply**: every endpoint that returns a user-owned resource MUST do one of: (a) **scoped query** — filter by `user_id=request.user.id` directly in the lookup, returning 404 on miss (`Order.objects.filter(id=order_id, user_id=request.user.id).first()`); (b) **explicit ownership assertion** — fetch then immediately raise on mismatch (`if order.user_id != request.user.id: raise PermissionDenied()`) before any return / serialization step; (c) **policy / row-level-security at the data layer** that enforces tenant scoping for the request before the query runs. The check sits AT the endpoint boundary — never deferred to a downstream service or wrapped in "we check it later in the response serializer".
+**How to apply**: every endpoint that reads or mutates a user-owned resource MUST do one of: (a) **scoped query** — filter by `user_id=request.user.id` directly in the lookup, returning 404 on miss (`Order.objects.filter(id=order_id, user_id=request.user.id).first()`); (b) **explicit ownership assertion** — fetch then immediately raise on mismatch (`if order.user_id != request.user.id: raise PermissionDenied()`) before any return / serialization / mutation step; (c) **policy / row-level-security at the data layer** that enforces tenant scoping for the request before the query runs. The check sits AT the endpoint boundary — never deferred to a downstream service or wrapped in "we check it later in the response serializer". State-changing endpoints (PUT/DELETE/POST that mutate user-owned resources) MUST run the ownership check BEFORE the mutation method is invoked.
 
 **Bad code**:
 
@@ -387,6 +387,16 @@ app.get("/orders/:id", async (req, res) => {
   const order = await db.orders.findById(req.params.id);
   res.json(order);
 });
+```
+
+```python
+# State-changing IDOR — fetch by primary key and mutate WITHOUT any
+# ownership check. The mutation is the IDOR (PUT/DELETE/POST). Same defect
+# as the read-side example, just on a state-changing verb.
+def disable_user(request, user_id):
+    user = User.objects.get(id=user_id)
+    user.disable()
+    return Response(status=204)
 ```
 
 **Good code**:
@@ -407,6 +417,18 @@ def get_order(request, order_id):
     if order.user_id != request.user.id:
         raise PermissionDenied()
     return JsonResponse(serialize(order))
+```
+
+```python
+# State-changing endpoint — ownership check BEFORE the mutation. Different
+# verb (cancel_subscription) from R14's disable_user/charge_order to keep
+# the example shapes distinct across the cluster.
+def cancel_subscription(request, subscription_id):
+    subscription = Subscription.objects.get(id=subscription_id)
+    if subscription.user_id != request.user.id:
+        raise PermissionDenied()
+    subscription.cancel()
+    return Response(status=204)
 ```
 
 ---
@@ -464,7 +486,10 @@ cursor.execute(
 
 ```python
 # Multi-line allowlist guard — guard on its own line, execute on a separate
-# line. Never compress these onto one line via `;`.
+# line. Never compress these onto one line via `;`. The allowlist MUST be a
+# fixed-literal set defined in source — runtime-loaded values from a database
+# or external config break the literal-set guarantee.
+ALLOWED_TABLES = frozenset({"orders", "users"})
 if table_name not in ALLOWED_TABLES:
     raise ValueError(f"unknown table {table_name!r}")
 cursor.execute("SELECT * FROM " + table_name + " WHERE user_id = %s", (user_id,))
@@ -482,6 +507,8 @@ cursor.execute("SELECT * FROM " + table_name + " WHERE user_id = %s", (user_id,)
 
 **How to apply**: secrets read from `os.environ`, `process.env`, settings-bound config that loads from env / Vault, or an injected runtime context. Default values for missing env vars MUST be either `None` (with a hard fail at startup) or a value that obviously does not work outside the dev environment — never a real key shape. Tests use `monkeypatch.setenv(...)` / `pytest.fixture` injection, not literal credentials. CI workflow files use `${{ secrets.X }}` (covered separately by R13).
 
+**Encoding is not concealment** — base64 / base64url / hex literals assigned to secret-named variables are still secrets, even when the literal looks like opaque bytes. Any literal string ≥ 40 characters assigned to a secret-named variable (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `*PRIVATE*`) is a hardcoded-secret defect regardless of encoding. Frontend bundles ship these strings to every browser; backend services commit them into immutable git history; the shape of the literal does not change the exfil model.
+
 **Bad code**:
 
 ```python
@@ -498,6 +525,22 @@ DATABASE_URL = "postgres://user:realpassword@host/db"
 ```javascript
 // JS module — same defect, same indexable shape
 const apiKey = "ak_realtokenshape_xyz";
+```
+
+```python
+# Literal PEM private key — committed to git, indexable on GitHub
+PRIVATE_KEY = "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUVwQUlCQUFLQ0FRRUE..."
+```
+
+```python
+# Literal JWT — three base64url segments separated by dots; eyJ prefix
+# is base64url of `{"` (the opening of the JWT header JSON).
+BEARER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturepart"
+```
+
+```python
+# base64url-encoded API key — base64 alphabet + padding
+API_KEY_B64URL = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcA=="
 ```
 
 **Good code**:
@@ -623,7 +666,22 @@ jobs:
 ```
 
 ```yaml
-# OIDC short-lived token — no long-lived secret committed at all
+# OIDC short-lived token — minimal permissions; no checkout step needed.
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ci-deploy
+          aws-region: us-east-1
+```
+
+```yaml
+# OIDC + repo checkout — `contents: read` is justified by the explicit
+# `actions/checkout@v4` step that needs to read repo files.
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -631,6 +689,7 @@ jobs:
       id-token: write
       contents: read
     steps:
+      - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::123456789012:role/ci-deploy
@@ -641,13 +700,13 @@ jobs:
 
 ## R14 — Missing audit-logging on sensitive actions
 
-**Rule**: state-changing actions on security-sensitive resources MUST emit a structured audit-log entry capturing actor, action, target, timestamp, and outcome. Sensitive resources include user accounts (create/delete/disable, role / permission changes), authentication state (login/logout/MFA enable-disable), authorization grants (API token issue/revoke, share-link grant), payment-bearing state (charge, refund, payout), and any privileged-operator action (impersonation, manual data edit, config change). Application logs (`logger.info(...)`) are NOT audit logs — audit logs go to a dedicated structured-event sink whose retention and integrity guarantees are separate from operational logs.
+**Rule**: state-changing actions on security-sensitive resources MUST emit a structured audit-log entry capturing actor, action, target, timestamp, and outcome. **sensitive-read auditing** applies equally: privileged read paths (admin viewing PII, bulk export of customer data, backup download, audit log query) MUST emit the same audit-log entry shape — read-only access to sensitive resources is a recordable event. Sensitive resources include user accounts (create/delete/disable, role / permission changes), authentication state (login/logout/MFA enable-disable), authorization grants (API token issue/revoke, share-link grant), payment-bearing state (charge, refund, payout), and any privileged-operator action (impersonation, manual data edit, config change). Application logs (`logger.info(...)`) are NOT audit logs — audit logs go to a dedicated structured-event sink whose retention and integrity guarantees are separate from operational logs.
 
-**Why**: post-incident forensics fail at the resource layer when nobody can answer "who did this, when, with which permissions?" The application-logger heuristic — `print` / `logger.info` calls scattered through the handler — drops messages on log rotation, doesn't capture actor context, and gets filtered out at the aggregation layer. Audit logs are a separate stream because they are the source of truth for accountability under both internal incident review and regulatory disclosure (SOC 2, ISO 27001, sector-specific requirements). AI-assist tends to omit audit-log emit calls because the surrounding code already "logs" via the operational logger.
+**Why**: post-incident forensics fail at the resource layer when nobody can answer "who did this, when, with which permissions?" The application-logger heuristic — `print` / `logger.info` calls scattered through the handler — drops messages on log rotation, doesn't capture actor context, and gets filtered out at the aggregation layer. Audit logs are a separate stream because they are the source of truth for accountability under both internal incident review and regulatory disclosure (SOC 2, ISO 27001, sector-specific requirements) — and sensitive-read auditing is part of the same regulatory frame: SOC 2 CC6.x and ISO 27001 A.12.4 expect read access to sensitive resources to leave a trail equivalent to state-changing access. AI-assist tends to omit audit-log emit calls because the surrounding code already "logs" via the operational logger.
 
 **Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.4 (Audit logging). POL-ENG-AIDEV-001.
 
-**How to apply**: every handler that performs a sensitive state change emits one audit-log call, adjacent to the side-effect (same function, after the mutation succeeds, before returning). The call uses a dedicated `audit_log.emit(...)` (or whatever the project's audit sink is named — `audit.record(...)`, `AuditEvent.create(...)`, etc.) carrying `actor` (request principal), `action` (verb — `user.disable`, `payment.refund`, `apitoken.revoke`), `target` (resource id or path), `ts` (timestamp), `outcome` (`success` / `failure` with reason). On failure paths, emit the audit log with the failure outcome — failed-attempt records are evidence too.
+**How to apply**: every handler that performs a sensitive state change emits one audit-log call, adjacent to the side-effect (same function, after the mutation succeeds, before returning). The call uses a dedicated `audit_log.emit(...)` (or whatever the project's audit sink is named — `audit.record(...)`, `AuditEvent.create(...)`, etc.) carrying `actor` (request principal), `action` (verb — `user.disable`, `payment.refund`, `apitoken.revoke`), `target` (resource id or path), `ts` (timestamp), `outcome` (`success` / `failure` with reason). On failure paths, emit the audit log with the failure outcome — failed-attempt records are evidence too. On **authorization-failure paths** (ownership check fails, RBAC role insufficient), emit the audit log with `outcome="failure"` AND a `reason` slot naming the denial cause (e.g. `not_owner`, `insufficient_role`) BEFORE raising the denial exception — failed authorization attempts are the load-bearing forensic signal for IDOR-probing detection.
 
 **Bad code**:
 
@@ -668,12 +727,24 @@ def disable_user(request, user_id):
     return Response(status=204)
 ```
 
+```python
+# Bulk-export read endpoint — emits no audit-log entry. Read-side defect:
+# admin downloads the entire user table (PII) without leaving a trail.
+def export_users_csv(request):
+    rows = User.objects.all()
+    return CsvResponse(rows)
+```
+
 **Good code**:
 
 ```python
-# Dedicated audit sink — actor, action, target, timestamp, outcome
+# Dedicated audit sink — actor, action, target, timestamp, outcome.
+# Ownership check runs BEFORE the mutation (R9 cross-cutting); audit emit
+# runs AFTER the mutation succeeds.
 def disable_user(request, user_id):
     user = User.objects.get(id=user_id)
+    if user.id != request.user.id:
+        raise PermissionDenied()
     user.disable()
     audit_log.emit(
         actor=request.user.id,
@@ -686,9 +757,12 @@ def disable_user(request, user_id):
 ```
 
 ```python
-# Failure path — emit on the exception with outcome="failure"
+# Failure path — emit on the exception with outcome="failure". Ownership
+# check still runs BEFORE the try-block (R9 cross-cutting).
 def charge_order(request, order_id):
     order = Order.objects.get(id=order_id)
+    if order.user_id != request.user.id:
+        raise PermissionDenied()
     try:
         charge(order)
     except StripeError as e:
@@ -709,6 +783,48 @@ def charge_order(request, order_id):
         outcome="success",
     )
     return Response(status=200)
+```
+
+```python
+# Bulk-export read with audit emit — sensitive-read auditing in action.
+# action="users.export"; count= records the cardinality of the read.
+def export_users_csv(request):
+    rows = list(User.objects.all())
+    audit_log.emit(
+        actor=request.user.id,
+        action="users.export",
+        target="users",
+        ts=now(),
+        outcome="success",
+        count=len(rows),
+    )
+    return CsvResponse(rows)
+```
+
+```python
+# R14 access-denied audit emit on PermissionDenied path (R9 ownership-check
+# shape integrated; this fence is R14's contribution: emit audit log on the
+# denial outcome BEFORE raising).
+def get_order(request, order_id):
+    order = Order.objects.get(id=order_id)
+    if order.user_id != request.user.id:
+        audit_log.emit(
+            actor=request.user.id,
+            action="order.read",
+            target=order_id,
+            ts=now(),
+            outcome="failure",
+            reason="not_owner",
+        )
+        raise PermissionDenied()
+    audit_log.emit(
+        actor=request.user.id,
+        action="order.read",
+        target=order_id,
+        ts=now(),
+        outcome="success",
+    )
+    return JsonResponse(serialize(order))
 ```
 
 ---
@@ -747,7 +863,7 @@ read_body_sections_for(applicable)
 
 There are two distinct degrade paths with two distinct triggers and **opposite** outcomes. The contract names them explicitly so consumer agents do not converge on different defaults.
 
-**Trigger A — `project_type` is missing or unknown**. Consumer was invoked without an orchestrator-threaded `project_type` value (legacy invocation, ad-hoc use, configuration drift). Set `project_type` internally to the literal string `"all"` and run the filter normally. Result: rules with `applies_to: [all]` load (every R1–R8 today); rules with `applies_to: [backend]` (or any audience-restricted list that does not contain `"all"`) do NOT load. Worked example: `filter(rules, "all")` returns the R1–R8 set today. When R9 lands as `applies_to: [backend]`, R9 does NOT load under Trigger A — that is the intended backwards-compat semantics ("today's R1–R8 always load", not "every rule always loads"). The asymmetry is deliberate.
+**Trigger A — `project_type` is missing or unknown**. Consumer was invoked without an orchestrator-threaded `project_type` value (legacy invocation, ad-hoc use, configuration drift). Set `project_type` internally to the literal string `"all"` and run the filter normally. Result: rules with `applies_to: [all]` load (R1–R8 plus any cluster rules currently flipped to `[all]`, e.g. R11 and R13); rules with `applies_to: [backend]` (or any audience-restricted list that does not contain `"all"`) do NOT load. Worked example: `filter(rules, "all")` returns the `[all]`-audience set — at present R1–R8 plus R11 and R13 (10 rules). The audience-restricted cluster members (R9, R10, R12, R14 are `[backend]`) do NOT load under Trigger A — that is the intended backwards-compat semantics ("`[all]`-audience rules always load", not "every rule always loads"). The asymmetry is deliberate.
 
 **Trigger B — frontmatter `rules:` block fails to parse**. The YAML is malformed, the `rules:` field is missing, or `parse_frontmatter` raises. Consumer cannot determine `applies_to` for any rule. In this path, emit a one-line warning to stderr (`⚠️ code-quality-rules.md frontmatter rules block failed to parse — loading all body sections regardless of applies_to`) and load every `## R<N>` body section verbatim, ignoring the filter entirely. Worked example: a future contributor accidentally introduces a YAML indentation error in the `rules:` block — Trigger B fires, every rule body section loads (including audience-restricted rules that should NOT have loaded for the active project_type) until the parse error is fixed.
 

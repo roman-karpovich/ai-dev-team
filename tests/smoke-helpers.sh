@@ -3883,32 +3883,23 @@ for entry in rules:
         print(f"{path}: no `## {rid} — ` body heading found (assertion h)", file=sys.stderr)
         sys.exit(1)
 
-# (i) Trigger A worked example: filter(rules, project_type="all") returns all 8 today
+# (i) Trigger A worked example: filter(rules, project_type="all") returns
+# R1..R8 [all] + any R-rule with [all] audience. Was 8 before any cluster
+# audience flips; 9 after PR-D Step 3 flipped R11 to [all]; 10 after
+# PR-D Step 4 flips R13 to [all].
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_all = trigger_a_filter(rules, "all")
-if len(filtered_all) != 8:
-    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 8 (assertion i)", file=sys.stderr)
+if len(filtered_all) != 10:
+    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 10 (assertion i)", file=sys.stderr)
     sys.exit(1)
 
-# (j) per-rule golden mapping
-golden = {
-    "R1": ("quality", ["all"], ["spec-compliance-checker"]),
-    "R2": ("quality", ["all"], ["spec-compliance-checker"]),
-    "R3": ("quality", ["all"], ["spec-compliance-checker"]),
-    "R4": ("process", ["all"], ["none"]),
-    "R5": ("quality", ["all"], ["none"]),
-    "R6": ("quality", ["all"], ["none"]),
-    "R7": ("quality", ["all"], ["none"]),
-    "R8": ("process", ["all"], ["spec-compliance-checker"]),
-    "R9": ("security", ["backend"], ["cross-auditor:security"]),
-    "R10": ("security", ["backend"], ["cross-auditor:security"]),
-    "R11": ("security", ["backend"], ["cross-auditor:security"]),
-    "R12": ("security", ["backend"], ["cross-auditor:security"]),
-    "R13": ("security", ["backend"], ["cross-auditor:security"]),
-    "R14": ("security", ["backend"], ["cross-auditor:security"]),
-}
+# (j) per-rule golden mapping — imported from shared module so the same dict is
+# the single source of truth across pins (heredoc-isolation architecture per
+# PR-D §3.0a; see tests/smoke_rule_helpers.py).
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import R_RULE_GOLDEN_TABLE as golden
 by_id = {r["id"]: r for r in rules}
 for rid, (cat, apply, enf) in golden.items():
     if rid not in by_id:
@@ -4053,60 +4044,45 @@ for rid in cluster_ids:
         print(f"{path}: cluster id {rid} missing from frontmatter rules: list (assertion a)", file=sys.stderr)
         sys.exit(1)
 
-# (b) golden metadata
+# Shared helpers + per-rule expected_applies dict — imported from the single
+# source of truth module (heredoc-isolation architecture per PR-D §3.0a; see
+# tests/smoke_rule_helpers.py).
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import (
+    extract_section,
+    extract_block_after,
+    good_block,
+    bad_block,
+    iter_fences,
+    R_RULE_CLUSTER_EXPECTED_APPLIES as cluster_expected_applies,
+)
+
+# (b) golden metadata — applies_to is now per-rule via cluster_expected_applies
+# (replaces the uniform `!= ["backend"]` check that pre-existed; rules can have
+# `[all]` audience as the cluster expands beyond the original backend-only set).
 for rid in cluster_ids:
     r = by_id[rid]
     if r.get("category") != "security":
         print(f"{path}: {rid}.category={r.get('category')!r}, expected 'security' (assertion b)", file=sys.stderr)
         sys.exit(1)
-    if list(r.get("applies_to") or []) != ["backend"]:
-        print(f"{path}: {rid}.applies_to={r.get('applies_to')!r}, expected ['backend'] (assertion b)", file=sys.stderr)
+    expected_applies = cluster_expected_applies[rid]
+    if list(r.get("applies_to") or []) != expected_applies:
+        print(f"{path}: {rid}.applies_to={r.get('applies_to')!r}, expected {expected_applies!r} (assertion b)", file=sys.stderr)
         sys.exit(1)
     if list(r.get("enforced_by") or []) != ["cross-auditor:security"]:
         print(f"{path}: {rid}.enforced_by={r.get('enforced_by')!r}, expected ['cross-auditor:security'] (assertion b)", file=sys.stderr)
         sys.exit(1)
 
-# Helpers — extract a body section as the substring from the `## R<N> — ` heading
-# through the next `^---$` divider line. Returns the full slice (heading + body
-# + divider). For block extraction we then carve Bad code and Good code slices.
-def extract_section(rid):
-    pat = re.compile(r"(?m)^## " + re.escape(rid) + r" — ")
-    m_h = pat.search(text)
-    if not m_h:
-        return None
-    start = m_h.start()
-    # find first standalone `---` after start
-    div_pat = re.compile(r"(?m)^---$")
-    m_d = div_pat.search(text, m_h.end())
-    if not m_d:
-        return text[start:]
-    return text[start:m_d.end()]
-
-def extract_block_after(section, marker):
-    """Return text from the marker line through the next `^---$` divider
-    (exclusive). Used for Good code block extraction (assertion h)."""
-    if section is None:
-        return ""
-    idx = section.find(marker)
-    if idx == -1:
-        return ""
-    rest = section[idx:]
-    # next standalone `---` line
-    m_d = re.search(r"(?m)^---$", rest)
-    if not m_d:
-        return rest
-    return rest[:m_d.start()]
-
 # (c) body heading per id
 for rid in cluster_ids:
-    sec = extract_section(rid)
+    sec = extract_section(text, rid)
     if sec is None:
         print(f"{path}: no `## {rid} — ` body heading found (assertion c)", file=sys.stderr)
         sys.exit(1)
 
 # (d) Bad/Good code markers
 for rid in cluster_ids:
-    sec = extract_section(rid)
+    sec = extract_section(text, rid)
     if "**Bad code**" not in sec:
         print(f"{path}: {rid} body missing `**Bad code**` marker (assertion d)", file=sys.stderr)
         sys.exit(1)
@@ -4118,7 +4094,7 @@ for rid in cluster_ids:
 # previous OR-of-positives let a regression remove one anchor while keeping
 # the other (anchor-downgrade silently undetected).
 for rid in cluster_ids:
-    sec = extract_section(rid)
+    sec = extract_section(text, rid)
     if ("Radaro" not in sec) or ("POL-ENG-AIDEV-001" not in sec):
         print(f"{path}: {rid} body missing Radaro AND/OR POL-ENG-AIDEV-001 anchor (both required) (assertion e)", file=sys.stderr)
         sys.exit(1)
@@ -4132,41 +4108,20 @@ if len(filtered_backend) != 14:
     print(f"{path}: backend filter returned {len(filtered_backend)}, expected 14 (assertion f)", file=sys.stderr)
     sys.exit(1)
 
-# (g) smart_contract filter returns 8 (R1..R8 only — R9..R14 are [backend])
+# (g) smart_contract filter returns R1..R8 + any R-rule with [all] audience.
+# Was 8 before any cluster audience flips; 9 after PR-D Step 3 flipped R11
+# to [all]; 10 after PR-D Step 4 flips R13 to [all].
 filtered_sc = trigger_a_filter(rules, "smart_contract")
-if len(filtered_sc) != 8:
-    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 8 (assertion g)", file=sys.stderr)
+if len(filtered_sc) != 10:
+    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 10 (assertion g)", file=sys.stderr)
     sys.exit(1)
 
 # (h) Per-rule canonical-pattern presence — Good code block ONLY (block-level
-# extraction defeats Bad/Good content-shift bypass).
-def good_block(rid):
-    sec = extract_section(rid)
-    return extract_block_after(sec, "**Good code**")
-
-def bad_block(rid):
-    """Extract text from `**Bad code**` marker through the next `**Good code**`
-    marker. If `**Good code**` is missing, fall through to the next `^---$`
-    divider via extract_block_after's default behaviour. Symmetric to
-    good_block(rid) — used by assertion (i)."""
-    sec = extract_section(rid)
-    if sec is None:
-        return ""
-    idx = sec.find("**Bad code**")
-    if idx == -1:
-        return ""
-    rest = sec[idx:]
-    g_idx = rest.find("**Good code**")
-    if g_idx != -1:
-        return rest[:g_idx]
-    # No Good code marker — bound by next `^---$` divider instead
-    m_d = re.search(r"(?m)^---$", rest)
-    if not m_d:
-        return rest
-    return rest[:m_d.start()]
+# extraction defeats Bad/Good content-shift bypass). good_block / bad_block
+# imported from smoke_rule_helpers; call sites pass the full markdown text.
 
 # R9: request.user.id AND (PermissionDenied OR .filter()
-g9 = good_block("R9")
+g9 = good_block(text, "R9")
 if "request.user.id" not in g9:
     print(f"{path}: R9 Good code block missing 'request.user.id' (assertion h)", file=sys.stderr)
     sys.exit(1)
@@ -4176,7 +4131,7 @@ if ("PermissionDenied" not in g9) and (".filter(" not in g9):
 
 # R10: cursor.execute( AND %s AND (psycopg2.sql OR sql.Identifier);
 # negative: NOT 'assert table_name in', NOT `if[[:space:]].*;[[:space:]]*cursor\.execute`
-g10 = good_block("R10")
+g10 = good_block(text, "R10")
 if "cursor.execute(" not in g10:
     print(f"{path}: R10 Good code block missing 'cursor.execute(' (assertion h)", file=sys.stderr)
     sys.exit(1)
@@ -4197,7 +4152,7 @@ for line in g10.splitlines():
         sys.exit(1)
 
 # R11: os.environ AND (monkeypatch OR setenv)
-g11 = good_block("R11")
+g11 = good_block(text, "R11")
 if "os.environ" not in g11:
     print(f"{path}: R11 Good code block missing 'os.environ' (assertion h)", file=sys.stderr)
     sys.exit(1)
@@ -4206,14 +4161,14 @@ if ("monkeypatch" not in g11) and ("setenv" not in g11):
     sys.exit(1)
 
 # R12: httponly=True AND secure=True AND samesite=
-g12 = good_block("R12")
+g12 = good_block(text, "R12")
 for tok in ("httponly=True", "secure=True", "samesite="):
     if tok not in g12:
         print(f"{path}: R12 Good code block missing '{tok}' (assertion h)", file=sys.stderr)
         sys.exit(1)
 
 # R13: ${{ secrets. AND (OIDC OR id-token)
-g13 = good_block("R13")
+g13 = good_block(text, "R13")
 if "${{ secrets." not in g13:
     print(f"{path}: R13 Good code block missing '${{{{ secrets.' (assertion h)", file=sys.stderr)
     sys.exit(1)
@@ -4222,7 +4177,7 @@ if ("OIDC" not in g13) and ("id-token" not in g13):
     sys.exit(1)
 
 # R14: (audit_log.emit( OR audit.record( OR AuditEvent.create() AND actor= AND outcome=
-g14 = good_block("R14")
+g14 = good_block(text, "R14")
 if not (("audit_log.emit(" in g14) or ("audit.record(" in g14) or ("AuditEvent.create(" in g14)):
     print(f"{path}: R14 Good code block missing audit_log.emit(/audit.record(/AuditEvent.create( (assertion h)", file=sys.stderr)
     sys.exit(1)
@@ -4240,20 +4195,20 @@ if "outcome=" not in g14:
 # from R14 Bad would silently pass while the rule loses its educational core.
 
 # R9: unconditional fetch shape — Order.objects.get(id=order_id) OR findById(req.params.id)
-b9 = bad_block("R9")
+b9 = bad_block(text, "R9")
 if ("Order.objects.get(id=order_id)" not in b9) and ("findById(req.params.id)" not in b9):
     print(f"{path}: R9 Bad code block missing IDOR anti-pattern (Order.objects.get(id=order_id) OR findById(req.params.id)) (assertion i)", file=sys.stderr)
     sys.exit(1)
 
 # R10: f-string SQL pattern — `f"...WHERE...{...}"` shape OR `% user_id` formatted SQL
-b10 = bad_block("R10")
+b10 = bad_block(text, "R10")
 fstring_sql = re.search(r'f"[^"\n]*WHERE[^"\n]*\{', b10)
 if (fstring_sql is None) and ("% user_id" not in b10):
     print(f"{path}: R10 Bad code block missing SQLi anti-pattern (f-string SQL with WHERE...{{...}} OR % user_id formatting) (assertion i)", file=sys.stderr)
     sys.exit(1)
 
 # R11: literal secret-shaped string — sk_live_ OR sk_test_ OR ghs_ OR ghp_ OR realpassword
-b11 = bad_block("R11")
+b11 = bad_block(text, "R11")
 if not any(tok in b11 for tok in ("sk_live_", "sk_test_", "ghs_", "ghp_", "realpassword")):
     print(f"{path}: R11 Bad code block missing literal secret-shaped string (sk_live_ / sk_test_ / ghs_ / ghp_ / realpassword) (assertion i)", file=sys.stderr)
     sys.exit(1)
@@ -4263,7 +4218,7 @@ if not any(tok in b11 for tok in ("sk_live_", "sk_test_", "ghs_", "ghp_", "realp
 # does not contain `httponly` / `httpOnly`. We scan call sites within the Bad block.
 r12_call_re = re.compile(r"(set_cookie|res\.cookie)\s*\(([^)]*)\)", re.DOTALL)
 r12_bad_found = False
-for m_call in r12_call_re.finditer(bad_block("R12")):
+for m_call in r12_call_re.finditer(bad_block(text, "R12")):
     args = m_call.group(2)
     if "httponly" not in args.lower():
         r12_bad_found = True
@@ -4273,7 +4228,7 @@ if not r12_bad_found:
     sys.exit(1)
 
 # R13: literal token-shaped value — explicit anti-pattern strings the spec writes
-b13 = bad_block("R13")
+b13 = bad_block(text, "R13")
 if not any(tok in b13 for tok in ("ghs_realtokenhere", "ghp_realtokenhere", "sk_live_realtokenshape", "sk_live_", "ghp_", "ghs_")):
     print(f"{path}: R13 Bad code block missing literal token-shaped anti-pattern (ghs_/ghp_/sk_live_ shape) (assertion i)", file=sys.stderr)
     sys.exit(1)
@@ -4281,12 +4236,471 @@ if not any(tok in b13 for tok in ("ghs_realtokenhere", "ghp_realtokenhere", "sk_
 # R14: logger.info( near a state-change verb — relaxed positive: `logger.info(`
 # substring sufficient for the v1 anti-pattern shape (operational logger treated
 # as audit coverage).
-b14 = bad_block("R14")
+b14 = bad_block(text, "R14")
 if "logger.info(" not in b14:
     print(f"{path}: R14 Bad code block missing logger.info( anti-pattern (operational logger as audit coverage) (assertion i)", file=sys.stderr)
     sys.exit(1)
 
 print(f"R-rules security cluster {cluster_ids} present with canonical conventions in Good code blocks AND canonical anti-patterns in Bad code blocks")
+PY
+}
+
+# R9 IDOR scope expansion + R14 ownership-check guards (PR-D Step 1).
+# Asserts R9 Rule line / Why prose / How-to-apply broadened to read+mutate
+# scope, R9 Bad-code state-changing fence (def disable_user — IDOR shape, no
+# ownership check), R9 Good-code state-changing fence (def cancel_subscription
+# — ownership check + raise + mutation), and R14 Good-code disable_user +
+# charge_order fences carry ownership checks BEFORE the mutation. Per-fence
+# extraction via iter_fences (heredoc-isolation architecture, see
+# tests/smoke_rule_helpers.py).
+check_r9_idor_covers_state_changing_endpoints() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  # Helper-presence sanity (replaces the iter1 declare -F check, which was
+  # structurally false: declare -F lists bash shell functions, not Python
+  # functions inside heredocs).
+  test "$(grep -cE '^def iter_fences\(' tests/smoke_rule_helpers.py)" -ge 1 \
+    || { echo "iter_fences missing from tests/smoke_rule_helpers.py" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import re
+import sys
+
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import extract_section, good_block, bad_block, iter_fences
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+sec = extract_section(text, "R9")
+if sec is None:
+    print(f"{path}: R9 section not found", file=sys.stderr)
+    sys.exit(1)
+
+# T1.1 positive — Rule line broadened
+if "returns or mutates user-scoped data MUST verify" not in sec:
+    print(f"{path}: R9 Rule line missing 'returns or mutates user-scoped data MUST verify' (T1.1 positive)", file=sys.stderr)
+    sys.exit(1)
+# T1.1 negative — pre-rewrite literal absent (only post-rewrite matches)
+pre_rewrite_re = re.search(r"returns user-scoped data MUST verify", sec)
+post_rewrite_re = re.search(r"returns or mutates user-scoped data MUST verify", sec)
+# Pass condition: the post-rewrite phrasing matches; the pre-rewrite phrasing
+# (without `or mutates`) is a strict suffix of the post — so we forbid it as a
+# standalone literal NOT preceded by `or mutates`. The post phrasing contains
+# `returns or mutates user-scoped data MUST verify` which itself contains
+# `user-scoped data MUST verify` but NOT `returns user-scoped data MUST verify`
+# as a substring (because `returns` is followed by ` or mutates`, not space).
+# Defensive check: only the post regex matches.
+if pre_rewrite_re is not None and post_rewrite_re is None:
+    print(f"{path}: R9 Rule line still has stale 'returns user-scoped data MUST verify' literal (T1.1 negative)", file=sys.stderr)
+    sys.exit(1)
+
+# T1.2 positive — Why prose broadened
+if "mutates, or deletes other users' data" not in sec:
+    print(f"{path}: R9 Why prose missing 'mutates, or deletes other users\\' data' (T1.2 positive)", file=sys.stderr)
+    sys.exit(1)
+# T1.2 negative — pre-rewrite literal absent
+if "enumerates other users' data by changing the URL parameter" in sec:
+    print(f"{path}: R9 Why prose still has stale 'enumerates other users\\' data by changing the URL parameter' literal (T1.2 negative)", file=sys.stderr)
+    sys.exit(1)
+
+# T1.3 positive — How-to-apply broadened
+if "reads or mutates a user-owned resource" not in sec:
+    print(f"{path}: R9 How-to-apply missing 'reads or mutates a user-owned resource' (T1.3 positive)", file=sys.stderr)
+    sys.exit(1)
+# T1.3 negative — pre-rewrite literal absent
+if "every endpoint that returns a user-owned resource" in sec:
+    print(f"{path}: R9 How-to-apply still has stale 'every endpoint that returns a user-owned resource' literal (T1.3 negative)", file=sys.stderr)
+    sys.exit(1)
+
+# T1.4 positive — R9 Bad state-changing fence: def disable_user( + user.disable() ;
+# NOT request.user.id; NOT PermissionDenied; ownership-check shape regex must NOT match.
+ownership_re = re.compile(r"if\s+\w+\.user_id\s*!=\s*request\.user\.id:")
+bad_fences = list(iter_fences(bad_block(text, "R9"), "python"))
+t14_ok = False
+for f in bad_fences:
+    if ("def disable_user(" in f
+        and "user.disable()" in f
+        and "request.user.id" not in f
+        and "PermissionDenied" not in f
+        and ownership_re.search(f) is None):
+        t14_ok = True
+        break
+if not t14_ok:
+    print(f"{path}: R9 Bad-code missing state-changing IDOR fence (T1.4 positive: def disable_user + user.disable() + NO request.user.id + NO PermissionDenied + NO ownership-check shape)", file=sys.stderr)
+    sys.exit(1)
+
+# T1.5 positive — R9 Good state-changing fence: def cancel_subscription( +
+# byte-exact ownership-check + raise PermissionDenied() + subscription.cancel().
+good_fences_r9 = list(iter_fences(good_block(text, "R9"), "python"))
+t15_ok = False
+for f in good_fences_r9:
+    if ("def cancel_subscription(" in f
+        and "if subscription.user_id != request.user.id:" in f
+        and "raise PermissionDenied()" in f
+        and "subscription.cancel()" in f):
+        t15_ok = True
+        break
+if not t15_ok:
+    print(f"{path}: R9 Good-code missing state-changing fence (T1.5 positive: def cancel_subscription + ownership-check + raise PermissionDenied + subscription.cancel())", file=sys.stderr)
+    sys.exit(1)
+
+# T1.6 positive — R14 disable_user fence: byte-exact ownership-check +
+# raise PermissionDenied() + user.disable() + audit_log.emit(. Document order:
+# ownership-check < user.disable() < audit_log.emit(.
+good_fences_r14 = list(iter_fences(good_block(text, "R14"), "python"))
+t16_ok = False
+for f in good_fences_r14:
+    if "def disable_user(" not in f:
+        continue
+    if not ("if user.id != request.user.id:" in f
+            and "raise PermissionDenied()" in f
+            and "user.disable()" in f
+            and "audit_log.emit(" in f):
+        continue
+    o1 = f.find("if user.id != request.user.id:")
+    o2 = f.find("user.disable()")
+    o3 = f.find("audit_log.emit(")
+    if o1 < o2 < o3:
+        t16_ok = True
+        break
+if not t16_ok:
+    print(f"{path}: R14 Good-code disable_user fence missing ownership-check guard or doc-order (T1.6 positive: ownership-check before user.disable() before audit_log.emit()", file=sys.stderr)
+    sys.exit(1)
+
+# T1.7 positive — R14 charge_order fence: byte-exact ownership-check +
+# raise PermissionDenied(). Document order: ownership-check < try:.
+t17_ok = False
+for f in good_fences_r14:
+    if "def charge_order(" not in f:
+        continue
+    if not ("if order.user_id != request.user.id:" in f
+            and "raise PermissionDenied()" in f):
+        continue
+    o1 = f.find("if order.user_id != request.user.id:")
+    o2 = f.find("try:")
+    if o1 < o2:
+        t17_ok = True
+        break
+if not t17_ok:
+    print(f"{path}: R14 Good-code charge_order fence missing ownership-check guard or doc-order (T1.7 positive: ownership-check before try:)", file=sys.stderr)
+    sys.exit(1)
+
+print("R9 IDOR scope covers state-changing endpoints + R14 ownership-check guards present (T1.1-T1.7)")
+PY
+}
+
+# R10 allowlist literal-set definition (PR-D Step 2).
+# Asserts R10 Good-code multi-line allowlist fence carries the literal-set
+# definition `ALLOWED_TABLES = frozenset({"orders", "users"})` BEFORE the
+# `if table_name not in ALLOWED_TABLES:` guard, in the SAME fence as the
+# `cursor.execute(` call. Asserts the byte-exact comment phrase
+# "fixed-literal set defined in source" lives in the R10 section.
+check_r10_allowlist_literal_set_definition() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import extract_section, good_block, iter_fences
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+sec = extract_section(text, "R10")
+if sec is None:
+    print(f"{path}: R10 section not found", file=sys.stderr)
+    sys.exit(1)
+
+# T2.1 positive — literal-set definition in the same fence as the guard +
+# cursor.execute, in document order.
+fences = list(iter_fences(good_block(text, "R10"), "python"))
+ok = False
+for f in fences:
+    if not ('ALLOWED_TABLES = frozenset({"orders", "users"})' in f
+            and "if table_name not in ALLOWED_TABLES:" in f
+            and "cursor.execute(" in f):
+        continue
+    o1 = f.find('ALLOWED_TABLES = frozenset(')
+    o2 = f.find("if table_name not in ALLOWED_TABLES:")
+    if o1 < o2:
+        ok = True
+        break
+if not ok:
+    print(f"{path}: R10 Good-code allowlist fence missing literal-set definition (T2.1: ALLOWED_TABLES = frozenset({{...}}) before guard before cursor.execute(", file=sys.stderr)
+    sys.exit(1)
+
+# T2.2 positive — canonical comment phrase
+if "fixed-literal set defined in source" not in sec:
+    print(f"{path}: R10 section missing canonical comment 'fixed-literal set defined in source' (T2.2 positive)", file=sys.stderr)
+    sys.exit(1)
+
+print("R10 allowlist literal-set definition + canonical comment present (T2.1-T2.2)")
+PY
+}
+
+# R-rule metadata consistency meta-pin (PR-D Step 3 §3.0b).
+# Asserts that R_RULE_GOLDEN_TABLE[rid][1] (the applies_to slot of the
+# schema-validator's golden table) equals R_RULE_CLUSTER_EXPECTED_APPLIES[rid]
+# (the cluster-pin's per-rule expected applies_to) for every rid in the
+# cluster R9..R14. Both dicts live in tests/smoke_rule_helpers.py — the
+# meta-pin defends against a future contributor who might split the dicts
+# apart or typo one of them.
+check_r_rule_metadata_consistency() {
+  python3 - <<'PY' || return 1
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import R_RULE_GOLDEN_TABLE, R_RULE_CLUSTER_EXPECTED_APPLIES
+
+cluster_ids = ["R9", "R10", "R11", "R12", "R13", "R14"]
+errors = []
+for rid in cluster_ids:
+    golden_applies = list(R_RULE_GOLDEN_TABLE[rid][1])
+    expected_applies = list(R_RULE_CLUSTER_EXPECTED_APPLIES[rid])
+    if golden_applies != expected_applies:
+        errors.append(
+            f"{rid}: golden applies_to={golden_applies!r} != cluster expected_applies={expected_applies!r}"
+        )
+if errors:
+    for e in errors:
+        print(e, file=sys.stderr)
+    sys.exit(1)
+print(f"R-rule metadata consistency OK across {cluster_ids} (golden <-> cluster expected_applies)")
+PY
+}
+
+# R11 audience expansion + encoded-secret Bad-code shapes (PR-D Step 3).
+# Asserts the three new encoded-secret Bad-code fences are present
+# (base64 PEM, JWT-shaped bearer, base64url-encoded API key) and the
+# `Encoding is not concealment` prose lives in the R11 body. Audience
+# flip [backend]→[all] is locked by the in-place updates to the existing
+# pins (golden table + cluster expected dict + both cardinality surfaces).
+check_r11_audience_all_and_encoded_secret_shapes() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import re
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import extract_section, bad_block, iter_fences
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+sec = extract_section(text, "R11")
+if sec is None:
+    print(f"{path}: R11 section not found", file=sys.stderr)
+    sys.exit(1)
+
+bad_fences = list(iter_fences(bad_block(text, "R11"), "python"))
+
+# T3.6 — base64 PEM Bad fence
+if not any("PRIVATE_KEY" in f and "LS0tLS1CRUdJTi" in f for f in bad_fences):
+    print(f"{path}: R11 Bad-code missing base64 PEM fence (T3.6: PRIVATE_KEY + LS0tLS1CRUdJTi co-located)", file=sys.stderr)
+    sys.exit(1)
+
+# T3.7 — JWT-shaped Bad fence
+if not any("BEARER_TOKEN" in f and "eyJ" in f for f in bad_fences):
+    print(f"{path}: R11 Bad-code missing JWT-shaped fence (T3.7: BEARER_TOKEN + eyJ co-located)", file=sys.stderr)
+    sys.exit(1)
+
+# T3.8 — base64url Bad fence: API_KEY_B64URL + comment marker + ≥40-char =-padded
+b64url_re = re.compile(r'"[A-Za-z0-9_-]{40,}=+"')
+ok_t38 = False
+for f in bad_fences:
+    if ("API_KEY_B64URL" in f
+        and "# base64url-encoded" in f
+        and b64url_re.search(f) is not None):
+        ok_t38 = True
+        break
+if not ok_t38:
+    print(f"{path}: R11 Bad-code missing base64url fence (T3.8: API_KEY_B64URL + '# base64url-encoded' marker + literal-string >=40 chars with = padding)", file=sys.stderr)
+    sys.exit(1)
+
+# T3.9 — prose sentence
+if "Encoding is not concealment" not in sec:
+    print(f"{path}: R11 section missing 'Encoding is not concealment' prose (T3.9 positive)", file=sys.stderr)
+    sys.exit(1)
+
+print("R11 audience [all] + encoded-secret Bad-code shapes (PEM/JWT/base64url) + prose present (T3.6-T3.9)")
+PY
+}
+
+# R13 OIDC minimal-permissions example (PR-D Step 4).
+# Asserts the R13 Good-code OIDC examples: a forall-implication that any
+# fence containing both `id-token: write` and `contents: read` ALSO
+# contains `actions/checkout`; an existence assertion that a minimal
+# fence (id-token only, no contents:read) is present; an existence
+# assertion that a paired fence (id-token + contents:read +
+# actions/checkout) is present. Audience flip [backend]→[all] is locked
+# by the in-place updates to the existing pins.
+check_r13_oidc_minimal_permissions() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import good_block, iter_fences
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+fences = list(iter_fences(good_block(text, "R13"), "yaml"))
+if not fences:
+    print(f"{path}: R13 Good-code has no yaml fences (T4 prerequisite)", file=sys.stderr)
+    sys.exit(1)
+
+# Forall-implication: any fence with both id-token:write AND contents:read
+# MUST also contain actions/checkout.
+for f in fences:
+    if "id-token: write" in f and "contents: read" in f:
+        if "actions/checkout" not in f:
+            print(f"{path}: R13 Good-code OIDC fence has 'contents: read' WITHOUT 'actions/checkout' co-located (T4.6/T4.7 forall)", file=sys.stderr)
+            sys.exit(1)
+
+# Existence (minimal): some fence has id-token:write AND no contents:read
+if not any("id-token: write" in f and "contents: read" not in f for f in fences):
+    print(f"{path}: R13 Good-code missing minimal-permissions OIDC fence (T4.6 existence: id-token:write only, no contents:read)", file=sys.stderr)
+    sys.exit(1)
+
+# Existence (paired): some fence has id-token:write AND contents:read AND actions/checkout
+if not any(
+    "id-token: write" in f and "contents: read" in f and "actions/checkout" in f
+    for f in fences
+):
+    print(f"{path}: R13 Good-code missing paired OIDC fence (T4.7 existence: id-token:write + contents:read + actions/checkout co-located)", file=sys.stderr)
+    sys.exit(1)
+
+print("R13 OIDC minimal-permissions + paired example present (T4.6-T4.8)")
+PY
+}
+
+# R14 sensitive-read coverage + access-denied audit emit (PR-D Step 5).
+# Asserts R14 Rule line carries `sensitive-read auditing` byte-exact AND
+# names ≥3 of 4 sensitive-read classes (PII, bulk export, backup,
+# audit log); Why paragraph carries `sensitive-read auditing` co-located
+# with `SOC 2`/`ISO 27001`; How-to-apply paragraph carries
+# `authorization-failure paths` AND `not_owner`; bulk-export Bad fence
+# (no audit emit), bulk-export Good fence (audit emit + users.export +
+# count=), access-denied Good fence (outcome=failure + reason=not_owner
+# + audit emit BEFORE raise).
+check_r14_sensitive_reads_and_access_denied_audit() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import re
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import extract_section, good_block, bad_block, iter_fences
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+sec = extract_section(text, "R14")
+if sec is None:
+    print(f"{path}: R14 section not found", file=sys.stderr)
+    sys.exit(1)
+
+# T5.1 positive — Rule line uniquely-new phrase (positive-only per iter1 M1).
+if "sensitive-read auditing" not in sec:
+    print(f"{path}: R14 section missing 'sensitive-read auditing' (T5.1 positive)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.2 positive — AND-conjunctive over ≥3 of 4 sensitive-read classes:
+# `bulk export` (or `bulk-export`) AND `PII` AND (`backup` OR `audit log`
+# OR `audit-log`).
+sec_lower = sec.lower()
+has_bulk = ("bulk export" in sec_lower) or ("bulk-export" in sec_lower)
+has_pii = "PII" in sec
+has_backup_or_audit = (
+    "backup" in sec_lower
+    or "audit log" in sec_lower
+    or "audit-log" in sec_lower
+)
+if not (has_bulk and has_pii and has_backup_or_audit):
+    print(f"{path}: R14 section missing ≥3 of 4 sensitive-read classes "
+          f"(bulk={has_bulk}, PII={has_pii}, backup-or-audit={has_backup_or_audit}) "
+          f"(T5.2 positive)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.3 positive — Why paragraph extraction: `sensitive-read auditing` AND
+# (`SOC 2` OR `ISO 27001`) within the SAME paragraph.
+why_m = re.search(r'\*\*Why\*\*:.*?(?=\n\n\*\*|\n---|\Z)', sec, re.DOTALL)
+if why_m is None:
+    print(f"{path}: R14 Why paragraph not found (T5.3 prerequisite)", file=sys.stderr)
+    sys.exit(1)
+why_para = why_m.group(0)
+if "sensitive-read auditing" not in why_para:
+    print(f"{path}: R14 Why paragraph missing 'sensitive-read auditing' (T5.3 positive)", file=sys.stderr)
+    sys.exit(1)
+if not (("SOC 2" in why_para) or ("ISO 27001" in why_para)):
+    print(f"{path}: R14 Why paragraph missing SOC 2/ISO 27001 co-located with sensitive-read auditing (T5.3 positive)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.4 positive — How-to-apply paragraph extraction: `authorization-failure
+# paths` AND `not_owner` within the SAME paragraph.
+hta_m = re.search(r'\*\*How to apply\*\*:.*?(?=\n\n\*\*|\n---|\Z)', sec, re.DOTALL)
+if hta_m is None:
+    print(f"{path}: R14 How-to-apply paragraph not found (T5.4 prerequisite)", file=sys.stderr)
+    sys.exit(1)
+hta_para = hta_m.group(0)
+if "authorization-failure paths" not in hta_para:
+    print(f"{path}: R14 How-to-apply paragraph missing 'authorization-failure paths' (T5.4 positive)", file=sys.stderr)
+    sys.exit(1)
+if "not_owner" not in hta_para:
+    print(f"{path}: R14 How-to-apply paragraph missing 'not_owner' (T5.4 positive)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.5 positive — bulk-export Bad fence: def export_users_csv( + User.objects.all()
+# AND NO audit emit (audit_log.emit, audit.record, AuditEvent.create).
+bad_fences = list(iter_fences(bad_block(text, "R14"), "python"))
+ok_t55 = False
+for f in bad_fences:
+    if ("def export_users_csv(" in f
+        and "User.objects.all()" in f
+        and "audit_log.emit(" not in f
+        and "audit.record(" not in f
+        and "AuditEvent.create(" not in f):
+        ok_t55 = True
+        break
+if not ok_t55:
+    print(f"{path}: R14 Bad-code missing bulk-export fence (T5.5: def export_users_csv + User.objects.all() + NO audit emit)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.6 positive — bulk-export Good fence: def export_users_csv( + audit_log.emit
+# + users.export + count=.
+good_fences = list(iter_fences(good_block(text, "R14"), "python"))
+ok_t56 = False
+for f in good_fences:
+    if ("def export_users_csv(" in f
+        and "audit_log.emit(" in f
+        and "users.export" in f
+        and "count=" in f):
+        ok_t56 = True
+        break
+if not ok_t56:
+    print(f"{path}: R14 Good-code missing bulk-export fence (T5.6: def export_users_csv + audit_log.emit + users.export + count=)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.7 positive — access-denied Good fence: def get_order( + outcome="failure" +
+# reason="not_owner" + raise PermissionDenied(); document-order: audit_log.emit
+# BEFORE raise PermissionDenied().
+ok_t57 = False
+for f in good_fences:
+    if not ("def get_order(" in f
+            and 'outcome="failure"' in f
+            and 'reason="not_owner"' in f
+            and "raise PermissionDenied()" in f):
+        continue
+    raise_idx = f.find("raise PermissionDenied()")
+    audit_before = f.rfind("audit_log.emit(", 0, raise_idx)
+    if audit_before >= 0:
+        ok_t57 = True
+        break
+if not ok_t57:
+    print(f"{path}: R14 Good-code missing access-denied fence (T5.7: def get_order + outcome=failure + reason=not_owner + audit emit BEFORE raise PermissionDenied)", file=sys.stderr)
+    sys.exit(1)
+
+print("R14 sensitive-read auditing + access-denied audit emit present (T5.1-T5.7)")
 PY
 }
 
