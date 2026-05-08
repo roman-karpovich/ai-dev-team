@@ -5201,6 +5201,14 @@ check_probe_h_vendored_excluded() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/10-vendored-excluded
 }
 
+check_probe_g_boundary_drift_2_suppressed() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/04-boundary-drift-2-suppressed
+}
+
+check_probe_g_boundary_drift_3_fired() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/05-boundary-drift-3-fired
+}
+
 check_probe_h_detector_rejects_malformed_requirements() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
 }

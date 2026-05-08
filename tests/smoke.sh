@@ -5899,6 +5899,8 @@ check "probe-g-yarn-berry-peer-dep" check_probe_g_yarn_berry_peer_dep
 check "probe-g-yarn-scoped-npm-protocol" check_probe_g_yarn_scoped_npm_protocol
 check "probe-g-pnpm-v9-format" check_probe_g_pnpm_v9_format
 check "probe-g-vendored-excluded" check_probe_g_vendored_excluded
+check "probe-g-boundary-drift-2-suppressed" check_probe_g_boundary_drift_2_suppressed
+check "probe-g-boundary-drift-3-fired" check_probe_g_boundary_drift_3_fired
 echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---

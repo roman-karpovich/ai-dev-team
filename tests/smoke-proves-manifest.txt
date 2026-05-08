@@ -148,6 +148,8 @@ check_probe_g_yarn_berry_peer_dep behavioral
 check_probe_g_yarn_scoped_npm_protocol behavioral
 check_probe_g_pnpm_v9_format behavioral
 check_probe_g_vendored_excluded behavioral
+check_probe_g_boundary_drift_2_suppressed behavioral
+check_probe_g_boundary_drift_3_fired behavioral
 
 # Typosquatting probe (Probe H — supply-chain layer)
 check_probe_h_corpus_path_resolution schema
