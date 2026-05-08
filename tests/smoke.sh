@@ -5911,6 +5911,7 @@ check "cross-auditor-replaces-silent-skip-gate" check_cross_auditor_replaces_sil
 check "cross-auditor-r-rule-path-env-first-precedence" check_cross_auditor_r_rule_path_env_first_precedence
 check "cross-auditor-blocker-sanitization-truncate-before-escape" check_cross_auditor_blocker_sanitization_truncate_before_escape
 check "cross-auditor-probe-failures-schema-aligned" check_cross_auditor_probe_failures_schema_aligned
+check "spec-mode-footer-sentinel-marker-contract" check_spec_mode_footer_sentinel_marker_contract
 echo
 
 

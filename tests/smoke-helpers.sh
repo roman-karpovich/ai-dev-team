@@ -4860,6 +4860,51 @@ check_cross_auditor_replaces_silent_skip_gate() {
   [ "$new_branch" -ge 1 ] || { echo "new explicit-branch prose absent (positive clause failed)"; return 1; }
 }
 
+check_spec_mode_footer_sentinel_marker_contract() {
+  local f="agents/cross-auditor.md"
+  local skl="skills/feature/SKILL.md"
+  local ca_sent ca_obfusc skl_sent skl_tail3 skl_eof skl_old skl_l424
+  local ca_l424 ca_l445_parser ca_l445_sem ca_l445_summary ca_l445_4th
+  local ca_l424_pos ca_l445_pos
+  # Producer fenced positive (X12 locked) — exactly one canonical-spaced sentinel literal site.
+  ca_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$f")
+  # Producer obfuscated-form positive (X12) — at least one obfuscated form documents the rule.
+  ca_obfusc=$(grep -cF 'CROSS-AUDIT-EVIDENCE-FOOTER' "$f")
+  # Consumer sentinel positive — sentinel documented at consumer side (≥ 1, no single-site lock).
+  skl_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$skl")
+  # Consumer parser-shape positives — locks the EOF-adjacency parser shape.
+  skl_tail3=$(grep -cF 'tail -3' "$skl")
+  skl_eof=$(grep -cF 'EOF-adjacent' "$skl")
+  # Consumer parser-shape negative (SKILL.md) — old form removed.
+  skl_old=$(grep -cF "awk 'NF' | tail -2" "$skl")
+  # X20 (b) — SKILL.md parallel `TWO adjacent literal final lines` negative.
+  skl_l424=$(grep -cF 'TWO adjacent literal final lines' "$skl")
+  # X16 negatives (cross-auditor.md): L424 stale intro paragraph + L445 four-literal cluster.
+  ca_l424=$(grep -cF 'TWO adjacent literal final lines' "$f")
+  ca_l445_parser=$(grep -cF "awk 'NF' | tail -2" "$f")
+  ca_l445_sem=$(grep -cF 'LAST two physical non-empty lines' "$f")
+  ca_l445_summary=$(grep -cF 'last-two-physical-non-empty + prefix-check' "$f")
+  # X20 (a) — L445 4th-literal `grep -E … | tail -2` historical form negative.
+  ca_l445_4th=$(grep -cE 'grep -E.*tail -2' "$f")
+  # X20 (c) — producer-side post-positives for L424 + L445 rewritten prose.
+  ca_l424_pos=$(grep -cF 'EXACTLY THREE physical lines' "$f")
+  ca_l445_pos=$(grep -cF 'byte-exact full-line equality' "$f")
+  [ "$ca_sent" = "1" ] || { echo "agents: canonical-spaced sentinel literal must appear at EXACTLY ONE site (got $ca_sent)"; return 1; }
+  [ "$ca_obfusc" -ge 1 ] || { echo "agents: obfuscated form 'CROSS-AUDIT-EVIDENCE-FOOTER' (hyphenated) missing — required by sentinel-obfuscation rule"; return 1; }
+  [ "$skl_sent" -ge 1 ] || { echo "SKILL.md: canonical-spaced sentinel literal missing"; return 1; }
+  [ "$skl_tail3" -ge 1 ] || { echo "SKILL.md: 'tail -3' literal missing — locks EOF-adjacency parser shape"; return 1; }
+  [ "$skl_eof" -ge 1 ] || { echo "SKILL.md: 'EOF-adjacent' literal missing"; return 1; }
+  [ "$skl_old" = "0" ] || { echo "SKILL.md: stale 'awk \\'NF\\' | tail -2' parser form still present"; return 1; }
+  [ "$skl_l424" = "0" ] || { echo "SKILL.md: stale 'TWO adjacent literal final lines' wording still present at parallel surface"; return 1; }
+  [ "$ca_l424" = "0" ] || { echo "agents: stale L424 'TWO adjacent literal final lines' intro-paragraph wording still present"; return 1; }
+  [ "$ca_l445_parser" = "0" ] || { echo "agents: stale L445 'awk \\'NF\\' | tail -2' parser shape still present"; return 1; }
+  [ "$ca_l445_sem" = "0" ] || { echo "agents: stale L445 'LAST two physical non-empty lines' parser semantics still present"; return 1; }
+  [ "$ca_l445_summary" = "0" ] || { echo "agents: stale L445 'last-two-physical-non-empty + prefix-check' summary still present"; return 1; }
+  [ "$ca_l445_4th" = "0" ] || { echo "agents: stale L445 'grep -E … | tail -2' historical form still present"; return 1; }
+  [ "$ca_l424_pos" -ge 1 ] || { echo "agents: post-rewrite L424 'EXACTLY THREE physical lines' literal missing — locks the rewrite to mandated phrasing"; return 1; }
+  [ "$ca_l445_pos" -ge 1 ] || { echo "agents: post-rewrite L445 'byte-exact full-line equality' literal missing"; return 1; }
+}
+
 check_cross_auditor_probe_failures_schema_aligned() {
   local f="agents/cross-auditor.md"
   local h="tests/smoke-helpers.sh"

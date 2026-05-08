@@ -429,28 +429,25 @@ This sanitize-blocker rule applies to every newline→space conversion site, eve
 
 ### Spec-mode return contract (inline output)
 
-For `mode: spec`, the cross-auditor does NOT write findings.md to disk; the consolidated findings are returned as inline output text to the calling feature skill. To preserve the orchestrator-readable handshake in this mode, the inline output MUST end with TWO adjacent literal final lines, each on its own line, in this order, with NO trailing prose after them:
+For `mode: spec`, the cross-auditor does NOT write findings.md to disk; the consolidated findings are returned as inline output text to the calling feature skill. To preserve the orchestrator-readable handshake in this mode, the inline-return text MUST end with EXACTLY THREE physical lines, in this order, AT END-OF-RESPONSE (no trailing characters, no trailing prose, no trailing blank lines beyond the final line's `\n`):
 
 ```
+# CROSS-AUDIT EVIDENCE FOOTER
 evidence_class: <value>
 evidence_blockers: <YAML-list>
 ```
 
-Example (dual_model success):
+The first of these three lines is the EVIDENCE FOOTER sentinel marker (the obfuscated form `CROSS-AUDIT-EVIDENCE-FOOTER` with hyphens substituted for the spaces — the canonical spaced literal lives ONLY in the fenced documentation block above, reserved for the actual three-line footer block at end-of-response). The sentinel is byte-exact and serves two roles: (a) it gives the orchestrator's parser an unambiguous lock to the actual footer (prevents example-echo lifting); (b) it visually demarcates the footer for human readers reviewing the audit response.
 
-```
-evidence_class: dual_model
-evidence_blockers: []
-```
+Examples illustrating the `evidence_class` and `evidence_blockers` value shapes (the cross-audit evidence footer comment line is omitted from these illustrations per the sentinel-obfuscation rule below — the canonical spaced literal lives ONLY in the fenced template above; the obfuscated form `CROSS-AUDIT-EVIDENCE-FOOTER` would precede each example pair when the agent actually emits the footer):
 
-Example (single_model fail-open):
+dual_model success — `evidence_class: dual_model` paired with `evidence_blockers: []` (empty list).
 
-```
-evidence_class: single_model
-evidence_blockers: ['codex audit unavailable: connection refused']
-```
+single_model fail-open — `evidence_class: single_model` paired with `evidence_blockers: ['codex audit unavailable: connection refused']`.
 
-The orchestrator parses by reading the LAST two physical non-empty lines of the captured return text (`last_two=$(printf '%s\n' "$captured" | awk 'NF' | tail -2)`) and applying two prefix checks: the second of those two lines (the FINAL non-empty physical line of the response) MUST start with `evidence_blockers: `, and the first of the two (the immediately preceding non-empty physical line) MUST start with `evidence_class: `. If fewer than two non-empty lines exist OR either prefix check fails, the orchestrator MUST treat the audit as `contract_violated` (cross-auditor return signal not parseable) and record the parse failure as a blocker — see SKILL.md §3.5b Contract-violation rule for the orchestrator-side read path. This stricter shape (last-two-physical-non-empty + prefix-check, replacing the older `grep -E … | tail -2` form) closes two failure modes the loose parser missed: (a) **forgotten-footer-with-example-echo** — the agent omits the real footer but echoes documentation examples (such as the fenced examples earlier in this section) in its prose, where `grep | tail -2` would lift the example text and treat the audit as clean; (b) **trailing-prose** — the agent emits the real footer then appends a sentence (apology, summary), where the loose parser would still grab the right pair via `grep | tail -2` and the trailing-prose violation stays invisible. Adjacency-and-EOF enforcement is the load-bearing property both modes require.
+**Sentinel-obfuscation rule (self-anchoring carve-out)**: agents auditing `agents/cross-auditor.md` itself (cross-audits where this file appears in the diff scope OR is loaded as a focus area) MUST NOT reproduce the canonical spaced sentinel literal mid-prose. The canonical spaced literal is RESERVED for the actual three-line footer block at end-of-response (the fenced documentation example block above is the single producer-side authoritative documentation site for the canonical form). When the agent needs to quote, discuss, or reference the sentinel mid-prose, it MUST use one of these obfuscated forms: (i) the description `the EVIDENCE FOOTER sentinel marker`, (ii) the hyphenated literal `CROSS-AUDIT-EVIDENCE-FOOTER` (substituting hyphens for the spaces in the canonical form), (iii) the prose `the cross-audit evidence footer comment line`. This rule prevents the consumer-side EOF-adjacency parser (SKILL.md §spec-mode parser) from being fooled by mid-prose echoes when the cross-auditor reads its own source as part of an audit. The defense-in-depth rationale: keep the canonical form to the single fenced documentation site, route all other references through the obfuscated forms, eliminate ambiguity at the source.
+
+The orchestrator parses by reading the LAST THREE physical lines of the captured return text via `tail -3`, then asserts byte-exact full-line equality on the first-of-three against the canonical spaced sentinel literal (full-line equality, NOT substring), prefix-check on the second-of-three (`evidence_class: `), prefix-check on the third-of-three (`evidence_blockers: `). If the first-of-three byte-exact full-line equality check fails OR either prefix check fails, the orchestrator MUST treat the audit as `contract_violated` (cross-auditor return signal not parseable) and record the parse failure as a blocker — see SKILL.md §3.5b Contract-violation rule for the orchestrator-side read path. EOF-adjacency on `tail -3` closes two failure modes the prior shape missed: (a) **forgotten-footer-with-example-echo** — the agent omits the real footer but echoes documentation examples (such as the fenced example earlier in this section) in its prose; the byte-exact full-line equality check on the first-of-three at EOF-adjacent position fails when only mid-prose echoes exist and no real footer block lives at end-of-response; (b) **trailing-prose-after-real-footer** — the agent emits the real footer then appends a sentence (apology, summary); the trailing prose pushes the sentinel away from the EOF-adjacent slot, the first-of-three full-line equality check fails. Both modes route to `contract_violated` with blocker `'sentinel not at expected EOF-adjacent position'`. Adjacency-and-EOF enforcement on `tail -3` with byte-exact first-line full-line equality is the load-bearing property both modes require.
 
 ## Step 4: Write Output Documents
 
