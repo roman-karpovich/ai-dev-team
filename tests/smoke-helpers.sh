@@ -2507,8 +2507,8 @@ for finding in final_findings:
     except (IOError, OSError) as e:
         probe_failures_seed.append({
             "probe_id": metadata["probe_id"],
-            "failure_reason": f"receipt write failed: {str(e)[:200]}",
-            "failure_remediation": "check KB mount is writable + re-run /cross-audit",
+            "reason": f"receipt write failed: {str(e)[:200]}",
+            "remediation": "check KB mount is writable + re-run /cross-audit",
         })
         finding["probe_receipt"] = None
     else:
@@ -3031,8 +3031,8 @@ for finding in final_findings:
     except (IOError, OSError) as e:
         probe_failures_seed.append({
             "probe_id": metadata["probe_id"],
-            "failure_reason": f"receipt write failed: {str(e)[:200]}",
-            "failure_remediation": "check KB mount is writable + re-run /cross-audit",
+            "reason": f"receipt write failed: {str(e)[:200]}",
+            "remediation": "check KB mount is writable + re-run /cross-audit",
         })
         finding["probe_receipt"] = None
     else:
@@ -4858,6 +4858,61 @@ check_cross_auditor_replaces_silent_skip_gate() {
   new_branch=$(grep -cF 'If `project_type` is unset OR has a non-allowlist value' "$f")
   [ "$old_gate" = "0" ] || { echo "old silent-skip gate prose still present (negative clause failed)"; return 1; }
   [ "$new_branch" -ge 1 ] || { echo "new explicit-branch prose absent (positive clause failed)"; return 1; }
+}
+
+check_cross_auditor_probe_failures_schema_aligned() {
+  local f="agents/cross-auditor.md"
+  local h="tests/smoke-helpers.sh"
+  local old_q_r old_q_rm reason_n remediation_n canonical old_canonical translator_bridge scorer_token
+  local l389_old_r l389_new_r l389_old_rm l389_new_rm
+  local helpers_old_q_r helpers_old_q_rm helpers_new_q_r helpers_new_q_rm
+  # Scoped quoted-key dict-literal negatives — the fingerprint of the five Step 0.5 .append( sites.
+  # Bare `failure_reason` legitimately stays in the file at scorer_failure_reason and translator-bridge
+  # surfaces, which is why this clause is scoped to the QUOTED-KEY form, not bare token.
+  old_q_r=$(grep -cF '"failure_reason":' "$f")
+  old_q_rm=$(grep -cF '"failure_remediation":' "$f")
+  # Positive count — five quoted-key dict-literal sites emit "reason" / "remediation".
+  reason_n=$(grep -cF '"reason":' "$f")
+  remediation_n=$(grep -cF '"remediation":' "$f")
+  # Canonical-phrase positive (X15 — threshold ≥ 2 locks BOTH L199 description AND L268 fail-open
+  # coverage prose in lockstep; ≥ 1 would allow partial rewrite).
+  canonical=$(grep -cF '`probe_id` / `reason` / `remediation`' "$f")
+  # X19 (a) — pre-rewrite canonical phrase absent at both L199 + L268 surfaces.
+  old_canonical=$(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f")
+  # Preserve translator bridge L400-401 — Foundation §3.3 receipt-schema territory.
+  translator_bridge=$(grep -cF "receipt's optional \`failure_reason\`" "$f")
+  # Preserve scorer_failure_reason (renderer-stdin contract — distinct token).
+  scorer_token=$(grep -cF 'scorer_failure_reason' "$f")
+  # L389-area inline-prose entries (paired-key — both reason and remediation halves).
+  l389_old_r=$(grep -cF 'failure_reason: "receipt write failed:' "$f")
+  l389_new_r=$(grep -cF 'reason: "receipt write failed:' "$f")
+  l389_old_rm=$(grep -cF 'failure_remediation: "check KB mount' "$f")
+  l389_new_rm=$(grep -cF 'remediation: "check KB mount' "$f")
+  # smoke-helpers.sh seed-side emulation heredocs — symmetric paired-key coverage.
+  # Exclude self-reference: the smoke-pin helper itself contains the literals as grep patterns,
+  # so scope the count to lines NOT carrying a `grep -cF` clause (which fingerprint the helper's
+  # own grep arguments). The seed-side emulation heredocs are Python dict-literal lines without
+  # any `grep -cF` token.
+  helpers_old_q_r=$(grep -F '"failure_reason":' "$h" | grep -vc 'grep -cF')
+  helpers_old_q_rm=$(grep -F '"failure_remediation":' "$h" | grep -vc 'grep -cF')
+  helpers_new_q_r=$(grep -F '"reason":' "$h" | grep -vc 'grep -cF')
+  helpers_new_q_rm=$(grep -F '"remediation":' "$h" | grep -vc 'grep -cF')
+  [ "$old_q_r" = "0" ] || { echo "agents: stale '\"failure_reason\":' quoted-key dict-literal still present (5 Step 0.5 .append sites should have been renamed)"; return 1; }
+  [ "$old_q_rm" = "0" ] || { echo "agents: stale '\"failure_remediation\":' quoted-key dict-literal still present"; return 1; }
+  [ "$reason_n" -ge 5 ] || { echo "agents: '\"reason\":' count must be ≥ 5 (one per Step 0.5 .append site)"; return 1; }
+  [ "$remediation_n" -ge 5 ] || { echo "agents: '\"remediation\":' count must be ≥ 5"; return 1; }
+  [ "$canonical" -ge 2 ] || { echo "agents: canonical phrase 'probe_id / reason / remediation' must appear at ≥ 2 surfaces (L199 description AND L268 fail-open coverage)"; return 1; }
+  [ "$old_canonical" = "0" ] || { echo "agents: stale canonical phrase 'probe_id / failure_reason / failure_remediation' still present at L199 or L268"; return 1; }
+  [ "$translator_bridge" -ge 1 ] || { echo "agents: translator bridge 'receipt's optional failure_reason' must be preserved (Foundation §3.3 carve-out)"; return 1; }
+  [ "$scorer_token" -ge 2 ] || { echo "agents: 'scorer_failure_reason' renderer-stdin contract must be preserved (distinct token, not a probe_failures key)"; return 1; }
+  [ "$l389_old_r" = "0" ] || { echo "agents: L389-area pre-rename inline-prose 'failure_reason: \"receipt write failed:' still present"; return 1; }
+  [ "$l389_new_r" -ge 1 ] || { echo "agents: L389-area post-rename inline-prose 'reason: \"receipt write failed:' missing"; return 1; }
+  [ "$l389_old_rm" = "0" ] || { echo "agents: L389-area pre-rename inline-prose 'failure_remediation: \"check KB mount' still present"; return 1; }
+  [ "$l389_new_rm" -ge 1 ] || { echo "agents: L389-area post-rename inline-prose 'remediation: \"check KB mount' missing"; return 1; }
+  [ "$helpers_old_q_r" = "0" ] || { echo "smoke-helpers.sh: seed-side emulation '\"failure_reason\":' still present (L2510 / L3034 should have been renamed)"; return 1; }
+  [ "$helpers_old_q_rm" = "0" ] || { echo "smoke-helpers.sh: seed-side emulation '\"failure_remediation\":' still present"; return 1; }
+  [ "$helpers_new_q_r" -ge 2 ] || { echo "smoke-helpers.sh: '\"reason\":' count must be ≥ 2 (two seed-side emulation heredocs)"; return 1; }
+  [ "$helpers_new_q_rm" -ge 2 ] || { echo "smoke-helpers.sh: '\"remediation\":' count must be ≥ 2"; return 1; }
 }
 
 check_cross_auditor_blocker_sanitization_truncate_before_escape() {
