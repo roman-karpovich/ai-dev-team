@@ -5193,6 +5193,14 @@ check_probe_h_levenshtein_length_cap() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/15-levenshtein-length-cap
 }
 
+check_probe_g_vendored_excluded() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/10-vendored-excluded
+}
+
+check_probe_h_vendored_excluded() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/10-vendored-excluded
+}
+
 check_probe_h_detector_rejects_malformed_requirements() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
 }

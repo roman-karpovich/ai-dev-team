@@ -5898,6 +5898,7 @@ check "probe-g-detector-in-diff-lockfile-evaluated" check_probe_g_detector_in_di
 check "probe-g-yarn-berry-peer-dep" check_probe_g_yarn_berry_peer_dep
 check "probe-g-yarn-scoped-npm-protocol" check_probe_g_yarn_scoped_npm_protocol
 check "probe-g-pnpm-v9-format" check_probe_g_pnpm_v9_format
+check "probe-g-vendored-excluded" check_probe_g_vendored_excluded
 echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---
@@ -5916,6 +5917,7 @@ check "probe-h-yarn-berry-peer-dep" check_probe_h_yarn_berry_peer_dep
 check "probe-h-yarn-scoped-npm-protocol" check_probe_h_yarn_scoped_npm_protocol
 check "probe-h-pnpm-v9-format" check_probe_h_pnpm_v9_format
 check "probe-h-levenshtein-length-cap" check_probe_h_levenshtein_length_cap
+check "probe-h-vendored-excluded" check_probe_h_vendored_excluded
 echo
 
 # --- STRIDE-lite spec-template slot pins ---

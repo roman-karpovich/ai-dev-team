@@ -131,9 +131,16 @@ def has_changed_lockfile(changed_python_files, changed_yaml_files):
     return False
 
 
+EXCLUDE_DIRS = frozenset({
+    ".git", "node_modules", "target", "vendor", "dist", "build",
+    ".venv", "venv", "__pycache__",
+})
+
+
 def find_lockfiles(repo_root):
     lockfiles = []
-    for root, _dirs, files in os.walk(repo_root):
+    for root, dirs, files in os.walk(repo_root):
+        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
         for name in sorted(files):
             if name in LOCKFILE_NAMES:
                 abs_path = os.path.join(root, name)
