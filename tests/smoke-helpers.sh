@@ -4903,6 +4903,27 @@ check_spec_mode_footer_sentinel_marker_contract() {
   [ "$ca_l445_4th" = "0" ] || { echo "agents: stale L445 'grep -E … | tail -2' historical form still present"; return 1; }
   [ "$ca_l424_pos" -ge 1 ] || { echo "agents: post-rewrite L424 'EXACTLY THREE physical lines' literal missing — locks the rewrite to mandated phrasing"; return 1; }
   [ "$ca_l445_pos" -ge 1 ] || { echo "agents: post-rewrite L445 'byte-exact full-line equality' literal missing"; return 1; }
+  # Executable harness — actually run the published parser shape against three trailing-newline
+  # fixtures (no trailing \n / one trailing \n / two trailing \n) and assert all three route to PASS.
+  # Coincidentally-correct bash $(cmd) capture strips trailing \n; file reads / read -d '' / MCP
+  # byte-exact transport preserve them and used to shift tail -3 off the real footer. The trailing-
+  # newline strip loop normalizes captured input before tail -3.
+  parser_test() {
+    local _captured="$1"
+    while [[ "$_captured" == *$'\n' ]]; do _captured="${_captured%$'\n'}"; done
+    local _last_three _first
+    _last_three=$(printf '%s\n' "$_captured" | tail -3)
+    _first=$(printf '%s\n' "$_last_three" | head -1)
+    [[ "$_first" == "# CROSS-AUDIT EVIDENCE FOOTER" ]]
+  }
+  local parser_pass_cases=0
+  local _variant _fixture
+  for _variant in '' $'\n' $'\n\n'; do
+    _fixture=$'some prose\n# CROSS-AUDIT EVIDENCE FOOTER\nevidence_class: dual_model\nevidence_blockers: []'"$_variant"
+    if parser_test "$_fixture"; then parser_pass_cases=$((parser_pass_cases+1)); fi
+  done
+  [ "$parser_pass_cases" = "3" ] || { echo "executable harness: parser failed on at least one trailing-newline shape (got $parser_pass_cases / 3)"; return 1; }
+  unset -f parser_test
 }
 
 check_cross_auditor_probe_failures_schema_aligned() {
