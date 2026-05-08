@@ -55,7 +55,7 @@ rules:
   - id: R11
     short: hardcoded-secrets-in-source
     category: security
-    applies_to: [backend]
+    applies_to: [all]
     enforced_by: [cross-auditor:security]
   - id: R12
     short: missing-cookie-security-flags
@@ -507,6 +507,8 @@ cursor.execute("SELECT * FROM " + table_name + " WHERE user_id = %s", (user_id,)
 
 **How to apply**: secrets read from `os.environ`, `process.env`, settings-bound config that loads from env / Vault, or an injected runtime context. Default values for missing env vars MUST be either `None` (with a hard fail at startup) or a value that obviously does not work outside the dev environment — never a real key shape. Tests use `monkeypatch.setenv(...)` / `pytest.fixture` injection, not literal credentials. CI workflow files use `${{ secrets.X }}` (covered separately by R13).
 
+**Encoding is not concealment** — base64 / base64url / hex literals assigned to secret-named variables are still secrets, even when the literal looks like opaque bytes. Any literal string ≥ 40 characters assigned to a secret-named variable (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `*PRIVATE*`) is a hardcoded-secret defect regardless of encoding. Frontend bundles ship these strings to every browser; backend services commit them into immutable git history; the shape of the literal does not change the exfil model.
+
 **Bad code**:
 
 ```python
@@ -523,6 +525,22 @@ DATABASE_URL = "postgres://user:realpassword@host/db"
 ```javascript
 // JS module — same defect, same indexable shape
 const apiKey = "ak_realtokenshape_xyz";
+```
+
+```python
+# Literal PEM private key — committed to git, indexable on GitHub
+PRIVATE_KEY = "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUVwQUlCQUFLQ0FRRUE..."
+```
+
+```python
+# Literal JWT — three base64url segments separated by dots; eyJ prefix
+# is base64url of `{"` (the opening of the JWT header JSON).
+BEARER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturepart"
+```
+
+```python
+# base64url-encoded API key — base64 alphabet + padding
+API_KEY_B64URL = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcA=="
 ```
 
 **Good code**:

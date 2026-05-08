@@ -3883,13 +3883,15 @@ for entry in rules:
         print(f"{path}: no `## {rid} — ` body heading found (assertion h)", file=sys.stderr)
         sys.exit(1)
 
-# (i) Trigger A worked example: filter(rules, project_type="all") returns all 8 today
+# (i) Trigger A worked example: filter(rules, project_type="all") returns
+# R1..R8 [all] + any R-rule with [all] audience. Was 8 before any cluster
+# audience flips; bumped to 9 after PR-D Step 3 flips R11 to [all].
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_all = trigger_a_filter(rules, "all")
-if len(filtered_all) != 8:
-    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 8 (assertion i)", file=sys.stderr)
+if len(filtered_all) != 9:
+    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 9 (assertion i)", file=sys.stderr)
     sys.exit(1)
 
 # (j) per-rule golden mapping — imported from shared module so the same dict is
@@ -4105,10 +4107,12 @@ if len(filtered_backend) != 14:
     print(f"{path}: backend filter returned {len(filtered_backend)}, expected 14 (assertion f)", file=sys.stderr)
     sys.exit(1)
 
-# (g) smart_contract filter returns 8 (R1..R8 only — R9..R14 are [backend])
+# (g) smart_contract filter returns R1..R8 + any R-rule with [all] audience.
+# Was 8 before any cluster audience flips; bumped to 9 after PR-D Step 3
+# flips R11 to [all].
 filtered_sc = trigger_a_filter(rules, "smart_contract")
-if len(filtered_sc) != 8:
-    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 8 (assertion g)", file=sys.stderr)
+if len(filtered_sc) != 9:
+    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 9 (assertion g)", file=sys.stderr)
     sys.exit(1)
 
 # (h) Per-rule canonical-pattern presence — Good code block ONLY (block-level
@@ -4430,6 +4434,93 @@ if "fixed-literal set defined in source" not in sec:
     sys.exit(1)
 
 print("R10 allowlist literal-set definition + canonical comment present (T2.1-T2.2)")
+PY
+}
+
+# R-rule metadata consistency meta-pin (PR-D Step 3 §3.0b).
+# Asserts that R_RULE_GOLDEN_TABLE[rid][1] (the applies_to slot of the
+# schema-validator's golden table) equals R_RULE_CLUSTER_EXPECTED_APPLIES[rid]
+# (the cluster-pin's per-rule expected applies_to) for every rid in the
+# cluster R9..R14. Both dicts live in tests/smoke_rule_helpers.py — the
+# meta-pin defends against a future contributor who might split the dicts
+# apart or typo one of them.
+check_r_rule_metadata_consistency() {
+  python3 - <<'PY' || return 1
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import R_RULE_GOLDEN_TABLE, R_RULE_CLUSTER_EXPECTED_APPLIES
+
+cluster_ids = ["R9", "R10", "R11", "R12", "R13", "R14"]
+errors = []
+for rid in cluster_ids:
+    golden_applies = list(R_RULE_GOLDEN_TABLE[rid][1])
+    expected_applies = list(R_RULE_CLUSTER_EXPECTED_APPLIES[rid])
+    if golden_applies != expected_applies:
+        errors.append(
+            f"{rid}: golden applies_to={golden_applies!r} != cluster expected_applies={expected_applies!r}"
+        )
+if errors:
+    for e in errors:
+        print(e, file=sys.stderr)
+    sys.exit(1)
+print(f"R-rule metadata consistency OK across {cluster_ids} (golden <-> cluster expected_applies)")
+PY
+}
+
+# R11 audience expansion + encoded-secret Bad-code shapes (PR-D Step 3).
+# Asserts the three new encoded-secret Bad-code fences are present
+# (base64 PEM, JWT-shaped bearer, base64url-encoded API key) and the
+# `Encoding is not concealment` prose lives in the R11 body. Audience
+# flip [backend]→[all] is locked by the in-place updates to the existing
+# pins (golden table + cluster expected dict + both cardinality surfaces).
+check_r11_audience_all_and_encoded_secret_shapes() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import re
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import extract_section, bad_block, iter_fences
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+sec = extract_section(text, "R11")
+if sec is None:
+    print(f"{path}: R11 section not found", file=sys.stderr)
+    sys.exit(1)
+
+bad_fences = list(iter_fences(bad_block(text, "R11"), "python"))
+
+# T3.6 — base64 PEM Bad fence
+if not any("PRIVATE_KEY" in f and "LS0tLS1CRUdJTi" in f for f in bad_fences):
+    print(f"{path}: R11 Bad-code missing base64 PEM fence (T3.6: PRIVATE_KEY + LS0tLS1CRUdJTi co-located)", file=sys.stderr)
+    sys.exit(1)
+
+# T3.7 — JWT-shaped Bad fence
+if not any("BEARER_TOKEN" in f and "eyJ" in f for f in bad_fences):
+    print(f"{path}: R11 Bad-code missing JWT-shaped fence (T3.7: BEARER_TOKEN + eyJ co-located)", file=sys.stderr)
+    sys.exit(1)
+
+# T3.8 — base64url Bad fence: API_KEY_B64URL + comment marker + ≥40-char =-padded
+b64url_re = re.compile(r'"[A-Za-z0-9_+/-]{40,}=+"')
+ok_t38 = False
+for f in bad_fences:
+    if ("API_KEY_B64URL" in f
+        and "# base64url-encoded" in f
+        and b64url_re.search(f) is not None):
+        ok_t38 = True
+        break
+if not ok_t38:
+    print(f"{path}: R11 Bad-code missing base64url fence (T3.8: API_KEY_B64URL + '# base64url-encoded' marker + literal-string >=40 chars with = padding)", file=sys.stderr)
+    sys.exit(1)
+
+# T3.9 — prose sentence
+if "Encoding is not concealment" not in sec:
+    print(f"{path}: R11 section missing 'Encoding is not concealment' prose (T3.9 positive)", file=sys.stderr)
+    sys.exit(1)
+
+print("R11 audience [all] + encoded-secret Bad-code shapes (PEM/JWT/base64url) + prose present (T3.6-T3.9)")
 PY
 }
 
