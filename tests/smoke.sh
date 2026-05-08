@@ -5908,6 +5908,10 @@ check "skill-threads-project-type-at-code-audit-resume-routing" check_skill_thre
 check "cross-auditor-emits-degraded-warning-when-project-type-unset" check_cross_auditor_emits_degraded_warning_when_project_type_unset
 check "cross-auditor-documents-warning-emit-location" check_cross_auditor_documents_warning_emit_location
 check "cross-auditor-replaces-silent-skip-gate" check_cross_auditor_replaces_silent_skip_gate
+check "cross-auditor-r-rule-path-env-first-precedence" check_cross_auditor_r_rule_path_env_first_precedence
+check "cross-auditor-blocker-sanitization-truncate-before-escape" check_cross_auditor_blocker_sanitization_truncate_before_escape
+check "cross-auditor-probe-failures-schema-aligned" check_cross_auditor_probe_failures_schema_aligned
+check "spec-mode-footer-sentinel-marker-contract" check_spec_mode_footer_sentinel_marker_contract
 echo
 
 
