@@ -486,7 +486,10 @@ cursor.execute(
 
 ```python
 # Multi-line allowlist guard — guard on its own line, execute on a separate
-# line. Never compress these onto one line via `;`.
+# line. Never compress these onto one line via `;`. The allowlist MUST be a
+# fixed-literal set defined in source — runtime-loaded values from a database
+# or external config break the literal-set guarantee.
+ALLOWED_TABLES = frozenset({"orders", "users"})
 if table_name not in ALLOWED_TABLES:
     raise ValueError(f"unknown table {table_name!r}")
 cursor.execute("SELECT * FROM " + table_name + " WHERE user_id = %s", (user_id,))

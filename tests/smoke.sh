@@ -5866,6 +5866,7 @@ check "cross-auditor-security-preamble"       check_cross_auditor_security_pream
 check "spec-compliance-filter-preamble"       check_spec_compliance_filter_preamble
 check "security-cluster-rules-present"             check_security_cluster_rules_present
 check "r9-idor-covers-state-changing-endpoints"    check_r9_idor_covers_state_changing_endpoints
+check "r10-allowlist-literal-set-definition"       check_r10_allowlist_literal_set_definition
 check "cross-auditor-loads-security-cluster"       check_cross_auditor_loads_security_cluster
 check "cross-auditor-step1-step2-load-instructions" check_cross_auditor_step1_step2_load_instructions
 echo

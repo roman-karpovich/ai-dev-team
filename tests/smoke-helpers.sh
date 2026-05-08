@@ -4384,6 +4384,55 @@ print("R9 IDOR scope covers state-changing endpoints + R14 ownership-check guard
 PY
 }
 
+# R10 allowlist literal-set definition (PR-D Step 2).
+# Asserts R10 Good-code multi-line allowlist fence carries the literal-set
+# definition `ALLOWED_TABLES = frozenset({"orders", "users"})` BEFORE the
+# `if table_name not in ALLOWED_TABLES:` guard, in the SAME fence as the
+# `cursor.execute(` call. Asserts the byte-exact comment phrase
+# "fixed-literal set defined in source" lives in the R10 section.
+check_r10_allowlist_literal_set_definition() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import extract_section, good_block, iter_fences
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+sec = extract_section(text, "R10")
+if sec is None:
+    print(f"{path}: R10 section not found", file=sys.stderr)
+    sys.exit(1)
+
+# T2.1 positive — literal-set definition in the same fence as the guard +
+# cursor.execute, in document order.
+fences = list(iter_fences(good_block(text, "R10"), "python"))
+ok = False
+for f in fences:
+    if not ('ALLOWED_TABLES = frozenset({"orders", "users"})' in f
+            and "if table_name not in ALLOWED_TABLES:" in f
+            and "cursor.execute(" in f):
+        continue
+    o1 = f.find('ALLOWED_TABLES = frozenset(')
+    o2 = f.find("if table_name not in ALLOWED_TABLES:")
+    if o1 < o2:
+        ok = True
+        break
+if not ok:
+    print(f"{path}: R10 Good-code allowlist fence missing literal-set definition (T2.1: ALLOWED_TABLES = frozenset({{...}}) before guard before cursor.execute(", file=sys.stderr)
+    sys.exit(1)
+
+# T2.2 positive — canonical comment phrase
+if "fixed-literal set defined in source" not in sec:
+    print(f"{path}: R10 section missing canonical comment 'fixed-literal set defined in source' (T2.2 positive)", file=sys.stderr)
+    sys.exit(1)
+
+print("R10 allowlist literal-set definition + canonical comment present (T2.1-T2.2)")
+PY
+}
+
 # Cross-auditor §security mode load-the-cluster pin (R-rules web-security cluster
 # Pin 5 — class: prompt-text). Asserts the §`security` mode block in
 # agents/cross-auditor.md (a) names all six R-ids R9..R14 individually as
