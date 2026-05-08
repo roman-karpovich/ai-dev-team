@@ -4504,7 +4504,7 @@ if not any("BEARER_TOKEN" in f and "eyJ" in f for f in bad_fences):
     sys.exit(1)
 
 # T3.8 — base64url Bad fence: API_KEY_B64URL + comment marker + ≥40-char =-padded
-b64url_re = re.compile(r'"[A-Za-z0-9_+/-]{40,}=+"')
+b64url_re = re.compile(r'"[A-Za-z0-9_-]{40,}=+"')
 ok_t38 = False
 for f in bad_fences:
     if ("API_KEY_B64URL" in f
