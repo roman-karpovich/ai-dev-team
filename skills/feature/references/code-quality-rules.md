@@ -364,13 +364,13 @@ R8 sits orthogonal to R1–R7 (which govern test/code quality). It is an **outpu
 
 ## R9 — IDOR / missing ownership check on user-scoped endpoints
 
-**Rule**: any HTTP endpoint (REST handler, GraphQL resolver, RPC method) that returns user-scoped data MUST verify the resource is owned by — or shared with — the authenticated caller before returning it. A primary-key lookup keyed on a path / query parameter (`/orders/<id>`, `?user_id=…`) without a scope filter against `request.user` is IDOR.
+**Rule**: any HTTP endpoint (REST handler, GraphQL resolver, RPC method) that returns or mutates user-scoped data MUST verify the resource is owned by — or shared with — the authenticated caller before returning or mutating it. A primary-key lookup keyed on a path / query parameter (`/orders/<id>`, `?user_id=…`, `POST /users/<id>/disable`, `DELETE /orders/<id>`) without a scope filter against `request.user` is IDOR — the read-side and the mutate-side have the same defect.
 
-**Why**: the auth check happens at "is the user logged in" granularity, not "does this user own this resource" granularity. The auth middleware passes; the handler reads by primary key without filtering by `current_user_id`; any authenticated user enumerates other users' data by changing the URL parameter. Real-world incidents: customer order leakage (sequential order ids), file-server cross-tenant reads, DM-thread cross-account reads. The defect is invisible at code-review pace because each line reads correct on its own — the pattern only surfaces when the missing filter is named explicitly.
+**Why**: the auth check happens at "is the user logged in" granularity, not "does this user own this resource" granularity. The auth middleware passes; the handler reads or mutates by primary key without filtering by `current_user_id`; any authenticated user enumerates, mutates, or deletes other users' data by changing the URL parameter. Real-world incidents: customer order leakage (sequential order ids), file-server cross-tenant reads, DM-thread cross-account reads, unauthorized account-disable via stale URL parameter, cross-tenant subscription-cancellation. The defect is invisible at code-review pace because each line reads correct on its own — the pattern only surfaces when the missing filter is named explicitly.
 
 **Anchor**: Radaro AI-Assisted Development Policy v1.3 §6 (Access control) + §7.1.1 (Authorization). POL-ENG-AIDEV-001.
 
-**How to apply**: every endpoint that returns a user-owned resource MUST do one of: (a) **scoped query** — filter by `user_id=request.user.id` directly in the lookup, returning 404 on miss (`Order.objects.filter(id=order_id, user_id=request.user.id).first()`); (b) **explicit ownership assertion** — fetch then immediately raise on mismatch (`if order.user_id != request.user.id: raise PermissionDenied()`) before any return / serialization step; (c) **policy / row-level-security at the data layer** that enforces tenant scoping for the request before the query runs. The check sits AT the endpoint boundary — never deferred to a downstream service or wrapped in "we check it later in the response serializer".
+**How to apply**: every endpoint that reads or mutates a user-owned resource MUST do one of: (a) **scoped query** — filter by `user_id=request.user.id` directly in the lookup, returning 404 on miss (`Order.objects.filter(id=order_id, user_id=request.user.id).first()`); (b) **explicit ownership assertion** — fetch then immediately raise on mismatch (`if order.user_id != request.user.id: raise PermissionDenied()`) before any return / serialization / mutation step; (c) **policy / row-level-security at the data layer** that enforces tenant scoping for the request before the query runs. The check sits AT the endpoint boundary — never deferred to a downstream service or wrapped in "we check it later in the response serializer". State-changing endpoints (PUT/DELETE/POST that mutate user-owned resources) MUST run the ownership check BEFORE the mutation method is invoked.
 
 **Bad code**:
 
@@ -387,6 +387,16 @@ app.get("/orders/:id", async (req, res) => {
   const order = await db.orders.findById(req.params.id);
   res.json(order);
 });
+```
+
+```python
+# State-changing IDOR — fetch by primary key and mutate WITHOUT any
+# ownership check. The mutation is the IDOR (PUT/DELETE/POST). Same defect
+# as the read-side example, just on a state-changing verb.
+def disable_user(request, user_id):
+    user = User.objects.get(id=user_id)
+    user.disable()
+    return Response(status=204)
 ```
 
 **Good code**:
@@ -407,6 +417,18 @@ def get_order(request, order_id):
     if order.user_id != request.user.id:
         raise PermissionDenied()
     return JsonResponse(serialize(order))
+```
+
+```python
+# State-changing endpoint — ownership check BEFORE the mutation. Different
+# verb (cancel_subscription) from R14's disable_user/charge_order to keep
+# the example shapes distinct across the cluster.
+def cancel_subscription(request, subscription_id):
+    subscription = Subscription.objects.get(id=subscription_id)
+    if subscription.user_id != request.user.id:
+        raise PermissionDenied()
+    subscription.cancel()
+    return Response(status=204)
 ```
 
 ---
@@ -671,9 +693,13 @@ def disable_user(request, user_id):
 **Good code**:
 
 ```python
-# Dedicated audit sink — actor, action, target, timestamp, outcome
+# Dedicated audit sink — actor, action, target, timestamp, outcome.
+# Ownership check runs BEFORE the mutation (R9 cross-cutting); audit emit
+# runs AFTER the mutation succeeds.
 def disable_user(request, user_id):
     user = User.objects.get(id=user_id)
+    if user.id != request.user.id:
+        raise PermissionDenied()
     user.disable()
     audit_log.emit(
         actor=request.user.id,
@@ -686,9 +712,12 @@ def disable_user(request, user_id):
 ```
 
 ```python
-# Failure path — emit on the exception with outcome="failure"
+# Failure path — emit on the exception with outcome="failure". Ownership
+# check still runs BEFORE the try-block (R9 cross-cutting).
 def charge_order(request, order_id):
     order = Order.objects.get(id=order_id)
+    if order.user_id != request.user.id:
+        raise PermissionDenied()
     try:
         charge(order)
     except StripeError as e:
