@@ -700,13 +700,13 @@ jobs:
 
 ## R14 — Missing audit-logging on sensitive actions
 
-**Rule**: state-changing actions on security-sensitive resources MUST emit a structured audit-log entry capturing actor, action, target, timestamp, and outcome. Sensitive resources include user accounts (create/delete/disable, role / permission changes), authentication state (login/logout/MFA enable-disable), authorization grants (API token issue/revoke, share-link grant), payment-bearing state (charge, refund, payout), and any privileged-operator action (impersonation, manual data edit, config change). Application logs (`logger.info(...)`) are NOT audit logs — audit logs go to a dedicated structured-event sink whose retention and integrity guarantees are separate from operational logs.
+**Rule**: state-changing actions on security-sensitive resources MUST emit a structured audit-log entry capturing actor, action, target, timestamp, and outcome. **sensitive-read auditing** applies equally: privileged read paths (admin viewing PII, bulk export of customer data, backup download, audit log query) MUST emit the same audit-log entry shape — read-only access to sensitive resources is a recordable event. Sensitive resources include user accounts (create/delete/disable, role / permission changes), authentication state (login/logout/MFA enable-disable), authorization grants (API token issue/revoke, share-link grant), payment-bearing state (charge, refund, payout), and any privileged-operator action (impersonation, manual data edit, config change). Application logs (`logger.info(...)`) are NOT audit logs — audit logs go to a dedicated structured-event sink whose retention and integrity guarantees are separate from operational logs.
 
-**Why**: post-incident forensics fail at the resource layer when nobody can answer "who did this, when, with which permissions?" The application-logger heuristic — `print` / `logger.info` calls scattered through the handler — drops messages on log rotation, doesn't capture actor context, and gets filtered out at the aggregation layer. Audit logs are a separate stream because they are the source of truth for accountability under both internal incident review and regulatory disclosure (SOC 2, ISO 27001, sector-specific requirements). AI-assist tends to omit audit-log emit calls because the surrounding code already "logs" via the operational logger.
+**Why**: post-incident forensics fail at the resource layer when nobody can answer "who did this, when, with which permissions?" The application-logger heuristic — `print` / `logger.info` calls scattered through the handler — drops messages on log rotation, doesn't capture actor context, and gets filtered out at the aggregation layer. Audit logs are a separate stream because they are the source of truth for accountability under both internal incident review and regulatory disclosure (SOC 2, ISO 27001, sector-specific requirements) — and sensitive-read auditing is part of the same regulatory frame: SOC 2 CC6.x and ISO 27001 A.12.4 expect read access to sensitive resources to leave a trail equivalent to state-changing access. AI-assist tends to omit audit-log emit calls because the surrounding code already "logs" via the operational logger.
 
 **Anchor**: Radaro AI-Assisted Development Policy v1.3 §7.4 (Audit logging). POL-ENG-AIDEV-001.
 
-**How to apply**: every handler that performs a sensitive state change emits one audit-log call, adjacent to the side-effect (same function, after the mutation succeeds, before returning). The call uses a dedicated `audit_log.emit(...)` (or whatever the project's audit sink is named — `audit.record(...)`, `AuditEvent.create(...)`, etc.) carrying `actor` (request principal), `action` (verb — `user.disable`, `payment.refund`, `apitoken.revoke`), `target` (resource id or path), `ts` (timestamp), `outcome` (`success` / `failure` with reason). On failure paths, emit the audit log with the failure outcome — failed-attempt records are evidence too.
+**How to apply**: every handler that performs a sensitive state change emits one audit-log call, adjacent to the side-effect (same function, after the mutation succeeds, before returning). The call uses a dedicated `audit_log.emit(...)` (or whatever the project's audit sink is named — `audit.record(...)`, `AuditEvent.create(...)`, etc.) carrying `actor` (request principal), `action` (verb — `user.disable`, `payment.refund`, `apitoken.revoke`), `target` (resource id or path), `ts` (timestamp), `outcome` (`success` / `failure` with reason). On failure paths, emit the audit log with the failure outcome — failed-attempt records are evidence too. On **authorization-failure paths** (ownership check fails, RBAC role insufficient), emit the audit log with `outcome="failure"` AND a `reason` slot naming the denial cause (e.g. `not_owner`, `insufficient_role`) BEFORE raising the denial exception — failed authorization attempts are the load-bearing forensic signal for IDOR-probing detection.
 
 **Bad code**:
 
@@ -725,6 +725,14 @@ def disable_user(request, user_id):
     user.disable()
     logger.info(f"disabled user {user.id}")
     return Response(status=204)
+```
+
+```python
+# Bulk-export read endpoint — emits no audit-log entry. Read-side defect:
+# admin downloads the entire user table (PII) without leaving a trail.
+def export_users_csv(request):
+    rows = User.objects.all()
+    return CsvResponse(rows)
 ```
 
 **Good code**:
@@ -775,6 +783,48 @@ def charge_order(request, order_id):
         outcome="success",
     )
     return Response(status=200)
+```
+
+```python
+# Bulk-export read with audit emit — sensitive-read auditing in action.
+# action="users.export"; count= records the cardinality of the read.
+def export_users_csv(request):
+    rows = list(User.objects.all())
+    audit_log.emit(
+        actor=request.user.id,
+        action="users.export",
+        target="users",
+        ts=now(),
+        outcome="success",
+        count=len(rows),
+    )
+    return CsvResponse(rows)
+```
+
+```python
+# R14 access-denied audit emit on PermissionDenied path (R9 ownership-check
+# shape integrated; this fence is R14's contribution: emit audit log on the
+# denial outcome BEFORE raising).
+def get_order(request, order_id):
+    order = Order.objects.get(id=order_id)
+    if order.user_id != request.user.id:
+        audit_log.emit(
+            actor=request.user.id,
+            action="order.read",
+            target=order_id,
+            ts=now(),
+            outcome="failure",
+            reason="not_owner",
+        )
+        raise PermissionDenied()
+    audit_log.emit(
+        actor=request.user.id,
+        action="order.read",
+        target=order_id,
+        ts=now(),
+        outcome="success",
+    )
+    return JsonResponse(serialize(order))
 ```
 
 ---

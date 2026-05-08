@@ -4574,6 +4574,136 @@ print("R13 OIDC minimal-permissions + paired example present (T4.6-T4.8)")
 PY
 }
 
+# R14 sensitive-read coverage + access-denied audit emit (PR-D Step 5).
+# Asserts R14 Rule line carries `sensitive-read auditing` byte-exact AND
+# names ≥3 of 4 sensitive-read classes (PII, bulk export, backup,
+# audit log); Why paragraph carries `sensitive-read auditing` co-located
+# with `SOC 2`/`ISO 27001`; How-to-apply paragraph carries
+# `authorization-failure paths` AND `not_owner`; bulk-export Bad fence
+# (no audit emit), bulk-export Good fence (audit emit + users.export +
+# count=), access-denied Good fence (outcome=failure + reason=not_owner
+# + audit emit BEFORE raise).
+check_r14_sensitive_reads_and_access_denied_audit() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import re
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import extract_section, good_block, bad_block, iter_fences
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+sec = extract_section(text, "R14")
+if sec is None:
+    print(f"{path}: R14 section not found", file=sys.stderr)
+    sys.exit(1)
+
+# T5.1 positive — Rule line uniquely-new phrase (positive-only per iter1 M1).
+if "sensitive-read auditing" not in sec:
+    print(f"{path}: R14 section missing 'sensitive-read auditing' (T5.1 positive)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.2 positive — AND-conjunctive over ≥3 of 4 sensitive-read classes:
+# `bulk export` (or `bulk-export`) AND `PII` AND (`backup` OR `audit log`
+# OR `audit-log`).
+sec_lower = sec.lower()
+has_bulk = ("bulk export" in sec_lower) or ("bulk-export" in sec_lower)
+has_pii = "PII" in sec
+has_backup_or_audit = (
+    "backup" in sec_lower
+    or "audit log" in sec_lower
+    or "audit-log" in sec_lower
+)
+if not (has_bulk and has_pii and has_backup_or_audit):
+    print(f"{path}: R14 section missing ≥3 of 4 sensitive-read classes "
+          f"(bulk={has_bulk}, PII={has_pii}, backup-or-audit={has_backup_or_audit}) "
+          f"(T5.2 positive)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.3 positive — Why paragraph extraction: `sensitive-read auditing` AND
+# (`SOC 2` OR `ISO 27001`) within the SAME paragraph.
+why_m = re.search(r'\*\*Why\*\*:.*?(?=\n\n\*\*|\n---|\Z)', sec, re.DOTALL)
+if why_m is None:
+    print(f"{path}: R14 Why paragraph not found (T5.3 prerequisite)", file=sys.stderr)
+    sys.exit(1)
+why_para = why_m.group(0)
+if "sensitive-read auditing" not in why_para:
+    print(f"{path}: R14 Why paragraph missing 'sensitive-read auditing' (T5.3 positive)", file=sys.stderr)
+    sys.exit(1)
+if not (("SOC 2" in why_para) or ("ISO 27001" in why_para)):
+    print(f"{path}: R14 Why paragraph missing SOC 2/ISO 27001 co-located with sensitive-read auditing (T5.3 positive)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.4 positive — How-to-apply paragraph extraction: `authorization-failure
+# paths` AND `not_owner` within the SAME paragraph.
+hta_m = re.search(r'\*\*How to apply\*\*:.*?(?=\n\n\*\*|\n---|\Z)', sec, re.DOTALL)
+if hta_m is None:
+    print(f"{path}: R14 How-to-apply paragraph not found (T5.4 prerequisite)", file=sys.stderr)
+    sys.exit(1)
+hta_para = hta_m.group(0)
+if "authorization-failure paths" not in hta_para:
+    print(f"{path}: R14 How-to-apply paragraph missing 'authorization-failure paths' (T5.4 positive)", file=sys.stderr)
+    sys.exit(1)
+if "not_owner" not in hta_para:
+    print(f"{path}: R14 How-to-apply paragraph missing 'not_owner' (T5.4 positive)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.5 positive — bulk-export Bad fence: def export_users_csv( + User.objects.all()
+# AND NO audit emit (audit_log.emit, audit.record, AuditEvent.create).
+bad_fences = list(iter_fences(bad_block(text, "R14"), "python"))
+ok_t55 = False
+for f in bad_fences:
+    if ("def export_users_csv(" in f
+        and "User.objects.all()" in f
+        and "audit_log.emit(" not in f
+        and "audit.record(" not in f
+        and "AuditEvent.create(" not in f):
+        ok_t55 = True
+        break
+if not ok_t55:
+    print(f"{path}: R14 Bad-code missing bulk-export fence (T5.5: def export_users_csv + User.objects.all() + NO audit emit)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.6 positive — bulk-export Good fence: def export_users_csv( + audit_log.emit
+# + users.export + count=.
+good_fences = list(iter_fences(good_block(text, "R14"), "python"))
+ok_t56 = False
+for f in good_fences:
+    if ("def export_users_csv(" in f
+        and "audit_log.emit(" in f
+        and "users.export" in f
+        and "count=" in f):
+        ok_t56 = True
+        break
+if not ok_t56:
+    print(f"{path}: R14 Good-code missing bulk-export fence (T5.6: def export_users_csv + audit_log.emit + users.export + count=)", file=sys.stderr)
+    sys.exit(1)
+
+# T5.7 positive — access-denied Good fence: def get_order( + outcome="failure" +
+# reason="not_owner" + raise PermissionDenied(); document-order: audit_log.emit
+# BEFORE raise PermissionDenied().
+ok_t57 = False
+for f in good_fences:
+    if not ("def get_order(" in f
+            and 'outcome="failure"' in f
+            and 'reason="not_owner"' in f
+            and "raise PermissionDenied()" in f):
+        continue
+    raise_idx = f.find("raise PermissionDenied()")
+    audit_before = f.rfind("audit_log.emit(", 0, raise_idx)
+    if audit_before >= 0:
+        ok_t57 = True
+        break
+if not ok_t57:
+    print(f"{path}: R14 Good-code missing access-denied fence (T5.7: def get_order + outcome=failure + reason=not_owner + audit emit BEFORE raise PermissionDenied)", file=sys.stderr)
+    sys.exit(1)
+
+print("R14 sensitive-read auditing + access-denied audit emit present (T5.1-T5.7)")
+PY
+}
+
 # Cross-auditor §security mode load-the-cluster pin (R-rules web-security cluster
 # Pin 5 — class: prompt-text). Asserts the §`security` mode block in
 # agents/cross-auditor.md (a) names all six R-ids R9..R14 individually as
