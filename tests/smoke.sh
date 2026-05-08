@@ -5895,6 +5895,9 @@ check "probe-g-detector-rejects-malformed-requirements" check_probe_g_detector_r
 check "probe-g-detector-fires-on-uppercase-name-package-lock" check_probe_g_detector_fires_on_uppercase_name_package_lock
 check "probe-g-detector-out-of-diff-lockfile-ignored" check_probe_g_detector_out_of_diff_lockfile_ignored
 check "probe-g-detector-in-diff-lockfile-evaluated" check_probe_g_detector_in_diff_lockfile_evaluated
+check "probe-g-yarn-berry-peer-dep" check_probe_g_yarn_berry_peer_dep
+check "probe-g-yarn-scoped-npm-protocol" check_probe_g_yarn_scoped_npm_protocol
+check "probe-g-pnpm-v9-format" check_probe_g_pnpm_v9_format
 echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---
@@ -5909,6 +5912,9 @@ check "probe-h-detector-fires-on-whitespace-eq" check_probe_h_detector_fires_on_
 check "probe-h-detector-rejects-malformed-requirements" check_probe_h_detector_rejects_malformed_requirements
 check "probe-h-detector-out-of-diff-lockfile-ignored" check_probe_h_detector_out_of_diff_lockfile_ignored
 check "probe-h-detector-in-diff-lockfile-evaluated" check_probe_h_detector_in_diff_lockfile_evaluated
+check "probe-h-yarn-berry-peer-dep" check_probe_h_yarn_berry_peer_dep
+check "probe-h-yarn-scoped-npm-protocol" check_probe_h_yarn_scoped_npm_protocol
+check "probe-h-pnpm-v9-format" check_probe_h_pnpm_v9_format
 echo
 
 # --- STRIDE-lite spec-template slot pins ---

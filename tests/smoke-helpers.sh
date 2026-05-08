@@ -5165,6 +5165,30 @@ check_probe_h_detector_in_diff_lockfile_evaluated() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/11-in-diff-lockfile-evaluated
 }
 
+check_probe_g_yarn_berry_peer_dep() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/12-yarn-berry-peer-dep
+}
+
+check_probe_h_yarn_berry_peer_dep() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/12-yarn-berry-peer-dep
+}
+
+check_probe_g_yarn_scoped_npm_protocol() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/13-yarn-scoped-npm-protocol
+}
+
+check_probe_h_yarn_scoped_npm_protocol() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/13-yarn-scoped-npm-protocol
+}
+
+check_probe_g_pnpm_v9_format() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/14-pnpm-v9-format
+}
+
+check_probe_h_pnpm_v9_format() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/14-pnpm-v9-format
+}
+
 check_probe_h_detector_rejects_malformed_requirements() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
 }

@@ -64,9 +64,21 @@ LOCKFILE_NAMES = frozenset({
 RE_REQUIREMENTS = re.compile(
     r"^([A-Za-z0-9_.-]+)(?:\[[^\]]*\])?\s*==\s*([0-9]+)(?:[.+\s!;#]|$)"
 )
-RE_YARN_ENTRY = re.compile(r'^"?([A-Za-z0-9@_.-][A-Za-z0-9@/_.-]*)@')
-RE_YARN_VERSION = re.compile(r'^\s+version\s+"([^"]+)"')
-RE_PNPM_PACKAGE = re.compile(r"^\s{2}/([^/@][^@:\s]*|@[^/]+/[^@:\s]+)@([^:\s]+):")
+RE_YARN_ENTRY = re.compile(
+    r'^"?((?:@[^/"@\s]+/)?[^@\s",:][^@\s",]*?(?:@[^"\s,:][^"\s,]*)+)"?\s*[,:]'
+)
+RE_YARN_VERSION = re.compile(r'^\s+version[:\s]\s*"?([^"\s]+)"?')
+RE_PNPM_PACKAGE = re.compile(
+    r"^\s+/?([^/@\s][^@:\s]*|@[^/]+/[^@:\s]+)@([0-9][0-9A-Za-z.+-]*)(?:[_(].*?)?:"
+)
+RE_PNPM_PATCH = re.compile(
+    r"^\s+/?([^/@\s][^@:\s]*|@[^/]+/[^@:\s]+)@patch:"
+)
+YARN_PROTOS = (
+    "@npm:", "@workspace:", "@patch:", "@file:", "@link:",
+    "@git+ssh:", "@git+https:", "@git+http:", "@git:",
+    "@http:", "@https:",
+)
 RE_GO_SUM = re.compile(r"^(\S+)\s+v([0-9]+(?:\.[0-9A-Za-z_.-]+)*)")
 RE_CARGO_NAME = re.compile(r'^name\s*=\s*"([^"]+)"')
 RE_CARGO_VERSION = re.compile(r'^version\s*=\s*"([^"]+)"')
@@ -215,6 +227,7 @@ def parse_package_lock(abs_path):
 
 def parse_yarn_lock(abs_path):
     parsed = []
+    aliased_metadata = []
     current_package = None
     with open(abs_path, "r", encoding="utf-8") as fh:
         for raw_line in fh:
@@ -224,25 +237,55 @@ def parse_yarn_lock(abs_path):
                 current_package = None
                 if match:
                     current_package = match.group(1)
-                    if current_package.startswith("@") and "@" in current_package[1:]:
-                        current_package = current_package.rsplit("@", 1)[0]
-                    elif "@" in current_package:
-                        current_package = current_package.split("@", 1)[0]
+                    matched_proto = False
+                    for proto in YARN_PROTOS:
+                        if proto in current_package:
+                            left, right = current_package.split(proto, 1)
+                            if proto == "@npm:" and "@" in right:
+                                inner_at = right.index("@")
+                                real_pkg = right[:inner_at]
+                                if real_pkg:
+                                    aliased_metadata.append({
+                                        "alias": left,
+                                        "real": real_pkg,
+                                    })
+                                    current_package = real_pkg
+                                else:
+                                    current_package = left
+                            else:
+                                current_package = left
+                            matched_proto = True
+                            break
+                    if not matched_proto:
+                        if current_package.startswith("@") and "@" in current_package[1:]:
+                            current_package = current_package.rsplit("@", 1)[0]
+                        elif "@" in current_package:
+                            current_package = current_package.split("@", 1)[0]
             elif current_package:
                 version_match = RE_YARN_VERSION.search(line)
                 if version_match:
-                    parsed.append(("npm", current_package, version_match.group(1)))
+                    version = version_match.group(1).split("(", 1)[0]
+                    parsed.append(("npm", current_package, version))
                     current_package = None
-    return parsed
+    return parsed, aliased_metadata
 
 
-def parse_pnpm_lock(abs_path):
+def parse_pnpm_lock(abs_path, rel, skipped_files):
     parsed = []
     with open(abs_path, "r", encoding="utf-8") as fh:
-        for line in fh:
-            match = RE_PNPM_PACKAGE.search(line.rstrip("\n"))
-            if match:
-                parsed.append(("npm", match.group(1), match.group(2)))
+        for raw_line in fh:
+            line = raw_line.rstrip("\n")
+            patch_match = RE_PNPM_PATCH.match(line)
+            if patch_match:
+                skipped_files.append({
+                    "file": rel,
+                    "reason": "patch_protocol",
+                    "package": patch_match.group(1),
+                })
+                continue
+            package_match = RE_PNPM_PACKAGE.search(line)
+            if package_match:
+                parsed.append(("npm", package_match.group(1), package_match.group(2)))
     return parsed
 
 
@@ -277,7 +320,7 @@ def parse_go_sum(abs_path):
     return parsed
 
 
-def parse_lockfile(abs_path, name):
+def parse_lockfile(abs_path, name, rel, skipped_files):
     if name == "requirements.txt":
         return parse_requirements(abs_path)
     if name == "Pipfile.lock":
@@ -285,9 +328,10 @@ def parse_lockfile(abs_path, name):
     if name == "package-lock.json":
         return parse_package_lock(abs_path)
     if name == "yarn.lock":
-        return parse_yarn_lock(abs_path)
+        parsed, _aliased = parse_yarn_lock(abs_path)
+        return parsed
     if name == "pnpm-lock.yaml":
-        return parse_pnpm_lock(abs_path)
+        return parse_pnpm_lock(abs_path, rel, skipped_files)
     if name == "Cargo.lock":
         return parse_cargo_lock(abs_path)
     if name == "go.sum":
@@ -345,7 +389,7 @@ seen_findings = set()
 
 for rel, abs_path, name in lockfiles:
     try:
-        pinned = parse_lockfile(abs_path, name)
+        pinned = parse_lockfile(abs_path, name, rel, skipped_files)
     except (IOError, OSError, json.JSONDecodeError, UnicodeDecodeError, ValueError):
         skipped_files.append(rel)
         continue

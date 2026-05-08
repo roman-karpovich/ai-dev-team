@@ -144,6 +144,9 @@ check_probe_g_detector_rejects_malformed_requirements behavioral
 check_probe_g_detector_fires_on_uppercase_name_package_lock behavioral
 check_probe_g_detector_out_of_diff_lockfile_ignored behavioral
 check_probe_g_detector_in_diff_lockfile_evaluated behavioral
+check_probe_g_yarn_berry_peer_dep behavioral
+check_probe_g_yarn_scoped_npm_protocol behavioral
+check_probe_g_pnpm_v9_format behavioral
 
 # Typosquatting probe (Probe H — supply-chain layer)
 check_probe_h_corpus_path_resolution schema
@@ -156,6 +159,9 @@ check_probe_h_detector_fires_on_whitespace_eq behavioral
 check_probe_h_detector_rejects_malformed_requirements behavioral
 check_probe_h_detector_out_of_diff_lockfile_ignored behavioral
 check_probe_h_detector_in_diff_lockfile_evaluated behavioral
+check_probe_h_yarn_berry_peer_dep behavioral
+check_probe_h_yarn_scoped_npm_protocol behavioral
+check_probe_h_pnpm_v9_format behavioral
 
 # STRIDE-lite spec-template slot pins (Pin A prompt-text + Pin B prompt-text — SKILL.md gating + cross-auditor consumption)
 check_skill_stride_lite_block_gated prompt-text

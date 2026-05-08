@@ -1,0 +1,1 @@
+{"findings":[],"receipt_metadata":{"degraded_mode":false,"eligible_reason":"scanned 1 lockfile(s); 13 packages in corpus; 0 findings","emitted_at":"2026-05-07T00:00:00Z","probe_id":"G","probe_version":"g.1.0","scope_files_read":["repo/yarn.lock"],"skipped_files":[],"trigger_input_hash":"1091e0f505b05375a71d2d0890ca27041f77c618d03785ac8f71bee402217a00"}}
