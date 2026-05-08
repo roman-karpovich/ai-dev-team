@@ -421,11 +421,11 @@ The cross-auditor NEVER writes `self_fallback`, `contract_violated`, or `skipped
 Reason text extracted from Codex stderr can contain apostrophes, newlines, or other YAML-hostile characters. Before emitting `evidence_blockers:`, the cross-auditor MUST normalize each blocker string:
 
 1. **Replace newlines** (`\n`, `\r`, `\r\n`) with a single space.
-2. **Escape single quotes** by doubling (`'` → `''`) — required for YAML single-quoted scalar style.
-3. **Cap length** at 200 characters (consistent with existing `[:200]` truncation elsewhere in this agent). Append `…` if truncated.
+2. **Truncate to 199** characters (leaving 1 char headroom for the `…` ellipsis suffix). Append `…` if truncation occurred → resulting string ≤ 200 chars on the human-meaningful prefix.
+3. **Escape single quotes** by doubling (`'` → `''`) — required for YAML single-quoted scalar style. The string MAY now exceed 200 chars after escaping (each `'` becomes 2 chars); this is acceptable because YAML single-quoted scalar style handles arbitrary length, and the truncation in step 2 already operates on the human-meaningful prefix BEFORE escapes are added, so `''` pairs are atomic (added as units, never split mid-escape).
 4. **Emit in single-quoted YAML form** (`'sanitized text'`) inside the list literal: `evidence_blockers: ['codex audit unavailable: <sanitized-reason>']`.
 
-This sanitize-blocker rule applies to every newline→space conversion site, every escape-single-quote site, and every 200-char cap site in this agent's blocker emission path.
+This sanitize-blocker rule applies to every newline→space conversion site, every escape-single-quote site, and every truncate-to-199 site in this agent's blocker emission path.
 
 ### Spec-mode return contract (inline output)
 

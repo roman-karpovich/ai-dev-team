@@ -4860,6 +4860,35 @@ check_cross_auditor_replaces_silent_skip_gate() {
   [ "$new_branch" -ge 1 ] || { echo "new explicit-branch prose absent (positive clause failed)"; return 1; }
 }
 
+check_cross_auditor_blocker_sanitization_truncate_before_escape() {
+  local f="agents/cross-auditor.md"
+  local skl="skills/feature/SKILL.md"
+  local block t199 escape_after old_cap ca_old_summary skl_t199 skl_old_cap
+  # Stateful awk anchor (definite end-marker on next H3 — two-pattern range form is degenerate
+  # because both `^### YAML-safety serialization rule` and the generic `^### ` end pattern would
+  # match the same start line and collapse the range to one record).
+  block=$(awk '/^### YAML-safety serialization rule/{p=1; next} p && /^### Spec-mode return contract/{exit} p' "$f")
+  t199=$(echo "$block" | grep -cF 'Truncate to 199')
+  # Ordering positive: escape step appears AFTER truncate step in document order. The producer
+  # markdown wraps the action verb in bold (`**Escape single quotes** by doubling`), so anchor on
+  # the bold-wrapped form which is the unique fingerprint of the producer-side rewritten step.
+  escape_after=$(echo "$block" | awk '/Truncate to 199/{seen=1} /\*\*Escape single quotes\*\*/{if(seen) print "AFTER"}' | grep -cF AFTER)
+  # X18 (a) — pre-rewrite numbered-step literal absent at producer side.
+  old_cap=$(grep -cF 'Cap length** at 200' "$f")
+  # §3.0 sweep gap — pre-rewrite L420 summary literal absent at producer side.
+  ca_old_summary=$(grep -cF '200-char cap' "$f")
+  # X10 + X18 (c) — consumer-side post-rewrite literal at BOTH SKILL.md L517 AND L521.
+  skl_t199=$(grep -cF 'truncate to 199 chars' "$skl")
+  # X10 — consumer-side pre-rewrite literal absent at both SKILL.md surfaces.
+  skl_old_cap=$(grep -cF '200-char cap' "$skl")
+  [ "$t199" -ge 1 ] || { echo "producer-side §YAML-safety rule missing 'Truncate to 199' literal"; return 1; }
+  [ "$escape_after" -ge 1 ] || { echo "producer-side ordering wrong — escape step does not appear AFTER truncate step"; return 1; }
+  [ "$old_cap" = "0" ] || { echo "producer-side stale 'Cap length** at 200' numbered-rule literal still present"; return 1; }
+  [ "$ca_old_summary" = "0" ] || { echo "producer-side L420 summary still names '200-char cap' (stale alongside rewritten numbered steps)"; return 1; }
+  [ "$skl_t199" -ge 2 ] || { echo "consumer-side missing 'truncate to 199 chars' at BOTH SKILL.md L517 AND L521 (count must be ≥ 2)"; return 1; }
+  [ "$skl_old_cap" = "0" ] || { echo "consumer-side stale '200-char cap' phrasing still present in SKILL.md"; return 1; }
+}
+
 check_cross_auditor_r_rule_path_env_first_precedence() {
   local f="agents/cross-auditor.md"
   local block uncond realp stale_l296 stale_l303 stale_l340 l303_post l340_post
