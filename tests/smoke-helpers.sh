@@ -5008,6 +5008,11 @@ check_cross_auditor_blocker_sanitization_truncate_before_escape() {
   [ "$ca_old_summary" = "0" ] || { echo "producer-side L420 summary still names '200-char cap' (stale alongside rewritten numbered steps)"; return 1; }
   [ "$skl_t199" -ge 2 ] || { echo "consumer-side missing 'truncate to 199 chars' at BOTH SKILL.md L517 AND L521 (count must be ≥ 2)"; return 1; }
   [ "$skl_old_cap" = "0" ] || { echo "consumer-side stale '200-char cap' phrasing still present in SKILL.md"; return 1; }
+  # X18(b) closure — POSITIVE clause locking the rewritten L428 summary literal. Without this,
+  # a future maintainer can rewrite or delete the summary line freely (mutation-test confirmed).
+  local ca_new_summary
+  ca_new_summary=$(grep -cF 'every newline→space conversion site, every escape-single-quote site, and every truncate-to-199 site' "$f")
+  [ "$ca_new_summary" -ge 1 ] || { echo "producer-side L428 summary literal missing the canonical 'every X site, every Y site, ...' phrasing"; return 1; }
 }
 
 check_cross_auditor_r_rule_path_env_first_precedence() {
