@@ -5034,4 +5034,14 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
   [ "$stale_l340" = "0" ] || { echo "L340 stale 'relative path from agent cwd' parenthetical still present"; return 1; }
   [ "$l303_post" -ge 1 ] || { echo "L303 missing post-rewrite 'not reachable at the env-var path' literal"; return 1; }
   [ "$l340_post" -ge 1 ] || { echo "L340 missing post-rewrite 'env-first per §security mode bridge above' literal"; return 1; }
+  # C2 closure — L311 contradiction with L300 env-first semantics. The pre-rewrite L311
+  # parenthetical claimed the unset-env fallback runs even when env IS set ("env-set + file-
+  # missing AND the unset-env fallback above also fails"), contradicting L300's strict env-set
+  # → no-relative-fallback rule. The rewrite aligns L311 with L300: env-set + file-missing →
+  # warn directly; env-unset + relative-realpath fallback fails → warn.
+  local stale_l311 l311_post
+  stale_l311=$(grep -cF 'unset-env fallback above also fails' "$f")
+  l311_post=$(grep -cF 'no relative fallback when env is set' "$f")
+  [ "$stale_l311" = "0" ] || { echo "L311 stale 'unset-env fallback above also fails' contradictory phrasing still present"; return 1; }
+  [ "$l311_post" -ge 1 ] || { echo "L311 missing post-rewrite 'no relative fallback when env is set' literal"; return 1; }
 }
