@@ -2507,8 +2507,8 @@ for finding in final_findings:
     except (IOError, OSError) as e:
         probe_failures_seed.append({
             "probe_id": metadata["probe_id"],
-            "failure_reason": f"receipt write failed: {str(e)[:200]}",
-            "failure_remediation": "check KB mount is writable + re-run /cross-audit",
+            "reason": f"receipt write failed: {str(e)[:200]}",
+            "remediation": "check KB mount is writable + re-run /cross-audit",
         })
         finding["probe_receipt"] = None
     else:
@@ -3031,8 +3031,8 @@ for finding in final_findings:
     except (IOError, OSError) as e:
         probe_failures_seed.append({
             "probe_id": metadata["probe_id"],
-            "failure_reason": f"receipt write failed: {str(e)[:200]}",
-            "failure_remediation": "check KB mount is writable + re-run /cross-audit",
+            "reason": f"receipt write failed: {str(e)[:200]}",
+            "remediation": "check KB mount is writable + re-run /cross-audit",
         })
         finding["probe_receipt"] = None
     else:
@@ -4858,4 +4858,195 @@ check_cross_auditor_replaces_silent_skip_gate() {
   new_branch=$(grep -cF 'If `project_type` is unset OR has a non-allowlist value' "$f")
   [ "$old_gate" = "0" ] || { echo "old silent-skip gate prose still present (negative clause failed)"; return 1; }
   [ "$new_branch" -ge 1 ] || { echo "new explicit-branch prose absent (positive clause failed)"; return 1; }
+}
+
+check_spec_mode_footer_sentinel_marker_contract() {
+  local f="agents/cross-auditor.md"
+  local skl="skills/feature/SKILL.md"
+  local ca_sent ca_obfusc skl_sent skl_tail3 skl_eof skl_old skl_l424
+  local ca_l424 ca_l445_parser ca_l445_sem ca_l445_summary ca_l445_4th
+  local ca_l424_pos ca_l445_pos
+  # Producer fenced positive (X12 locked) — exactly one canonical-spaced sentinel literal site.
+  ca_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$f")
+  # Producer obfuscated-form positive (X12) — at least one obfuscated form documents the rule.
+  ca_obfusc=$(grep -cF 'CROSS-AUDIT-EVIDENCE-FOOTER' "$f")
+  # Consumer sentinel positive — sentinel documented at consumer side (≥ 1, no single-site lock).
+  skl_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$skl")
+  # Consumer parser-shape positives — locks the EOF-adjacency parser shape.
+  skl_tail3=$(grep -cF 'tail -3' "$skl")
+  skl_eof=$(grep -cF 'EOF-adjacent' "$skl")
+  # Consumer parser-shape negative (SKILL.md) — old form removed.
+  skl_old=$(grep -cF "awk 'NF' | tail -2" "$skl")
+  # X20 (b) — SKILL.md parallel `TWO adjacent literal final lines` negative.
+  skl_l424=$(grep -cF 'TWO adjacent literal final lines' "$skl")
+  # X16 negatives (cross-auditor.md): L424 stale intro paragraph + L445 four-literal cluster.
+  ca_l424=$(grep -cF 'TWO adjacent literal final lines' "$f")
+  ca_l445_parser=$(grep -cF "awk 'NF' | tail -2" "$f")
+  ca_l445_sem=$(grep -cF 'LAST two physical non-empty lines' "$f")
+  ca_l445_summary=$(grep -cF 'last-two-physical-non-empty + prefix-check' "$f")
+  # X20 (a) — L445 4th-literal `grep -E … | tail -2` historical form negative.
+  ca_l445_4th=$(grep -cE 'grep -E.*tail -2' "$f")
+  # X20 (c) — producer-side post-positives for L424 + L445 rewritten prose.
+  ca_l424_pos=$(grep -cF 'EXACTLY THREE physical lines' "$f")
+  ca_l445_pos=$(grep -cF 'byte-exact full-line equality' "$f")
+  [ "$ca_sent" = "1" ] || { echo "agents: canonical-spaced sentinel literal must appear at EXACTLY ONE site (got $ca_sent)"; return 1; }
+  [ "$ca_obfusc" -ge 1 ] || { echo "agents: obfuscated form 'CROSS-AUDIT-EVIDENCE-FOOTER' (hyphenated) missing — required by sentinel-obfuscation rule"; return 1; }
+  [ "$skl_sent" -ge 1 ] || { echo "SKILL.md: canonical-spaced sentinel literal missing"; return 1; }
+  [ "$skl_tail3" -ge 1 ] || { echo "SKILL.md: 'tail -3' literal missing — locks EOF-adjacency parser shape"; return 1; }
+  [ "$skl_eof" -ge 1 ] || { echo "SKILL.md: 'EOF-adjacent' literal missing"; return 1; }
+  [ "$skl_old" = "0" ] || { echo "SKILL.md: stale 'awk \\'NF\\' | tail -2' parser form still present"; return 1; }
+  [ "$skl_l424" = "0" ] || { echo "SKILL.md: stale 'TWO adjacent literal final lines' wording still present at parallel surface"; return 1; }
+  [ "$ca_l424" = "0" ] || { echo "agents: stale L424 'TWO adjacent literal final lines' intro-paragraph wording still present"; return 1; }
+  [ "$ca_l445_parser" = "0" ] || { echo "agents: stale L445 'awk \\'NF\\' | tail -2' parser shape still present"; return 1; }
+  [ "$ca_l445_sem" = "0" ] || { echo "agents: stale L445 'LAST two physical non-empty lines' parser semantics still present"; return 1; }
+  [ "$ca_l445_summary" = "0" ] || { echo "agents: stale L445 'last-two-physical-non-empty + prefix-check' summary still present"; return 1; }
+  [ "$ca_l445_4th" = "0" ] || { echo "agents: stale L445 'grep -E … | tail -2' historical form still present"; return 1; }
+  [ "$ca_l424_pos" -ge 1 ] || { echo "agents: post-rewrite L424 'EXACTLY THREE physical lines' literal missing — locks the rewrite to mandated phrasing"; return 1; }
+  [ "$ca_l445_pos" -ge 1 ] || { echo "agents: post-rewrite L445 'byte-exact full-line equality' literal missing"; return 1; }
+  # Executable harness — actually run the published parser shape against three trailing-newline
+  # fixtures (no trailing \n / one trailing \n / two trailing \n) and assert all three route to PASS.
+  # Coincidentally-correct bash $(cmd) capture strips trailing \n; file reads / read -d '' / MCP
+  # byte-exact transport preserve them and used to shift tail -3 off the real footer. The trailing-
+  # newline strip loop normalizes captured input before tail -3.
+  parser_test() {
+    local _captured="$1"
+    while [[ "$_captured" == *$'\n' ]]; do _captured="${_captured%$'\n'}"; done
+    local _last_three _first
+    _last_three=$(printf '%s\n' "$_captured" | tail -3)
+    _first=$(printf '%s\n' "$_last_three" | head -1)
+    [[ "$_first" == "# CROSS-AUDIT EVIDENCE FOOTER" ]]
+  }
+  local parser_pass_cases=0
+  local _variant _fixture
+  for _variant in '' $'\n' $'\n\n'; do
+    _fixture=$'some prose\n# CROSS-AUDIT EVIDENCE FOOTER\nevidence_class: dual_model\nevidence_blockers: []'"$_variant"
+    if parser_test "$_fixture"; then parser_pass_cases=$((parser_pass_cases+1)); fi
+  done
+  [ "$parser_pass_cases" = "3" ] || { echo "executable harness: parser failed on at least one trailing-newline shape (got $parser_pass_cases / 3)"; return 1; }
+  unset -f parser_test
+}
+
+check_cross_auditor_probe_failures_schema_aligned() {
+  local f="agents/cross-auditor.md"
+  local h="tests/smoke-helpers.sh"
+  local old_q_r old_q_rm reason_n remediation_n canonical old_canonical translator_bridge scorer_token
+  local l389_old_r l389_new_r l389_old_rm l389_new_rm
+  local helpers_old_q_r helpers_old_q_rm helpers_new_q_r helpers_new_q_rm
+  # Scoped quoted-key dict-literal negatives — the fingerprint of the five Step 0.5 .append( sites.
+  # Bare `failure_reason` legitimately stays in the file at scorer_failure_reason and translator-bridge
+  # surfaces, which is why this clause is scoped to the QUOTED-KEY form, not bare token.
+  old_q_r=$(grep -cF '"failure_reason":' "$f")
+  old_q_rm=$(grep -cF '"failure_remediation":' "$f")
+  # Positive count — five quoted-key dict-literal sites emit "reason" / "remediation".
+  reason_n=$(grep -cF '"reason":' "$f")
+  remediation_n=$(grep -cF '"remediation":' "$f")
+  # Canonical-phrase positive (X15 — threshold ≥ 2 locks BOTH L199 description AND L268 fail-open
+  # coverage prose in lockstep; ≥ 1 would allow partial rewrite).
+  canonical=$(grep -cF '`probe_id` / `reason` / `remediation`' "$f")
+  # X19 (a) — pre-rewrite canonical phrase absent at both L199 + L268 surfaces.
+  old_canonical=$(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f")
+  # Preserve translator bridge L400-401 — Foundation §3.3 receipt-schema territory.
+  translator_bridge=$(grep -cF "receipt's optional \`failure_reason\`" "$f")
+  # Preserve scorer_failure_reason (renderer-stdin contract — distinct token).
+  scorer_token=$(grep -cF 'scorer_failure_reason' "$f")
+  # L389-area inline-prose entries (paired-key — both reason and remediation halves).
+  l389_old_r=$(grep -cF 'failure_reason: "receipt write failed:' "$f")
+  l389_new_r=$(grep -cF 'reason: "receipt write failed:' "$f")
+  l389_old_rm=$(grep -cF 'failure_remediation: "check KB mount' "$f")
+  l389_new_rm=$(grep -cF 'remediation: "check KB mount' "$f")
+  # smoke-helpers.sh seed-side emulation heredocs — symmetric paired-key coverage.
+  # Exclude self-reference: the smoke-pin helper itself contains the literals as grep patterns,
+  # so scope the count to lines NOT carrying a `grep -cF` clause (which fingerprint the helper's
+  # own grep arguments). The seed-side emulation heredocs are Python dict-literal lines without
+  # any `grep -cF` token.
+  helpers_old_q_r=$(grep -F '"failure_reason":' "$h" | grep -vc 'grep -cF')
+  helpers_old_q_rm=$(grep -F '"failure_remediation":' "$h" | grep -vc 'grep -cF')
+  helpers_new_q_r=$(grep -F '"reason":' "$h" | grep -vc 'grep -cF')
+  helpers_new_q_rm=$(grep -F '"remediation":' "$h" | grep -vc 'grep -cF')
+  [ "$old_q_r" = "0" ] || { echo "agents: stale '\"failure_reason\":' quoted-key dict-literal still present (5 Step 0.5 .append sites should have been renamed)"; return 1; }
+  [ "$old_q_rm" = "0" ] || { echo "agents: stale '\"failure_remediation\":' quoted-key dict-literal still present"; return 1; }
+  [ "$reason_n" -ge 5 ] || { echo "agents: '\"reason\":' count must be ≥ 5 (one per Step 0.5 .append site)"; return 1; }
+  [ "$remediation_n" -ge 5 ] || { echo "agents: '\"remediation\":' count must be ≥ 5"; return 1; }
+  [ "$canonical" -ge 2 ] || { echo "agents: canonical phrase 'probe_id / reason / remediation' must appear at ≥ 2 surfaces (L199 description AND L268 fail-open coverage)"; return 1; }
+  [ "$old_canonical" = "0" ] || { echo "agents: stale canonical phrase 'probe_id / failure_reason / failure_remediation' still present at L199 or L268"; return 1; }
+  [ "$translator_bridge" -ge 1 ] || { echo "agents: translator bridge 'receipt's optional failure_reason' must be preserved (Foundation §3.3 carve-out)"; return 1; }
+  [ "$scorer_token" -ge 2 ] || { echo "agents: 'scorer_failure_reason' renderer-stdin contract must be preserved (distinct token, not a probe_failures key)"; return 1; }
+  [ "$l389_old_r" = "0" ] || { echo "agents: L389-area pre-rename inline-prose 'failure_reason: \"receipt write failed:' still present"; return 1; }
+  [ "$l389_new_r" -ge 1 ] || { echo "agents: L389-area post-rename inline-prose 'reason: \"receipt write failed:' missing"; return 1; }
+  [ "$l389_old_rm" = "0" ] || { echo "agents: L389-area pre-rename inline-prose 'failure_remediation: \"check KB mount' still present"; return 1; }
+  [ "$l389_new_rm" -ge 1 ] || { echo "agents: L389-area post-rename inline-prose 'remediation: \"check KB mount' missing"; return 1; }
+  [ "$helpers_old_q_r" = "0" ] || { echo "smoke-helpers.sh: seed-side emulation '\"failure_reason\":' still present (L2510 / L3034 should have been renamed)"; return 1; }
+  [ "$helpers_old_q_rm" = "0" ] || { echo "smoke-helpers.sh: seed-side emulation '\"failure_remediation\":' still present"; return 1; }
+  [ "$helpers_new_q_r" -ge 2 ] || { echo "smoke-helpers.sh: '\"reason\":' count must be ≥ 2 (two seed-side emulation heredocs)"; return 1; }
+  [ "$helpers_new_q_rm" -ge 2 ] || { echo "smoke-helpers.sh: '\"remediation\":' count must be ≥ 2"; return 1; }
+}
+
+check_cross_auditor_blocker_sanitization_truncate_before_escape() {
+  local f="agents/cross-auditor.md"
+  local skl="skills/feature/SKILL.md"
+  local block t199 escape_after old_cap ca_old_summary skl_t199 skl_old_cap
+  # Stateful awk anchor (definite end-marker on next H3 — two-pattern range form is degenerate
+  # because both `^### YAML-safety serialization rule` and the generic `^### ` end pattern would
+  # match the same start line and collapse the range to one record).
+  block=$(awk '/^### YAML-safety serialization rule/{p=1; next} p && /^### Spec-mode return contract/{exit} p' "$f")
+  t199=$(echo "$block" | grep -cF 'Truncate to 199')
+  # Ordering positive: escape step appears AFTER truncate step in document order. The producer
+  # markdown wraps the action verb in bold (`**Escape single quotes** by doubling`), so anchor on
+  # the bold-wrapped form which is the unique fingerprint of the producer-side rewritten step.
+  escape_after=$(echo "$block" | awk '/Truncate to 199/{seen=1} /\*\*Escape single quotes\*\*/{if(seen) print "AFTER"}' | grep -cF AFTER)
+  # X18 (a) — pre-rewrite numbered-step literal absent at producer side.
+  old_cap=$(grep -cF 'Cap length** at 200' "$f")
+  # §3.0 sweep gap — pre-rewrite L420 summary literal absent at producer side.
+  ca_old_summary=$(grep -cF '200-char cap' "$f")
+  # X10 + X18 (c) — consumer-side post-rewrite literal at BOTH SKILL.md L517 AND L521.
+  skl_t199=$(grep -cF 'truncate to 199 chars' "$skl")
+  # X10 — consumer-side pre-rewrite literal absent at both SKILL.md surfaces.
+  skl_old_cap=$(grep -cF '200-char cap' "$skl")
+  [ "$t199" -ge 1 ] || { echo "producer-side §YAML-safety rule missing 'Truncate to 199' literal"; return 1; }
+  [ "$escape_after" -ge 1 ] || { echo "producer-side ordering wrong — escape step does not appear AFTER truncate step"; return 1; }
+  [ "$old_cap" = "0" ] || { echo "producer-side stale 'Cap length** at 200' numbered-rule literal still present"; return 1; }
+  [ "$ca_old_summary" = "0" ] || { echo "producer-side L420 summary still names '200-char cap' (stale alongside rewritten numbered steps)"; return 1; }
+  [ "$skl_t199" -ge 2 ] || { echo "consumer-side missing 'truncate to 199 chars' at BOTH SKILL.md L517 AND L521 (count must be ≥ 2)"; return 1; }
+  [ "$skl_old_cap" = "0" ] || { echo "consumer-side stale '200-char cap' phrasing still present in SKILL.md"; return 1; }
+  # X18(b) closure — POSITIVE clause locking the rewritten L428 summary literal. Without this,
+  # a future maintainer can rewrite or delete the summary line freely (mutation-test confirmed).
+  local ca_new_summary
+  ca_new_summary=$(grep -cF 'every newline→space conversion site, every escape-single-quote site, and every truncate-to-199 site' "$f")
+  [ "$ca_new_summary" -ge 1 ] || { echo "producer-side L428 summary literal missing the canonical 'every X site, every Y site, ...' phrasing"; return 1; }
+}
+
+check_cross_auditor_r_rule_path_env_first_precedence() {
+  local f="agents/cross-auditor.md"
+  local block uncond realp stale_l296 stale_l303 stale_l340 l303_post l340_post
+  # Stateful awk anchor: open at the new env-first paragraph, close at the next anchor.
+  # Robust to either physical layout (single paragraph or split into multiple physical lines)
+  # because the close pattern is a definite sentinel introduced by the rewrite itself.
+  block=$(awk '/^Path resolution: when/{p=1; print; next} p && /^If both resolutions fail/{print; exit} p{print}' "$f")
+  uncond=$(echo "$block" | grep -cF 'UNCONDITIONALLY to `${CLAUDE_PLUGIN_ROOT}')
+  realp=$(echo "$block" | grep -cF 'realpath')
+  # Stale-prose pre-negatives (locks pre-rewrite literals absent at L296/L303/L340 surfaces).
+  stale_l296=$(grep -cF "legacy invocations the agent's launch cwd is the ai-dev-team plugin root" "$f")
+  stale_l303=$(grep -cF 'not reachable at the relative path' "$f")
+  stale_l340=$(grep -cF 'relative path from agent cwd' "$f")
+  # Post-rewrite positives (locks the new wording at parallel surfaces L303 + L340 — the L296
+  # awk-bounded range exits before L303, so global grep is the right scope for those parallel sites).
+  l303_post=$(grep -cF 'not reachable at the env-var path' "$f")
+  l340_post=$(grep -cF 'env-first per §security mode bridge above' "$f")
+  [ "$uncond" -ge 1 ] || { echo "L296 paragraph missing 'UNCONDITIONALLY to \${CLAUDE_PLUGIN_ROOT}' env-first directive"; return 1; }
+  [ "$realp" -ge 1 ] || { echo "L296 paragraph missing 'realpath' fallback safety check"; return 1; }
+  [ "$stale_l296" = "0" ] || { echo "L296 stale pre-rewrite prose still present (legacy-cwd phrasing)"; return 1; }
+  [ "$stale_l303" = "0" ] || { echo "L303 stale 'not reachable at the relative path' wording still present"; return 1; }
+  [ "$stale_l340" = "0" ] || { echo "L340 stale 'relative path from agent cwd' parenthetical still present"; return 1; }
+  [ "$l303_post" -ge 1 ] || { echo "L303 missing post-rewrite 'not reachable at the env-var path' literal"; return 1; }
+  [ "$l340_post" -ge 1 ] || { echo "L340 missing post-rewrite 'env-first per §security mode bridge above' literal"; return 1; }
+  # C2 closure — L311 contradiction with L300 env-first semantics. The pre-rewrite L311
+  # parenthetical claimed the unset-env fallback runs even when env IS set ("env-set + file-
+  # missing AND the unset-env fallback above also fails"), contradicting L300's strict env-set
+  # → no-relative-fallback rule. The rewrite aligns L311 with L300: env-set + file-missing →
+  # warn directly; env-unset + relative-realpath fallback fails → warn.
+  local stale_l311 l311_post
+  stale_l311=$(grep -cF 'unset-env fallback above also fails' "$f")
+  l311_post=$(grep -cF 'no relative fallback when env is set' "$f")
+  [ "$stale_l311" = "0" ] || { echo "L311 stale 'unset-env fallback above also fails' contradictory phrasing still present"; return 1; }
+  [ "$l311_post" -ge 1 ] || { echo "L311 missing post-rewrite 'no relative fallback when env is set' literal"; return 1; }
 }

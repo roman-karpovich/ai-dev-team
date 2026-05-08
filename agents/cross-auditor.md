@@ -196,7 +196,7 @@ Runs after Step 0 (PR materialization, if PR mode) and BEFORE Step 1 (Codex laun
 
 - `probe_receipts[]` — happy-path receipt_metadata dicts for degraded-mode synthesis backstop (Foundation §3.7 X18).
 - `probe_findings[]` — canonical-payload findings with `mode_at_emit` attached (pre-ID allocation).
-- `probe_failures_seed[]` — six-way fail-open entries (X4 + iter-2 X11 resolutions) with populated `probe_id` / `failure_reason` / `failure_remediation` triples.
+- `probe_failures_seed[]` — six-way fail-open entries (X4 + iter-2 X11 resolutions) with populated `probe_id` / `reason` / `remediation` triples.
 - `probe_receipt_metadata_by_provisional_id{}` — side-map (iter-4 X19) keyed by `provisional_id` carrying `receipt_metadata` from Step 0.5 to Step 3 stage 4.5 (dedupe/scorer strip unknown fields between stages).
 
 Pseudocode (§3.5):
@@ -213,8 +213,8 @@ for probe_id, mode in probe_modes.items():
   if not exists(probe_script):                          # fail-open class 1: script missing
     probe_failures_seed.append({
       "probe_id": probe_id,
-      "failure_reason": f"probe script {probe_script} not found",
-      "failure_remediation": "update ai-dev-team plugin or remove probe_modes entry",
+      "reason": f"probe script {probe_script} not found",
+      "remediation": "update ai-dev-team plugin or remove probe_modes entry",
     })
     continue
   input_json = build_probe_input(probe_id)
@@ -227,15 +227,15 @@ for probe_id, mode in probe_modes.items():
   except TimeoutError as e:                             # fail-open class 2: timeout
     probe_failures_seed.append({
       "probe_id": probe_id,
-      "failure_reason": f"probe exceeded 60s timeout: {str(e)[:200]}",
-      "failure_remediation": f"re-run /cross-audit; if persistent, shrink audit scope or file probe_{probe_id} performance bug",
+      "reason": f"probe exceeded 60s timeout: {str(e)[:200]}",
+      "remediation": f"re-run /cross-audit; if persistent, shrink audit scope or file probe_{probe_id} performance bug",
     })
     continue
   except NonZeroExit as e:                              # fail-open class 3: non-zero (subsumes uncaught Python exceptions — interpreter exits non-zero)
     probe_failures_seed.append({
       "probe_id": probe_id,
-      "failure_reason": f"probe exited non-zero: {str(e)[:200]}",
-      "failure_remediation": f"re-run /cross-audit after checking probe_{probe_id} stderr logs",
+      "reason": f"probe exited non-zero: {str(e)[:200]}",
+      "remediation": f"re-run /cross-audit after checking probe_{probe_id} stderr logs",
     })
     continue
   try:
@@ -243,16 +243,16 @@ for probe_id, mode in probe_modes.items():
   except JSONDecodeError as e:                          # fail-open class 4: JSONDecode
     probe_failures_seed.append({
       "probe_id": probe_id,
-      "failure_reason": f"probe stdout not valid JSON: {str(e)[:200]}",
-      "failure_remediation": f"fix probe_{probe_id} to emit canonical JSON",
+      "reason": f"probe stdout not valid JSON: {str(e)[:200]}",
+      "remediation": f"fix probe_{probe_id} to emit canonical JSON",
     })
     continue
   schema_ok, schema_err = validate_probe_output_schema(result)
   if not schema_ok:                                     # fail-open class 5: schema invalid
     probe_failures_seed.append({
       "probe_id": probe_id,
-      "failure_reason": f"probe output schema invalid: {schema_err}",
-      "failure_remediation": f"fix probe_{probe_id} to conform to §3.3 stdout shape",
+      "reason": f"probe output schema invalid: {schema_err}",
+      "remediation": f"fix probe_{probe_id} to conform to §3.3 stdout shape",
     })
     continue
   # Happy path — transport metadata via side-map keyed by provisional_id (iter-4 X19).
@@ -265,7 +265,7 @@ for probe_id, mode in probe_modes.items():
 
 `validate_probe_output_schema(result)`: returns `(True, None)` iff `result` is an object with both `findings` (list) and `receipt_metadata` (object) keys; each `findings[]` element is an object carrying `provisional_id` (string), `sources` (list), `severity` (string), `title` (string), `file` (string), `description` (string), `fix` (string), `fingerprint_anchors` (object), `canonical_payload` (object); `receipt_metadata` carries `probe_id` (string), `probe_version` (string), `trigger_input_hash` (string), `scope_files_read` (list), `skipped_files` (list), `emitted_at` (string), `degraded_mode` (bool), `eligible_reason` (string). Any violation returns `(False, "<short error>")`.
 
-**Fail-open coverage** (spec 2026-04-21-probe-e-diff-scope-leak §3.5): six classes explicitly handled as distinct branches — probe-script-missing, TimeoutError, NonZeroExit (subsumes uncaught Python exceptions — the interpreter exits non-zero), JSONDecodeError, schema validation failure, receipt-write IOError/OSError (class 6 lives later in Step 3 stage 4.5). Each class synthesizes a `probe_failures_seed[]` entry with a populated `probe_id` / `failure_reason` / `failure_remediation` triple. The renderer's existing hard-stop on malformed `probe_failures[]` (Foundation §3.3 X10) is the backstop — Step 0.5 MUST emit fully-populated string triples.
+**Fail-open coverage** (spec 2026-04-21-probe-e-diff-scope-leak §3.5): six classes explicitly handled as distinct branches — probe-script-missing, TimeoutError, NonZeroExit (subsumes uncaught Python exceptions — the interpreter exits non-zero), JSONDecodeError, schema validation failure, receipt-write IOError/OSError (class 6 lives later in Step 3 stage 4.5). Each class synthesizes a `probe_failures_seed[]` entry with a populated `probe_id` / `reason` / `remediation` triple. The renderer's existing hard-stop on malformed `probe_failures[]` (Foundation §3.3 X10) is the backstop — Step 0.5 MUST emit fully-populated string triples.
 
 ## Codex dispatch (background CLI + polling)
 
@@ -293,14 +293,22 @@ Codex audits run via the `${CLAUDE_PLUGIN_ROOT}/hooks/lib/codex_audit_dispatch.s
 
 **Step 1c — Proceed to Step 2**: Codex is now running in the background. Do NOT wait. Proceed immediately to your own audit (Step 2). Poll `BashOutput(shell_id_codex)` between significant blocks of Step 2 work and at the start of Step 3 to keep the watchdog alive and check progress.
 
-When `mode ∈ {security, full}`, before assembling the prompt: parse the frontmatter `rules:` block in `skills/feature/references/code-quality-rules.md`. Path resolution: in legacy invocations the agent's launch cwd is the ai-dev-team plugin root, so the relative path `skills/feature/references/code-quality-rules.md` resolves directly. In PR-mode dispatch (Step 0 above) the worktree is checked out to the TARGET repo's PR head via `gh pr checkout --repo <pr_repo>`, so the relative path resolves only in the self-anchoring case where the target repo IS the plugin; otherwise resolve via the plugin source through the `${CLAUDE_PLUGIN_ROOT}` env var (`${CLAUDE_PLUGIN_ROOT}/skills/feature/references/code-quality-rules.md`). Then branch on `project_type`:
+When `mode ∈ {security, full}`, before assembling the prompt: parse the frontmatter `rules:` block in `skills/feature/references/code-quality-rules.md`.
+
+Path resolution: when `${CLAUDE_PLUGIN_ROOT}` is set (always set in normal Claude Code execution per the plugin runtime contract), resolve UNCONDITIONALLY to `${CLAUDE_PLUGIN_ROOT}/skills/feature/references/code-quality-rules.md`. The env-var path always points at the plugin's own checkout, so target-repo shadowing is structurally impossible.
+
+ONLY fall back to the relative path `skills/feature/references/code-quality-rules.md` when `${CLAUDE_PLUGIN_ROOT}` is unset (legacy / dev-mode invocation outside the plugin runtime), AND ONLY when `realpath` of the relative path resolves inside the ai-dev-team plugin checkout (i.e. the target repo IS the plugin — self-anchoring case verified at runtime, not assumed).
+
+If both resolutions fail, emit the existing `⚠ code-quality-rules.md not reachable` warning and skip cluster load. The realpath check (step 2 of fallback) closes the case where `${CLAUDE_PLUGIN_ROOT}` is unset AND a target repo coincidentally has a `skills/feature/references/code-quality-rules.md` file at the same relative path — without realpath verification, the unset-env fallback would still load the wrong file.
+
+Then branch on `project_type`:
 
 - If `project_type` is set to one of `{smart_contract, backend, frontend, data_pipeline}`: filter for entries where `category: security` AND `enforced_by` contains `cross-auditor:security` AND `applies_to` includes `"all"` OR the active `project_type`, then for each matched entry read its body section (`## R<N> —` heading through the next `^---$` divider) and append the body verbatim to the Codex prompt under a new section `### Security R-rule cluster (project_type=<value>):` BEFORE the Files-to-audit list. Pass-through is verbatim — DO NOT paraphrase.
 - If `project_type` is unset OR has a non-allowlist value: emit the degraded warning `⚠ R-rule cluster NOT loaded — project_type was unset; security audit running on focus-areas-only fallback. Set project_type in spec frontmatter or .ai-dev-team.yml to activate.` (byte-exact prose; rendered as a bullet at the locked H1 emit location — see "Warning emit location" below) AND normalize the active filter's project clause to `"all"` per `skills/feature/references/code-quality-rules.md` §Taxonomy Trigger A, then run the filter — rules with `applies_to: ["all"]` continue to load; rules with project-specific lists do not match because no specific project_type is set. NOT silent skip; NOT cluster bypass; the filter runs at the normalized scope.
 
 **Warning emit location**: when the unset/non-allowlist branch above fires, render the warning as one additional bullet line in the findings.md H1 bullet block (the `- Date: / - Iteration: / - Mode: / - Codex: / - Status:` block in the §findings-doc emit contract template below). Append immediately after the `- Status: IN PROGRESS` line, in the form `- R-rule cluster: NOT loaded — project_type was unset; security audit running on focus-areas-only fallback. Set project_type in spec frontmatter or .ai-dev-team.yml to activate.`. The bullet is conditional — emitted only when the gate fires; when `project_type` resolves to an allowlist value, the line is omitted entirely. The grep-stable substring `R-rule cluster NOT loaded` matches the prose-spec literal byte-exact; the rendered-bullet substring `R-rule cluster: NOT loaded` (with colon) matches the rendered-output form.
 
-If the frontmatter parse fails (Trigger B), emit the stderr warning and load every body section regardless of filter; the Codex prompt receives the full set under the same heading. If `code-quality-rules.md` is not reachable at the relative path AND `CLAUDE_PLUGIN_ROOT` is unset OR the `${CLAUDE_PLUGIN_ROOT}/skills/feature/references/code-quality-rules.md` fallback also fails, emit `⚠ code-quality-rules.md not reachable — applying focus-areas-only fallback per §security mode bullet lists below` and skip the cluster load.
+If the frontmatter parse fails (Trigger B), emit the stderr warning and load every body section regardless of filter; the Codex prompt receives the full set under the same heading. If `code-quality-rules.md` is not reachable at the env-var path (i.e. `${CLAUDE_PLUGIN_ROOT}` is set but the file is missing under it), emit the warning directly — no relative fallback when env is set, per the strict env-first precedence above. The relative-path fallback fires ONLY when `${CLAUDE_PLUGIN_ROOT}` is unset AND the relative-path-with-realpath check also fails. In either unreachable case, emit `⚠ code-quality-rules.md not reachable — applying focus-areas-only fallback per §security mode bullet lists below` and skip the cluster load.
 
 **Code mode** Codex prompt template:
 ```
@@ -337,7 +345,7 @@ Include the resulting file list as "Files to audit" in the prompt template above
 
 While Codex runs, perform your own systematic review of all files in scope.
 
-Apply focus areas from the specified mode. For `mode ∈ {security, full}` runs, also apply the filtered R-rule body sections from `skills/feature/references/code-quality-rules.md` per §security mode bridge above (path-resolution: relative path from agent cwd in legacy / self-anchoring PR mode, otherwise `${CLAUDE_PLUGIN_ROOT}/skills/feature/references/code-quality-rules.md` fallback; unreachable-fallback as documented above). Each filtered rule contributes one or more bad-code anti-patterns (the rule's `**Bad code**` block) and one or more good-code conventions (the rule's `**Good code**` block). Flag any file in scope matching a bad-code anti-pattern as a finding with severity per the §Severity Ladder, citing the rule id (e.g. `R10 SQLi`) and the bad-code shape. The supplemental focus-areas bullet lists (Smart Contracts / DeFi, Backend Services, Frontend if added) cover classes not yet codified as R-rules and apply additively. Use the mode-appropriate severity ladder above. Collect only CRITICAL and HIGH.
+Apply focus areas from the specified mode. For `mode ∈ {security, full}` runs, also apply the filtered R-rule body sections from `skills/feature/references/code-quality-rules.md` per §security mode bridge above (path-resolution: env-first per §security mode bridge above (`${CLAUDE_PLUGIN_ROOT}/skills/feature/references/code-quality-rules.md` when env set; relative-path-with-realpath-verification only when env unset; unreachable-fallback as documented above)). Each filtered rule contributes one or more bad-code anti-patterns (the rule's `**Bad code**` block) and one or more good-code conventions (the rule's `**Good code**` block). Flag any file in scope matching a bad-code anti-pattern as a finding with severity per the §Severity Ladder, citing the rule id (e.g. `R10 SQLi`) and the bad-code shape. The supplemental focus-areas bullet lists (Smart Contracts / DeFi, Backend Services, Frontend if added) cover classes not yet codified as R-rules and apply additively. Use the mode-appropriate severity ladder above. Collect only CRITICAL and HIGH.
 
 ## Step 3: Consolidation
 
@@ -386,7 +394,7 @@ After Claude+Codex collection (Steps 1-2 above), run the following five-stage pi
    - **Side-map lookup**: `metadata = probe_receipt_metadata_by_provisional_id[finding["provisional_id"]]`. `provisional_id` is guaranteed present here — stage 2 emit sets it alongside `id` (iter-5 X22); `${CLAUDE_PLUGIN_ROOT}/hooks/lib/dedupe_findings.sh merge_pair` preserves it through probe+LLM merges (iter-5 X23 carried-field list); stage 4.5 id-swap (iter-5 X24) sets `finding["id"] = <allocated_id>` WHILE preserving `finding["provisional_id"]` intact. Only stage 4.5 itself MAY drop `provisional_id` post-write; render does not consume it.
    - **`hashed_probe_output_envelope`** (3 fields, iter-3 X17 distinction): `{probe_id, probe_version, emitted_findings: [finding["canonical_payload"]]}`. sha256 of `json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False)` → `probe_output_hash`.
    - **`on_disk_receipt_body`** (11 fields per iter-4 X21 — `skipped_files` is the 11th body field, NOT in the hashed envelope): `{probe_id, probe_version, mode_at_emit, trigger_input_hash, probe_output_hash, degraded_mode, emitted_at, eligible_reason, scope_files_read, skipped_files, emitted_findings}`. Built as `{**metadata, probe_output_hash, mode_at_emit: finding["mode_at_emit"], emitted_findings: hashed_probe_output_envelope["emitted_findings"]}`. Serialized with the same `json.dumps` parameters as the hashed envelope; the written bytes differ because the body has 8 additional fields.
-   - **Write path + fail-open class 6** (X4 resolution — sixth fail-open branch): `receipt_path = <kb>/repos/<project>/security/<audit_slug>-probe-receipts/<finding["id"]>.json`. On `IOError` / `OSError` during write, append an entry `{probe_id: metadata["probe_id"], failure_reason: "receipt write failed: …", failure_remediation: "check KB mount is writable + re-run /cross-audit"}` to `probe_failures_seed[]`; set `finding["probe_receipt"] = None` (finding stays in findings.md; degraded-mode banner line renders). On success: `finding["probe_receipt"] = receipt_path`.
+   - **Write path + fail-open class 6** (X4 resolution — sixth fail-open branch): `receipt_path = <kb>/repos/<project>/security/<audit_slug>-probe-receipts/<finding["id"]>.json`. On `IOError` / `OSError` during write, append an entry `{probe_id: metadata["probe_id"], reason: "receipt write failed: …", remediation: "check KB mount is writable + re-run /cross-audit"}` to `probe_failures_seed[]`; set `finding["probe_receipt"] = None` (finding stays in findings.md; degraded-mode banner line renders). On success: `finding["probe_receipt"] = receipt_path`.
 
 5. **`probe_failures[]` synthesis from degraded-mode receipts** (X18 producer contract): walk `probe_receipts[]`; for each receipt with `degraded_mode: true`, emit one item `{probe_id, reason, remediation}` into `probe_failures[]`:
    - `reason` = receipt's optional `failure_reason` if set and non-empty string; otherwise generic fallback `"probe produced degraded_mode=true without surfacing reason/remediation strings"`.
@@ -413,36 +421,33 @@ The cross-auditor NEVER writes `self_fallback`, `contract_violated`, or `skipped
 Reason text extracted from Codex stderr can contain apostrophes, newlines, or other YAML-hostile characters. Before emitting `evidence_blockers:`, the cross-auditor MUST normalize each blocker string:
 
 1. **Replace newlines** (`\n`, `\r`, `\r\n`) with a single space.
-2. **Escape single quotes** by doubling (`'` → `''`) — required for YAML single-quoted scalar style.
-3. **Cap length** at 200 characters (consistent with existing `[:200]` truncation elsewhere in this agent). Append `…` if truncated.
+2. **Truncate to 199** characters (leaving 1 char headroom for the `…` ellipsis suffix). Append `…` if truncation occurred → resulting string ≤ 200 chars on the human-meaningful prefix.
+3. **Escape single quotes** by doubling (`'` → `''`) — required for YAML single-quoted scalar style. The string MAY now exceed 200 chars after escaping (each `'` becomes 2 chars); this is acceptable because YAML single-quoted scalar style handles arbitrary length, and the truncation in step 2 already operates on the human-meaningful prefix BEFORE escapes are added, so `''` pairs are atomic (added as units, never split mid-escape).
 4. **Emit in single-quoted YAML form** (`'sanitized text'`) inside the list literal: `evidence_blockers: ['codex audit unavailable: <sanitized-reason>']`.
 
-This sanitize-blocker rule applies to every newline→space conversion site, every escape-single-quote site, and every 200-char cap site in this agent's blocker emission path.
+This sanitize-blocker rule applies to every newline→space conversion site, every escape-single-quote site, and every truncate-to-199 site in this agent's blocker emission path.
 
 ### Spec-mode return contract (inline output)
 
-For `mode: spec`, the cross-auditor does NOT write findings.md to disk; the consolidated findings are returned as inline output text to the calling feature skill. To preserve the orchestrator-readable handshake in this mode, the inline output MUST end with TWO adjacent literal final lines, each on its own line, in this order, with NO trailing prose after them:
+For `mode: spec`, the cross-auditor does NOT write findings.md to disk; the consolidated findings are returned as inline output text to the calling feature skill. To preserve the orchestrator-readable handshake in this mode, the inline-return text MUST end with EXACTLY THREE physical lines, in this order, AT END-OF-RESPONSE (no trailing characters, no trailing prose, no trailing blank lines beyond the final line's `\n`):
 
 ```
+# CROSS-AUDIT EVIDENCE FOOTER
 evidence_class: <value>
 evidence_blockers: <YAML-list>
 ```
 
-Example (dual_model success):
+The first of these three lines is the EVIDENCE FOOTER sentinel marker (the obfuscated form `CROSS-AUDIT-EVIDENCE-FOOTER` with hyphens substituted for the spaces — the canonical spaced literal lives ONLY in the fenced documentation block above, reserved for the actual three-line footer block at end-of-response). The sentinel is byte-exact and serves two roles: (a) it gives the orchestrator's parser an unambiguous lock to the actual footer (prevents example-echo lifting); (b) it visually demarcates the footer for human readers reviewing the audit response.
 
-```
-evidence_class: dual_model
-evidence_blockers: []
-```
+Examples illustrating the `evidence_class` and `evidence_blockers` value shapes (the cross-audit evidence footer comment line is omitted from these illustrations per the sentinel-obfuscation rule below — the canonical spaced literal lives ONLY in the fenced template above; the obfuscated form `CROSS-AUDIT-EVIDENCE-FOOTER` would precede each example pair when the agent actually emits the footer):
 
-Example (single_model fail-open):
+dual_model success — `evidence_class: dual_model` paired with `evidence_blockers: []` (empty list).
 
-```
-evidence_class: single_model
-evidence_blockers: ['codex audit unavailable: connection refused']
-```
+single_model fail-open — `evidence_class: single_model` paired with `evidence_blockers: ['codex audit unavailable: connection refused']`.
 
-The orchestrator parses by reading the LAST two physical non-empty lines of the captured return text (`last_two=$(printf '%s\n' "$captured" | awk 'NF' | tail -2)`) and applying two prefix checks: the second of those two lines (the FINAL non-empty physical line of the response) MUST start with `evidence_blockers: `, and the first of the two (the immediately preceding non-empty physical line) MUST start with `evidence_class: `. If fewer than two non-empty lines exist OR either prefix check fails, the orchestrator MUST treat the audit as `contract_violated` (cross-auditor return signal not parseable) and record the parse failure as a blocker — see SKILL.md §3.5b Contract-violation rule for the orchestrator-side read path. This stricter shape (last-two-physical-non-empty + prefix-check, replacing the older `grep -E … | tail -2` form) closes two failure modes the loose parser missed: (a) **forgotten-footer-with-example-echo** — the agent omits the real footer but echoes documentation examples (such as the fenced examples earlier in this section) in its prose, where `grep | tail -2` would lift the example text and treat the audit as clean; (b) **trailing-prose** — the agent emits the real footer then appends a sentence (apology, summary), where the loose parser would still grab the right pair via `grep | tail -2` and the trailing-prose violation stays invisible. Adjacency-and-EOF enforcement is the load-bearing property both modes require.
+**Sentinel-obfuscation rule (self-anchoring carve-out)**: agents auditing `agents/cross-auditor.md` itself (cross-audits where this file appears in the diff scope OR is loaded as a focus area) MUST NOT reproduce the canonical spaced sentinel literal mid-prose. The canonical spaced literal is RESERVED for the actual three-line footer block at end-of-response (the fenced documentation example block above is the single producer-side authoritative documentation site for the canonical form). When the agent needs to quote, discuss, or reference the sentinel mid-prose, it MUST use one of these obfuscated forms: (i) the description `the EVIDENCE FOOTER sentinel marker`, (ii) the hyphenated literal `CROSS-AUDIT-EVIDENCE-FOOTER` (substituting hyphens for the spaces in the canonical form), (iii) the prose `the cross-audit evidence footer comment line`. This rule prevents the consumer-side EOF-adjacency parser (SKILL.md §spec-mode parser) from being fooled by mid-prose echoes when the cross-auditor reads its own source as part of an audit. The defense-in-depth rationale: keep the canonical form to the single fenced documentation site, route all other references through the obfuscated forms, eliminate ambiguity at the source.
+
+The orchestrator parses by FIRST normalizing the captured return text to strip ALL trailing newlines (a transport-layer artifact — bash `$(cmd)` substitution strips them coincidentally, but file reads / `read -d ''` / MCP byte-exact transport preserve them and would shift the `tail -3` window off the real footer), THEN reading the LAST THREE physical lines via `tail -3` and asserting byte-exact full-line equality on the first-of-three against the canonical spaced sentinel literal (full-line equality, NOT substring), prefix-check on the second-of-three (`evidence_class: `), prefix-check on the third-of-three (`evidence_blockers: `). If the first-of-three byte-exact full-line equality check fails OR either prefix check fails, the orchestrator MUST treat the audit as `contract_violated` (cross-auditor return signal not parseable) and record the parse failure as a blocker — see SKILL.md §3.5b Contract-violation rule for the orchestrator-side read path. EOF-adjacency on `tail -3` closes two failure modes the prior shape missed: (a) **forgotten-footer-with-example-echo** — the agent omits the real footer but echoes documentation examples (such as the fenced example earlier in this section) in its prose; the byte-exact full-line equality check on the first-of-three at EOF-adjacent position fails when only mid-prose echoes exist and no real footer block lives at end-of-response; (b) **trailing-prose-after-real-footer** — the agent emits the real footer then appends a sentence (apology, summary); the trailing prose pushes the sentinel away from the EOF-adjacent slot, the first-of-three full-line equality check fails. Both modes route to `contract_violated` with blocker `'sentinel not at expected EOF-adjacent position'`. Adjacency-and-EOF enforcement on `tail -3` with byte-exact first-line full-line equality is the load-bearing property both modes require.
 
 ## Step 4: Write Output Documents
 
