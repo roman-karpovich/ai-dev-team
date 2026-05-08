@@ -69,10 +69,10 @@ RE_YARN_ENTRY = re.compile(
 )
 RE_YARN_VERSION = re.compile(r'^\s+version[:\s]\s*"?([^"\s]+)"?')
 RE_PNPM_PACKAGE = re.compile(
-    r"^\s+/?([^/@\s][^@:\s]*|@[^/]+/[^@:\s]+)@([0-9][0-9A-Za-z.+-]*)(?:[_(].*?)?:"
+    r"^\s+'?/?([^/@\s'][^@:\s']*|@[^/]+/[^@:\s']+)@([0-9][0-9A-Za-z.+-]*)(?:[_(].*?)?'?:"
 )
 RE_PNPM_PATCH = re.compile(
-    r"^\s+/?([^/@\s][^@:\s]*|@[^/]+/[^@:\s]+)@patch:"
+    r"^\s+'?/?([^/@\s'][^@:\s']*|@[^/]+/[^@:\s']+)@patch:"
 )
 YARN_PROTOS = (
     "@npm:", "@workspace:", "@patch:", "@file:", "@link:",
