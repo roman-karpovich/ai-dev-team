@@ -3,7 +3,6 @@
     "serde": {"latest_major": 1},
     "tokio": {"latest_major": 1}
   },
-  "go": {},
   "npm": {
     "axios": {"latest_major": 1},
     "express": {"latest_major": 4},
