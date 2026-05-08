@@ -65,7 +65,7 @@ rules:
   - id: R13
     short: plain-text-secrets-in-ci
     category: security
-    applies_to: [backend]
+    applies_to: [all]
     enforced_by: [cross-auditor:security]
   - id: R14
     short: missing-audit-logging-on-sensitive-actions
@@ -666,7 +666,22 @@ jobs:
 ```
 
 ```yaml
-# OIDC short-lived token — no long-lived secret committed at all
+# OIDC short-lived token — minimal permissions; no checkout step needed.
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ci-deploy
+          aws-region: us-east-1
+```
+
+```yaml
+# OIDC + repo checkout — `contents: read` is justified by the explicit
+# `actions/checkout@v4` step that needs to read repo files.
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -674,6 +689,7 @@ jobs:
       id-token: write
       contents: read
     steps:
+      - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::123456789012:role/ci-deploy

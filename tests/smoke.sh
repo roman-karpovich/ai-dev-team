@@ -5869,6 +5869,7 @@ check "r9-idor-covers-state-changing-endpoints"    check_r9_idor_covers_state_ch
 check "r10-allowlist-literal-set-definition"       check_r10_allowlist_literal_set_definition
 check "r-rule-metadata-consistency"                check_r_rule_metadata_consistency
 check "r11-audience-all-and-encoded-secret-shapes" check_r11_audience_all_and_encoded_secret_shapes
+check "r13-oidc-minimal-permissions"               check_r13_oidc_minimal_permissions
 check "cross-auditor-loads-security-cluster"       check_cross_auditor_loads_security_cluster
 check "cross-auditor-step1-step2-load-instructions" check_cross_auditor_step1_step2_load_instructions
 echo

@@ -28,7 +28,7 @@ R_RULE_GOLDEN_TABLE = {
     "R10": ("security", ["backend"], ["cross-auditor:security"]),
     "R11": ("security", ["all"],     ["cross-auditor:security"]),  # PR-D Step 3 — was [backend]
     "R12": ("security", ["backend"], ["cross-auditor:security"]),
-    "R13": ("security", ["backend"], ["cross-auditor:security"]),
+    "R13": ("security", ["all"],     ["cross-auditor:security"]),  # PR-D Step 4 — was [backend]
     "R14": ("security", ["backend"], ["cross-auditor:security"]),
 }
 
@@ -40,7 +40,7 @@ R_RULE_CLUSTER_EXPECTED_APPLIES = {
     "R10": ["backend"],
     "R11": ["all"],      # PR-D Step 3 — was [backend]
     "R12": ["backend"],
-    "R13": ["backend"],
+    "R13": ["all"],      # PR-D Step 4 — was [backend]
     "R14": ["backend"],
 }
 

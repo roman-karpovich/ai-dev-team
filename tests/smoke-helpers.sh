@@ -3885,13 +3885,14 @@ for entry in rules:
 
 # (i) Trigger A worked example: filter(rules, project_type="all") returns
 # R1..R8 [all] + any R-rule with [all] audience. Was 8 before any cluster
-# audience flips; bumped to 9 after PR-D Step 3 flips R11 to [all].
+# audience flips; 9 after PR-D Step 3 flipped R11 to [all]; 10 after
+# PR-D Step 4 flips R13 to [all].
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_all = trigger_a_filter(rules, "all")
-if len(filtered_all) != 9:
-    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 9 (assertion i)", file=sys.stderr)
+if len(filtered_all) != 10:
+    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 10 (assertion i)", file=sys.stderr)
     sys.exit(1)
 
 # (j) per-rule golden mapping — imported from shared module so the same dict is
@@ -4108,11 +4109,11 @@ if len(filtered_backend) != 14:
     sys.exit(1)
 
 # (g) smart_contract filter returns R1..R8 + any R-rule with [all] audience.
-# Was 8 before any cluster audience flips; bumped to 9 after PR-D Step 3
-# flips R11 to [all].
+# Was 8 before any cluster audience flips; 9 after PR-D Step 3 flipped R11
+# to [all]; 10 after PR-D Step 4 flips R13 to [all].
 filtered_sc = trigger_a_filter(rules, "smart_contract")
-if len(filtered_sc) != 9:
-    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 9 (assertion g)", file=sys.stderr)
+if len(filtered_sc) != 10:
+    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 10 (assertion g)", file=sys.stderr)
     sys.exit(1)
 
 # (h) Per-rule canonical-pattern presence — Good code block ONLY (block-level
@@ -4521,6 +4522,55 @@ if "Encoding is not concealment" not in sec:
     sys.exit(1)
 
 print("R11 audience [all] + encoded-secret Bad-code shapes (PEM/JWT/base64url) + prose present (T3.6-T3.9)")
+PY
+}
+
+# R13 OIDC minimal-permissions example (PR-D Step 4).
+# Asserts the R13 Good-code OIDC examples: a forall-implication that any
+# fence containing both `id-token: write` and `contents: read` ALSO
+# contains `actions/checkout`; an existence assertion that a minimal
+# fence (id-token only, no contents:read) is present; an existence
+# assertion that a paired fence (id-token + contents:read +
+# actions/checkout) is present. Audience flip [backend]→[all] is locked
+# by the in-place updates to the existing pins.
+check_r13_oidc_minimal_permissions() {
+  local path="${1:-skills/feature/references/code-quality-rules.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import sys
+sys.path.insert(0, "tests")
+from smoke_rule_helpers import good_block, iter_fences
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+
+fences = list(iter_fences(good_block(text, "R13"), "yaml"))
+if not fences:
+    print(f"{path}: R13 Good-code has no yaml fences (T4 prerequisite)", file=sys.stderr)
+    sys.exit(1)
+
+# Forall-implication: any fence with both id-token:write AND contents:read
+# MUST also contain actions/checkout.
+for f in fences:
+    if "id-token: write" in f and "contents: read" in f:
+        if "actions/checkout" not in f:
+            print(f"{path}: R13 Good-code OIDC fence has 'contents: read' WITHOUT 'actions/checkout' co-located (T4.6/T4.7 forall)", file=sys.stderr)
+            sys.exit(1)
+
+# Existence (minimal): some fence has id-token:write AND no contents:read
+if not any("id-token: write" in f and "contents: read" not in f for f in fences):
+    print(f"{path}: R13 Good-code missing minimal-permissions OIDC fence (T4.6 existence: id-token:write only, no contents:read)", file=sys.stderr)
+    sys.exit(1)
+
+# Existence (paired): some fence has id-token:write AND contents:read AND actions/checkout
+if not any(
+    "id-token: write" in f and "contents: read" in f and "actions/checkout" in f
+    for f in fences
+):
+    print(f"{path}: R13 Good-code missing paired OIDC fence (T4.7 existence: id-token:write + contents:read + actions/checkout co-located)", file=sys.stderr)
+    sys.exit(1)
+
+print("R13 OIDC minimal-permissions + paired example present (T4.6-T4.8)")
 PY
 }
 
