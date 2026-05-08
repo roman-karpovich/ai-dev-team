@@ -5892,6 +5892,7 @@ check "probe-g-detector-fires-on-major-only-no-dot" check_probe_g_detector_fires
 check "probe-g-detector-fires-on-extras-syntax" check_probe_g_detector_fires_on_extras_syntax
 check "probe-g-detector-fires-on-whitespace-eq" check_probe_g_detector_fires_on_whitespace_eq
 check "probe-g-detector-rejects-malformed-requirements" check_probe_g_detector_rejects_malformed_requirements
+check "probe-g-detector-fires-on-uppercase-name-package-lock" check_probe_g_detector_fires_on_uppercase_name_package_lock
 echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---

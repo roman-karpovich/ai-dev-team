@@ -141,6 +141,7 @@ check_probe_g_detector_fires_on_major_only_no_dot behavioral
 check_probe_g_detector_fires_on_extras_syntax behavioral
 check_probe_g_detector_fires_on_whitespace_eq behavioral
 check_probe_g_detector_rejects_malformed_requirements behavioral
+check_probe_g_detector_fires_on_uppercase_name_package_lock behavioral
 
 # Typosquatting probe (Probe H — supply-chain layer)
 check_probe_h_corpus_path_resolution schema

@@ -349,7 +349,7 @@ for rel, abs_path, name in lockfiles:
         ecosystem_packages = corpus.get(ecosystem) or {}
         if not isinstance(ecosystem_packages, dict):
             continue
-        corpus_entry = ecosystem_packages.get(package)
+        corpus_entry = ecosystem_packages.get(package.lower())
         if not isinstance(corpus_entry, dict):
             continue
         latest_major = corpus_entry.get("latest_major")
