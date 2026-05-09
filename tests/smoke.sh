@@ -4213,16 +4213,12 @@ check_cross_auditor_spec_mode_return_contract() {
     echo "cross-auditor.md missing the two adjacent literal final lines 'evidence_class: <value>' / 'evidence_blockers: <YAML-list>'"
     return 1
   fi
-  # 2. SKILL.md (READ-side prose doc) names BOTH literal token forms. SKILL.md
-  #    §3.5b describes the contract in prose with backticked literals (it is
-  #    not a write-side specimen with adjacent code lines), so the equivalent
-  #    strength assertion is that both literal forms appear verbatim.
-  if ! grep -qF 'evidence_class: <value>' "$skill"; then
-    echo "SKILL.md §3.5b missing literal 'evidence_class: <value>' in read-path doc"
-    return 1
-  fi
-  if ! grep -qF 'evidence_blockers: <YAML-list>' "$skill"; then
-    echo "SKILL.md §3.5b missing literal 'evidence_blockers: <YAML-list>' in read-path doc"
+  # 2. SKILL.md (READ-side prose doc) points at the cross-auditor.md canonical site.
+  #    The literal token forms live canonically in cross-auditor.md (clause 1 above
+  #    enforces them there as adjacent lines); SKILL.md's single-source consistent
+  #    representation is a pointer to the §-anchor.
+  if ! grep -qF 'parse per `agents/cross-auditor.md` §Spec-mode return contract' "$skill"; then
+    echo "SKILL.md §3.5b missing pointer to 'agents/cross-auditor.md §Spec-mode return contract'"
     return 1
   fi
   # 3. One of the two files names the "no trailing prose" wording verbatim.
@@ -5954,6 +5950,7 @@ check "claude-md-has-testing-section" check_claude_md_has_testing_section
 check "r8-single-source" check_r8_single_source
 check "skill-dispatch-param-block-single-source" check_skill_dispatch_param_block_single_source
 check "evidence-class-allowlist-single-source" check_evidence_class_allowlist_single_source
+check "eof-adjacency-parser-single-source" check_eof_adjacency_parser_single_source
 echo
 
 

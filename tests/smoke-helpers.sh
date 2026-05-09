@@ -5469,8 +5469,6 @@ check_spec_mode_footer_sentinel_marker_contract() {
   ca_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$f")
   # Producer obfuscated-form positive (X12) — at least one obfuscated form documents the rule.
   ca_obfusc=$(grep -cF 'CROSS-AUDIT-EVIDENCE-FOOTER' "$f")
-  # Consumer sentinel positive — sentinel documented at consumer side (≥ 1, no single-site lock).
-  skl_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$skl")
   # Consumer parser-shape positives — locks the EOF-adjacency parser shape.
   skl_tail3=$(grep -cF 'tail -3' "$skl")
   skl_eof=$(grep -cF 'EOF-adjacent' "$skl")
@@ -5490,7 +5488,6 @@ check_spec_mode_footer_sentinel_marker_contract() {
   ca_l445_pos=$(grep -cF 'byte-exact full-line equality' "$f")
   [ "$ca_sent" = "1" ] || { echo "agents: canonical-spaced sentinel literal must appear at EXACTLY ONE site (got $ca_sent)"; return 1; }
   [ "$ca_obfusc" -ge 1 ] || { echo "agents: obfuscated form 'CROSS-AUDIT-EVIDENCE-FOOTER' (hyphenated) missing — required by sentinel-obfuscation rule"; return 1; }
-  [ "$skl_sent" -ge 1 ] || { echo "SKILL.md: canonical-spaced sentinel literal missing"; return 1; }
   [ "$skl_tail3" -ge 1 ] || { echo "SKILL.md: 'tail -3' literal missing — locks EOF-adjacency parser shape"; return 1; }
   [ "$skl_eof" -ge 1 ] || { echo "SKILL.md: 'EOF-adjacent' literal missing"; return 1; }
   [ "$skl_old" = "0" ] || { echo "SKILL.md: stale 'awk \\'NF\\' | tail -2' parser form still present"; return 1; }
@@ -5944,4 +5941,49 @@ check_evidence_class_allowlist_single_source() {
     return 1
   fi
   echo "evidence_class allowlist single source"
+}
+
+# Step 8 — EOF-adjacency / tail -3 parser single-source.
+# Canonical at agents/cross-auditor.md L430-L450 preserved (heading + producer-side
+# 'forgotten-footer-with-example-echo' token at the closing parser-rationale paragraph).
+# SKILL.md L515 producer-prose duplicate collapsed to 3-line pointer + retained consumer shell
+# + contract-violation routing.
+check_eof_adjacency_parser_single_source() {
+  local skl="skills/feature/SKILL.md"
+  local ca="agents/cross-auditor.md"
+  [ -f "$skl" ] || { echo "$skl missing"; return 1; }
+  [ -f "$ca" ] || { echo "$ca missing"; return 1; }
+  # Positive — canonical preserved at cross-auditor.md.
+  if ! grep -qF '### Spec-mode return contract' "$ca"; then
+    echo "cross-auditor.md missing '### Spec-mode return contract' heading"
+    return 1
+  fi
+  if ! grep -qF 'forgotten-footer-with-example-echo' "$ca"; then
+    echo "cross-auditor.md missing producer-side 'forgotten-footer-with-example-echo' token"
+    return 1
+  fi
+  # Negative — SKILL.md duplicate prose gone (byte-exact SKILL.md-resident fingerprint).
+  if grep -qF 'the prior parser shape, which stripped blank lines' "$skl"; then
+    echo "SKILL.md still contains pre-fix duplicate-prose fingerprint 'the prior parser shape, which stripped blank lines'"
+    return 1
+  fi
+  # Positive — UNIQUELY-NEW pointer present.
+  if ! grep -qF 'parse per `agents/cross-auditor.md` §Spec-mode return contract' "$skl"; then
+    echo "SKILL.md missing UNIQUELY-NEW pointer literal 'parse per agents/cross-auditor.md §Spec-mode return contract'"
+    return 1
+  fi
+  # Positive — 4 consumer-shell variable literals preserved.
+  local v
+  for v in 'last_three=$(' 'first_of_three=$(' 'second_of_three=$(' 'third_of_three=$('; do
+    if ! grep -qF "$v" "$skl"; then
+      echo "SKILL.md missing consumer-shell literal '$v'"
+      return 1
+    fi
+  done
+  # Positive — contract-violation routing preserved.
+  if ! grep -qF "'sentinel not at expected EOF-adjacent position'" "$skl"; then
+    echo "SKILL.md missing canonical contract-violation routing blocker phrasing"
+    return 1
+  fi
+  echo "eof-adjacency parser single source"
 }

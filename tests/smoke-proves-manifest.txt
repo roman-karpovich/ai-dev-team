@@ -205,3 +205,4 @@ check_claude_md_has_testing_section schema
 check_r8_single_source schema
 check_skill_dispatch_param_block_single_source schema
 check_evidence_class_allowlist_single_source schema
+check_eof_adjacency_parser_single_source schema
