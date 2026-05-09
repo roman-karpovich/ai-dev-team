@@ -1,0 +1,13 @@
+# yarn-berry lockfile — @portal: and @github: descriptors
+"plain-pkg@portal:./packages/plain":
+  version: 1.0.0
+  resolution: "plain-pkg@portal:./packages/plain"
+"@scope/portal-link@portal:@scope/upstream":
+  version: 1.0.0
+  resolution: "@scope/portal-link@portal:@scope/upstream"
+"my-fork@github:user/repo#branch":
+  version: 2.0.0
+  resolution: "my-fork@github:user/repo#branch"
+"@scope/gh-fork@github:user/repo@branch":
+  version: 3.0.0
+  resolution: "@scope/gh-fork@github:user/repo@branch"

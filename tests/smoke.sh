@@ -5888,6 +5888,25 @@ check "probe-g-corpus-fixture-valid" check_probe_g_corpus_fixture_valid
 check "probe-g-detector-fires-on-major-drift" check_probe_g_detector_fires_on_major_drift
 check "probe-g-detector-clean-at-current-major" check_probe_g_detector_clean_at_current_major
 check "probe-g-detector-ineligible-no-lockfile" check_probe_g_detector_ineligible_no_lockfile
+check "probe-g-detector-fires-on-major-only-no-dot" check_probe_g_detector_fires_on_major_only_no_dot
+check "probe-g-detector-fires-on-extras-syntax" check_probe_g_detector_fires_on_extras_syntax
+check "probe-g-detector-fires-on-whitespace-eq" check_probe_g_detector_fires_on_whitespace_eq
+check "probe-g-detector-rejects-malformed-requirements" check_probe_g_detector_rejects_malformed_requirements
+check "probe-g-detector-fires-on-uppercase-name-package-lock" check_probe_g_detector_fires_on_uppercase_name_package_lock
+check "probe-g-detector-out-of-diff-lockfile-ignored" check_probe_g_detector_out_of_diff_lockfile_ignored
+check "probe-g-detector-in-diff-lockfile-evaluated" check_probe_g_detector_in_diff_lockfile_evaluated
+check "probe-g-yarn-berry-peer-dep" check_probe_g_yarn_berry_peer_dep
+check "probe-g-yarn-scoped-npm-protocol" check_probe_g_yarn_scoped_npm_protocol
+check "probe-g-pnpm-v9-format" check_probe_g_pnpm_v9_format
+check "probe-g-pnpm-v9-quoted-scoped" check_probe_g_pnpm_v9_quoted_scoped
+check "probe-g-yarn-scoped-alias-target" check_probe_g_yarn_scoped_alias_target
+check "probe-g-yarn-portal-and-github" check_probe_g_yarn_portal_and_github
+check "probe-g-vendored-excluded" check_probe_g_vendored_excluded
+check "probe-g-boundary-drift-2-suppressed" check_probe_g_boundary_drift_2_suppressed
+check "probe-g-boundary-drift-3-fired" check_probe_g_boundary_drift_3_fired
+check "probe-g-npm-v7-packages-walk-and-dep-classes" check_probe_g_npm_v7_packages_walk_and_dep_classes
+check "probe-g-npm-range-vs-resolved-dedup" check_probe_g_npm_range_vs_resolved_dedup
+check "probe-g-pre-1-0-skipped" check_probe_g_pre_1_0_skipped
 echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---
@@ -5896,6 +5915,22 @@ check "probe-h-corpus-path-resolution" check_probe_h_corpus_path_resolution
 check "probe-h-detector-fires-on-typosquat" check_probe_h_detector_fires_on_typosquat
 check "probe-h-detector-clean-canonical-name" check_probe_h_detector_clean_canonical_name
 check "probe-h-detector-clean-distant-name" check_probe_h_detector_clean_distant_name
+check "probe-h-detector-fires-on-major-only-no-dot" check_probe_h_detector_fires_on_major_only_no_dot
+check "probe-h-detector-fires-on-extras-syntax" check_probe_h_detector_fires_on_extras_syntax
+check "probe-h-detector-fires-on-whitespace-eq" check_probe_h_detector_fires_on_whitespace_eq
+check "probe-h-detector-rejects-malformed-requirements" check_probe_h_detector_rejects_malformed_requirements
+check "probe-h-detector-out-of-diff-lockfile-ignored" check_probe_h_detector_out_of_diff_lockfile_ignored
+check "probe-h-detector-in-diff-lockfile-evaluated" check_probe_h_detector_in_diff_lockfile_evaluated
+check "probe-h-yarn-berry-peer-dep" check_probe_h_yarn_berry_peer_dep
+check "probe-h-yarn-scoped-npm-protocol" check_probe_h_yarn_scoped_npm_protocol
+check "probe-h-pnpm-v9-format" check_probe_h_pnpm_v9_format
+check "probe-h-pnpm-v9-quoted-scoped" check_probe_h_pnpm_v9_quoted_scoped
+check "probe-h-yarn-scoped-alias-target" check_probe_h_yarn_scoped_alias_target
+check "probe-h-yarn-portal-and-github" check_probe_h_yarn_portal_and_github
+check "probe-h-levenshtein-length-cap" check_probe_h_levenshtein_length_cap
+check "probe-h-vendored-excluded" check_probe_h_vendored_excluded
+check "probe-h-npm-v7-packages-walk-and-dep-classes" check_probe_h_npm_v7_packages_walk_and_dep_classes
+check "probe-h-npm-range-vs-resolved-dedup" check_probe_h_npm_range_vs_resolved_dedup
 echo
 
 # --- STRIDE-lite spec-template slot pins ---
