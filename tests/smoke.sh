@@ -5238,12 +5238,6 @@ check_cross_auditor_never_writes_extension() {
     echo "cross-auditor.md L421 still contains OLD self_fallback routing literal — must be rewritten to contract_violated"
     return 1
   fi
-  # X4 third-site coverage: SKILL.md L325 Orchestrator READ path parenthetical
-  # MUST also list contract_violated in the never-writes literal.
-  if ! grep -qF 'cross-auditor never writes `self_fallback` / `contract_violated` / `skipped`' "$skill"; then
-    echo "SKILL.md L325 'Orchestrator READ path' parenthetical missing 3-value never-writes literal 'cross-auditor never writes \`self_fallback\` / \`contract_violated\` / \`skipped\`' (X4 third symmetric site)"
-    return 1
-  fi
   # X11 + X17: extract the `### When to set` region and assert the binary-emit
   # invariant + cardinality + OLD-sentence guard.
   local wts
@@ -5959,6 +5953,7 @@ check "hooks-json-stop-timeout-30s" check_hooks_json_stop_timeout_30s
 check "claude-md-has-testing-section" check_claude_md_has_testing_section
 check "r8-single-source" check_r8_single_source
 check "skill-dispatch-param-block-single-source" check_skill_dispatch_param_block_single_source
+check "evidence-class-allowlist-single-source" check_evidence_class_allowlist_single_source
 echo
 
 

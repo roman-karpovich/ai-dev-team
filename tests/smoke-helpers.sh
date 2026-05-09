@@ -5889,3 +5889,59 @@ check_skill_dispatch_param_block_single_source() {
   fi
   echo "dispatch param single source"
 }
+
+# Step 7 — evidence_class binary emit allowlist single-source.
+# Canonical at agents/cross-auditor.md L410-L417 preserved (heading + binary-allowlist line +
+# orchestrator-only exclusion sentence). SKILL.md restatement at L511 collapsed; stale L382-383
+# numeric ref at L517 stripped; cross-field invariant body preserved.
+check_evidence_class_allowlist_single_source() {
+  local skl="skills/feature/SKILL.md"
+  local ca="agents/cross-auditor.md"
+  [ -f "$skl" ] || { echo "$skl missing"; return 1; }
+  [ -f "$ca" ] || { echo "$ca missing"; return 1; }
+  # Positive — canonical preserved at cross-auditor.md.
+  if ! grep -qF '### When to set' "$ca"; then
+    echo "cross-auditor.md missing '### When to set' heading"
+    return 1
+  fi
+  if ! grep -qF 'binary on whether Codex'\''s audit was usable' "$ca"; then
+    echo "cross-auditor.md missing canonical binary-allowlist phrase 'binary on whether Codex'\''s audit was usable'"
+    return 1
+  fi
+  if ! grep -qF 'The cross-auditor NEVER writes `self_fallback`, `contract_violated`, or `skipped`' "$ca"; then
+    echo "cross-auditor.md missing canonical orchestrator-only exclusion sentence"
+    return 1
+  fi
+  # Negative — SKILL.md backticked allowlist clause gone.
+  if grep -qF 'cross-auditor never writes `self_fallback` / `contract_violated` / `skipped`' "$skl"; then
+    echo "SKILL.md still contains backticked allowlist clause that must collapse to pointer"
+    return 1
+  fi
+  # Negative — stale line ref gone.
+  if grep -qF '§When to set L382-383' "$skl"; then
+    echo "SKILL.md still contains stale '§When to set L382-383' line ref"
+    return 1
+  fi
+  # Positive — pointer presence at L511 + L517 (≥ 2 sites).
+  local p1 p2
+  p1=$(grep -cF 'agents/cross-auditor.md' "$skl")
+  p2=$(grep -cF '§When to set' "$skl")
+  if [ "$p1" -lt 2 ]; then
+    echo "SKILL.md must point at agents/cross-auditor.md from at least 2 sites (got $p1)"
+    return 1
+  fi
+  if [ "$p2" -lt 2 ]; then
+    echo "SKILL.md must reference §When to set from at least 2 sites (got $p2)"
+    return 1
+  fi
+  # Positive — cross-field invariant body preserved.
+  if ! grep -qF '`evidence_class: dual_model` MUST pair with `evidence_blockers: []`' "$skl"; then
+    echo "SKILL.md missing cross-field invariant body 'evidence_class: dual_model MUST pair with evidence_blockers: []'"
+    return 1
+  fi
+  if ! grep -qF '`evidence_class: single_model` MUST pair with a non-empty `evidence_blockers` list' "$skl"; then
+    echo "SKILL.md missing cross-field invariant body 'evidence_class: single_model MUST pair with non-empty evidence_blockers'"
+    return 1
+  fi
+  echo "evidence_class allowlist single source"
+}
