@@ -5709,3 +5709,20 @@ check_librarian_agent_no_bash_in_tools() {
   done
   echo "librarian no bash"
 }
+
+# Step 3 — hooks/hooks.json Stop hook timeout = 30 (was 5).
+# JSON structural invariant via python3 dict-walk.
+check_hooks_json_stop_timeout_30s() {
+  local f="hooks/hooks.json"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  python3 - <<'PY' || return 1
+import json, sys
+data = json.load(open("hooks/hooks.json"))
+stop = data["hooks"]["Stop"][0]["hooks"][0]
+to = stop.get("timeout")
+if to != 30:
+    print(f"Stop hook timeout != 30 (got {to!r})")
+    sys.exit(1)
+PY
+  echo "stop hook timeout 30"
+}

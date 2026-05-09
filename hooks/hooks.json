@@ -31,7 +31,7 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-check\"",
-            "timeout": 5
+            "timeout": 30
           }
         ]
       }

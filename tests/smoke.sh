@@ -5955,6 +5955,7 @@ check "cross-auditor-probe-failures-schema-aligned" check_cross_auditor_probe_fa
 check "spec-mode-footer-sentinel-marker-contract" check_spec_mode_footer_sentinel_marker_contract
 check "skill-pass2-respawn-loop-monotonic-numbering" check_skill_pass2_respawn_loop_monotonic_numbering
 check "librarian-agent-no-bash-in-tools" check_librarian_agent_no_bash_in_tools
+check "hooks-json-stop-timeout-30s" check_hooks_json_stop_timeout_30s
 echo
 
 
