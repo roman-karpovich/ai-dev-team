@@ -1,0 +1,1 @@
+{"findings":[],"receipt_metadata":{"degraded_mode":false,"eligible_reason":"scanned 0 lockfile(s); 0 pinned packages; 0 findings","emitted_at":"2026-05-07T00:00:00Z","probe_id":"H","probe_version":"h.1.0","scope_files_read":[],"skipped_files":[],"trigger_input_hash":"6d6a3c7e462e8617ba1fdec9744bce9d98f767db81a3d5b8afddd90cfccf89bd"}}

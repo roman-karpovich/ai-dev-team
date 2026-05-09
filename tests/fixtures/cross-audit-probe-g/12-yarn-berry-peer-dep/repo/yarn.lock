@@ -1,0 +1,4 @@
+# yarn-berry lockfile (unquoted version scalar form)
+"express@npm:^4.18.0":
+  version: 4.18.0(typescript@5.0.0)
+  resolution: "express@npm:4.18.0"

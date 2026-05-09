@@ -5042,6 +5042,9 @@ for eco, pkgs in corpus.items():
         if not isinstance(val.get("latest_major"), int):
             print(f"corpus[{eco}][{pkg}].latest_major is not an integer")
             sys.exit(1)
+        if "pre_1_0" in val and not isinstance(val["pre_1_0"], bool):
+            print(f"corpus[{eco}][{pkg}].pre_1_0 must be bool when present")
+            sys.exit(1)
 print("corpus schema valid")
 PYEOF
 }
@@ -5094,15 +5097,57 @@ _probe_h_byte_diff() {
 }
 
 check_probe_h_corpus_path_resolution() {
-  local probe="hooks/lib/probe_h.sh"
-  [ -f "$probe" ] || { echo "$probe missing"; return 1; }
-  [ -x "$probe" ] || { echo "$probe not executable"; return 1; }
-  local first_line
-  first_line=$(head -1 "$probe")
-  [ "$first_line" = "#!/usr/bin/env bash" ] || { echo "$probe first line is not #!/usr/bin/env bash"; return 1; }
-  grep -qF 'CLAUDE_PLUGIN_ROOT' "$probe" || { echo "$probe missing CLAUDE_PLUGIN_ROOT path-resolution token"; return 1; }
-  grep -qF 'Radaro AI-Assisted Development Policy v1.3 §8.2' "$probe" || { echo "$probe missing traceability anchor"; return 1; }
-  echo "probe_h corpus path resolution schema valid"
+  local plugin_root
+  plugin_root="$(pwd)"
+  local fdir="tests/fixtures/cross-audit-probe-h/01-positive-typosquat"
+  [ -d "$fdir" ] || { echo "fixture $fdir missing"; return 1; }
+  local out_tmp="/tmp/smoke-probe-h-corpus-path.$$"
+  local exit_code=0
+
+  # (1) Env-set path: CLAUDE_PLUGIN_ROOT pointed at plugin checkout.
+  ( cd "$fdir" \
+    && PROBE_H_FAKE_NOW="2026-05-07T00:00:00Z" \
+    CLAUDE_PLUGIN_ROOT="$plugin_root" \
+    bash "$plugin_root/hooks/lib/probe_h.sh" < input.json ) >"$out_tmp" 2>/dev/null || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "probe_h.sh failed under CLAUDE_PLUGIN_ROOT=$plugin_root (env-set path)"
+    rm -f "$out_tmp"
+    return 1
+  fi
+  python3 -c "
+import json, sys, re
+d = json.load(open('$out_tmp'))
+reason = d.get('receipt_metadata', {}).get('eligible_reason', '')
+m = re.search(r'(\d+) pinned packages', reason)
+if not m or int(m.group(1)) <= 0:
+    print(f'env-set: eligible_reason did not report positive pinned-package count: {reason}')
+    sys.exit(1)
+" || { rm -f "$out_tmp"; return 1; }
+
+  # (2) Env-unset path: CLAUDE_PLUGIN_ROOT explicitly removed via `env -u`
+  # so the probe falls back to $PROBE_H_SCRIPT_DIR/freshness_corpus.json.
+  exit_code=0
+  ( cd "$fdir" \
+    && env -u CLAUDE_PLUGIN_ROOT \
+       PROBE_H_FAKE_NOW="2026-05-07T00:00:00Z" \
+       bash "$plugin_root/hooks/lib/probe_h.sh" < input.json ) >"$out_tmp" 2>/dev/null || exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    echo "probe_h.sh failed with CLAUDE_PLUGIN_ROOT unset (script-dir fallback)"
+    rm -f "$out_tmp"
+    return 1
+  fi
+  python3 -c "
+import json, sys, re
+d = json.load(open('$out_tmp'))
+reason = d.get('receipt_metadata', {}).get('eligible_reason', '')
+m = re.search(r'(\d+) pinned packages', reason)
+if not m or int(m.group(1)) <= 0:
+    print(f'env-unset: eligible_reason did not report positive pinned-package count: {reason}')
+    sys.exit(1)
+" || { rm -f "$out_tmp"; return 1; }
+
+  rm -f "$out_tmp"
+  echo "probe_h corpus path resolution verified under env-set + env-unset"
 }
 
 check_probe_h_detector_fires_on_typosquat() {
@@ -5115,6 +5160,146 @@ check_probe_h_detector_clean_canonical_name() {
 
 check_probe_h_detector_clean_distant_name() {
   _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/03-clean-distant-name
+}
+
+check_probe_g_detector_fires_on_major_only_no_dot() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/06-major-only-no-dot
+}
+
+check_probe_h_detector_fires_on_major_only_no_dot() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/06-major-only-no-dot
+}
+
+check_probe_g_detector_fires_on_extras_syntax() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/08-extras-syntax
+}
+
+check_probe_h_detector_fires_on_extras_syntax() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/08-extras-syntax
+}
+
+check_probe_g_detector_fires_on_whitespace_eq() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/09-whitespace-eq
+}
+
+check_probe_h_detector_fires_on_whitespace_eq() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/09-whitespace-eq
+}
+
+check_probe_g_detector_rejects_malformed_requirements() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/19-malformed-requirements
+}
+
+check_probe_g_detector_fires_on_uppercase_name_package_lock() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/07-uppercase-name-package-lock
+}
+
+check_probe_g_detector_out_of_diff_lockfile_ignored() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/11-out-of-diff-lockfile-ignored
+}
+
+check_probe_h_detector_out_of_diff_lockfile_ignored() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/11-out-of-diff-lockfile-ignored
+}
+
+check_probe_g_detector_in_diff_lockfile_evaluated() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/11-in-diff-lockfile-evaluated
+}
+
+check_probe_h_detector_in_diff_lockfile_evaluated() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/11-in-diff-lockfile-evaluated
+}
+
+check_probe_g_yarn_berry_peer_dep() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/12-yarn-berry-peer-dep
+}
+
+check_probe_h_yarn_berry_peer_dep() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/12-yarn-berry-peer-dep
+}
+
+check_probe_g_yarn_scoped_npm_protocol() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/13-yarn-scoped-npm-protocol
+}
+
+check_probe_h_yarn_scoped_npm_protocol() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/13-yarn-scoped-npm-protocol
+}
+
+check_probe_g_pnpm_v9_format() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/14-pnpm-v9-format
+}
+
+check_probe_h_pnpm_v9_format() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/14-pnpm-v9-format
+}
+
+check_probe_g_pnpm_v9_quoted_scoped() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/20-pnpm-v9-quoted-scoped
+}
+
+check_probe_h_pnpm_v9_quoted_scoped() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/20-pnpm-v9-quoted-scoped
+}
+
+check_probe_g_yarn_scoped_alias_target() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/21-yarn-scoped-alias-target
+}
+
+check_probe_h_yarn_scoped_alias_target() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/21-yarn-scoped-alias-target
+}
+
+check_probe_g_yarn_portal_and_github() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/22-yarn-portal-and-github
+}
+
+check_probe_h_yarn_portal_and_github() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/22-yarn-portal-and-github
+}
+
+check_probe_h_levenshtein_length_cap() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/15-levenshtein-length-cap
+}
+
+check_probe_g_vendored_excluded() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/10-vendored-excluded
+}
+
+check_probe_h_vendored_excluded() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/10-vendored-excluded
+}
+
+check_probe_g_boundary_drift_2_suppressed() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/04-boundary-drift-2-suppressed
+}
+
+check_probe_g_boundary_drift_3_fired() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/05-boundary-drift-3-fired
+}
+
+check_probe_g_npm_v7_packages_walk_and_dep_classes() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/16-npm-v7-and-dep-classes
+}
+
+check_probe_h_npm_v7_packages_walk_and_dep_classes() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/16-npm-v7-and-dep-classes
+}
+
+check_probe_g_npm_range_vs_resolved_dedup() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/17-range-vs-resolved-dedup
+}
+
+check_probe_h_npm_range_vs_resolved_dedup() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/17-range-vs-resolved-dedup
+}
+
+check_probe_g_pre_1_0_skipped() {
+  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/18-pre-1-0-skipped
+}
+
+check_probe_h_detector_rejects_malformed_requirements() {
+  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
 }
 
 check_skill_stride_lite_block_gated() {

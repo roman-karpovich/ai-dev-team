@@ -1,0 +1,8 @@
+lockfileVersion: '9.0'
+packages:
+  /express@4.18.0_typescript@5.0.0:
+    resolution: {integrity: sha512-x}
+  /lodash@4.17.21+ci:
+    resolution: {integrity: sha512-y}
+  /left-pad@patch:left-pad@npm%3A1.0.0#./patches/p.patch:
+    resolution: {integrity: sha512-z}

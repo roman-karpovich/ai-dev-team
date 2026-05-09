@@ -1,0 +1,9 @@
+{
+  "audit_slug": "fixture-11-in",
+  "base_ref": "main",
+  "changed_python_files": ["requirements.txt"],
+  "changed_yaml_files": [],
+  "diff": {"added_lines": {"requirements.txt": [1, 2, 3]}},
+  "mode": "warn",
+  "repo_root": "repo"
+}
