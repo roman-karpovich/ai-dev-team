@@ -5649,3 +5649,39 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
   [ "$stale_l311" = "0" ] || { echo "L311 stale 'unset-env fallback above also fails' contradictory phrasing still present"; return 1; }
   [ "$l311_post" -ge 1 ] || { echo "L311 missing post-rewrite 'no relative fallback when env is set' literal"; return 1; }
 }
+
+# Step 1 — SKILL.md §3.5 Pass 2 re-spawn loop monotonic numbering invariant.
+# Region: between '**If CRITICAL or HIGH findings:**' and '**If no CRITICAL or HIGH findings:**'.
+# Within that region, list items match ^([0-9]+)\. — extract the sequence; assert
+# monotonic increasing by exactly 1, starting at 1, no duplicates (no upper bound).
+# Plus negative anti-regression against the duplicate-5 fingerprint.
+check_skill_pass2_respawn_loop_monotonic_numbering() {
+  local f="skills/feature/SKILL.md"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  local seq
+  seq=$(awk '
+    /^\*\*If CRITICAL or HIGH findings:\*\*/ {in_region=1; next}
+    /^\*\*If no CRITICAL or HIGH findings:\*\*/ {in_region=0}
+    in_region && match($0, /^[0-9]+\./) {
+      n=$0
+      sub(/\..*/, "", n)
+      print n
+    }
+  ' "$f")
+  [ -n "$seq" ] || { echo "Pass 2 re-spawn loop region empty (region delimiters missing in SKILL.md)"; return 1; }
+  local expected=1
+  local n
+  while IFS= read -r n; do
+    if [ "$n" != "$expected" ]; then
+      echo "Pass 2 re-spawn loop numbering not monotonic-by-1: expected $expected got $n"
+      return 1
+    fi
+    expected=$((expected+1))
+  done <<<"$seq"
+  # Negative — anti-regression duplicate-5 fingerprint.
+  if grep -nzPo '5\. Increment `spec_audit_iteration`\n5\. Before re-spawn' "$f" >/dev/null 2>&1; then
+    echo "Pass 2 re-spawn loop duplicate-5 fingerprint regressed"
+    return 1
+  fi
+  echo "pass2 respawn loop monotonic"
+}
