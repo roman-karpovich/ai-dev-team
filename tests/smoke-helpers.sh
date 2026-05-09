@@ -5385,7 +5385,7 @@ check_project_type_documented_in_config_surfaces() {
 check_skill_threads_project_type_at_spec_audit_spawn() {
   local f="skills/feature/SKILL.md"
   local block count
-  block=$(awk '/^Spawn `cross-auditor` subagent with:$/,/^- \(omit `kb_path` — spec mode does not write to KB\)$/' "$f")
+  block=$(awk '/^Spawn `cross-auditor` subagent with the \*\*same parameter block as the initial full-mode spawn/,/^The cross-auditor returns findings inline \(no KB writes in spec mode\)\.$/' "$f")
   count=$(echo "$block" | grep -c project_type)
   [ "$count" -ge 1 ] || { echo "spec-mode spawn block missing project_type parameter"; return 1; }
   # Site A MUST NOT reference the degraded warning — that is a code/full-mode artifact
@@ -5853,4 +5853,39 @@ check_r8_single_source() {
   fi
   [ "$fail" = "0" ] || return 1
   echo "R8 single source"
+}
+
+# Step 6 — SKILL.md cross-auditor spawn parameter block single-source via delta.
+# Canonical at §Code audit Pass 2 preserved with byte-exact backticks.
+# Spec-audit Pass 2 spawn block rewritten as delta. Three pointer sites total post-fix.
+check_skill_dispatch_param_block_single_source() {
+  local f="skills/feature/SKILL.md"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  # Canonical preserved with byte-exact backticks.
+  if ! grep -qF 'Spawn `cross-auditor` with mode: full on the diff (dual-model). Parameters:' "$f"; then
+    echo "SKILL.md missing canonical Code-audit Pass 2 spawn header literal (with backticks)"
+    return 1
+  fi
+  # Spec-mode delta presence.
+  if ! grep -qF 'same parameter block as the initial full-mode spawn' "$f"; then
+    echo "SKILL.md missing spec-mode delta phrase 'same parameter block as the initial full-mode spawn'"
+    return 1
+  fi
+  # Exact-3 threshold post-fix (L460-region delta + L774 + L937-equivalent).
+  local cnt
+  cnt=$(grep -cF 'same parameter block as the initial full-mode spawn' "$f")
+  if [ "$cnt" != "3" ]; then
+    echo "SKILL.md 'same parameter block as the initial full-mode spawn' count != 3 (got $cnt)"
+    return 1
+  fi
+  # Negative — spec-audit Pass 2 region no longer contains the pre-fix 12-line spawn block.
+  # Bound: between '#### Pass 2: Cross-audit (dual-model)' and '**If CRITICAL or HIGH findings:**'.
+  local p2_region
+  p2_region=$(awk '/^#### Pass 2: Cross-audit \(dual-model\)/{in_r=1; next} /^\*\*If CRITICAL or HIGH findings:\*\*/{in_r=0} in_r' "$f")
+  [ -n "$p2_region" ] || { echo "SKILL.md §3.5 Pass 2 region empty"; return 1; }
+  if printf '%s' "$p2_region" | grep -qF -e '- `scope`: `<spec_path>` (the spec file)'; then
+    echo "SKILL.md §3.5 Pass 2 region still contains pre-fix 12-line spawn block bullet"
+    return 1
+  fi
+  echo "dispatch param single source"
 }

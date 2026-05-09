@@ -457,18 +457,18 @@ If any check fails: fix the spec/workdoc directly (or ask the user for the missi
 
 Track `spec_audit_iteration` (start at 1, increment on each re-spawn). Track `spec_audit_fixed_ids` (list of finding IDs the user fixed — accumulate across rounds). Track `spec_audit_next_id` (integer — the next finding ID to allocate; start at 1, update to `highest_id_in_report + 1` after each round).
 
-Spawn `cross-auditor` subagent with:
-- `scope`: `<spec_path>` (the spec file)
-- `workdoc_path`: `<workdoc_path>` (the execution workdoc)
-- `mode`: `spec`
-- `project`: `<project>`
-- `audit_slug`: `<slug>-spec`
-- `iteration`: `<spec_audit_iteration>`
-- `working_directory`: `<cwd>`
-- `previously_fixed`: `<spec_audit_fixed_ids>` (empty list on first pass)
-- `next_finding_id`: `<spec_audit_next_id>` (ensures IDs don't collide across rounds when no findings doc exists)
-- `project_type`: resolve via `spec_frontmatter.project_type → .ai-dev-team.local.yml → .ai-dev-team.yml → None` (parameter-block symmetry with full-mode spawn — spec mode does not load the R-rule cluster per the cross-auditor `mode ∈ {security, full}` gate, so the cross-auditor receives the value but never consults it for cluster loading in this mode)
-- (omit `kb_path` — spec mode does not write to KB)
+Spawn `cross-auditor` subagent with the **same parameter block as the initial full-mode spawn (§Code audit Pass 2)**, with these spec-mode deltas:
+
+- `mode`: `spec` (was `full`)
+- `audit_slug`: `<slug>-spec` (was `<slug>-code`)
+- `scope`: `<spec_path>` (was newline-joined auditable paths from Pass 1)
+- ADD: `workdoc_path: <workdoc_path>` (the execution workdoc — spec-only)
+- ADD: `next_finding_id: <spec_audit_next_id>` (spec-only — ensures IDs don't collide across rounds when no findings doc exists)
+- OMIT: `kb_path` (spec mode does not write to KB)
+- OMIT: `accepted_ids` (no per-finding triage in spec mode)
+- OMIT: `base_branch` (spec mode does not need git context)
+
+`project_type` resolution: identical to code mode (spec frontmatter → .ai-dev-team.local.yml → .ai-dev-team.yml → None).
 
 The cross-auditor returns findings inline (no KB writes in spec mode).
 

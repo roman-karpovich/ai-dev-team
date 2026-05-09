@@ -203,3 +203,4 @@ check_librarian_agent_no_bash_in_tools schema
 check_hooks_json_stop_timeout_30s schema
 check_claude_md_has_testing_section schema
 check_r8_single_source schema
+check_skill_dispatch_param_block_single_source schema
