@@ -14,7 +14,7 @@ description: >
   (empirical: 0.54% delegation rate over 2026-04-16..2026-04-25 with
   100% frontmatter compliance — research note 2026-04-25-actual-vs-declared-role).
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep
 ---
 
 # Librarian Agent

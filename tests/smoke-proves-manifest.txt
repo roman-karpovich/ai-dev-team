@@ -199,3 +199,4 @@ check_spec_mode_footer_sentinel_marker_contract behavioral
 
 # Orchestrator single-source + numbering + hygiene fixes — 8 new pins (Steps 1-8)
 check_skill_pass2_respawn_loop_monotonic_numbering schema
+check_librarian_agent_no_bash_in_tools schema

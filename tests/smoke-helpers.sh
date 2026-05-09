@@ -5685,3 +5685,27 @@ check_skill_pass2_respawn_loop_monotonic_numbering() {
   fi
   echo "pass2 respawn loop monotonic"
 }
+
+# Step 2 — agents/librarian.md frontmatter `tools:` line scoped check.
+# Frontmatter is the YAML block between the first two `^---$` dividers.
+# Bash MUST NOT appear in that line; the 5 capability tools MUST.
+check_librarian_agent_no_bash_in_tools() {
+  local f="agents/librarian.md"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  local fm tools_line
+  fm=$(awk 'BEGIN{c=0} /^---$/{c++; next} c==1{print}' "$f")
+  tools_line=$(printf '%s\n' "$fm" | grep -E '^tools:' | head -1)
+  [ -n "$tools_line" ] || { echo "librarian.md frontmatter has no tools: line"; return 1; }
+  if printf '%s' "$tools_line" | grep -qE '\bBash\b'; then
+    echo "librarian.md frontmatter tools: line still contains Bash"
+    return 1
+  fi
+  local t
+  for t in Read Write Edit Glob Grep; do
+    if ! printf '%s' "$tools_line" | grep -qE "\\b$t\\b"; then
+      echo "librarian.md frontmatter tools: line missing $t"
+      return 1
+    fi
+  done
+  echo "librarian no bash"
+}
