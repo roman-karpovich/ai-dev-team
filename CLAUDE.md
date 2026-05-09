@@ -18,6 +18,25 @@ Axes (federation, not hierarchy):
 
 Full formulation + success criteria + operational rules + per-constraint anchors: `<kb>/repos/ai-dev-team/MISSION.md` §Active constraint set.
 
+## Testing
+
+The project's test suite is the smoke harness at `tests/smoke.sh`:
+
+```bash
+bash tests/smoke.sh
+```
+
+Expected output ends with `Failed: 0` plus a per-class breakdown:
+`Behavioral: <N> + Schema: <N> + Prompt-text: <N> + Unclassified: <N>`. Total = sum of those.
+
+Per-pin 3-edit protocol when adding a new check:
+
+1. Function definition: `check_<name>` in `tests/smoke-helpers.sh`.
+2. Pin invocation: `check "<pin-slug>" check_<name>` registered in `tests/smoke.sh` adjacent to existing related pins.
+3. Classification: a line in `tests/smoke-proves-manifest.txt` mapping the helper to a class (`behavioral` / `schema` / `prompt-text`).
+
+Python3 is required (probes + smoke helpers use `python3` heredocs and a shared module at `tests/smoke_rule_helpers.py`).
+
 ## Contribution flow — PR-only, auto-merge
 
 **Do not commit directly to `main`.** Every change goes through a pull request, which Claude

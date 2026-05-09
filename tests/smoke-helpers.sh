@@ -5726,3 +5726,35 @@ if to != 30:
 PY
   echo "stop hook timeout 30"
 }
+
+# Step 4 — CLAUDE.md §Testing subsection presence + content + ordering invariant.
+check_claude_md_has_testing_section() {
+  local f="CLAUDE.md"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  if ! grep -qF '## Testing' "$f"; then
+    echo "CLAUDE.md missing '## Testing' H2 heading"
+    return 1
+  fi
+  # Bound the §Testing region (between '## Testing' and the next '^## ' heading).
+  local region
+  region=$(awk '/^## Testing$/{in_r=1; next} /^## /{in_r=0} in_r' "$f")
+  [ -n "$region" ] || { echo "CLAUDE.md §Testing region empty"; return 1; }
+  local anchor
+  for anchor in 'bash tests/smoke.sh' 'Failed: 0' 'tests/smoke-helpers.sh' 'tests/smoke-proves-manifest.txt'; do
+    if ! printf '%s' "$region" | grep -qF "$anchor"; then
+      echo "CLAUDE.md §Testing region missing literal: $anchor"
+      return 1
+    fi
+  done
+  # Ordering invariant — '## Testing' < '## Contribution flow'.
+  local testing_line cflow_line
+  testing_line=$(awk '/^## Testing/{print NR; exit}' "$f")
+  cflow_line=$(awk '/^## Contribution flow/{print NR; exit}' "$f")
+  [ -n "$testing_line" ] || { echo "CLAUDE.md '## Testing' line not found"; return 1; }
+  [ -n "$cflow_line" ] || { echo "CLAUDE.md '## Contribution flow' line not found"; return 1; }
+  if [ "$testing_line" -ge "$cflow_line" ]; then
+    echo "CLAUDE.md '## Testing' must precede '## Contribution flow' (testing@$testing_line cflow@$cflow_line)"
+    return 1
+  fi
+  echo "CLAUDE.md testing section"
+}
