@@ -5758,3 +5758,99 @@ check_claude_md_has_testing_section() {
   fi
   echo "CLAUDE.md testing section"
 }
+
+# Step 5 — R8 commit-message rule single-source.
+# Per-site fingerprints (each empirically pre-fix, byte-exact post-fix). Canonical short-form
+# at CLAUDE.md preserved unchanged. Five collapsed sites verified per-site.
+check_r8_single_source() {
+  local fail=0
+  local codex="agents/developer-codex.md"
+  local devwf="skills/feature/references/developer-workflow.md"
+  local pub="skills/cross-audit/references/publish.md"
+  local cqr="skills/feature/references/code-quality-rules.md"
+  local claude="CLAUDE.md"
+  for f in "$codex" "$devwf" "$pub" "$cqr" "$claude"; do
+    [ -f "$f" ] || { echo "missing $f"; return 1; }
+  done
+  # Negative — pre-fix per-site fingerprints all gone.
+  if grep -qF '**No KB references in the commit message** — no KB paths' "$codex"; then
+    echo "developer-codex.md still has pre-fix R8 restatement"
+    fail=1
+  fi
+  if grep -qF '**No `Co-authored-by` lines.** **No KB references** — KB paths' "$devwf"; then
+    echo "developer-workflow.md L62 still has pre-fix R8 restatement"
+    fail=1
+  fi
+  if grep -qF '**Commit messages** — concise, imperative mood. No `Co-authored-by` lines. **No KB references**' "$devwf"; then
+    echo "developer-workflow.md L115 still has pre-fix R8 restatement"
+    fail=1
+  fi
+  if grep -qF 'Finding bodies posted via this flow appear in the public PR review thread of `<pr_repo>`' "$pub"; then
+    echo "publish.md still has pre-fix long R8 restatement"
+    fail=1
+  fi
+  # Positive — canonical short-form preserved at CLAUDE.md.
+  if ! grep -qF '### Public-output hygiene (R8)' "$claude"; then
+    echo "CLAUDE.md missing canonical short-form heading '### Public-output hygiene (R8)'"
+    fail=1
+  fi
+  if ! grep -qF 'MUST NOT reference KB paths (`<kb>/...`)' "$claude"; then
+    echo "CLAUDE.md missing canonical short-form fingerprint 'MUST NOT reference KB paths (\`<kb>/...\`)'"
+    fail=1
+  fi
+  # Positive — canonical R8 in code-quality-rules.md preserved (different phrasing by design).
+  if ! grep -qF '## R8 — Public-output hygiene (no KB leaks)' "$cqr"; then
+    echo "code-quality-rules.md missing canonical R8 heading"
+    fail=1
+  fi
+  if ! grep -qF 'MUST NOT appear in any public artifact' "$cqr"; then
+    echo "code-quality-rules.md missing canonical R8 fingerprint 'MUST NOT appear in any public artifact'"
+    fail=1
+  fi
+  # Positive — CLAUDE.md relative-position invariant.
+  local r8_line skip_line
+  r8_line=$(awk '/^### Public-output hygiene/{print NR; exit}' "$claude")
+  skip_line=$(awk '/^### When to skip the flow/{print NR; exit}' "$claude")
+  [ -n "$r8_line" ] || { echo "CLAUDE.md '### Public-output hygiene' line not found"; fail=1; }
+  [ -n "$skip_line" ] || { echo "CLAUDE.md '### When to skip the flow' line not found"; fail=1; }
+  if [ -n "$r8_line" ] && [ -n "$skip_line" ] && [ "$r8_line" -ge "$skip_line" ]; then
+    echo "CLAUDE.md '### Public-output hygiene' must precede '### When to skip the flow' (R8@$r8_line skip@$skip_line)"
+    fail=1
+  fi
+  # Positive — per-site byte-exact pointers (iter2 iH2A correction).
+  if ! grep -qF 'R8 hygiene applies — see R8 in `skills/feature/references/code-quality-rules.md`.' "$codex"; then
+    echo "developer-codex.md missing byte-exact pointer literal"
+    fail=1
+  fi
+  if ! grep -qF 'R8 hygiene applies (no KB refs / no `Co-authored-by`) — see R8 in `code-quality-rules.md`.' "$devwf"; then
+    echo "developer-workflow.md L62-site missing byte-exact pointer literal"
+    fail=1
+  fi
+  if ! grep -qF 'R8 hygiene applies — see R8 in `code-quality-rules.md`.' "$devwf"; then
+    echo "developer-workflow.md L115-site missing byte-exact pointer literal"
+    fail=1
+  fi
+  if ! grep -qF '**R8 — Public-output hygiene (no KB leaks).** See R8 in `code-quality-rules.md`.' "$devwf"; then
+    echo "developer-workflow.md L172-site missing byte-exact peer-shaped pointer literal"
+    fail=1
+  fi
+  if ! grep -qF '### Public-output hygiene (R8)' "$pub"; then
+    echo "publish.md missing preserved heading anchor"
+    fail=1
+  fi
+  if ! grep -qF 'R8 applies' "$pub"; then
+    echo "publish.md missing 'R8 applies' pointer literal"
+    fail=1
+  fi
+  if ! grep -qF 'code-quality-rules.md' "$pub"; then
+    echo "publish.md missing pointer to code-quality-rules.md"
+    fail=1
+  fi
+  # Positive — peer-list symmetry preserved at L172 site.
+  if ! grep -qF '**R8 — Public-output hygiene (no KB leaks).**' "$devwf"; then
+    echo "developer-workflow.md missing peer-list anchor '**R8 — Public-output hygiene (no KB leaks).**'"
+    fail=1
+  fi
+  [ "$fail" = "0" ] || return 1
+  echo "R8 single source"
+}

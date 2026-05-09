@@ -5957,6 +5957,7 @@ check "skill-pass2-respawn-loop-monotonic-numbering" check_skill_pass2_respawn_l
 check "librarian-agent-no-bash-in-tools" check_librarian_agent_no_bash_in_tools
 check "hooks-json-stop-timeout-30s" check_hooks_json_stop_timeout_30s
 check "claude-md-has-testing-section" check_claude_md_has_testing_section
+check "r8-single-source" check_r8_single_source
 echo
 
 
