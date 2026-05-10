@@ -5461,7 +5461,7 @@ check_cross_auditor_replaces_silent_skip_gate() {
 }
 
 check_spec_mode_footer_sentinel_marker_contract() {
-  local f="agents/cross-auditor.md"
+  local f="agents/references/cross-auditor-evidence-handshake.md"
   local skl="skills/feature/SKILL.md"
   local ca_sent ca_obfusc skl_sent skl_tail3 skl_eof skl_old skl_l424
   local ca_l424 ca_l445_parser ca_l445_sem ca_l445_summary ca_l445_4th
@@ -5579,7 +5579,7 @@ check_cross_auditor_probe_failures_schema_aligned() {
 }
 
 check_cross_auditor_blocker_sanitization_truncate_before_escape() {
-  local f="agents/cross-auditor.md"
+  local f="agents/references/cross-auditor-evidence-handshake.md"
   local skl="skills/feature/SKILL.md"
   local block t199 escape_after old_cap ca_old_summary skl_t199 skl_old_cap
   # Stateful awk anchor (definite end-marker on next H3 — two-pattern range form is degenerate
@@ -5894,7 +5894,7 @@ check_skill_dispatch_param_block_single_source() {
 # numeric ref at L517 stripped; cross-field invariant body preserved.
 check_evidence_class_allowlist_single_source() {
   local skl="skills/feature/SKILL.md"
-  local ca="agents/cross-auditor.md"
+  local ca="agents/references/cross-auditor-evidence-handshake.md"
   [ -f "$skl" ] || { echo "$skl missing"; return 1; }
   [ -f "$ca" ] || { echo "$ca missing"; return 1; }
   # Positive — canonical preserved at cross-auditor.md.
@@ -5951,7 +5951,7 @@ check_evidence_class_allowlist_single_source() {
 # + contract-violation routing.
 check_eof_adjacency_parser_single_source() {
   local skl="skills/feature/SKILL.md"
-  local ca="agents/cross-auditor.md"
+  local ca="agents/references/cross-auditor-evidence-handshake.md"
   [ -f "$skl" ] || { echo "$skl missing"; return 1; }
   [ -f "$ca" ] || { echo "$ca missing"; return 1; }
   # Positive — canonical preserved at cross-auditor.md.

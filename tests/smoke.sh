@@ -4198,7 +4198,7 @@ check_cross_auditor_evidence_class_in_yaml_frontmatter() {
 # name the two-adjacent-final-lines `evidence_class:` + `evidence_blockers:`
 # return-text contract.
 check_cross_auditor_spec_mode_return_contract() {
-  local agent='agents/cross-auditor.md'
+  local agent='agents/references/cross-auditor-evidence-handshake.md'
   local skill='skills/feature/SKILL.md'
   # Three AND-ed assertions replace the previous OR-form across loose patterns.
   # Spec §3.3 mandates the inline-return MUST end with two adjacent literal
@@ -5221,7 +5221,7 @@ check_overview_contract_violated_documented() {
 # 2-value sentence `NEVER writes \`self_fallback\` or \`skipped\`` (without
 # `\`contract_violated\``).
 check_cross_auditor_never_writes_extension() {
-  local f='agents/cross-auditor.md'
+  local f='agents/references/cross-auditor-evidence-handshake.md'
   local skill='skills/feature/SKILL.md'
   if ! grep -qF "self_fallback\`, \`contract_violated\`, or \`skipped" "$f"; then
     echo "cross-auditor.md missing 3-value never-writes literal list 'self_fallback\`, \`contract_violated\`, or \`skipped'"
