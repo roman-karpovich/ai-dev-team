@@ -70,7 +70,7 @@ Use this for both your own findings and the Codex prompt:
 - `high` (default) → `CRITICAL/HIGH`
 - `medium+` → `CRITICAL/HIGH/MEDIUM`
 
-Use `allowed_severities` in the Codex prompt (see templates below) and for your own Claude audit. LOW is never collected.
+Use `allowed_severities` in the Codex prompt (see `agents/references/cross-auditor-codex-dispatch.md` §Codex prompt templates) and for your own Claude audit. LOW is never collected.
 
 ## Finding ID Format
 
