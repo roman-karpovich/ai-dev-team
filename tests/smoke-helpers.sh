@@ -432,7 +432,7 @@ check_developer_workflow_no_active_done_writes() {
 }
 
 check_cross_auditor_pretag_consistency_check() {
-  local path='agents/cross-auditor.md'
+  local path='agents/references/cross-auditor-mode-focus.md'
   local section
   section=$(extract_md_section "$path" '### `spec` mode')
   local label_count
@@ -1084,12 +1084,13 @@ check_readme_no_audit_migration_note() {
 # --- Cross-audit probes foundation (spec 2026-04-21-cross-audit-probes-foundation) ---
 
 check_agents_cross_auditor_schema_cut_fields() {
-  # Step 1 helper — asserts agents/cross-auditor.md §Step 4 findings.md template carries:
+  # Step 1 helper — asserts the §Step 4 findings.md template carries:
   #  (1) the updated table header `ID | Severity | Issue | Source | Mode | Confidence | Status`
   #  (2) new details-block fields: Sources / Mode at emit / Blocking / Probe receipt / Probe version / Eligible reason
   #      (Source is column-only — NOT a details-block field)
   #  (3) legacy `Found by` → `sources[]` round-trip mapping note with three-case expansion
-  local path="agents/cross-auditor.md"
+  # The §Step 4 canonical body lives in agents/references/cross-auditor-output-format.md.
+  local path="agents/references/cross-auditor-output-format.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
 
   # (1) Table header — canonical byte-exact
@@ -1424,7 +1425,7 @@ check_haiku_scorer_fail_open() {
 check_haiku_scorer_edge_cases_zero_partial_cap_timeout() {
   # Cross-auditor Step 3 Consolidation enumerates the four edge cases (§3.5a X1):
   # zero LLM findings, partial output, batch cap 20, 60s timeout.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qiE '(zero|empty).*(pure[- ]LLM|LLM[[:space:]]+findings|LLM[[:space:]]+subset)' "$path" \
     || grep -qiE 'empty.*SKIP.*scorer' "$path" \
@@ -1444,7 +1445,7 @@ check_haiku_scorer_mock_seam_declared() {
   # Mock seam — env var CROSS_AUDIT_SCORER_MOCK_JSON documented in cross-auditor
   # prose (the scorer agent's prose is for production — mock seam lives in the
   # invoker). Per spec §3.5a + §3.7 line 453.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qF 'CROSS_AUDIT_SCORER_MOCK_JSON' "$path" \
     || { echo "$path missing CROSS_AUDIT_SCORER_MOCK_JSON env-var seam declaration"; return 1; }
@@ -1457,7 +1458,7 @@ check_cross_auditor_step3_scorer_integration() {
   # agents/cross-auditor.md Step 3 declares the 5-stage pipeline with the
   # scorer call between dedupe (§3.5) and renderer (Step 4). Probe-sourced
   # findings pinned confidence=100; pure-LLM findings scored via Task tool.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qiE 'Haiku.*(scorer|decoupled|finding[- ]scorer)' "$path" \
     || { echo "$path Step 3 missing Haiku scorer integration reference"; return 1; }
@@ -1479,7 +1480,7 @@ check_cross_auditor_step3_scorer_integration() {
 check_cross_auditor_scorer_mock_env_var() {
   # Same env-var check as scorer_mock_seam but targeted at cross-auditor
   # (the invoker side). Must declare that production leaves the var UNSET.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qF 'CROSS_AUDIT_SCORER_MOCK_JSON' "$path" \
     || { echo "$path missing CROSS_AUDIT_SCORER_MOCK_JSON env-var declaration"; return 1; }
@@ -1493,7 +1494,7 @@ check_cross_auditor_probe_failures_synthesis_end_to_end() {
   # receipts. Prose must reference the synthesis step; helper runs synth script
   # on fixtures (k) and (l) to prove the producer contract's reason/remediation
   # sourcing (explicit vs fallback) works.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qF 'probe_failures' "$path" \
     || { echo "$path missing probe_failures[] synthesis reference in Step 3"; return 1; }
@@ -1692,7 +1693,7 @@ check_scorer_fixture_j_mock_seam_env_var_drives_fixtures() {
   # mock_env_var helper covers the byte-check; this fixture-level check
   # additionally asserts the env var name is EXACT 'CROSS_AUDIT_SCORER_MOCK_JSON'
   # and not a paraphrase — guards against X7 resolution drift).
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   local hits
   hits=$(grep -cF 'CROSS_AUDIT_SCORER_MOCK_JSON' "$path")
   if [ "$hits" -lt 1 ]; then
@@ -1894,11 +1895,16 @@ check_cross_auditor_probe_receipts_produced_by_step05() {
   # Spec 2026-04-21-probe-e-diff-scope-leak §3.2 (c) / §5 Step 3 (iter-3 X15 /
   # iter-2 X10) — probe_receipts is no longer a skill-threaded input bullet.
   # The ## Input section must NOT list it as an input field; Step 0.5 is the
-  # producer path. Replaces the Foundation-era
-  # check_cross_auditor_probe_receipts_input_declared (which asserted the
-  # opposite invariant and shipped before probe E's dispatch pivot).
+  # producer path. Per Spec 2a Step 6, §Step 0.5 body content moved to
+  # agents/references/cross-auditor-pr-and-probes.md while the pointer-stub H2
+  # stays in the hub; the negative §Input assertion plus the H2-presence check
+  # land on the hub, while the positive probe_findings /
+  # probe_receipt_metadata_by_provisional_id literal checks land on the
+  # reference file.
   local path="agents/cross-auditor.md"
+  local ref="agents/references/cross-auditor-pr-and-probes.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  [ -r "$ref" ] || { echo "$ref not readable"; return 1; }
   # Extract just the ## Input section (range from '## Input' up to next '## ').
   local input_section
   input_section=$(awk '
@@ -1913,14 +1919,15 @@ check_cross_auditor_probe_receipts_produced_by_step05() {
     echo "$path ## Input still lists probe_receipts as an input bullet (expected removed per §3.2 (c) / X10)"
     return 1
   fi
-  # Positive: Step 0.5 must exist as the producer path.
+  # Positive: Step 0.5 H2 pointer-stub still anchors in the hub.
   grep -qE '^## Step 0\.5' "$path" \
     || { echo "$path missing '## Step 0.5' producer section (expected between Step 0 and Step 1)"; return 1; }
-  grep -qF 'probe_findings' "$path" \
-    || { echo "$path missing 'probe_findings' — Step 0.5 should produce it"; return 1; }
-  grep -qF 'probe_receipt_metadata_by_provisional_id' "$path" \
-    || { echo "$path missing 'probe_receipt_metadata_by_provisional_id' side-map (iter-4 X19)"; return 1; }
-  echo "$path ## Input no longer lists probe_receipts bullet; Step 0.5 produces probe_findings/probe_receipts via side-map (X19)"
+  # Positive: producer-side literals live in the reference file.
+  grep -qF 'probe_findings' "$ref" \
+    || { echo "$ref missing 'probe_findings' — Step 0.5 should produce it"; return 1; }
+  grep -qF 'probe_receipt_metadata_by_provisional_id' "$ref" \
+    || { echo "$ref missing 'probe_receipt_metadata_by_provisional_id' side-map (iter-4 X19)"; return 1; }
+  echo "$path ## Input no longer lists probe_receipts bullet; $ref Step 0.5 produces probe_findings/probe_receipts via side-map (X19)"
 }
 
 check_yaml_example_probes_block() {
@@ -2152,13 +2159,16 @@ check_probe_e_receipt_rerun_stable() {
 # --- Step 3: Cross-auditor agent Step 0.5 + skill + dedupe merge_pair swap ---
 
 check_cross_auditor_step05_probe_dispatch() {
-  # agents/cross-auditor.md carries a '## Step 0.5: Probe dispatch' section
-  # positioned between '## Step 0' (PR materialization) and '## Step 1:
-  # Launch Codex' per spec §3.5 pseudocode. Asserts section presence, ordering
-  # vs Step 0 / Step 1, six-way fail-open class enumeration, and side-map key
-  # (iter-4 X19).
+  # Per Spec 2a Step 6, §Step 0 + §Step 0.5 body content moved to
+  # agents/references/cross-auditor-pr-and-probes.md while pointer-stub H2 lines
+  # remain in agents/cross-auditor.md. Hub asserts positional ordering of the
+  # H2s (Step 0 < Step 0.5 < Step 1); reference asserts the canonical body
+  # contract — six-way fail-open class enumeration, side-map key (iter-4 X19),
+  # producer-side output lists, and off-floor enforcement.
   local path="agents/cross-auditor.md"
+  local ref="agents/references/cross-auditor-pr-and-probes.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  [ -r "$ref" ] || { echo "$ref not readable"; return 1; }
   local step0_line step05_line step1_line
   step0_line=$(grep -nE '^## Step 0 \(PR mode only\)' "$path" | head -1 | cut -d: -f1)
   step05_line=$(grep -nE '^## Step 0\.5' "$path" | head -1 | cut -d: -f1)
@@ -2168,37 +2178,38 @@ check_cross_auditor_step05_probe_dispatch() {
     || { echo "$path missing Step 0 or Step 1 neighbours for Step 0.5 ordering check"; return 1; }
   [[ "$step0_line" -lt "$step05_line" && "$step05_line" -lt "$step1_line" ]] \
     || { echo "$path Step 0.5 is not positioned between Step 0 ($step0_line) and Step 1 ($step1_line) — got Step 0.5 at $step05_line"; return 1; }
-  # Extract the Step 0.5 section.
+  # Extract the Step 0.5 section from the reference file.
   local step05
   step05=$(awk '
     !in_s && /^## Step 0\.5/ { in_s = 1; print; next }
     in_s && /^## / && !/^## Step 0\.5/ { exit }
     in_s { print }
-  ' "$path")
+  ' "$ref")
   # Six-way fail-open enumeration — distinct class markers.
   printf '%s\n' "$step05" | grep -qF 'probe script' \
-    || { echo "$path Step 0.5 missing fail-open class 1 'probe script' (script-missing)"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 1 'probe script' (script-missing)"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'TimeoutError' \
-    || { echo "$path Step 0.5 missing fail-open class 2 'TimeoutError'"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 2 'TimeoutError'"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'NonZeroExit' \
-    || { echo "$path Step 0.5 missing fail-open class 3 'NonZeroExit'"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 3 'NonZeroExit'"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'JSONDecodeError' \
-    || { echo "$path Step 0.5 missing fail-open class 4 'JSONDecodeError'"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 4 'JSONDecodeError'"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'schema' \
-    || { echo "$path Step 0.5 missing fail-open class 5 'schema' (validation)"; return 1; }
-  # Class 6 (receipt-write IOError) lives in stage 4.5 (Step 3 pipeline).
-  grep -qF 'receipt write failed' "$path" \
-    || { echo "$path missing fail-open class 6 (receipt write failed) in Step 3 stage 4.5"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 5 'schema' (validation)"; return 1; }
+  # Class 6 (receipt-write IOError) lives in stage 4.5 (Step 3 pipeline) — moved
+  # to agents/references/cross-auditor-step-3-pipeline.md per Spec 2a Step 4.
+  grep -qF 'receipt write failed' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md missing fail-open class 6 (receipt write failed) in Step 3 stage 4.5"; return 1; }
   # Side-map (iter-4 X19) + provisional_id coupling (iter-5 X22).
   printf '%s\n' "$step05" | grep -qF 'probe_receipt_metadata_by_provisional_id' \
-    || { echo "$path Step 0.5 missing side-map key (iter-4 X19)"; return 1; }
+    || { echo "$ref Step 0.5 missing side-map key (iter-4 X19)"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'probe_findings' \
-    || { echo "$path Step 0.5 missing probe_findings output list"; return 1; }
+    || { echo "$ref Step 0.5 missing probe_findings output list"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'probe_failures_seed' \
-    || { echo "$path Step 0.5 missing probe_failures_seed list (iter-4 X20)"; return 1; }
+    || { echo "$ref Step 0.5 missing probe_failures_seed list (iter-4 X20)"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'mode == "off"' \
-    || { echo "$path Step 0.5 missing off-floor enforcement 'mode == \"off\"'"; return 1; }
-  echo "$path Step 0.5 present, ordered between Step 0 and Step 1, six fail-open classes + side-map + off-floor enforcement"
+    || { echo "$ref Step 0.5 missing off-floor enforcement 'mode == \"off\"'"; return 1; }
+  echo "cross-auditor Step 0.5 present (hub pointer-stub ordered between Step 0 and Step 1), six fail-open classes + side-map + off-floor enforcement on $ref"
 }
 
 # Shared helper: emulate the orchestrator's fail-open path by invoking
@@ -2248,9 +2259,10 @@ check_probe_e_fail_open_banner() {
     "probe exited non-zero: ast.parse failed on src/foo.py" \
     "re-run /cross-audit after checking probe_E stderr logs" \
     || return 1
-  # Also assert the agent prose contains the NonZeroExit branch.
-  grep -qF 'probe exited non-zero' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md missing 'probe exited non-zero' Step 0.5 branch"; return 1; }
+  # Also assert the agent prose contains the NonZeroExit branch (Step 0.5
+  # body moved to agents/references/cross-auditor-pr-and-probes.md per Spec 2a Step 6).
+  grep -qF 'probe exited non-zero' agents/references/cross-auditor-pr-and-probes.md \
+    || { echo "agents/references/cross-auditor-pr-and-probes.md missing 'probe exited non-zero' Step 0.5 branch"; return 1; }
   echo "fail-open banner renders (NonZeroExit class); agent prose declares the branch"
 }
 
@@ -2264,8 +2276,8 @@ check_probe_e_fail_open_schema_invalid_body() {
     "probe output schema invalid: missing required key 'findings'" \
     "fix probe_E to conform to §3.3 stdout shape" \
     || return 1
-  grep -qF 'probe output schema invalid' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md missing 'probe output schema invalid' Step 0.5 branch"; return 1; }
+  grep -qF 'probe output schema invalid' agents/references/cross-auditor-pr-and-probes.md \
+    || { echo "agents/references/cross-auditor-pr-and-probes.md missing 'probe output schema invalid' Step 0.5 branch"; return 1; }
   echo "fail-open banner renders (schema-invalid-body class, iter-7 X30 rename); agent prose declares the branch"
 }
 
@@ -2279,18 +2291,18 @@ check_probe_e_fail_open_write_receipt_failure() {
     "receipt write failed: [Errno 30] Read-only file system: '/kb/security/2026-04-21-foo-probe-receipts/X5.json'" \
     "check KB mount is writable + re-run /cross-audit" \
     || return 1
-  grep -qF 'receipt write failed' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md missing 'receipt write failed' stage-4.5 branch (fail-open class 6)"; return 1; }
+  grep -qF 'receipt write failed' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md missing 'receipt write failed' stage-4.5 branch (fail-open class 6)"; return 1; }
   # Also assert the pair (receipt write failed, check KB mount).
-  grep -qF 'check KB mount is writable' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md stage-4.5 branch missing remediation 'check KB mount is writable'"; return 1; }
+  grep -qF 'check KB mount is writable' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md stage-4.5 branch missing remediation 'check KB mount is writable'"; return 1; }
   # Also exercise the full stage-4.5 side-map + receipt-write loop — if the
   # agent's stage-4.5 prose drifts (e.g. stops preserving provisional_id),
   # the seed-and-render layer above doesn't catch it. Assert the prose pins:
-  grep -qE 'any\(s\.startswith\("probe:"\) for s in finding\["sources"\]\)' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md stage-4.5 missing probe-sourced predicate (Foundation §3.3 X2 / iter-3 X18)"; return 1; }
-  grep -qE 'provisional_id' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md stage-4.5 missing provisional_id preservation (iter-5 X22/X24)"; return 1; }
+  grep -qE 'any\(s\.startswith\("probe:"\) for s in finding\["sources"\]\)' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md stage-4.5 missing probe-sourced predicate (Foundation §3.3 X2 / iter-3 X18)"; return 1; }
+  grep -qE 'provisional_id' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md stage-4.5 missing provisional_id preservation (iter-5 X22/X24)"; return 1; }
   echo "fail-open banner renders (receipt-write class, stage 4.5); agent prose declares branch + remediation + probe-sourced predicate + provisional_id preservation"
 }
 
@@ -3348,17 +3360,22 @@ check_cross_audit_skill_parses_ref_range() {
 }
 
 check_cross_audit_agent_handles_range_spec() {
+  # range_spec parameter declaration lives in §Input on the hub; the diff-mode wording with
+  # `git diff --name-only <range_spec>` lives in §Step 1 which moved to the codex-dispatch
+  # reference per Spec 2a Step 5. The aggregate count must be ≥ 2 across both files.
   local agent='agents/cross-auditor.md'
+  local agent_ref='agents/references/cross-auditor-codex-dispatch.md'
   test -f "$agent" || { echo "$agent missing"; return 1; }
+  test -f "$agent_ref" || { echo "$agent_ref missing"; return 1; }
   grep -qF 'range_spec' "$agent" \
-    || { echo "$agent missing 'range_spec' parameter declaration"; return 1; }
-  grep -qF 'git diff --name-only <range_spec>' "$agent" \
-    || { echo "$agent missing updated diff-mode wording with range_spec"; return 1; }
-  # Verify range_spec appears at least twice (parameter declaration + diff-mode wording)
+    || { echo "$agent missing 'range_spec' parameter declaration in §Input"; return 1; }
+  grep -qF 'git diff --name-only <range_spec>' "$agent_ref" \
+    || { echo "$agent_ref missing updated diff-mode wording with range_spec"; return 1; }
+  # Verify range_spec appears at least twice across hub + ref (parameter declaration + diff-mode wording).
   local count
-  count=$(grep -cF 'range_spec' "$agent")
-  [ "$count" -ge 2 ] || { echo "$agent has only $count occurrence(s) of 'range_spec' (expected >= 2)"; return 1; }
-  echo "agents/cross-auditor.md range_spec parameter (count=$count) and diff-mode wording both present"
+  count=$(( $(grep -cF 'range_spec' "$agent") + $(grep -cF 'range_spec' "$agent_ref") ))
+  [ "$count" -ge 2 ] || { echo "agents/cross-auditor.md + ref together have only $count occurrence(s) of 'range_spec' (expected >= 2)"; return 1; }
+  echo "agents/cross-auditor.md §Input + ref §Step 1 range_spec parameter (count=$count) and diff-mode wording both present"
 }
 
 check_codex_audit_dispatch_helper_positive() {
@@ -3432,9 +3449,9 @@ check_feature_skill_step2_forbids_ambiguity() {
 }
 
 check_cross_auditor_spec_mode_repo_convention_rule() {
-  local agent='agents/cross-auditor.md'
+  local agent='agents/references/cross-auditor-mode-focus.md'
   local section
-  section=$(awk '/^### `spec` mode/{flag=1} /^## Severity Ladder/{if (flag) exit} flag{print}' "$agent")
+  section=$(awk '/^### `spec` mode/{flag=1} /^<!-- end §spec mode -->/{if (flag) exit} flag{print}' "$agent")
   echo "$section" | grep -qF 'Repo-convention enforcement' \
     || { echo "$agent spec mode missing Repo-convention enforcement rule"; return 1; }
   echo "$section" | grep -qF "at developer's discretion" \
@@ -3472,9 +3489,11 @@ check_r5_step1_reads_directive_files() {
 
 check_cross_auditor_uses_async_codex_dispatch() {
   local agent='agents/cross-auditor.md'
+  local agent_ref='agents/references/cross-auditor-codex-dispatch.md'
   local tools_line step1 count line5
 
   test -f "$agent" || { echo "$agent missing"; return 1; }
+  test -f "$agent_ref" || { echo "$agent_ref missing"; return 1; }
 
   tools_line=$(grep -F 'tools:' "$agent" | head -1)
   echo "$tools_line" | grep -qF 'BashOutput' \
@@ -3486,19 +3505,23 @@ check_cross_auditor_uses_async_codex_dispatch() {
     return 1
   fi
 
+  # §Codex dispatch H2 byte-exact preserved as pointer-stub in hub per Spec 2a §3.5 X3.
   count=$(grep -cF '## Codex dispatch (background CLI + polling)' "$agent")
   [ "$count" -ge 1 ] \
-    || { echo "$agent missing Codex dispatch background CLI section"; return 1; }
+    || { echo "$agent missing Codex dispatch background CLI section pointer-stub H2"; return 1; }
 
-  step1=$(awk '/^## Step 1:/{flag=1} /^## Step 2:/{if (flag) exit} flag{print}' "$agent")
+  # §Step 1 body content moved to agents/references/cross-auditor-codex-dispatch.md per Spec 2a Step 5.
+  # End-bound is the sentinel '<!-- end §Step 1 -->' placed at end of §Step 1 in the reference file.
+  step1=$(awk '/^## Step 1:/{flag=1} flag && /^<!-- end §Step 1 -->/{exit} flag{print}' "$agent_ref")
   echo "$step1" | grep -qF 'codex_audit_dispatch.sh' \
-    || { echo "$agent Step 1 missing codex_audit_dispatch.sh"; return 1; }
+    || { echo "$agent_ref §Step 1 missing codex_audit_dispatch.sh"; return 1; }
   echo "$step1" | grep -qF 'run_in_background' \
-    || { echo "$agent Step 1 missing run_in_background"; return 1; }
+    || { echo "$agent_ref §Step 1 missing run_in_background"; return 1; }
 
-  count=$(grep -cF 'BashOutput' "$agent")
+  # BashOutput body count moves to ref (frontmatter `tools:` line on hub still has BashOutput).
+  count=$(grep -cF 'BashOutput' "$agent_ref")
   [ "$count" -ge 2 ] \
-    || { echo "$agent missing BashOutput in body (count=$count, expected >= 2 including frontmatter)"; return 1; }
+    || { echo "$agent_ref missing BashOutput in body (count=$count, expected >= 2)"; return 1; }
 
   local model_line effort_line
   model_line=$(grep -nF 'model: opus' "$agent" | head -1 | cut -d: -f1)
@@ -3508,12 +3531,17 @@ check_cross_auditor_uses_async_codex_dispatch() {
   [ "$effort_line" = "$((model_line + 1))" ] \
     || { echo "$agent 'effort: xhigh' must immediately follow 'model: opus' (model@$model_line, effort@$effort_line)"; return 1; }
 
-  count=$(grep -cF 'codex_audit_dispatch.sh exits non-zero' "$agent")
+  # Fail-open wording lives in §Codex dispatch + §Step 1 result paragraph — both moved to ref.
+  count=$(grep -cF 'codex_audit_dispatch.sh exits non-zero' "$agent_ref")
   [ "$count" -ge 1 ] \
-    || { echo "$agent fail-open wording missing codex_audit_dispatch.sh exits non-zero"; return 1; }
+    || { echo "$agent_ref fail-open wording missing codex_audit_dispatch.sh exits non-zero"; return 1; }
 
   if grep -qF 'mcp__codex__codex' "$agent"; then
     echo "$agent still contains mcp__codex__codex"
+    return 1
+  fi
+  if grep -qF 'mcp__codex__codex' "$agent_ref"; then
+    echo "$agent_ref still contains mcp__codex__codex"
     return 1
   fi
 
@@ -3958,7 +3986,7 @@ PY
 # `category: security`, `cross-auditor:security`, and `project_type` between
 # the `### \`security\` mode` heading and the next `### ` heading.
 check_cross_auditor_security_preamble() {
-  local path="${1:-agents/cross-auditor.md}"
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
   test -f "$path" || { echo "$path missing" >&2; return 1; }
   local section
   section=$(awk '
@@ -4713,7 +4741,7 @@ PY
 # keeps the `**Backend Services:**` heading; (g) preserves all 9 distinguishing
 # bullet phrases verbatim (full-list pinning).
 check_cross_auditor_loads_security_cluster() {
-  local path="${1:-agents/cross-auditor.md}"
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
   test -f "$path" || { echo "$path missing" >&2; return 1; }
   local section
   section=$(awk '
@@ -4767,19 +4795,19 @@ check_cross_auditor_loads_security_cluster() {
 # cluster Pin 6 — class: prompt-text). Gates
 # §3.4 sub-edits (b) and (c). Asserts the `## Step 1: Launch Codex` section
 # carries 7 load-bearing substrings AND the `## Step 2: Claude Audit (you)`
-# section carries 5 load-bearing substrings.
-check_cross_auditor_step1_step2_load_instructions() {
-  local path="${1:-agents/cross-auditor.md}"
+# section carries 5 load-bearing substrings. Per Spec 2a Step 5 §3.3a row 3,
+# §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md while
+# §Step 2 stays in the hub — helper split into two file-specific helpers
+# (disposition (c)). The aggregate registration calls both halves so the
+# 7-substring + 5-substring contract is fully enforced.
+check_cross_auditor_step1_load_instructions() {
+  local path="${1:-agents/references/cross-auditor-codex-dispatch.md}"
   test -f "$path" || { echo "$path missing" >&2; return 1; }
-  local s1 s2
+  # End-bound is the §Step 1 sentinel placed at end-of-section in the ref per Spec 2a Step 5.
+  local s1
   s1=$(awk '
     /^## Step 1: Launch Codex/ { in_s=1; print; next }
-    in_s && /^## Step 2: Claude Audit/ { exit }
-    in_s { print }
-  ' "$path")
-  s2=$(awk '
-    /^## Step 2: Claude Audit/ { in_s=1; print; next }
-    in_s && /^## Step 3:/ { exit }
+    in_s && /^<!-- end §Step 1 -->/ { exit }
     in_s { print }
   ' "$path")
 
@@ -4792,12 +4820,36 @@ check_cross_auditor_step1_step2_load_instructions() {
   printf '%s\n' "$s1" | grep -qE 'not reachable|focus-areas-only fallback' \
     || { echo "$path §Step 1 section missing 'not reachable' / 'focus-areas-only fallback' token (Pin 6 assertion a)" >&2; return 1; }
 
+  echo "cross-auditor §Step 1 (7 substrings) load-instructions present in $path"
+}
+
+check_cross_auditor_step2_load_instructions() {
+  local path="${1:-agents/cross-auditor.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  local s2
+  s2=$(awk '
+    /^## Step 2: Claude Audit/ { in_s=1; print; next }
+    in_s && /^## Step 3:/ { exit }
+    in_s { print }
+  ' "$path")
+
   # (b) Step 2 — five load-bearing substrings
+  local tok
   for tok in 'code-quality-rules.md' 'Bad code' 'Good code' 'mode ∈ {security, full}' 'additively'; do
     printf '%s\n' "$s2" | grep -qF "$tok" \
       || { echo "$path §Step 2 section missing load-bearing token: '$tok' (Pin 6 assertion b)" >&2; return 1; }
   done
 
+  echo "cross-auditor §Step 2 (5 substrings) load-instructions present in $path"
+}
+
+# Compatibility wrapper — calls both halves so existing pin registrations + the
+# 7+5 substring contract continue to gate.
+check_cross_auditor_step1_step2_load_instructions() {
+  check_cross_auditor_step1_load_instructions "agents/references/cross-auditor-codex-dispatch.md" \
+    || return 1
+  check_cross_auditor_step2_load_instructions "agents/cross-auditor.md" \
+    || return 1
   echo "cross-auditor §Step 1 (7 substrings) + §Step 2 (5 substrings) load-instructions present"
 }
 
@@ -4924,13 +4976,13 @@ check_spec_template_attack_surface_section() {
 }
 
 check_cross_auditor_consumes_attack_surface_profile() {
-  # Pin C (prompt-text): Asserts agents/cross-auditor.md spec mode block carries
+  # Pin C (prompt-text): Asserts agents/references/cross-auditor-mode-focus.md spec mode block carries
   # the Attack-surface profile consumption rules with all required fingerprints.
-  local path="${1:-agents/cross-auditor.md}"
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
   test -f "$path" || { echo "$path missing" >&2; return 1; }
 
   local sec
-  sec=$(awk '/^### `spec` mode/,/^## Severity Ladder/' "$path")
+  sec=$(awk '/^### `spec` mode/,/^<!-- end §spec mode -->/' "$path")
 
   # 4 base tokens
   printf '%s\n' "$sec" | grep -qF 'Attack-surface profile' \
@@ -5337,9 +5389,9 @@ check_skill_stride_lite_block_gated() {
 }
 
 check_cross_auditor_consumes_stride_lite() {
-  local f="agents/cross-auditor.md"
+  local f="agents/references/cross-auditor-mode-focus.md"
   local sec
-  sec=$(awk '/^### `spec` mode/,/^## Severity Ladder/' "$f")
+  sec=$(awk '/^### `spec` mode/,/^<!-- end §spec mode -->/' "$f")
   local has_strttm has_section has_gate has_med has_finding
   local has_spoof has_tamper has_repud has_info has_dos has_eop
   has_strttm=$(echo "$sec" | grep -cF 'STRIDE-lite threat model')
@@ -5419,7 +5471,9 @@ check_skill_threads_project_type_at_code_audit_resume_routing() {
 }
 
 check_cross_auditor_emits_degraded_warning_when_project_type_unset() {
-  local f="agents/cross-auditor.md"
+  # §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per Spec 2a Step 5 §3.3a row 6
+  # (path-swap-only — both awk bounds co-located in the destination file post-Step-5).
+  local f="agents/references/cross-auditor-codex-dispatch.md"
   local block warn norm runfilter
   # Scope all three clauses to the gate paragraph (between the `When mode ∈ {security, full}` opener
   # and the `**Code mode** Codex prompt template:` close marker) to prevent pre-existing prose at
@@ -5435,7 +5489,8 @@ check_cross_auditor_emits_degraded_warning_when_project_type_unset() {
 }
 
 check_cross_auditor_documents_warning_emit_location() {
-  local f="agents/cross-auditor.md"
+  # §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per Spec 2a Step 5.
+  local f="agents/references/cross-auditor-codex-dispatch.md"
   local rendered marker
   rendered=$(grep -cF 'R-rule cluster: NOT loaded' "$f")
   # The marker locks the conditional-emit comment so the bullet is documented as gate-conditional,
@@ -5446,7 +5501,8 @@ check_cross_auditor_documents_warning_emit_location() {
 }
 
 check_cross_auditor_replaces_silent_skip_gate() {
-  local f="agents/cross-auditor.md"
+  # §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per Spec 2a Step 5.
+  local f="agents/references/cross-auditor-codex-dispatch.md"
   local old_gate new_branch
   # Negative clause: the old `When mode ∈ {security, full} and project_type is set` gate prose
   # MUST be gone — its presence means the silent-skip path is still wired and the unset-project_type
@@ -5460,7 +5516,7 @@ check_cross_auditor_replaces_silent_skip_gate() {
 }
 
 check_spec_mode_footer_sentinel_marker_contract() {
-  local f="agents/cross-auditor.md"
+  local f="agents/references/cross-auditor-evidence-handshake.md"
   local skl="skills/feature/SKILL.md"
   local ca_sent ca_obfusc skl_sent skl_tail3 skl_eof skl_old skl_l424
   local ca_l424 ca_l445_parser ca_l445_sem ca_l445_summary ca_l445_4th
@@ -5524,32 +5580,42 @@ check_spec_mode_footer_sentinel_marker_contract() {
 
 check_cross_auditor_probe_failures_schema_aligned() {
   local f="agents/cross-auditor.md"
+  local f_pr="agents/references/cross-auditor-pr-and-probes.md"
+  local f_step3="agents/references/cross-auditor-step-3-pipeline.md"
   local h="tests/smoke-helpers.sh"
   local old_q_r old_q_rm reason_n remediation_n canonical old_canonical translator_bridge scorer_token
   local l389_old_r l389_new_r l389_old_rm l389_new_rm
   local helpers_old_q_r helpers_old_q_rm helpers_new_q_r helpers_new_q_rm
   # Scoped quoted-key dict-literal negatives — the fingerprint of the five Step 0.5 .append( sites.
-  # Bare `failure_reason` legitimately stays in the file at scorer_failure_reason and translator-bridge
-  # surfaces, which is why this clause is scoped to the QUOTED-KEY form, not bare token.
-  old_q_r=$(grep -cF '"failure_reason":' "$f")
-  old_q_rm=$(grep -cF '"failure_remediation":' "$f")
-  # Positive count — five quoted-key dict-literal sites emit "reason" / "remediation".
-  reason_n=$(grep -cF '"reason":' "$f")
-  remediation_n=$(grep -cF '"remediation":' "$f")
-  # Canonical-phrase positive (X15 — threshold ≥ 2 locks BOTH L199 description AND L268 fail-open
-  # coverage prose in lockstep; ≥ 1 would allow partial rewrite).
-  canonical=$(grep -cF '`probe_id` / `reason` / `remediation`' "$f")
-  # X19 (a) — pre-rewrite canonical phrase absent at both L199 + L268 surfaces.
-  old_canonical=$(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f")
-  # Preserve translator bridge L400-401 — Foundation §3.3 receipt-schema territory.
-  translator_bridge=$(grep -cF "receipt's optional \`failure_reason\`" "$f")
-  # Preserve scorer_failure_reason (renderer-stdin contract — distinct token).
-  scorer_token=$(grep -cF 'scorer_failure_reason' "$f")
-  # L389-area inline-prose entries (paired-key — both reason and remediation halves).
-  l389_old_r=$(grep -cF 'failure_reason: "receipt write failed:' "$f")
-  l389_new_r=$(grep -cF 'reason: "receipt write failed:' "$f")
-  l389_old_rm=$(grep -cF 'failure_remediation: "check KB mount' "$f")
-  l389_new_rm=$(grep -cF 'remediation: "check KB mount' "$f")
+  # Bare `failure_reason` legitimately stays at scorer_failure_reason and translator-bridge
+  # surfaces, which is why this clause is scoped to the QUOTED-KEY form, not bare token. Per
+  # Spec 2a Step 6 the five Step 0.5 .append() sites moved to
+  # agents/references/cross-auditor-pr-and-probes.md; negatives must hold across hub + pr ref +
+  # step3 ref to catch any reintroduction.
+  old_q_r=$(( $(grep -cF '"failure_reason":' "$f") + $(grep -cF '"failure_reason":' "$f_pr") + $(grep -cF '"failure_reason":' "$f_step3") ))
+  old_q_rm=$(( $(grep -cF '"failure_remediation":' "$f") + $(grep -cF '"failure_remediation":' "$f_pr") + $(grep -cF '"failure_remediation":' "$f_step3") ))
+  # Positive count — five quoted-key dict-literal sites emit "reason" / "remediation"; they all
+  # live in the pr-and-probes ref now (Step 0.5 pseudocode .append() blocks).
+  reason_n=$(grep -cF '"reason":' "$f_pr")
+  remediation_n=$(grep -cF '"remediation":' "$f_pr")
+  # Canonical-phrase positive (X15 — threshold ≥ 2 locks BOTH the Step 0.5 description AND fail-open
+  # coverage prose in lockstep; ≥ 1 would allow partial rewrite). Both surfaces moved to the
+  # pr-and-probes ref at Step 6; the stage 5 synthesis surface stays in the step3 ref per Spec 2a Step 4.
+  canonical=$(( $(grep -cF '`probe_id` / `reason` / `remediation`' "$f_pr") + $(grep -cF '`probe_id` / `reason` / `remediation`' "$f_step3") ))
+  # X19 (a) — pre-rewrite canonical phrase absent across hub + pr ref + step3 ref.
+  old_canonical=$(( $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f") + $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f_pr") + $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f_step3") ))
+  # Preserve translator bridge L400-401 — Foundation §3.3 receipt-schema territory. Now lives in
+  # references/cross-auditor-step-3-pipeline.md (stage 5 reason/remediation derivation) per Spec 2a Step 4.
+  translator_bridge=$(grep -cF "receipt's optional \`failure_reason\`" "$f_step3")
+  # Preserve scorer_failure_reason (renderer-stdin contract — distinct token). Now lives in the
+  # Step-3 reference (Stage 4 Haiku scorer + Stage 6 renderer pipe payload) per Spec 2a Step 4.
+  scorer_token=$(grep -cF 'scorer_failure_reason' "$f_step3")
+  # L389-area inline-prose entries (paired-key — both reason and remediation halves) — moved into
+  # the Step-3 reference (stage 4.5 fail-open class 6 prose) per Spec 2a Step 4.
+  l389_old_r=$(grep -cF 'failure_reason: "receipt write failed:' "$f_step3")
+  l389_new_r=$(grep -cF 'reason: "receipt write failed:' "$f_step3")
+  l389_old_rm=$(grep -cF 'failure_remediation: "check KB mount' "$f_step3")
+  l389_new_rm=$(grep -cF 'remediation: "check KB mount' "$f_step3")
   # smoke-helpers.sh seed-side emulation heredocs — symmetric paired-key coverage.
   # Exclude self-reference: the smoke-pin helper itself contains the literals as grep patterns,
   # so scope the count to lines NOT carrying a `grep -cF` clause (which fingerprint the helper's
@@ -5559,12 +5625,12 @@ check_cross_auditor_probe_failures_schema_aligned() {
   helpers_old_q_rm=$(grep -F '"failure_remediation":' "$h" | grep -vc 'grep -cF')
   helpers_new_q_r=$(grep -F '"reason":' "$h" | grep -vc 'grep -cF')
   helpers_new_q_rm=$(grep -F '"remediation":' "$h" | grep -vc 'grep -cF')
-  [ "$old_q_r" = "0" ] || { echo "agents: stale '\"failure_reason\":' quoted-key dict-literal still present (5 Step 0.5 .append sites should have been renamed)"; return 1; }
+  [ "$old_q_r" = "0" ] || { echo "agents: stale '\"failure_reason\":' quoted-key dict-literal still present across hub/pr-ref/step3-ref (5 Step 0.5 .append sites should have been renamed)"; return 1; }
   [ "$old_q_rm" = "0" ] || { echo "agents: stale '\"failure_remediation\":' quoted-key dict-literal still present"; return 1; }
-  [ "$reason_n" -ge 5 ] || { echo "agents: '\"reason\":' count must be ≥ 5 (one per Step 0.5 .append site)"; return 1; }
-  [ "$remediation_n" -ge 5 ] || { echo "agents: '\"remediation\":' count must be ≥ 5"; return 1; }
-  [ "$canonical" -ge 2 ] || { echo "agents: canonical phrase 'probe_id / reason / remediation' must appear at ≥ 2 surfaces (L199 description AND L268 fail-open coverage)"; return 1; }
-  [ "$old_canonical" = "0" ] || { echo "agents: stale canonical phrase 'probe_id / failure_reason / failure_remediation' still present at L199 or L268"; return 1; }
+  [ "$reason_n" -ge 5 ] || { echo "agents: '\"reason\":' count must be ≥ 5 in pr-and-probes ref (one per Step 0.5 .append site)"; return 1; }
+  [ "$remediation_n" -ge 5 ] || { echo "agents: '\"remediation\":' count must be ≥ 5 in pr-and-probes ref"; return 1; }
+  [ "$canonical" -ge 2 ] || { echo "agents: canonical phrase 'probe_id / reason / remediation' must appear at ≥ 2 surfaces (Step 0.5 description AND fail-open coverage)"; return 1; }
+  [ "$old_canonical" = "0" ] || { echo "agents: stale canonical phrase 'probe_id / failure_reason / failure_remediation' still present"; return 1; }
   [ "$translator_bridge" -ge 1 ] || { echo "agents: translator bridge 'receipt's optional failure_reason' must be preserved (Foundation §3.3 carve-out)"; return 1; }
   [ "$scorer_token" -ge 2 ] || { echo "agents: 'scorer_failure_reason' renderer-stdin contract must be preserved (distinct token, not a probe_failures key)"; return 1; }
   [ "$l389_old_r" = "0" ] || { echo "agents: L389-area pre-rename inline-prose 'failure_reason: \"receipt write failed:' still present"; return 1; }
@@ -5578,7 +5644,7 @@ check_cross_auditor_probe_failures_schema_aligned() {
 }
 
 check_cross_auditor_blocker_sanitization_truncate_before_escape() {
-  local f="agents/cross-auditor.md"
+  local f="agents/references/cross-auditor-evidence-handshake.md"
   local skl="skills/feature/SKILL.md"
   local block t199 escape_after old_cap ca_old_summary skl_t199 skl_old_cap
   # Stateful awk anchor (definite end-marker on next H3 — two-pattern range form is degenerate
@@ -5612,37 +5678,48 @@ check_cross_auditor_blocker_sanitization_truncate_before_escape() {
 }
 
 check_cross_auditor_r_rule_path_env_first_precedence() {
-  local f="agents/cross-auditor.md"
+  # §Codex dispatch + §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per
+  # Spec 2a Step 5 §3.3a row 8 (path-swap-only — both bounds co-located in the destination file
+  # post-Step-5). The L340 surface (the §3.5a L348 directional reference) lives in §Step 2 which
+  # stays in the hub; that literal was rewritten from "§security mode bridge above" to
+  # "agents/references/cross-auditor-mode-focus.md §security mode bridge" per §3.5a Step 5
+  # outbound — l340_post anchor updated to match the post-rewrite form.
+  local f_ref="agents/references/cross-auditor-codex-dispatch.md"
+  local f_hub="agents/cross-auditor.md"
   local block uncond realp stale_l296 stale_l303 stale_l340 l303_post l340_post
   # Stateful awk anchor: open at the new env-first paragraph, close at the next anchor.
   # Robust to either physical layout (single paragraph or split into multiple physical lines)
   # because the close pattern is a definite sentinel introduced by the rewrite itself.
-  block=$(awk '/^Path resolution: when/{p=1; print; next} p && /^If both resolutions fail/{print; exit} p{print}' "$f")
+  block=$(awk '/^Path resolution: when/{p=1; print; next} p && /^If both resolutions fail/{print; exit} p{print}' "$f_ref")
   uncond=$(echo "$block" | grep -cF 'UNCONDITIONALLY to `${CLAUDE_PLUGIN_ROOT}')
   realp=$(echo "$block" | grep -cF 'realpath')
   # Stale-prose pre-negatives (locks pre-rewrite literals absent at L296/L303/L340 surfaces).
-  stale_l296=$(grep -cF "legacy invocations the agent's launch cwd is the ai-dev-team plugin root" "$f")
-  stale_l303=$(grep -cF 'not reachable at the relative path' "$f")
-  stale_l340=$(grep -cF 'relative path from agent cwd' "$f")
+  # L296/L303 originals lived in §Step 1 → check ref. L340 original lived in §Step 2 → stays in hub.
+  stale_l296=$(grep -cF "legacy invocations the agent's launch cwd is the ai-dev-team plugin root" "$f_ref")
+  stale_l303=$(grep -cF 'not reachable at the relative path' "$f_ref")
+  stale_l340=$(grep -cF 'relative path from agent cwd' "$f_hub")
   # Post-rewrite positives (locks the new wording at parallel surfaces L303 + L340 — the L296
   # awk-bounded range exits before L303, so global grep is the right scope for those parallel sites).
-  l303_post=$(grep -cF 'not reachable at the env-var path' "$f")
-  l340_post=$(grep -cF 'env-first per §security mode bridge above' "$f")
+  l303_post=$(grep -cF 'not reachable at the env-var path' "$f_ref")
+  # L340 post-rewrite literal updated for §3.5a Step 5 outbound directional rewrite — was
+  # "env-first per §security mode bridge above"; rewritten to point at cross-auditor-mode-focus.md.
+  l340_post=$(grep -cF 'env-first per `agents/references/cross-auditor-mode-focus.md` §security mode bridge' "$f_hub")
   [ "$uncond" -ge 1 ] || { echo "L296 paragraph missing 'UNCONDITIONALLY to \${CLAUDE_PLUGIN_ROOT}' env-first directive"; return 1; }
   [ "$realp" -ge 1 ] || { echo "L296 paragraph missing 'realpath' fallback safety check"; return 1; }
   [ "$stale_l296" = "0" ] || { echo "L296 stale pre-rewrite prose still present (legacy-cwd phrasing)"; return 1; }
   [ "$stale_l303" = "0" ] || { echo "L303 stale 'not reachable at the relative path' wording still present"; return 1; }
   [ "$stale_l340" = "0" ] || { echo "L340 stale 'relative path from agent cwd' parenthetical still present"; return 1; }
   [ "$l303_post" -ge 1 ] || { echo "L303 missing post-rewrite 'not reachable at the env-var path' literal"; return 1; }
-  [ "$l340_post" -ge 1 ] || { echo "L340 missing post-rewrite 'env-first per §security mode bridge above' literal"; return 1; }
+  [ "$l340_post" -ge 1 ] || { echo "L340 missing post-rewrite 'env-first per agents/references/cross-auditor-mode-focus.md §security mode bridge' literal in $f_hub"; return 1; }
   # C2 closure — L311 contradiction with L300 env-first semantics. The pre-rewrite L311
   # parenthetical claimed the unset-env fallback runs even when env IS set ("env-set + file-
   # missing AND the unset-env fallback above also fails"), contradicting L300's strict env-set
   # → no-relative-fallback rule. The rewrite aligns L311 with L300: env-set + file-missing →
-  # warn directly; env-unset + relative-realpath fallback fails → warn.
+  # warn directly; env-unset + relative-realpath fallback fails → warn. L311 lives in §Step 1
+  # which moved to the codex-dispatch reference per Spec 2a Step 5.
   local stale_l311 l311_post
-  stale_l311=$(grep -cF 'unset-env fallback above also fails' "$f")
-  l311_post=$(grep -cF 'no relative fallback when env is set' "$f")
+  stale_l311=$(grep -cF 'unset-env fallback above also fails' "$f_ref")
+  l311_post=$(grep -cF 'no relative fallback when env is set' "$f_ref")
   [ "$stale_l311" = "0" ] || { echo "L311 stale 'unset-env fallback above also fails' contradictory phrasing still present"; return 1; }
   [ "$l311_post" -ge 1 ] || { echo "L311 missing post-rewrite 'no relative fallback when env is set' literal"; return 1; }
 }
@@ -5893,7 +5970,7 @@ check_skill_dispatch_param_block_single_source() {
 # numeric ref at L517 stripped; cross-field invariant body preserved.
 check_evidence_class_allowlist_single_source() {
   local skl="skills/feature/SKILL.md"
-  local ca="agents/cross-auditor.md"
+  local ca="agents/references/cross-auditor-evidence-handshake.md"
   [ -f "$skl" ] || { echo "$skl missing"; return 1; }
   [ -f "$ca" ] || { echo "$ca missing"; return 1; }
   # Positive — canonical preserved at cross-auditor.md.
@@ -5950,7 +6027,7 @@ check_evidence_class_allowlist_single_source() {
 # + contract-violation routing.
 check_eof_adjacency_parser_single_source() {
   local skl="skills/feature/SKILL.md"
-  local ca="agents/cross-auditor.md"
+  local ca="agents/references/cross-auditor-evidence-handshake.md"
   [ -f "$skl" ] || { echo "$skl missing"; return 1; }
   [ -f "$ca" ] || { echo "$ca missing"; return 1; }
   # Positive — canonical preserved at cross-auditor.md.
