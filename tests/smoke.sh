@@ -4155,12 +4155,13 @@ check_skill_audit_evidence_populated_at_terminal_sites() {
   return $fail
 }
 
-# (c) cross-auditor.md findings.md template carries BOTH evidence_class:
+# (c) findings.md template carries BOTH evidence_class:
 # AND evidence_blockers: as YAML-frontmatter scalars, anchored under the
-# `### findings.md` heading (NOT in the agent's own top-of-file frontmatter
-# at L1-L10; NOT as body bullets).
+# `### findings.md` heading (NOT in the agent's own top-of-file frontmatter;
+# NOT as body bullets). The §Step 4 canonical body lives in
+# agents/references/cross-auditor-output-format.md.
 check_cross_auditor_evidence_class_in_yaml_frontmatter() {
-  local f='agents/cross-auditor.md'
+  local f='agents/references/cross-auditor-output-format.md'
   local region ec eb ec_placeholder eb_placeholder
   region=$(awk '/^### findings\.md/{tpl=1; next} tpl && /^---$/{c++; next} tpl && c==1' "$f")
   ec=$(printf '%s' "$region" | grep -cF 'evidence_class:')

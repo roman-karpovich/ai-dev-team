@@ -1084,12 +1084,13 @@ check_readme_no_audit_migration_note() {
 # --- Cross-audit probes foundation (spec 2026-04-21-cross-audit-probes-foundation) ---
 
 check_agents_cross_auditor_schema_cut_fields() {
-  # Step 1 helper — asserts agents/cross-auditor.md §Step 4 findings.md template carries:
+  # Step 1 helper — asserts the §Step 4 findings.md template carries:
   #  (1) the updated table header `ID | Severity | Issue | Source | Mode | Confidence | Status`
   #  (2) new details-block fields: Sources / Mode at emit / Blocking / Probe receipt / Probe version / Eligible reason
   #      (Source is column-only — NOT a details-block field)
   #  (3) legacy `Found by` → `sources[]` round-trip mapping note with three-case expansion
-  local path="agents/cross-auditor.md"
+  # The §Step 4 canonical body lives in agents/references/cross-auditor-output-format.md.
+  local path="agents/references/cross-auditor-output-format.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
 
   # (1) Table header — canonical byte-exact
