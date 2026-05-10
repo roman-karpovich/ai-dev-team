@@ -4106,7 +4106,7 @@ check_skill_audit_evidence_populated_at_terminal_sites() {
   fi
   # The two awk-range start anchors are BOL-anchored regexes; uniqueness verified via grep -cE.
   local loop_start_count nofind_start_count
-  loop_start_count=$(grep -cE '^7\. Set spec' "$f")
+  loop_start_count=$(grep -cE '^8\. Set spec' "$f")
   if [ "$loop_start_count" -ne 1 ]; then
     echo "iter-loop-terminator start anchor non-unique (count=$loop_start_count, expected 1)"
     fail=1
@@ -4121,7 +4121,7 @@ check_skill_audit_evidence_populated_at_terminal_sites() {
   _ae_check_pair 'Skip-button' 'spec_audit_evidence:' 'spec_audit_blockers:' "$skip_win" || fail=1
   mid_win=$(grep -B10 -A10 -F "$mid_anchor" "$f")
   _ae_check_pair 'Mid-flow-skip' 'spec_audit_evidence:' 'spec_audit_blockers:' "$mid_win" || fail=1
-  loop_win=$(awk '/^7\. Set spec/,/^\*\*If no CRITICAL/' "$f")
+  loop_win=$(awk '/^8\. Set spec/,/^\*\*If no CRITICAL/' "$f")
   _ae_check_pair 'iter-loop-terminator' 'spec_audit_evidence:' 'spec_audit_blockers:' "$loop_win" || fail=1
   nofind_win=$(awk '/^Set spec `status: AUDIT_PASSED`\./,/^\*\*Mid-flow/' "$f")
   _ae_check_pair 'no-findings-success' 'spec_audit_evidence:' 'spec_audit_blockers:' "$nofind_win" || fail=1
@@ -4213,16 +4213,12 @@ check_cross_auditor_spec_mode_return_contract() {
     echo "cross-auditor.md missing the two adjacent literal final lines 'evidence_class: <value>' / 'evidence_blockers: <YAML-list>'"
     return 1
   fi
-  # 2. SKILL.md (READ-side prose doc) names BOTH literal token forms. SKILL.md
-  #    §3.5b describes the contract in prose with backticked literals (it is
-  #    not a write-side specimen with adjacent code lines), so the equivalent
-  #    strength assertion is that both literal forms appear verbatim.
-  if ! grep -qF 'evidence_class: <value>' "$skill"; then
-    echo "SKILL.md §3.5b missing literal 'evidence_class: <value>' in read-path doc"
-    return 1
-  fi
-  if ! grep -qF 'evidence_blockers: <YAML-list>' "$skill"; then
-    echo "SKILL.md §3.5b missing literal 'evidence_blockers: <YAML-list>' in read-path doc"
+  # 2. SKILL.md (READ-side prose doc) points at the cross-auditor.md canonical site.
+  #    The literal token forms live canonically in cross-auditor.md (clause 1 above
+  #    enforces them there as adjacent lines); SKILL.md's single-source consistent
+  #    representation is a pointer to the §-anchor.
+  if ! grep -qF 'parse per `agents/cross-auditor.md` §Spec-mode return contract' "$skill"; then
+    echo "SKILL.md §3.5b missing pointer to 'agents/cross-auditor.md §Spec-mode return contract'"
     return 1
   fi
   # 3. One of the two files names the "no trailing prose" wording verbatim.
@@ -5238,12 +5234,6 @@ check_cross_auditor_never_writes_extension() {
     echo "cross-auditor.md L421 still contains OLD self_fallback routing literal — must be rewritten to contract_violated"
     return 1
   fi
-  # X4 third-site coverage: SKILL.md L325 Orchestrator READ path parenthetical
-  # MUST also list contract_violated in the never-writes literal.
-  if ! grep -qF 'cross-auditor never writes `self_fallback` / `contract_violated` / `skipped`' "$skill"; then
-    echo "SKILL.md L325 'Orchestrator READ path' parenthetical missing 3-value never-writes literal 'cross-auditor never writes \`self_fallback\` / \`contract_violated\` / \`skipped\`' (X4 third symmetric site)"
-    return 1
-  fi
   # X11 + X17: extract the `### When to set` region and assert the binary-emit
   # invariant + cardinality + OLD-sentence guard.
   local wts
@@ -5953,6 +5943,14 @@ check "cross-auditor-r-rule-path-env-first-precedence" check_cross_auditor_r_rul
 check "cross-auditor-blocker-sanitization-truncate-before-escape" check_cross_auditor_blocker_sanitization_truncate_before_escape
 check "cross-auditor-probe-failures-schema-aligned" check_cross_auditor_probe_failures_schema_aligned
 check "spec-mode-footer-sentinel-marker-contract" check_spec_mode_footer_sentinel_marker_contract
+check "skill-pass2-respawn-loop-monotonic-numbering" check_skill_pass2_respawn_loop_monotonic_numbering
+check "librarian-agent-no-bash-in-tools" check_librarian_agent_no_bash_in_tools
+check "hooks-json-stop-timeout-30s" check_hooks_json_stop_timeout_30s
+check "claude-md-has-testing-section" check_claude_md_has_testing_section
+check "r8-single-source" check_r8_single_source
+check "skill-dispatch-param-block-single-source" check_skill_dispatch_param_block_single_source
+check "evidence-class-allowlist-single-source" check_evidence_class_allowlist_single_source
+check "eof-adjacency-parser-single-source" check_eof_adjacency_parser_single_source
 echo
 
 
