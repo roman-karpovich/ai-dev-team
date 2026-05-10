@@ -3350,17 +3350,22 @@ check_cross_audit_skill_parses_ref_range() {
 }
 
 check_cross_audit_agent_handles_range_spec() {
+  # range_spec parameter declaration lives in §Input on the hub; the diff-mode wording with
+  # `git diff --name-only <range_spec>` lives in §Step 1 which moved to the codex-dispatch
+  # reference per Spec 2a Step 5. The aggregate count must be ≥ 2 across both files.
   local agent='agents/cross-auditor.md'
+  local agent_ref='agents/references/cross-auditor-codex-dispatch.md'
   test -f "$agent" || { echo "$agent missing"; return 1; }
+  test -f "$agent_ref" || { echo "$agent_ref missing"; return 1; }
   grep -qF 'range_spec' "$agent" \
-    || { echo "$agent missing 'range_spec' parameter declaration"; return 1; }
-  grep -qF 'git diff --name-only <range_spec>' "$agent" \
-    || { echo "$agent missing updated diff-mode wording with range_spec"; return 1; }
-  # Verify range_spec appears at least twice (parameter declaration + diff-mode wording)
+    || { echo "$agent missing 'range_spec' parameter declaration in §Input"; return 1; }
+  grep -qF 'git diff --name-only <range_spec>' "$agent_ref" \
+    || { echo "$agent_ref missing updated diff-mode wording with range_spec"; return 1; }
+  # Verify range_spec appears at least twice across hub + ref (parameter declaration + diff-mode wording).
   local count
-  count=$(grep -cF 'range_spec' "$agent")
-  [ "$count" -ge 2 ] || { echo "$agent has only $count occurrence(s) of 'range_spec' (expected >= 2)"; return 1; }
-  echo "agents/cross-auditor.md range_spec parameter (count=$count) and diff-mode wording both present"
+  count=$(( $(grep -cF 'range_spec' "$agent") + $(grep -cF 'range_spec' "$agent_ref") ))
+  [ "$count" -ge 2 ] || { echo "agents/cross-auditor.md + ref together have only $count occurrence(s) of 'range_spec' (expected >= 2)"; return 1; }
+  echo "agents/cross-auditor.md §Input + ref §Step 1 range_spec parameter (count=$count) and diff-mode wording both present"
 }
 
 check_codex_audit_dispatch_helper_positive() {
@@ -3474,9 +3479,11 @@ check_r5_step1_reads_directive_files() {
 
 check_cross_auditor_uses_async_codex_dispatch() {
   local agent='agents/cross-auditor.md'
+  local agent_ref='agents/references/cross-auditor-codex-dispatch.md'
   local tools_line step1 count line5
 
   test -f "$agent" || { echo "$agent missing"; return 1; }
+  test -f "$agent_ref" || { echo "$agent_ref missing"; return 1; }
 
   tools_line=$(grep -F 'tools:' "$agent" | head -1)
   echo "$tools_line" | grep -qF 'BashOutput' \
@@ -3488,19 +3495,23 @@ check_cross_auditor_uses_async_codex_dispatch() {
     return 1
   fi
 
+  # §Codex dispatch H2 byte-exact preserved as pointer-stub in hub per Spec 2a §3.5 X3.
   count=$(grep -cF '## Codex dispatch (background CLI + polling)' "$agent")
   [ "$count" -ge 1 ] \
-    || { echo "$agent missing Codex dispatch background CLI section"; return 1; }
+    || { echo "$agent missing Codex dispatch background CLI section pointer-stub H2"; return 1; }
 
-  step1=$(awk '/^## Step 1:/{flag=1} /^## Step 2:/{if (flag) exit} flag{print}' "$agent")
+  # §Step 1 body content moved to agents/references/cross-auditor-codex-dispatch.md per Spec 2a Step 5.
+  # End-bound is the sentinel '<!-- end §Step 1 -->' placed at end of §Step 1 in the reference file.
+  step1=$(awk '/^## Step 1:/{flag=1} flag && /^<!-- end §Step 1 -->/{exit} flag{print}' "$agent_ref")
   echo "$step1" | grep -qF 'codex_audit_dispatch.sh' \
-    || { echo "$agent Step 1 missing codex_audit_dispatch.sh"; return 1; }
+    || { echo "$agent_ref §Step 1 missing codex_audit_dispatch.sh"; return 1; }
   echo "$step1" | grep -qF 'run_in_background' \
-    || { echo "$agent Step 1 missing run_in_background"; return 1; }
+    || { echo "$agent_ref §Step 1 missing run_in_background"; return 1; }
 
-  count=$(grep -cF 'BashOutput' "$agent")
+  # BashOutput body count moves to ref (frontmatter `tools:` line on hub still has BashOutput).
+  count=$(grep -cF 'BashOutput' "$agent_ref")
   [ "$count" -ge 2 ] \
-    || { echo "$agent missing BashOutput in body (count=$count, expected >= 2 including frontmatter)"; return 1; }
+    || { echo "$agent_ref missing BashOutput in body (count=$count, expected >= 2)"; return 1; }
 
   local model_line effort_line
   model_line=$(grep -nF 'model: opus' "$agent" | head -1 | cut -d: -f1)
@@ -3510,12 +3521,17 @@ check_cross_auditor_uses_async_codex_dispatch() {
   [ "$effort_line" = "$((model_line + 1))" ] \
     || { echo "$agent 'effort: xhigh' must immediately follow 'model: opus' (model@$model_line, effort@$effort_line)"; return 1; }
 
-  count=$(grep -cF 'codex_audit_dispatch.sh exits non-zero' "$agent")
+  # Fail-open wording lives in §Codex dispatch + §Step 1 result paragraph — both moved to ref.
+  count=$(grep -cF 'codex_audit_dispatch.sh exits non-zero' "$agent_ref")
   [ "$count" -ge 1 ] \
-    || { echo "$agent fail-open wording missing codex_audit_dispatch.sh exits non-zero"; return 1; }
+    || { echo "$agent_ref fail-open wording missing codex_audit_dispatch.sh exits non-zero"; return 1; }
 
   if grep -qF 'mcp__codex__codex' "$agent"; then
     echo "$agent still contains mcp__codex__codex"
+    return 1
+  fi
+  if grep -qF 'mcp__codex__codex' "$agent_ref"; then
+    echo "$agent_ref still contains mcp__codex__codex"
     return 1
   fi
 
@@ -4769,19 +4785,19 @@ check_cross_auditor_loads_security_cluster() {
 # cluster Pin 6 — class: prompt-text). Gates
 # §3.4 sub-edits (b) and (c). Asserts the `## Step 1: Launch Codex` section
 # carries 7 load-bearing substrings AND the `## Step 2: Claude Audit (you)`
-# section carries 5 load-bearing substrings.
-check_cross_auditor_step1_step2_load_instructions() {
-  local path="${1:-agents/cross-auditor.md}"
+# section carries 5 load-bearing substrings. Per Spec 2a Step 5 §3.3a row 3,
+# §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md while
+# §Step 2 stays in the hub — helper split into two file-specific helpers
+# (disposition (c)). The aggregate registration calls both halves so the
+# 7-substring + 5-substring contract is fully enforced.
+check_cross_auditor_step1_load_instructions() {
+  local path="${1:-agents/references/cross-auditor-codex-dispatch.md}"
   test -f "$path" || { echo "$path missing" >&2; return 1; }
-  local s1 s2
+  # End-bound is the §Step 1 sentinel placed at end-of-section in the ref per Spec 2a Step 5.
+  local s1
   s1=$(awk '
     /^## Step 1: Launch Codex/ { in_s=1; print; next }
-    in_s && /^## Step 2: Claude Audit/ { exit }
-    in_s { print }
-  ' "$path")
-  s2=$(awk '
-    /^## Step 2: Claude Audit/ { in_s=1; print; next }
-    in_s && /^## Step 3:/ { exit }
+    in_s && /^<!-- end §Step 1 -->/ { exit }
     in_s { print }
   ' "$path")
 
@@ -4794,12 +4810,36 @@ check_cross_auditor_step1_step2_load_instructions() {
   printf '%s\n' "$s1" | grep -qE 'not reachable|focus-areas-only fallback' \
     || { echo "$path §Step 1 section missing 'not reachable' / 'focus-areas-only fallback' token (Pin 6 assertion a)" >&2; return 1; }
 
+  echo "cross-auditor §Step 1 (7 substrings) load-instructions present in $path"
+}
+
+check_cross_auditor_step2_load_instructions() {
+  local path="${1:-agents/cross-auditor.md}"
+  test -f "$path" || { echo "$path missing" >&2; return 1; }
+  local s2
+  s2=$(awk '
+    /^## Step 2: Claude Audit/ { in_s=1; print; next }
+    in_s && /^## Step 3:/ { exit }
+    in_s { print }
+  ' "$path")
+
   # (b) Step 2 — five load-bearing substrings
+  local tok
   for tok in 'code-quality-rules.md' 'Bad code' 'Good code' 'mode ∈ {security, full}' 'additively'; do
     printf '%s\n' "$s2" | grep -qF "$tok" \
       || { echo "$path §Step 2 section missing load-bearing token: '$tok' (Pin 6 assertion b)" >&2; return 1; }
   done
 
+  echo "cross-auditor §Step 2 (5 substrings) load-instructions present in $path"
+}
+
+# Compatibility wrapper — calls both halves so existing pin registrations + the
+# 7+5 substring contract continue to gate.
+check_cross_auditor_step1_step2_load_instructions() {
+  check_cross_auditor_step1_load_instructions "agents/references/cross-auditor-codex-dispatch.md" \
+    || return 1
+  check_cross_auditor_step2_load_instructions "agents/cross-auditor.md" \
+    || return 1
   echo "cross-auditor §Step 1 (7 substrings) + §Step 2 (5 substrings) load-instructions present"
 }
 
@@ -5421,7 +5461,9 @@ check_skill_threads_project_type_at_code_audit_resume_routing() {
 }
 
 check_cross_auditor_emits_degraded_warning_when_project_type_unset() {
-  local f="agents/cross-auditor.md"
+  # §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per Spec 2a Step 5 §3.3a row 6
+  # (path-swap-only — both awk bounds co-located in the destination file post-Step-5).
+  local f="agents/references/cross-auditor-codex-dispatch.md"
   local block warn norm runfilter
   # Scope all three clauses to the gate paragraph (between the `When mode ∈ {security, full}` opener
   # and the `**Code mode** Codex prompt template:` close marker) to prevent pre-existing prose at
@@ -5437,7 +5479,8 @@ check_cross_auditor_emits_degraded_warning_when_project_type_unset() {
 }
 
 check_cross_auditor_documents_warning_emit_location() {
-  local f="agents/cross-auditor.md"
+  # §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per Spec 2a Step 5.
+  local f="agents/references/cross-auditor-codex-dispatch.md"
   local rendered marker
   rendered=$(grep -cF 'R-rule cluster: NOT loaded' "$f")
   # The marker locks the conditional-emit comment so the bullet is documented as gate-conditional,
@@ -5448,7 +5491,8 @@ check_cross_auditor_documents_warning_emit_location() {
 }
 
 check_cross_auditor_replaces_silent_skip_gate() {
-  local f="agents/cross-auditor.md"
+  # §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per Spec 2a Step 5.
+  local f="agents/references/cross-auditor-codex-dispatch.md"
   local old_gate new_branch
   # Negative clause: the old `When mode ∈ {security, full} and project_type is set` gate prose
   # MUST be gone — its presence means the silent-skip path is still wired and the unset-project_type
@@ -5619,37 +5663,48 @@ check_cross_auditor_blocker_sanitization_truncate_before_escape() {
 }
 
 check_cross_auditor_r_rule_path_env_first_precedence() {
-  local f="agents/cross-auditor.md"
+  # §Codex dispatch + §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per
+  # Spec 2a Step 5 §3.3a row 8 (path-swap-only — both bounds co-located in the destination file
+  # post-Step-5). The L340 surface (the §3.5a L348 directional reference) lives in §Step 2 which
+  # stays in the hub; that literal was rewritten from "§security mode bridge above" to
+  # "agents/references/cross-auditor-mode-focus.md §security mode bridge" per §3.5a Step 5
+  # outbound — l340_post anchor updated to match the post-rewrite form.
+  local f_ref="agents/references/cross-auditor-codex-dispatch.md"
+  local f_hub="agents/cross-auditor.md"
   local block uncond realp stale_l296 stale_l303 stale_l340 l303_post l340_post
   # Stateful awk anchor: open at the new env-first paragraph, close at the next anchor.
   # Robust to either physical layout (single paragraph or split into multiple physical lines)
   # because the close pattern is a definite sentinel introduced by the rewrite itself.
-  block=$(awk '/^Path resolution: when/{p=1; print; next} p && /^If both resolutions fail/{print; exit} p{print}' "$f")
+  block=$(awk '/^Path resolution: when/{p=1; print; next} p && /^If both resolutions fail/{print; exit} p{print}' "$f_ref")
   uncond=$(echo "$block" | grep -cF 'UNCONDITIONALLY to `${CLAUDE_PLUGIN_ROOT}')
   realp=$(echo "$block" | grep -cF 'realpath')
   # Stale-prose pre-negatives (locks pre-rewrite literals absent at L296/L303/L340 surfaces).
-  stale_l296=$(grep -cF "legacy invocations the agent's launch cwd is the ai-dev-team plugin root" "$f")
-  stale_l303=$(grep -cF 'not reachable at the relative path' "$f")
-  stale_l340=$(grep -cF 'relative path from agent cwd' "$f")
+  # L296/L303 originals lived in §Step 1 → check ref. L340 original lived in §Step 2 → stays in hub.
+  stale_l296=$(grep -cF "legacy invocations the agent's launch cwd is the ai-dev-team plugin root" "$f_ref")
+  stale_l303=$(grep -cF 'not reachable at the relative path' "$f_ref")
+  stale_l340=$(grep -cF 'relative path from agent cwd' "$f_hub")
   # Post-rewrite positives (locks the new wording at parallel surfaces L303 + L340 — the L296
   # awk-bounded range exits before L303, so global grep is the right scope for those parallel sites).
-  l303_post=$(grep -cF 'not reachable at the env-var path' "$f")
-  l340_post=$(grep -cF 'env-first per §security mode bridge above' "$f")
+  l303_post=$(grep -cF 'not reachable at the env-var path' "$f_ref")
+  # L340 post-rewrite literal updated for §3.5a Step 5 outbound directional rewrite — was
+  # "env-first per §security mode bridge above"; rewritten to point at cross-auditor-mode-focus.md.
+  l340_post=$(grep -cF 'env-first per `agents/references/cross-auditor-mode-focus.md` §security mode bridge' "$f_hub")
   [ "$uncond" -ge 1 ] || { echo "L296 paragraph missing 'UNCONDITIONALLY to \${CLAUDE_PLUGIN_ROOT}' env-first directive"; return 1; }
   [ "$realp" -ge 1 ] || { echo "L296 paragraph missing 'realpath' fallback safety check"; return 1; }
   [ "$stale_l296" = "0" ] || { echo "L296 stale pre-rewrite prose still present (legacy-cwd phrasing)"; return 1; }
   [ "$stale_l303" = "0" ] || { echo "L303 stale 'not reachable at the relative path' wording still present"; return 1; }
   [ "$stale_l340" = "0" ] || { echo "L340 stale 'relative path from agent cwd' parenthetical still present"; return 1; }
   [ "$l303_post" -ge 1 ] || { echo "L303 missing post-rewrite 'not reachable at the env-var path' literal"; return 1; }
-  [ "$l340_post" -ge 1 ] || { echo "L340 missing post-rewrite 'env-first per §security mode bridge above' literal"; return 1; }
+  [ "$l340_post" -ge 1 ] || { echo "L340 missing post-rewrite 'env-first per agents/references/cross-auditor-mode-focus.md §security mode bridge' literal in $f_hub"; return 1; }
   # C2 closure — L311 contradiction with L300 env-first semantics. The pre-rewrite L311
   # parenthetical claimed the unset-env fallback runs even when env IS set ("env-set + file-
   # missing AND the unset-env fallback above also fails"), contradicting L300's strict env-set
   # → no-relative-fallback rule. The rewrite aligns L311 with L300: env-set + file-missing →
-  # warn directly; env-unset + relative-realpath fallback fails → warn.
+  # warn directly; env-unset + relative-realpath fallback fails → warn. L311 lives in §Step 1
+  # which moved to the codex-dispatch reference per Spec 2a Step 5.
   local stale_l311 l311_post
-  stale_l311=$(grep -cF 'unset-env fallback above also fails' "$f")
-  l311_post=$(grep -cF 'no relative fallback when env is set' "$f")
+  stale_l311=$(grep -cF 'unset-env fallback above also fails' "$f_ref")
+  l311_post=$(grep -cF 'no relative fallback when env is set' "$f_ref")
   [ "$stale_l311" = "0" ] || { echo "L311 stale 'unset-env fallback above also fails' contradictory phrasing still present"; return 1; }
   [ "$l311_post" -ge 1 ] || { echo "L311 missing post-rewrite 'no relative fallback when env is set' literal"; return 1; }
 }

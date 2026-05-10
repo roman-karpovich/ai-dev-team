@@ -821,11 +821,13 @@ check_cross_auditor_gh_pr_checkout() {
   echo "cross-auditor.md uses gh pr checkout"
 }
 
-# 10. cross-auditor.md: near the async Codex helper launch, contains `CODEX_WD` AND `worktree`.
+# 10. agents/references/cross-auditor-codex-dispatch.md: near the async Codex helper launch,
+#     contains `CODEX_WD` AND `worktree`. §Codex dispatch + §Step 1 moved to the reference per
+#     Spec 2a Step 5; the codex_audit_dispatch.sh launch prose lives there.
 check_cross_auditor_codex_cwd_proximity() {
   python3 - <<'PY'
 import re, sys
-lines = open('agents/cross-auditor.md').read().splitlines()
+lines = open('agents/references/cross-auditor-codex-dispatch.md').read().splitlines()
 ok = False
 for i, line in enumerate(lines):
     if 'codex_audit_dispatch.sh' in line:
@@ -835,9 +837,9 @@ for i, line in enumerate(lines):
             ok = True
             break
 if not ok:
-    print("cross-auditor.md: no codex_audit_dispatch.sh launch has both CODEX_WD and worktree nearby")
+    print("cross-auditor-codex-dispatch.md: no codex_audit_dispatch.sh launch has both CODEX_WD and worktree nearby")
     sys.exit(1)
-print("cross-auditor.md Codex cwd override proximity OK")
+print("cross-auditor-codex-dispatch.md Codex cwd override proximity OK")
 PY
 }
 
