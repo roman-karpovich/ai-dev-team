@@ -351,7 +351,7 @@ After Claude+Codex collection (Steps 1-2 above), run the following five-stage pi
    **Union with Step-0.5 / stage-4.5 seed** (spec 2026-04-21-probe-e-diff-scope-leak §3.5 / iter-4 X20): compose the final `probe_failures[]` as `synth_probe_failures(probe_receipts) + probe_failures_seed`. Probe E v1 has no happy-path `degraded_mode: true` receipts (every fail-open branch bails BEFORE `probe_receipts.append`), so the Foundation synthesis is a no-op for v1; the seed carries every fail-open entry. Forward-compat: future probes that emit `degraded_mode: true` alongside valid findings will be caught by the Foundation path.
 6. **Render via `${CLAUDE_PLUGIN_ROOT}/hooks/lib/render_findings.sh`** — pipe `{findings: <scored+deduped>, probe_modes, probe_failures: <synthesized>, scorer_status, scorer_failure_reason}` through the helper. Helper output is the full findings.md body. Step 4 below writes the final file with frontmatter.
 
-## Audit evidence handshake
+## Audit evidence handshake (`evidence_class:` + `evidence_blockers:`)
 
 See `agents/references/cross-auditor-evidence-handshake.md` for the canonical content. The reference covers `evidence_class:` + `evidence_blockers:` two-channel transmission (file-backed for code/full mode; inline three-line footer for spec mode), the binary emit allowlist (`dual_model | single_model` only — orchestrator-only values `self_fallback / contract_violated / skipped` never emitted by this agent), the YAML-safety serialization rule for blocker strings (newline→space + truncate-to-199 + single-quote escape + single-quoted form), the spec-mode return contract (sentinel marker + canonical 3-line EOF-adjacent footer), and the §Sentinel-obfuscation rule (self-anchoring carve-out for cross-audits of this agent file).
 
