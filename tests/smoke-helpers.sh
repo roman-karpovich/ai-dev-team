@@ -5385,7 +5385,7 @@ check_project_type_documented_in_config_surfaces() {
 check_skill_threads_project_type_at_spec_audit_spawn() {
   local f="skills/feature/SKILL.md"
   local block count
-  block=$(awk '/^Spawn `cross-auditor` subagent with:$/,/^- \(omit `kb_path` — spec mode does not write to KB\)$/' "$f")
+  block=$(awk '/^Spawn `cross-auditor` subagent with the \*\*same parameter block as the initial full-mode spawn/,/^The cross-auditor returns findings inline \(no KB writes in spec mode\)\.$/' "$f")
   count=$(echo "$block" | grep -c project_type)
   [ "$count" -ge 1 ] || { echo "spec-mode spawn block missing project_type parameter"; return 1; }
   # Site A MUST NOT reference the degraded warning — that is a code/full-mode artifact
@@ -5469,8 +5469,6 @@ check_spec_mode_footer_sentinel_marker_contract() {
   ca_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$f")
   # Producer obfuscated-form positive (X12) — at least one obfuscated form documents the rule.
   ca_obfusc=$(grep -cF 'CROSS-AUDIT-EVIDENCE-FOOTER' "$f")
-  # Consumer sentinel positive — sentinel documented at consumer side (≥ 1, no single-site lock).
-  skl_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$skl")
   # Consumer parser-shape positives — locks the EOF-adjacency parser shape.
   skl_tail3=$(grep -cF 'tail -3' "$skl")
   skl_eof=$(grep -cF 'EOF-adjacent' "$skl")
@@ -5490,7 +5488,6 @@ check_spec_mode_footer_sentinel_marker_contract() {
   ca_l445_pos=$(grep -cF 'byte-exact full-line equality' "$f")
   [ "$ca_sent" = "1" ] || { echo "agents: canonical-spaced sentinel literal must appear at EXACTLY ONE site (got $ca_sent)"; return 1; }
   [ "$ca_obfusc" -ge 1 ] || { echo "agents: obfuscated form 'CROSS-AUDIT-EVIDENCE-FOOTER' (hyphenated) missing — required by sentinel-obfuscation rule"; return 1; }
-  [ "$skl_sent" -ge 1 ] || { echo "SKILL.md: canonical-spaced sentinel literal missing"; return 1; }
   [ "$skl_tail3" -ge 1 ] || { echo "SKILL.md: 'tail -3' literal missing — locks EOF-adjacency parser shape"; return 1; }
   [ "$skl_eof" -ge 1 ] || { echo "SKILL.md: 'EOF-adjacent' literal missing"; return 1; }
   [ "$skl_old" = "0" ] || { echo "SKILL.md: stale 'awk \\'NF\\' | tail -2' parser form still present"; return 1; }
@@ -5648,4 +5645,345 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
   l311_post=$(grep -cF 'no relative fallback when env is set' "$f")
   [ "$stale_l311" = "0" ] || { echo "L311 stale 'unset-env fallback above also fails' contradictory phrasing still present"; return 1; }
   [ "$l311_post" -ge 1 ] || { echo "L311 missing post-rewrite 'no relative fallback when env is set' literal"; return 1; }
+}
+
+# Step 1 — SKILL.md §3.5 Pass 2 re-spawn loop monotonic numbering invariant.
+# Region: between '**If CRITICAL or HIGH findings:**' and '**If no CRITICAL or HIGH findings:**'.
+# Within that region, list items match ^([0-9]+)\. — extract the sequence; assert
+# monotonic increasing by exactly 1, starting at 1, no duplicates (no upper bound).
+# Plus negative anti-regression against the duplicate-5 fingerprint.
+check_skill_pass2_respawn_loop_monotonic_numbering() {
+  local f="skills/feature/SKILL.md"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  local seq
+  seq=$(awk '
+    /^\*\*If CRITICAL or HIGH findings:\*\*/ {in_region=1; next}
+    /^\*\*If no CRITICAL or HIGH findings:\*\*/ {in_region=0}
+    in_region && match($0, /^[0-9]+\./) {
+      n=$0
+      sub(/\..*/, "", n)
+      print n
+    }
+  ' "$f")
+  [ -n "$seq" ] || { echo "Pass 2 re-spawn loop region empty (region delimiters missing in SKILL.md)"; return 1; }
+  local expected=1
+  local n
+  while IFS= read -r n; do
+    if [ "$n" != "$expected" ]; then
+      echo "Pass 2 re-spawn loop numbering not monotonic-by-1: expected $expected got $n"
+      return 1
+    fi
+    expected=$((expected+1))
+  done <<<"$seq"
+  # Negative — anti-regression duplicate-5 fingerprint.
+  if grep -nzPo '5\. Increment `spec_audit_iteration`\n5\. Before re-spawn' "$f" >/dev/null 2>&1; then
+    echo "Pass 2 re-spawn loop duplicate-5 fingerprint regressed"
+    return 1
+  fi
+  echo "pass2 respawn loop monotonic"
+}
+
+# Step 2 — agents/librarian.md frontmatter `tools:` line scoped check.
+# Frontmatter is the YAML block between the first two `^---$` dividers.
+# Bash MUST NOT appear in that line; the 5 capability tools MUST.
+check_librarian_agent_no_bash_in_tools() {
+  local f="agents/librarian.md"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  local fm tools_line
+  fm=$(awk 'BEGIN{c=0} /^---$/{c++; next} c==1{print}' "$f")
+  tools_line=$(printf '%s\n' "$fm" | grep -E '^tools:' | head -1)
+  [ -n "$tools_line" ] || { echo "librarian.md frontmatter has no tools: line"; return 1; }
+  if printf '%s' "$tools_line" | grep -qE '\bBash\b'; then
+    echo "librarian.md frontmatter tools: line still contains Bash"
+    return 1
+  fi
+  local t
+  for t in Read Write Edit Glob Grep; do
+    if ! printf '%s' "$tools_line" | grep -qE "\\b$t\\b"; then
+      echo "librarian.md frontmatter tools: line missing $t"
+      return 1
+    fi
+  done
+  echo "librarian no bash"
+}
+
+# Step 3 — hooks/hooks.json Stop hook timeout = 30 (was 5).
+# JSON structural invariant via python3 dict-walk.
+check_hooks_json_stop_timeout_30s() {
+  local f="hooks/hooks.json"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  python3 - <<'PY' || return 1
+import json, sys
+data = json.load(open("hooks/hooks.json"))
+stop = data["hooks"]["Stop"][0]["hooks"][0]
+to = stop.get("timeout")
+if to != 30:
+    print(f"Stop hook timeout != 30 (got {to!r})")
+    sys.exit(1)
+PY
+  echo "stop hook timeout 30"
+}
+
+# Step 4 — CLAUDE.md §Testing subsection presence + content + ordering invariant.
+check_claude_md_has_testing_section() {
+  local f="CLAUDE.md"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  if ! grep -qF '## Testing' "$f"; then
+    echo "CLAUDE.md missing '## Testing' H2 heading"
+    return 1
+  fi
+  # Bound the §Testing region (between '## Testing' and the next '^## ' heading).
+  local region
+  region=$(awk '/^## Testing$/{in_r=1; next} /^## /{in_r=0} in_r' "$f")
+  [ -n "$region" ] || { echo "CLAUDE.md §Testing region empty"; return 1; }
+  local anchor
+  for anchor in 'bash tests/smoke.sh' 'Failed: 0' 'tests/smoke-helpers.sh' 'tests/smoke-proves-manifest.txt'; do
+    if ! printf '%s' "$region" | grep -qF "$anchor"; then
+      echo "CLAUDE.md §Testing region missing literal: $anchor"
+      return 1
+    fi
+  done
+  # Ordering invariant — '## Testing' < '## Contribution flow'.
+  local testing_line cflow_line
+  testing_line=$(awk '/^## Testing/{print NR; exit}' "$f")
+  cflow_line=$(awk '/^## Contribution flow/{print NR; exit}' "$f")
+  [ -n "$testing_line" ] || { echo "CLAUDE.md '## Testing' line not found"; return 1; }
+  [ -n "$cflow_line" ] || { echo "CLAUDE.md '## Contribution flow' line not found"; return 1; }
+  if [ "$testing_line" -ge "$cflow_line" ]; then
+    echo "CLAUDE.md '## Testing' must precede '## Contribution flow' (testing@$testing_line cflow@$cflow_line)"
+    return 1
+  fi
+  echo "CLAUDE.md testing section"
+}
+
+# Step 5 — R8 commit-message rule single-source.
+# Per-site fingerprints (each empirically pre-fix, byte-exact post-fix). Canonical short-form
+# at CLAUDE.md preserved unchanged. Five collapsed sites verified per-site.
+check_r8_single_source() {
+  local fail=0
+  local codex="agents/developer-codex.md"
+  local devwf="skills/feature/references/developer-workflow.md"
+  local pub="skills/cross-audit/references/publish.md"
+  local cqr="skills/feature/references/code-quality-rules.md"
+  local claude="CLAUDE.md"
+  for f in "$codex" "$devwf" "$pub" "$cqr" "$claude"; do
+    [ -f "$f" ] || { echo "missing $f"; return 1; }
+  done
+  # Negative — pre-fix per-site fingerprints all gone.
+  if grep -qF '**No KB references in the commit message** — no KB paths' "$codex"; then
+    echo "developer-codex.md still has pre-fix R8 restatement"
+    fail=1
+  fi
+  if grep -qF '**No `Co-authored-by` lines.** **No KB references** — KB paths' "$devwf"; then
+    echo "developer-workflow.md L62 still has pre-fix R8 restatement"
+    fail=1
+  fi
+  if grep -qF '**Commit messages** — concise, imperative mood. No `Co-authored-by` lines. **No KB references**' "$devwf"; then
+    echo "developer-workflow.md L115 still has pre-fix R8 restatement"
+    fail=1
+  fi
+  if grep -qF 'Finding bodies posted via this flow appear in the public PR review thread of `<pr_repo>`' "$pub"; then
+    echo "publish.md still has pre-fix long R8 restatement"
+    fail=1
+  fi
+  # Positive — canonical short-form preserved at CLAUDE.md.
+  if ! grep -qF '### Public-output hygiene (R8)' "$claude"; then
+    echo "CLAUDE.md missing canonical short-form heading '### Public-output hygiene (R8)'"
+    fail=1
+  fi
+  if ! grep -qF 'MUST NOT reference KB paths (`<kb>/...`)' "$claude"; then
+    echo "CLAUDE.md missing canonical short-form fingerprint 'MUST NOT reference KB paths (\`<kb>/...\`)'"
+    fail=1
+  fi
+  # Positive — canonical R8 in code-quality-rules.md preserved (different phrasing by design).
+  if ! grep -qF '## R8 — Public-output hygiene (no KB leaks)' "$cqr"; then
+    echo "code-quality-rules.md missing canonical R8 heading"
+    fail=1
+  fi
+  if ! grep -qF 'MUST NOT appear in any public artifact' "$cqr"; then
+    echo "code-quality-rules.md missing canonical R8 fingerprint 'MUST NOT appear in any public artifact'"
+    fail=1
+  fi
+  # Positive — CLAUDE.md relative-position invariant.
+  local r8_line skip_line
+  r8_line=$(awk '/^### Public-output hygiene/{print NR; exit}' "$claude")
+  skip_line=$(awk '/^### When to skip the flow/{print NR; exit}' "$claude")
+  [ -n "$r8_line" ] || { echo "CLAUDE.md '### Public-output hygiene' line not found"; fail=1; }
+  [ -n "$skip_line" ] || { echo "CLAUDE.md '### When to skip the flow' line not found"; fail=1; }
+  if [ -n "$r8_line" ] && [ -n "$skip_line" ] && [ "$r8_line" -ge "$skip_line" ]; then
+    echo "CLAUDE.md '### Public-output hygiene' must precede '### When to skip the flow' (R8@$r8_line skip@$skip_line)"
+    fail=1
+  fi
+  # Positive — per-site byte-exact pointers (iter2 iH2A correction).
+  if ! grep -qF 'R8 hygiene applies — see R8 in `skills/feature/references/code-quality-rules.md`.' "$codex"; then
+    echo "developer-codex.md missing byte-exact pointer literal"
+    fail=1
+  fi
+  if ! grep -qF 'R8 hygiene applies (no KB refs / no `Co-authored-by`) — see R8 in `code-quality-rules.md`.' "$devwf"; then
+    echo "developer-workflow.md L62-site missing byte-exact pointer literal"
+    fail=1
+  fi
+  if ! grep -qF 'R8 hygiene applies — see R8 in `code-quality-rules.md`.' "$devwf"; then
+    echo "developer-workflow.md L115-site missing byte-exact pointer literal"
+    fail=1
+  fi
+  if ! grep -qF '**R8 — Public-output hygiene (no KB leaks).** See R8 in `code-quality-rules.md`.' "$devwf"; then
+    echo "developer-workflow.md L172-site missing byte-exact peer-shaped pointer literal"
+    fail=1
+  fi
+  if ! grep -qF '### Public-output hygiene (R8)' "$pub"; then
+    echo "publish.md missing preserved heading anchor"
+    fail=1
+  fi
+  if ! grep -qF 'R8 applies' "$pub"; then
+    echo "publish.md missing 'R8 applies' pointer literal"
+    fail=1
+  fi
+  if ! grep -qF 'code-quality-rules.md' "$pub"; then
+    echo "publish.md missing pointer to code-quality-rules.md"
+    fail=1
+  fi
+  # Positive — peer-list symmetry preserved at L172 site.
+  if ! grep -qF '**R8 — Public-output hygiene (no KB leaks).**' "$devwf"; then
+    echo "developer-workflow.md missing peer-list anchor '**R8 — Public-output hygiene (no KB leaks).**'"
+    fail=1
+  fi
+  [ "$fail" = "0" ] || return 1
+  echo "R8 single source"
+}
+
+# Step 6 — SKILL.md cross-auditor spawn parameter block single-source via delta.
+# Canonical at §Code audit Pass 2 preserved with byte-exact backticks.
+# Spec-audit Pass 2 spawn block rewritten as delta. Three pointer sites total post-fix.
+check_skill_dispatch_param_block_single_source() {
+  local f="skills/feature/SKILL.md"
+  [ -f "$f" ] || { echo "$f missing"; return 1; }
+  # Canonical preserved with byte-exact backticks.
+  if ! grep -qF 'Spawn `cross-auditor` with mode: full on the diff (dual-model). Parameters:' "$f"; then
+    echo "SKILL.md missing canonical Code-audit Pass 2 spawn header literal (with backticks)"
+    return 1
+  fi
+  # Spec-mode delta presence.
+  if ! grep -qF 'same parameter block as the initial full-mode spawn' "$f"; then
+    echo "SKILL.md missing spec-mode delta phrase 'same parameter block as the initial full-mode spawn'"
+    return 1
+  fi
+  # Exact-3 threshold post-fix (L460-region delta + L774 + L937-equivalent).
+  local cnt
+  cnt=$(grep -cF 'same parameter block as the initial full-mode spawn' "$f")
+  if [ "$cnt" != "3" ]; then
+    echo "SKILL.md 'same parameter block as the initial full-mode spawn' count != 3 (got $cnt)"
+    return 1
+  fi
+  # Negative — spec-audit Pass 2 region no longer contains the pre-fix 12-line spawn block.
+  # Bound: between '#### Pass 2: Cross-audit (dual-model)' and '**If CRITICAL or HIGH findings:**'.
+  local p2_region
+  p2_region=$(awk '/^#### Pass 2: Cross-audit \(dual-model\)/{in_r=1; next} /^\*\*If CRITICAL or HIGH findings:\*\*/{in_r=0} in_r' "$f")
+  [ -n "$p2_region" ] || { echo "SKILL.md §3.5 Pass 2 region empty"; return 1; }
+  if printf '%s' "$p2_region" | grep -qF -e '- `scope`: `<spec_path>` (the spec file)'; then
+    echo "SKILL.md §3.5 Pass 2 region still contains pre-fix 12-line spawn block bullet"
+    return 1
+  fi
+  echo "dispatch param single source"
+}
+
+# Step 7 — evidence_class binary emit allowlist single-source.
+# Canonical at agents/cross-auditor.md L410-L417 preserved (heading + binary-allowlist line +
+# orchestrator-only exclusion sentence). SKILL.md restatement at L511 collapsed; stale L382-383
+# numeric ref at L517 stripped; cross-field invariant body preserved.
+check_evidence_class_allowlist_single_source() {
+  local skl="skills/feature/SKILL.md"
+  local ca="agents/cross-auditor.md"
+  [ -f "$skl" ] || { echo "$skl missing"; return 1; }
+  [ -f "$ca" ] || { echo "$ca missing"; return 1; }
+  # Positive — canonical preserved at cross-auditor.md.
+  if ! grep -qF '### When to set' "$ca"; then
+    echo "cross-auditor.md missing '### When to set' heading"
+    return 1
+  fi
+  if ! grep -qF 'binary on whether Codex'\''s audit was usable' "$ca"; then
+    echo "cross-auditor.md missing canonical binary-allowlist phrase 'binary on whether Codex'\''s audit was usable'"
+    return 1
+  fi
+  if ! grep -qF 'The cross-auditor NEVER writes `self_fallback`, `contract_violated`, or `skipped`' "$ca"; then
+    echo "cross-auditor.md missing canonical orchestrator-only exclusion sentence"
+    return 1
+  fi
+  # Negative — SKILL.md backticked allowlist clause gone.
+  if grep -qF 'cross-auditor never writes `self_fallback` / `contract_violated` / `skipped`' "$skl"; then
+    echo "SKILL.md still contains backticked allowlist clause that must collapse to pointer"
+    return 1
+  fi
+  # Negative — stale line ref gone.
+  if grep -qF '§When to set L382-383' "$skl"; then
+    echo "SKILL.md still contains stale '§When to set L382-383' line ref"
+    return 1
+  fi
+  # Positive — pointer presence at L511 + L517 (≥ 2 sites).
+  local p1 p2
+  p1=$(grep -cF 'agents/cross-auditor.md' "$skl")
+  p2=$(grep -cF '§When to set' "$skl")
+  if [ "$p1" -lt 2 ]; then
+    echo "SKILL.md must point at agents/cross-auditor.md from at least 2 sites (got $p1)"
+    return 1
+  fi
+  if [ "$p2" -lt 2 ]; then
+    echo "SKILL.md must reference §When to set from at least 2 sites (got $p2)"
+    return 1
+  fi
+  # Positive — cross-field invariant body preserved.
+  if ! grep -qF '`evidence_class: dual_model` MUST pair with `evidence_blockers: []`' "$skl"; then
+    echo "SKILL.md missing cross-field invariant body 'evidence_class: dual_model MUST pair with evidence_blockers: []'"
+    return 1
+  fi
+  if ! grep -qF '`evidence_class: single_model` MUST pair with a non-empty `evidence_blockers` list' "$skl"; then
+    echo "SKILL.md missing cross-field invariant body 'evidence_class: single_model MUST pair with non-empty evidence_blockers'"
+    return 1
+  fi
+  echo "evidence_class allowlist single source"
+}
+
+# Step 8 — EOF-adjacency / tail -3 parser single-source.
+# Canonical at agents/cross-auditor.md L430-L450 preserved (heading + producer-side
+# 'forgotten-footer-with-example-echo' token at the closing parser-rationale paragraph).
+# SKILL.md L515 producer-prose duplicate collapsed to 3-line pointer + retained consumer shell
+# + contract-violation routing.
+check_eof_adjacency_parser_single_source() {
+  local skl="skills/feature/SKILL.md"
+  local ca="agents/cross-auditor.md"
+  [ -f "$skl" ] || { echo "$skl missing"; return 1; }
+  [ -f "$ca" ] || { echo "$ca missing"; return 1; }
+  # Positive — canonical preserved at cross-auditor.md.
+  if ! grep -qF '### Spec-mode return contract' "$ca"; then
+    echo "cross-auditor.md missing '### Spec-mode return contract' heading"
+    return 1
+  fi
+  if ! grep -qF 'forgotten-footer-with-example-echo' "$ca"; then
+    echo "cross-auditor.md missing producer-side 'forgotten-footer-with-example-echo' token"
+    return 1
+  fi
+  # Negative — SKILL.md duplicate prose gone (byte-exact SKILL.md-resident fingerprint).
+  if grep -qF 'the prior parser shape, which stripped blank lines' "$skl"; then
+    echo "SKILL.md still contains pre-fix duplicate-prose fingerprint 'the prior parser shape, which stripped blank lines'"
+    return 1
+  fi
+  # Positive — UNIQUELY-NEW pointer present.
+  if ! grep -qF 'parse per `agents/cross-auditor.md` §Spec-mode return contract' "$skl"; then
+    echo "SKILL.md missing UNIQUELY-NEW pointer literal 'parse per agents/cross-auditor.md §Spec-mode return contract'"
+    return 1
+  fi
+  # Positive — 4 consumer-shell variable literals preserved.
+  local v
+  for v in 'last_three=$(' 'first_of_three=$(' 'second_of_three=$(' 'third_of_three=$('; do
+    if ! grep -qF "$v" "$skl"; then
+      echo "SKILL.md missing consumer-shell literal '$v'"
+      return 1
+    fi
+  done
+  # Positive — contract-violation routing preserved.
+  if ! grep -qF "'sentinel not at expected EOF-adjacent position'" "$skl"; then
+    echo "SKILL.md missing canonical contract-violation routing blocker phrasing"
+    return 1
+  fi
+  echo "eof-adjacency parser single source"
 }

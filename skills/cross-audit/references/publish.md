@@ -29,7 +29,7 @@ Publish is orthogonal to the status state machine — it does NOT flip OPEN→FI
 
 ### Public-output hygiene (R8)
 
-Finding bodies posted via this flow appear in the public PR review thread of `<pr_repo>` — typically a third-party repo. They MUST describe the issue in terms of the repo's own code (file paths inside `<pr_repo>`, behaviours, tests). They MUST NOT reference KB paths (`<kb>/...`), spec paths, workdoc paths, finding-file paths, audit slugs, or "see findings file at …" footers. The cross-auditor's prompt template already produces code-focused findings; if a future change tempts you to add a KB-pointer footer to published comments (or to replies posted in response to bot reviewers like `chatgpt-codex-connector[bot]`), block it. See R8 in `skills/feature/references/code-quality-rules.md`.
+Finding bodies posted via this flow are public artifacts in third-party repos. R8 applies — describe issues in repo-internal terms (file paths inside `<pr_repo>`, behaviours, tests). See R8 in `skills/feature/references/code-quality-rules.md` (the cross-audit publish carve-out is documented in §3 of the canonical rule).
 
 ---
 
