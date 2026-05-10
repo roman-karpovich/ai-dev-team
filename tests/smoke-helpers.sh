@@ -432,7 +432,7 @@ check_developer_workflow_no_active_done_writes() {
 }
 
 check_cross_auditor_pretag_consistency_check() {
-  local path='agents/cross-auditor.md'
+  local path='agents/references/cross-auditor-mode-focus.md'
   local section
   section=$(extract_md_section "$path" '### `spec` mode')
   local label_count
@@ -3432,9 +3432,9 @@ check_feature_skill_step2_forbids_ambiguity() {
 }
 
 check_cross_auditor_spec_mode_repo_convention_rule() {
-  local agent='agents/cross-auditor.md'
+  local agent='agents/references/cross-auditor-mode-focus.md'
   local section
-  section=$(awk '/^### `spec` mode/{flag=1} /^## Severity Ladder/{if (flag) exit} flag{print}' "$agent")
+  section=$(awk '/^### `spec` mode/{flag=1} /^<!-- end §spec mode -->/{if (flag) exit} flag{print}' "$agent")
   echo "$section" | grep -qF 'Repo-convention enforcement' \
     || { echo "$agent spec mode missing Repo-convention enforcement rule"; return 1; }
   echo "$section" | grep -qF "at developer's discretion" \
@@ -3958,7 +3958,7 @@ PY
 # `category: security`, `cross-auditor:security`, and `project_type` between
 # the `### \`security\` mode` heading and the next `### ` heading.
 check_cross_auditor_security_preamble() {
-  local path="${1:-agents/cross-auditor.md}"
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
   test -f "$path" || { echo "$path missing" >&2; return 1; }
   local section
   section=$(awk '
@@ -4713,7 +4713,7 @@ PY
 # keeps the `**Backend Services:**` heading; (g) preserves all 9 distinguishing
 # bullet phrases verbatim (full-list pinning).
 check_cross_auditor_loads_security_cluster() {
-  local path="${1:-agents/cross-auditor.md}"
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
   test -f "$path" || { echo "$path missing" >&2; return 1; }
   local section
   section=$(awk '
@@ -4924,13 +4924,13 @@ check_spec_template_attack_surface_section() {
 }
 
 check_cross_auditor_consumes_attack_surface_profile() {
-  # Pin C (prompt-text): Asserts agents/cross-auditor.md spec mode block carries
+  # Pin C (prompt-text): Asserts agents/references/cross-auditor-mode-focus.md spec mode block carries
   # the Attack-surface profile consumption rules with all required fingerprints.
-  local path="${1:-agents/cross-auditor.md}"
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
   test -f "$path" || { echo "$path missing" >&2; return 1; }
 
   local sec
-  sec=$(awk '/^### `spec` mode/,/^## Severity Ladder/' "$path")
+  sec=$(awk '/^### `spec` mode/,/^<!-- end §spec mode -->/' "$path")
 
   # 4 base tokens
   printf '%s\n' "$sec" | grep -qF 'Attack-surface profile' \
@@ -5337,9 +5337,9 @@ check_skill_stride_lite_block_gated() {
 }
 
 check_cross_auditor_consumes_stride_lite() {
-  local f="agents/cross-auditor.md"
+  local f="agents/references/cross-auditor-mode-focus.md"
   local sec
-  sec=$(awk '/^### `spec` mode/,/^## Severity Ladder/' "$f")
+  sec=$(awk '/^### `spec` mode/,/^<!-- end §spec mode -->/' "$f")
   local has_strttm has_section has_gate has_med has_finding
   local has_spoof has_tamper has_repud has_info has_dos has_eop
   has_strttm=$(echo "$sec" | grep -cF 'STRIDE-lite threat model')

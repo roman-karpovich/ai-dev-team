@@ -2816,7 +2816,7 @@ check_smoke_helper_focus_areas_cross_auditor_demoted_rejected() {
 }
 
 # Positive invocations — 2 rows per spec §3.4.
-check "check_cross_auditor_mode_focus_areas_canonical" check_cross_auditor_mode_focus_areas_canonical agents/cross-auditor.md
+check "check_cross_auditor_mode_focus_areas_canonical" check_cross_auditor_mode_focus_areas_canonical agents/references/cross-auditor-mode-focus.md
 check "check_cross_audit_skill_focus_areas_references_canonical" check_cross_audit_skill_focus_areas_references_canonical skills/cross-audit/SKILL.md
 # Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
