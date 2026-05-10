@@ -1425,7 +1425,7 @@ check_haiku_scorer_fail_open() {
 check_haiku_scorer_edge_cases_zero_partial_cap_timeout() {
   # Cross-auditor Step 3 Consolidation enumerates the four edge cases (§3.5a X1):
   # zero LLM findings, partial output, batch cap 20, 60s timeout.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qiE '(zero|empty).*(pure[- ]LLM|LLM[[:space:]]+findings|LLM[[:space:]]+subset)' "$path" \
     || grep -qiE 'empty.*SKIP.*scorer' "$path" \
@@ -1445,7 +1445,7 @@ check_haiku_scorer_mock_seam_declared() {
   # Mock seam — env var CROSS_AUDIT_SCORER_MOCK_JSON documented in cross-auditor
   # prose (the scorer agent's prose is for production — mock seam lives in the
   # invoker). Per spec §3.5a + §3.7 line 453.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qF 'CROSS_AUDIT_SCORER_MOCK_JSON' "$path" \
     || { echo "$path missing CROSS_AUDIT_SCORER_MOCK_JSON env-var seam declaration"; return 1; }
@@ -1458,7 +1458,7 @@ check_cross_auditor_step3_scorer_integration() {
   # agents/cross-auditor.md Step 3 declares the 5-stage pipeline with the
   # scorer call between dedupe (§3.5) and renderer (Step 4). Probe-sourced
   # findings pinned confidence=100; pure-LLM findings scored via Task tool.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qiE 'Haiku.*(scorer|decoupled|finding[- ]scorer)' "$path" \
     || { echo "$path Step 3 missing Haiku scorer integration reference"; return 1; }
@@ -1480,7 +1480,7 @@ check_cross_auditor_step3_scorer_integration() {
 check_cross_auditor_scorer_mock_env_var() {
   # Same env-var check as scorer_mock_seam but targeted at cross-auditor
   # (the invoker side). Must declare that production leaves the var UNSET.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qF 'CROSS_AUDIT_SCORER_MOCK_JSON' "$path" \
     || { echo "$path missing CROSS_AUDIT_SCORER_MOCK_JSON env-var declaration"; return 1; }
@@ -1494,7 +1494,7 @@ check_cross_auditor_probe_failures_synthesis_end_to_end() {
   # receipts. Prose must reference the synthesis step; helper runs synth script
   # on fixtures (k) and (l) to prove the producer contract's reason/remediation
   # sourcing (explicit vs fallback) works.
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
   grep -qF 'probe_failures' "$path" \
     || { echo "$path missing probe_failures[] synthesis reference in Step 3"; return 1; }
@@ -1693,7 +1693,7 @@ check_scorer_fixture_j_mock_seam_env_var_drives_fixtures() {
   # mock_env_var helper covers the byte-check; this fixture-level check
   # additionally asserts the env var name is EXACT 'CROSS_AUDIT_SCORER_MOCK_JSON'
   # and not a paraphrase — guards against X7 resolution drift).
-  local path="agents/cross-auditor.md"
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
   local hits
   hits=$(grep -cF 'CROSS_AUDIT_SCORER_MOCK_JSON' "$path")
   if [ "$hits" -lt 1 ]; then
@@ -2187,9 +2187,10 @@ check_cross_auditor_step05_probe_dispatch() {
     || { echo "$path Step 0.5 missing fail-open class 4 'JSONDecodeError'"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'schema' \
     || { echo "$path Step 0.5 missing fail-open class 5 'schema' (validation)"; return 1; }
-  # Class 6 (receipt-write IOError) lives in stage 4.5 (Step 3 pipeline).
-  grep -qF 'receipt write failed' "$path" \
-    || { echo "$path missing fail-open class 6 (receipt write failed) in Step 3 stage 4.5"; return 1; }
+  # Class 6 (receipt-write IOError) lives in stage 4.5 (Step 3 pipeline) — moved
+  # to agents/references/cross-auditor-step-3-pipeline.md per Spec 2a Step 4.
+  grep -qF 'receipt write failed' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md missing fail-open class 6 (receipt write failed) in Step 3 stage 4.5"; return 1; }
   # Side-map (iter-4 X19) + provisional_id coupling (iter-5 X22).
   printf '%s\n' "$step05" | grep -qF 'probe_receipt_metadata_by_provisional_id' \
     || { echo "$path Step 0.5 missing side-map key (iter-4 X19)"; return 1; }
@@ -2280,18 +2281,18 @@ check_probe_e_fail_open_write_receipt_failure() {
     "receipt write failed: [Errno 30] Read-only file system: '/kb/security/2026-04-21-foo-probe-receipts/X5.json'" \
     "check KB mount is writable + re-run /cross-audit" \
     || return 1
-  grep -qF 'receipt write failed' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md missing 'receipt write failed' stage-4.5 branch (fail-open class 6)"; return 1; }
+  grep -qF 'receipt write failed' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md missing 'receipt write failed' stage-4.5 branch (fail-open class 6)"; return 1; }
   # Also assert the pair (receipt write failed, check KB mount).
-  grep -qF 'check KB mount is writable' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md stage-4.5 branch missing remediation 'check KB mount is writable'"; return 1; }
+  grep -qF 'check KB mount is writable' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md stage-4.5 branch missing remediation 'check KB mount is writable'"; return 1; }
   # Also exercise the full stage-4.5 side-map + receipt-write loop — if the
   # agent's stage-4.5 prose drifts (e.g. stops preserving provisional_id),
   # the seed-and-render layer above doesn't catch it. Assert the prose pins:
-  grep -qE 'any\(s\.startswith\("probe:"\) for s in finding\["sources"\]\)' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md stage-4.5 missing probe-sourced predicate (Foundation §3.3 X2 / iter-3 X18)"; return 1; }
-  grep -qE 'provisional_id' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md stage-4.5 missing provisional_id preservation (iter-5 X22/X24)"; return 1; }
+  grep -qE 'any\(s\.startswith\("probe:"\) for s in finding\["sources"\]\)' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md stage-4.5 missing probe-sourced predicate (Foundation §3.3 X2 / iter-3 X18)"; return 1; }
+  grep -qE 'provisional_id' agents/references/cross-auditor-step-3-pipeline.md \
+    || { echo "agents/references/cross-auditor-step-3-pipeline.md stage-4.5 missing provisional_id preservation (iter-5 X22/X24)"; return 1; }
   echo "fail-open banner renders (receipt-write class, stage 4.5); agent prose declares branch + remediation + probe-sourced predicate + provisional_id preservation"
 }
 
@@ -5525,6 +5526,7 @@ check_spec_mode_footer_sentinel_marker_contract() {
 
 check_cross_auditor_probe_failures_schema_aligned() {
   local f="agents/cross-auditor.md"
+  local f_step3="agents/references/cross-auditor-step-3-pipeline.md"
   local h="tests/smoke-helpers.sh"
   local old_q_r old_q_rm reason_n remediation_n canonical old_canonical translator_bridge scorer_token
   local l389_old_r l389_new_r l389_old_rm l389_new_rm
@@ -5538,19 +5540,23 @@ check_cross_auditor_probe_failures_schema_aligned() {
   reason_n=$(grep -cF '"reason":' "$f")
   remediation_n=$(grep -cF '"remediation":' "$f")
   # Canonical-phrase positive (X15 — threshold ≥ 2 locks BOTH L199 description AND L268 fail-open
-  # coverage prose in lockstep; ≥ 1 would allow partial rewrite).
-  canonical=$(grep -cF '`probe_id` / `reason` / `remediation`' "$f")
-  # X19 (a) — pre-rewrite canonical phrase absent at both L199 + L268 surfaces.
-  old_canonical=$(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f")
-  # Preserve translator bridge L400-401 — Foundation §3.3 receipt-schema territory.
-  translator_bridge=$(grep -cF "receipt's optional \`failure_reason\`" "$f")
-  # Preserve scorer_failure_reason (renderer-stdin contract — distinct token).
-  scorer_token=$(grep -cF 'scorer_failure_reason' "$f")
-  # L389-area inline-prose entries (paired-key — both reason and remediation halves).
-  l389_old_r=$(grep -cF 'failure_reason: "receipt write failed:' "$f")
-  l389_new_r=$(grep -cF 'reason: "receipt write failed:' "$f")
-  l389_old_rm=$(grep -cF 'failure_remediation: "check KB mount' "$f")
-  l389_new_rm=$(grep -cF 'remediation: "check KB mount' "$f")
+  # coverage prose in lockstep; ≥ 1 would allow partial rewrite). Sites split across hub (Step 0.5)
+  # and references/cross-auditor-step-3-pipeline.md (stage 5 synthesis) per Spec 2a Step 4.
+  canonical=$(( $(grep -cF '`probe_id` / `reason` / `remediation`' "$f") + $(grep -cF '`probe_id` / `reason` / `remediation`' "$f_step3") ))
+  # X19 (a) — pre-rewrite canonical phrase absent at both L199 + L268 surfaces (hub + Step-3 ref).
+  old_canonical=$(( $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f") + $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f_step3") ))
+  # Preserve translator bridge L400-401 — Foundation §3.3 receipt-schema territory. Now lives in
+  # references/cross-auditor-step-3-pipeline.md (stage 5 reason/remediation derivation) per Spec 2a Step 4.
+  translator_bridge=$(grep -cF "receipt's optional \`failure_reason\`" "$f_step3")
+  # Preserve scorer_failure_reason (renderer-stdin contract — distinct token). Now lives in the
+  # Step-3 reference (Stage 4 Haiku scorer + Stage 6 renderer pipe payload) per Spec 2a Step 4.
+  scorer_token=$(grep -cF 'scorer_failure_reason' "$f_step3")
+  # L389-area inline-prose entries (paired-key — both reason and remediation halves) — moved into
+  # the Step-3 reference (stage 4.5 fail-open class 6 prose) per Spec 2a Step 4.
+  l389_old_r=$(grep -cF 'failure_reason: "receipt write failed:' "$f_step3")
+  l389_new_r=$(grep -cF 'reason: "receipt write failed:' "$f_step3")
+  l389_old_rm=$(grep -cF 'failure_remediation: "check KB mount' "$f_step3")
+  l389_new_rm=$(grep -cF 'remediation: "check KB mount' "$f_step3")
   # smoke-helpers.sh seed-side emulation heredocs — symmetric paired-key coverage.
   # Exclude self-reference: the smoke-pin helper itself contains the literals as grep patterns,
   # so scope the count to lines NOT carrying a `grep -cF` clause (which fingerprint the helper's
