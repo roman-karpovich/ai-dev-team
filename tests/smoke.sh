@@ -784,41 +784,47 @@ check_cross_audit_skill_standalone_publish() {
   echo "cross-audit SKILL.md documents standalone publish <slug>"
 }
 
-# 8. cross-auditor.md — pr_number / pr_changed_files / pr_head_oid literal tokens,
-#    a fenced YAML block in Input/Outputs with all 5 pr_files keys,
-#    and the literal delegation path `hooks/lib/build_pr_files.sh`.
+# 8. cross-auditor — pr_number / pr_changed_files / pr_head_oid literal tokens
+#    in §Input (hub); fenced YAML block in §Step 0 with all 5 pr_files keys + the
+#    literal delegation path `hooks/lib/build_pr_files.sh` in the §Step 0 + §Step 0.5
+#    reference (per Spec 2a Step 6 — body extracted to
+#    agents/references/cross-auditor-pr-and-probes.md while the §Input parameter
+#    declarations stay in the hub).
 check_cross_auditor_pr_yaml_block() {
   python3 - <<'PY'
 import re, sys
-text = open('agents/cross-auditor.md').read()
+hub = open('agents/cross-auditor.md').read()
+ref = open('agents/references/cross-auditor-pr-and-probes.md').read()
+# Hub §Input retains the parameter-declaration tokens.
 for token in ('pr_number', 'pr_changed_files', 'pr_head_oid'):
-    if token not in text:
+    if token not in hub:
         print(f"cross-auditor.md missing literal token '{token}'")
         sys.exit(1)
-if 'hooks/lib/build_pr_files.sh' not in text:
-    print("cross-auditor.md missing literal delegation path 'hooks/lib/build_pr_files.sh'")
+# Reference §Step 0 carries the delegation path + the canonical YAML shape.
+if 'hooks/lib/build_pr_files.sh' not in ref:
+    print("cross-auditor-pr-and-probes.md missing literal delegation path 'hooks/lib/build_pr_files.sh'")
     sys.exit(1)
-# Find all fenced yaml blocks with all 5 pr_files keys
 keys = ('filename:', 'status:', 'previous_filename:', 'patch_present:', 'is_submodule:')
-blocks = re.findall(r'```ya?ml\n(.*?)\n```', text, re.DOTALL)
+blocks = re.findall(r'```ya?ml\n(.*?)\n```', ref, re.DOTALL)
 found = False
 for b in blocks:
     if all(k in b for k in keys):
         found = True
         break
 if not found:
-    print("cross-auditor.md: no fenced YAML block contains all 5 pr_files keys "
+    print("cross-auditor-pr-and-probes.md: no fenced YAML block contains all 5 pr_files keys "
           "(filename:/status:/previous_filename:/patch_present:/is_submodule:)")
     sys.exit(1)
-print("cross-auditor.md input/output YAML block has all 5 pr_files keys + build_pr_files.sh path")
+print("cross-auditor: §Input tokens on hub; §Step 0 YAML block + build_pr_files.sh path on reference")
 PY
 }
 
-# 9. cross-auditor.md uses `gh pr checkout`
+# 9. cross-auditor §Step 0 uses `gh pr checkout` (canonical content moved to
+#    agents/references/cross-auditor-pr-and-probes.md per Spec 2a Step 6).
 check_cross_auditor_gh_pr_checkout() {
-  grep -q 'gh pr checkout' agents/cross-auditor.md \
-    || { echo "cross-auditor.md missing 'gh pr checkout'"; return 1; }
-  echo "cross-auditor.md uses gh pr checkout"
+  grep -q 'gh pr checkout' agents/references/cross-auditor-pr-and-probes.md \
+    || { echo "cross-auditor-pr-and-probes.md missing 'gh pr checkout'"; return 1; }
+  echo "cross-auditor §Step 0 uses gh pr checkout"
 }
 
 # 10. agents/references/cross-auditor-codex-dispatch.md: near the async Codex helper launch,
@@ -2566,8 +2572,8 @@ check_multi_gh_account_absent() {
     || { echo "absence #7c FAIL: ### Resolve pr_number subsection missing from skills/cross-audit/SKILL.md"; return 1; }
   grep -qF '### Fetch pr_changed_files (authoritative, paginated)' skills/cross-audit/SKILL.md \
     || { echo "absence #7d FAIL: ### Fetch pr_changed_files subsection missing from skills/cross-audit/SKILL.md"; return 1; }
-  grep -qF 'gh pr checkout <pr_number> --force --repo <pr_repo>' agents/cross-auditor.md \
-    || { echo "absence #7e FAIL: bare gh pr checkout form missing from agents/cross-auditor.md"; return 1; }
+  grep -qF 'gh pr checkout <pr_number> --force --repo <pr_repo>' agents/references/cross-auditor-pr-and-probes.md \
+    || { echo "absence #7e FAIL: bare gh pr checkout form missing from agents/references/cross-auditor-pr-and-probes.md"; return 1; }
   grep -qF 'gh pr view <N> --repo <pr_repo> --json headRefOid' skills/cross-audit/references/publish.md \
     || { echo "absence #7f FAIL: force-push gh pr view missing from publish.md"; return 1; }
   grep -qF 'gh api --include --repo <pr_repo>' skills/cross-audit/references/publish.md \

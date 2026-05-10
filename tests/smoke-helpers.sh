@@ -1895,11 +1895,16 @@ check_cross_auditor_probe_receipts_produced_by_step05() {
   # Spec 2026-04-21-probe-e-diff-scope-leak §3.2 (c) / §5 Step 3 (iter-3 X15 /
   # iter-2 X10) — probe_receipts is no longer a skill-threaded input bullet.
   # The ## Input section must NOT list it as an input field; Step 0.5 is the
-  # producer path. Replaces the Foundation-era
-  # check_cross_auditor_probe_receipts_input_declared (which asserted the
-  # opposite invariant and shipped before probe E's dispatch pivot).
+  # producer path. Per Spec 2a Step 6, §Step 0.5 body content moved to
+  # agents/references/cross-auditor-pr-and-probes.md while the pointer-stub H2
+  # stays in the hub; the negative §Input assertion plus the H2-presence check
+  # land on the hub, while the positive probe_findings /
+  # probe_receipt_metadata_by_provisional_id literal checks land on the
+  # reference file.
   local path="agents/cross-auditor.md"
+  local ref="agents/references/cross-auditor-pr-and-probes.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  [ -r "$ref" ] || { echo "$ref not readable"; return 1; }
   # Extract just the ## Input section (range from '## Input' up to next '## ').
   local input_section
   input_section=$(awk '
@@ -1914,14 +1919,15 @@ check_cross_auditor_probe_receipts_produced_by_step05() {
     echo "$path ## Input still lists probe_receipts as an input bullet (expected removed per §3.2 (c) / X10)"
     return 1
   fi
-  # Positive: Step 0.5 must exist as the producer path.
+  # Positive: Step 0.5 H2 pointer-stub still anchors in the hub.
   grep -qE '^## Step 0\.5' "$path" \
     || { echo "$path missing '## Step 0.5' producer section (expected between Step 0 and Step 1)"; return 1; }
-  grep -qF 'probe_findings' "$path" \
-    || { echo "$path missing 'probe_findings' — Step 0.5 should produce it"; return 1; }
-  grep -qF 'probe_receipt_metadata_by_provisional_id' "$path" \
-    || { echo "$path missing 'probe_receipt_metadata_by_provisional_id' side-map (iter-4 X19)"; return 1; }
-  echo "$path ## Input no longer lists probe_receipts bullet; Step 0.5 produces probe_findings/probe_receipts via side-map (X19)"
+  # Positive: producer-side literals live in the reference file.
+  grep -qF 'probe_findings' "$ref" \
+    || { echo "$ref missing 'probe_findings' — Step 0.5 should produce it"; return 1; }
+  grep -qF 'probe_receipt_metadata_by_provisional_id' "$ref" \
+    || { echo "$ref missing 'probe_receipt_metadata_by_provisional_id' side-map (iter-4 X19)"; return 1; }
+  echo "$path ## Input no longer lists probe_receipts bullet; $ref Step 0.5 produces probe_findings/probe_receipts via side-map (X19)"
 }
 
 check_yaml_example_probes_block() {
@@ -2153,13 +2159,16 @@ check_probe_e_receipt_rerun_stable() {
 # --- Step 3: Cross-auditor agent Step 0.5 + skill + dedupe merge_pair swap ---
 
 check_cross_auditor_step05_probe_dispatch() {
-  # agents/cross-auditor.md carries a '## Step 0.5: Probe dispatch' section
-  # positioned between '## Step 0' (PR materialization) and '## Step 1:
-  # Launch Codex' per spec §3.5 pseudocode. Asserts section presence, ordering
-  # vs Step 0 / Step 1, six-way fail-open class enumeration, and side-map key
-  # (iter-4 X19).
+  # Per Spec 2a Step 6, §Step 0 + §Step 0.5 body content moved to
+  # agents/references/cross-auditor-pr-and-probes.md while pointer-stub H2 lines
+  # remain in agents/cross-auditor.md. Hub asserts positional ordering of the
+  # H2s (Step 0 < Step 0.5 < Step 1); reference asserts the canonical body
+  # contract — six-way fail-open class enumeration, side-map key (iter-4 X19),
+  # producer-side output lists, and off-floor enforcement.
   local path="agents/cross-auditor.md"
+  local ref="agents/references/cross-auditor-pr-and-probes.md"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  [ -r "$ref" ] || { echo "$ref not readable"; return 1; }
   local step0_line step05_line step1_line
   step0_line=$(grep -nE '^## Step 0 \(PR mode only\)' "$path" | head -1 | cut -d: -f1)
   step05_line=$(grep -nE '^## Step 0\.5' "$path" | head -1 | cut -d: -f1)
@@ -2169,38 +2178,38 @@ check_cross_auditor_step05_probe_dispatch() {
     || { echo "$path missing Step 0 or Step 1 neighbours for Step 0.5 ordering check"; return 1; }
   [[ "$step0_line" -lt "$step05_line" && "$step05_line" -lt "$step1_line" ]] \
     || { echo "$path Step 0.5 is not positioned between Step 0 ($step0_line) and Step 1 ($step1_line) — got Step 0.5 at $step05_line"; return 1; }
-  # Extract the Step 0.5 section.
+  # Extract the Step 0.5 section from the reference file.
   local step05
   step05=$(awk '
     !in_s && /^## Step 0\.5/ { in_s = 1; print; next }
     in_s && /^## / && !/^## Step 0\.5/ { exit }
     in_s { print }
-  ' "$path")
+  ' "$ref")
   # Six-way fail-open enumeration — distinct class markers.
   printf '%s\n' "$step05" | grep -qF 'probe script' \
-    || { echo "$path Step 0.5 missing fail-open class 1 'probe script' (script-missing)"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 1 'probe script' (script-missing)"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'TimeoutError' \
-    || { echo "$path Step 0.5 missing fail-open class 2 'TimeoutError'"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 2 'TimeoutError'"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'NonZeroExit' \
-    || { echo "$path Step 0.5 missing fail-open class 3 'NonZeroExit'"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 3 'NonZeroExit'"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'JSONDecodeError' \
-    || { echo "$path Step 0.5 missing fail-open class 4 'JSONDecodeError'"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 4 'JSONDecodeError'"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'schema' \
-    || { echo "$path Step 0.5 missing fail-open class 5 'schema' (validation)"; return 1; }
+    || { echo "$ref Step 0.5 missing fail-open class 5 'schema' (validation)"; return 1; }
   # Class 6 (receipt-write IOError) lives in stage 4.5 (Step 3 pipeline) — moved
   # to agents/references/cross-auditor-step-3-pipeline.md per Spec 2a Step 4.
   grep -qF 'receipt write failed' agents/references/cross-auditor-step-3-pipeline.md \
     || { echo "agents/references/cross-auditor-step-3-pipeline.md missing fail-open class 6 (receipt write failed) in Step 3 stage 4.5"; return 1; }
   # Side-map (iter-4 X19) + provisional_id coupling (iter-5 X22).
   printf '%s\n' "$step05" | grep -qF 'probe_receipt_metadata_by_provisional_id' \
-    || { echo "$path Step 0.5 missing side-map key (iter-4 X19)"; return 1; }
+    || { echo "$ref Step 0.5 missing side-map key (iter-4 X19)"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'probe_findings' \
-    || { echo "$path Step 0.5 missing probe_findings output list"; return 1; }
+    || { echo "$ref Step 0.5 missing probe_findings output list"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'probe_failures_seed' \
-    || { echo "$path Step 0.5 missing probe_failures_seed list (iter-4 X20)"; return 1; }
+    || { echo "$ref Step 0.5 missing probe_failures_seed list (iter-4 X20)"; return 1; }
   printf '%s\n' "$step05" | grep -qF 'mode == "off"' \
-    || { echo "$path Step 0.5 missing off-floor enforcement 'mode == \"off\"'"; return 1; }
-  echo "$path Step 0.5 present, ordered between Step 0 and Step 1, six fail-open classes + side-map + off-floor enforcement"
+    || { echo "$ref Step 0.5 missing off-floor enforcement 'mode == \"off\"'"; return 1; }
+  echo "cross-auditor Step 0.5 present (hub pointer-stub ordered between Step 0 and Step 1), six fail-open classes + side-map + off-floor enforcement on $ref"
 }
 
 # Shared helper: emulate the orchestrator's fail-open path by invoking
@@ -2250,9 +2259,10 @@ check_probe_e_fail_open_banner() {
     "probe exited non-zero: ast.parse failed on src/foo.py" \
     "re-run /cross-audit after checking probe_E stderr logs" \
     || return 1
-  # Also assert the agent prose contains the NonZeroExit branch.
-  grep -qF 'probe exited non-zero' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md missing 'probe exited non-zero' Step 0.5 branch"; return 1; }
+  # Also assert the agent prose contains the NonZeroExit branch (Step 0.5
+  # body moved to agents/references/cross-auditor-pr-and-probes.md per Spec 2a Step 6).
+  grep -qF 'probe exited non-zero' agents/references/cross-auditor-pr-and-probes.md \
+    || { echo "agents/references/cross-auditor-pr-and-probes.md missing 'probe exited non-zero' Step 0.5 branch"; return 1; }
   echo "fail-open banner renders (NonZeroExit class); agent prose declares the branch"
 }
 
@@ -2266,8 +2276,8 @@ check_probe_e_fail_open_schema_invalid_body() {
     "probe output schema invalid: missing required key 'findings'" \
     "fix probe_E to conform to §3.3 stdout shape" \
     || return 1
-  grep -qF 'probe output schema invalid' agents/cross-auditor.md \
-    || { echo "agents/cross-auditor.md missing 'probe output schema invalid' Step 0.5 branch"; return 1; }
+  grep -qF 'probe output schema invalid' agents/references/cross-auditor-pr-and-probes.md \
+    || { echo "agents/references/cross-auditor-pr-and-probes.md missing 'probe output schema invalid' Step 0.5 branch"; return 1; }
   echo "fail-open banner renders (schema-invalid-body class, iter-7 X30 rename); agent prose declares the branch"
 }
 
@@ -5570,25 +5580,30 @@ check_spec_mode_footer_sentinel_marker_contract() {
 
 check_cross_auditor_probe_failures_schema_aligned() {
   local f="agents/cross-auditor.md"
+  local f_pr="agents/references/cross-auditor-pr-and-probes.md"
   local f_step3="agents/references/cross-auditor-step-3-pipeline.md"
   local h="tests/smoke-helpers.sh"
   local old_q_r old_q_rm reason_n remediation_n canonical old_canonical translator_bridge scorer_token
   local l389_old_r l389_new_r l389_old_rm l389_new_rm
   local helpers_old_q_r helpers_old_q_rm helpers_new_q_r helpers_new_q_rm
   # Scoped quoted-key dict-literal negatives — the fingerprint of the five Step 0.5 .append( sites.
-  # Bare `failure_reason` legitimately stays in the file at scorer_failure_reason and translator-bridge
-  # surfaces, which is why this clause is scoped to the QUOTED-KEY form, not bare token.
-  old_q_r=$(grep -cF '"failure_reason":' "$f")
-  old_q_rm=$(grep -cF '"failure_remediation":' "$f")
-  # Positive count — five quoted-key dict-literal sites emit "reason" / "remediation".
-  reason_n=$(grep -cF '"reason":' "$f")
-  remediation_n=$(grep -cF '"remediation":' "$f")
-  # Canonical-phrase positive (X15 — threshold ≥ 2 locks BOTH L199 description AND L268 fail-open
-  # coverage prose in lockstep; ≥ 1 would allow partial rewrite). Sites split across hub (Step 0.5)
-  # and references/cross-auditor-step-3-pipeline.md (stage 5 synthesis) per Spec 2a Step 4.
-  canonical=$(( $(grep -cF '`probe_id` / `reason` / `remediation`' "$f") + $(grep -cF '`probe_id` / `reason` / `remediation`' "$f_step3") ))
-  # X19 (a) — pre-rewrite canonical phrase absent at both L199 + L268 surfaces (hub + Step-3 ref).
-  old_canonical=$(( $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f") + $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f_step3") ))
+  # Bare `failure_reason` legitimately stays at scorer_failure_reason and translator-bridge
+  # surfaces, which is why this clause is scoped to the QUOTED-KEY form, not bare token. Per
+  # Spec 2a Step 6 the five Step 0.5 .append() sites moved to
+  # agents/references/cross-auditor-pr-and-probes.md; negatives must hold across hub + pr ref +
+  # step3 ref to catch any reintroduction.
+  old_q_r=$(( $(grep -cF '"failure_reason":' "$f") + $(grep -cF '"failure_reason":' "$f_pr") + $(grep -cF '"failure_reason":' "$f_step3") ))
+  old_q_rm=$(( $(grep -cF '"failure_remediation":' "$f") + $(grep -cF '"failure_remediation":' "$f_pr") + $(grep -cF '"failure_remediation":' "$f_step3") ))
+  # Positive count — five quoted-key dict-literal sites emit "reason" / "remediation"; they all
+  # live in the pr-and-probes ref now (Step 0.5 pseudocode .append() blocks).
+  reason_n=$(grep -cF '"reason":' "$f_pr")
+  remediation_n=$(grep -cF '"remediation":' "$f_pr")
+  # Canonical-phrase positive (X15 — threshold ≥ 2 locks BOTH the Step 0.5 description AND fail-open
+  # coverage prose in lockstep; ≥ 1 would allow partial rewrite). Both surfaces moved to the
+  # pr-and-probes ref at Step 6; the stage 5 synthesis surface stays in the step3 ref per Spec 2a Step 4.
+  canonical=$(( $(grep -cF '`probe_id` / `reason` / `remediation`' "$f_pr") + $(grep -cF '`probe_id` / `reason` / `remediation`' "$f_step3") ))
+  # X19 (a) — pre-rewrite canonical phrase absent across hub + pr ref + step3 ref.
+  old_canonical=$(( $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f") + $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f_pr") + $(grep -cF '`probe_id` / `failure_reason` / `failure_remediation`' "$f_step3") ))
   # Preserve translator bridge L400-401 — Foundation §3.3 receipt-schema territory. Now lives in
   # references/cross-auditor-step-3-pipeline.md (stage 5 reason/remediation derivation) per Spec 2a Step 4.
   translator_bridge=$(grep -cF "receipt's optional \`failure_reason\`" "$f_step3")
@@ -5610,12 +5625,12 @@ check_cross_auditor_probe_failures_schema_aligned() {
   helpers_old_q_rm=$(grep -F '"failure_remediation":' "$h" | grep -vc 'grep -cF')
   helpers_new_q_r=$(grep -F '"reason":' "$h" | grep -vc 'grep -cF')
   helpers_new_q_rm=$(grep -F '"remediation":' "$h" | grep -vc 'grep -cF')
-  [ "$old_q_r" = "0" ] || { echo "agents: stale '\"failure_reason\":' quoted-key dict-literal still present (5 Step 0.5 .append sites should have been renamed)"; return 1; }
+  [ "$old_q_r" = "0" ] || { echo "agents: stale '\"failure_reason\":' quoted-key dict-literal still present across hub/pr-ref/step3-ref (5 Step 0.5 .append sites should have been renamed)"; return 1; }
   [ "$old_q_rm" = "0" ] || { echo "agents: stale '\"failure_remediation\":' quoted-key dict-literal still present"; return 1; }
-  [ "$reason_n" -ge 5 ] || { echo "agents: '\"reason\":' count must be ≥ 5 (one per Step 0.5 .append site)"; return 1; }
-  [ "$remediation_n" -ge 5 ] || { echo "agents: '\"remediation\":' count must be ≥ 5"; return 1; }
-  [ "$canonical" -ge 2 ] || { echo "agents: canonical phrase 'probe_id / reason / remediation' must appear at ≥ 2 surfaces (L199 description AND L268 fail-open coverage)"; return 1; }
-  [ "$old_canonical" = "0" ] || { echo "agents: stale canonical phrase 'probe_id / failure_reason / failure_remediation' still present at L199 or L268"; return 1; }
+  [ "$reason_n" -ge 5 ] || { echo "agents: '\"reason\":' count must be ≥ 5 in pr-and-probes ref (one per Step 0.5 .append site)"; return 1; }
+  [ "$remediation_n" -ge 5 ] || { echo "agents: '\"remediation\":' count must be ≥ 5 in pr-and-probes ref"; return 1; }
+  [ "$canonical" -ge 2 ] || { echo "agents: canonical phrase 'probe_id / reason / remediation' must appear at ≥ 2 surfaces (Step 0.5 description AND fail-open coverage)"; return 1; }
+  [ "$old_canonical" = "0" ] || { echo "agents: stale canonical phrase 'probe_id / failure_reason / failure_remediation' still present"; return 1; }
   [ "$translator_bridge" -ge 1 ] || { echo "agents: translator bridge 'receipt's optional failure_reason' must be preserved (Foundation §3.3 carve-out)"; return 1; }
   [ "$scorer_token" -ge 2 ] || { echo "agents: 'scorer_failure_reason' renderer-stdin contract must be preserved (distinct token, not a probe_failures key)"; return 1; }
   [ "$l389_old_r" = "0" ] || { echo "agents: L389-area pre-rename inline-prose 'failure_reason: \"receipt write failed:' still present"; return 1; }
