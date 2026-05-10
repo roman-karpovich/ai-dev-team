@@ -784,48 +784,56 @@ check_cross_audit_skill_standalone_publish() {
   echo "cross-audit SKILL.md documents standalone publish <slug>"
 }
 
-# 8. cross-auditor.md — pr_number / pr_changed_files / pr_head_oid literal tokens,
-#    a fenced YAML block in Input/Outputs with all 5 pr_files keys,
-#    and the literal delegation path `hooks/lib/build_pr_files.sh`.
+# 8. cross-auditor — pr_number / pr_changed_files / pr_head_oid literal tokens
+#    in §Input (hub); fenced YAML block in §Step 0 with all 5 pr_files keys + the
+#    literal delegation path `hooks/lib/build_pr_files.sh` in the §Step 0 + §Step 0.5
+#    reference (per Spec 2a Step 6 — body extracted to
+#    agents/references/cross-auditor-pr-and-probes.md while the §Input parameter
+#    declarations stay in the hub).
 check_cross_auditor_pr_yaml_block() {
   python3 - <<'PY'
 import re, sys
-text = open('agents/cross-auditor.md').read()
+hub = open('agents/cross-auditor.md').read()
+ref = open('agents/references/cross-auditor-pr-and-probes.md').read()
+# Hub §Input retains the parameter-declaration tokens.
 for token in ('pr_number', 'pr_changed_files', 'pr_head_oid'):
-    if token not in text:
+    if token not in hub:
         print(f"cross-auditor.md missing literal token '{token}'")
         sys.exit(1)
-if 'hooks/lib/build_pr_files.sh' not in text:
-    print("cross-auditor.md missing literal delegation path 'hooks/lib/build_pr_files.sh'")
+# Reference §Step 0 carries the delegation path + the canonical YAML shape.
+if 'hooks/lib/build_pr_files.sh' not in ref:
+    print("cross-auditor-pr-and-probes.md missing literal delegation path 'hooks/lib/build_pr_files.sh'")
     sys.exit(1)
-# Find all fenced yaml blocks with all 5 pr_files keys
 keys = ('filename:', 'status:', 'previous_filename:', 'patch_present:', 'is_submodule:')
-blocks = re.findall(r'```ya?ml\n(.*?)\n```', text, re.DOTALL)
+blocks = re.findall(r'```ya?ml\n(.*?)\n```', ref, re.DOTALL)
 found = False
 for b in blocks:
     if all(k in b for k in keys):
         found = True
         break
 if not found:
-    print("cross-auditor.md: no fenced YAML block contains all 5 pr_files keys "
+    print("cross-auditor-pr-and-probes.md: no fenced YAML block contains all 5 pr_files keys "
           "(filename:/status:/previous_filename:/patch_present:/is_submodule:)")
     sys.exit(1)
-print("cross-auditor.md input/output YAML block has all 5 pr_files keys + build_pr_files.sh path")
+print("cross-auditor: §Input tokens on hub; §Step 0 YAML block + build_pr_files.sh path on reference")
 PY
 }
 
-# 9. cross-auditor.md uses `gh pr checkout`
+# 9. cross-auditor §Step 0 uses `gh pr checkout` (canonical content moved to
+#    agents/references/cross-auditor-pr-and-probes.md per Spec 2a Step 6).
 check_cross_auditor_gh_pr_checkout() {
-  grep -q 'gh pr checkout' agents/cross-auditor.md \
-    || { echo "cross-auditor.md missing 'gh pr checkout'"; return 1; }
-  echo "cross-auditor.md uses gh pr checkout"
+  grep -q 'gh pr checkout' agents/references/cross-auditor-pr-and-probes.md \
+    || { echo "cross-auditor-pr-and-probes.md missing 'gh pr checkout'"; return 1; }
+  echo "cross-auditor §Step 0 uses gh pr checkout"
 }
 
-# 10. cross-auditor.md: near the async Codex helper launch, contains `CODEX_WD` AND `worktree`.
+# 10. agents/references/cross-auditor-codex-dispatch.md: near the async Codex helper launch,
+#     contains `CODEX_WD` AND `worktree`. §Codex dispatch + §Step 1 moved to the reference per
+#     Spec 2a Step 5; the codex_audit_dispatch.sh launch prose lives there.
 check_cross_auditor_codex_cwd_proximity() {
   python3 - <<'PY'
 import re, sys
-lines = open('agents/cross-auditor.md').read().splitlines()
+lines = open('agents/references/cross-auditor-codex-dispatch.md').read().splitlines()
 ok = False
 for i, line in enumerate(lines):
     if 'codex_audit_dispatch.sh' in line:
@@ -835,9 +843,9 @@ for i, line in enumerate(lines):
             ok = True
             break
 if not ok:
-    print("cross-auditor.md: no codex_audit_dispatch.sh launch has both CODEX_WD and worktree nearby")
+    print("cross-auditor-codex-dispatch.md: no codex_audit_dispatch.sh launch has both CODEX_WD and worktree nearby")
     sys.exit(1)
-print("cross-auditor.md Codex cwd override proximity OK")
+print("cross-auditor-codex-dispatch.md Codex cwd override proximity OK")
 PY
 }
 
@@ -2564,8 +2572,8 @@ check_multi_gh_account_absent() {
     || { echo "absence #7c FAIL: ### Resolve pr_number subsection missing from skills/cross-audit/SKILL.md"; return 1; }
   grep -qF '### Fetch pr_changed_files (authoritative, paginated)' skills/cross-audit/SKILL.md \
     || { echo "absence #7d FAIL: ### Fetch pr_changed_files subsection missing from skills/cross-audit/SKILL.md"; return 1; }
-  grep -qF 'gh pr checkout <pr_number> --force --repo <pr_repo>' agents/cross-auditor.md \
-    || { echo "absence #7e FAIL: bare gh pr checkout form missing from agents/cross-auditor.md"; return 1; }
+  grep -qF 'gh pr checkout <pr_number> --force --repo <pr_repo>' agents/references/cross-auditor-pr-and-probes.md \
+    || { echo "absence #7e FAIL: bare gh pr checkout form missing from agents/references/cross-auditor-pr-and-probes.md"; return 1; }
   grep -qF 'gh pr view <N> --repo <pr_repo> --json headRefOid' skills/cross-audit/references/publish.md \
     || { echo "absence #7f FAIL: force-push gh pr view missing from publish.md"; return 1; }
   grep -qF 'gh api --include --repo <pr_repo>' skills/cross-audit/references/publish.md \
@@ -2816,7 +2824,7 @@ check_smoke_helper_focus_areas_cross_auditor_demoted_rejected() {
 }
 
 # Positive invocations — 2 rows per spec §3.4.
-check "check_cross_auditor_mode_focus_areas_canonical" check_cross_auditor_mode_focus_areas_canonical agents/cross-auditor.md
+check "check_cross_auditor_mode_focus_areas_canonical" check_cross_auditor_mode_focus_areas_canonical agents/references/cross-auditor-mode-focus.md
 check "check_cross_audit_skill_focus_areas_references_canonical" check_cross_audit_skill_focus_areas_references_canonical skills/cross-audit/SKILL.md
 # Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
@@ -4155,12 +4163,13 @@ check_skill_audit_evidence_populated_at_terminal_sites() {
   return $fail
 }
 
-# (c) cross-auditor.md findings.md template carries BOTH evidence_class:
+# (c) findings.md template carries BOTH evidence_class:
 # AND evidence_blockers: as YAML-frontmatter scalars, anchored under the
-# `### findings.md` heading (NOT in the agent's own top-of-file frontmatter
-# at L1-L10; NOT as body bullets).
+# `### findings.md` heading (NOT in the agent's own top-of-file frontmatter;
+# NOT as body bullets). The §Step 4 canonical body lives in
+# agents/references/cross-auditor-output-format.md.
 check_cross_auditor_evidence_class_in_yaml_frontmatter() {
-  local f='agents/cross-auditor.md'
+  local f='agents/references/cross-auditor-output-format.md'
   local region ec eb ec_placeholder eb_placeholder
   region=$(awk '/^### findings\.md/{tpl=1; next} tpl && /^---$/{c++; next} tpl && c==1' "$f")
   ec=$(printf '%s' "$region" | grep -cF 'evidence_class:')
@@ -4197,7 +4206,7 @@ check_cross_auditor_evidence_class_in_yaml_frontmatter() {
 # name the two-adjacent-final-lines `evidence_class:` + `evidence_blockers:`
 # return-text contract.
 check_cross_auditor_spec_mode_return_contract() {
-  local agent='agents/cross-auditor.md'
+  local agent='agents/references/cross-auditor-evidence-handshake.md'
   local skill='skills/feature/SKILL.md'
   # Three AND-ed assertions replace the previous OR-form across loose patterns.
   # Spec §3.3 mandates the inline-return MUST end with two adjacent literal
@@ -5220,7 +5229,7 @@ check_overview_contract_violated_documented() {
 # 2-value sentence `NEVER writes \`self_fallback\` or \`skipped\`` (without
 # `\`contract_violated\``).
 check_cross_auditor_never_writes_extension() {
-  local f='agents/cross-auditor.md'
+  local f='agents/references/cross-auditor-evidence-handshake.md'
   local skill='skills/feature/SKILL.md'
   if ! grep -qF "self_fallback\`, \`contract_violated\`, or \`skipped" "$f"; then
     echo "cross-auditor.md missing 3-value never-writes literal list 'self_fallback\`, \`contract_violated\`, or \`skipped'"
