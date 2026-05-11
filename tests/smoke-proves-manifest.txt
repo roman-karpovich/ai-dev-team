@@ -116,6 +116,14 @@ check_r_rules_taxonomy_schema schema
 check_cross_auditor_security_preamble prompt-text
 check_spec_compliance_filter_preamble prompt-text
 
+# WAP — Workdoc assertion-count parity (compliance-checker slice 1)
+check_workdoc_parity_helper_detects_drift behavioral
+check_compliance_checker_wap_heading_present prompt-text
+check_compliance_checker_wap_lists_n_increment_anchor prompt-text
+check_compliance_checker_wap_lists_expected_pass_increments_anchor prompt-text
+check_compliance_checker_wap_in_verdict_template prompt-text
+check_compliance_checker_wap_in_rules prompt-text
+
 # R-rules web-security cluster (R9-R14)
 check_security_cluster_rules_present schema
 check_r9_idor_covers_state_changing_endpoints schema
