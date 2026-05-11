@@ -3169,6 +3169,39 @@ check_compliance_checker_r3_in_rules() {
   echo "## Rules has R3 DRIFT weak-phrase enforcement bullet in $path"
 }
 
+# --- WAP (Workdoc Assertion-count Parity) helper behavioral pin (BACKLOG #63 — slice 1) ---
+
+check_workdoc_parity_helper_detects_drift() {
+  local helper='tests/workdoc_parity_check.py'
+  local fixture_workdoc='tests/fixtures/workdoc-assertion-count-parity/workdoc.md'
+  local fixture_spec='tests/fixtures/workdoc-assertion-count-parity/spec.md'
+
+  [ -f "$helper" ] \
+    || { echo "$helper missing — WAP helper not installed"; return 1; }
+  [ -f "$fixture_workdoc" ] \
+    || { echo "$fixture_workdoc missing — WAP fixture workdoc not installed"; return 1; }
+  [ -f "$fixture_spec" ] \
+    || { echo "$fixture_spec missing — WAP fixture spec not installed"; return 1; }
+
+  local out rc
+  out=$(python3 "$helper" "$fixture_workdoc" --spec "$fixture_spec" 2>&1)
+  rc=$?
+
+  [ "$rc" -eq 1 ] \
+    || { echo "WAP helper expected exit 1 on DRIFT fixture, got $rc; output:"; printf '%s\n' "$out"; return 1; }
+
+  printf '%s\n' "$out" | grep -qF "step 1 — OK" \
+    || { echo "WAP helper output missing 'step 1 — OK'; output:"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "step 2 — DRIFT INV-1" \
+    || { echo "WAP helper output missing 'step 2 — DRIFT INV-1'; output:"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "step 2 — DRIFT INV-2" \
+    || { echo "WAP helper output missing 'step 2 — DRIFT INV-2'; output:"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "step 3 — N/A" \
+    || { echo "WAP helper output missing 'step 3 — N/A'; output:"; printf '%s\n' "$out"; return 1; }
+
+  echo "WAP helper detects INV-1 + INV-2 drift and N/A skip on synthetic fixture (exit=1)"
+}
+
 # --- Librarian narrow-framing pins (BACKLOG #44 — actual-vs-declared role review, mode B) ---
 
 check_librarian_optional_helper_framing() {

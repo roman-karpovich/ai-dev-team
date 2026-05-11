@@ -3945,6 +3945,12 @@ check "compliance_checker_r3_in_verdict_template"   check_compliance_checker_r3_
 check "compliance_checker_r3_in_rules"              check_compliance_checker_r3_in_rules               "$COMPLIANCE_CHECKER"
 echo
 
+# --- WAP (Workdoc Assertion-count Parity) helper behavioral pin (BACKLOG #63 — slice 1) ---
+echo "Workdoc assertion-count parity helper:"
+
+check "workdoc parity helper detects drift" check_workdoc_parity_helper_detects_drift
+echo
+
 # --- R3 weak-phrase compliance check — fixture-based behavioral assertions ---
 echo "R3 weak-phrase compliance check — fixture-based behavioral assertions:"
 
