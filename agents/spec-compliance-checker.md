@@ -89,6 +89,28 @@ If `planned.integration_probe_cmd` is set:
 - Run it yourself from `project_path`. Capture output. Compare to `expected_probe_signal`.
 - If probe fails or signal is absent: FAIL.
 
+### 3b. Workdoc assertion-count parity
+
+#### WAP — Workdoc assertion-count parity (process-truthfulness)
+
+This rule catches **process-truthfulness defects** in the workdoc/spec narrative around `passing_test_cmd` counters. The DONE rule (§3 above) catches workdoc-internal `green_capture` vs `expected_pass_pattern` mismatches at runtime, but it cannot catch a misleading spec narrative or a workdoc-internal miscount where the assertion count diverges from the spec §6.1 parenthetical claim. Verdict on mismatch is **DRIFT** (the runtime check still passes — the narrative is misleading, not the code), never **FAIL**.
+
+Two invariants apply per workdoc step, both opt-in by pattern presence:
+
+- **INV-1 (workdoc-internal)** — workdoc step's `expected_pass_pattern: N` (parsed as pure integer) MUST equal the count of literal `n=$((n+1))` occurrences inside that step's `passing_test_cmd` block. Skip when `expected_pass_pattern` is not a pure integer (e.g. `"Failed: 0"`, `"OK"`) OR when `passing_test_cmd` has zero `n=$((n+1))` occurrences — the rule is opt-in by counter-pattern presence.
+
+- **INV-2 (spec ↔ workdoc)** — spec §6.1 step parenthetical of the form `(N expected_pass increments<.|, ...>)` MUST equal the corresponding workdoc step's `expected_pass_pattern` integer. Skip when the spec has no §6.1 parenthetical for the active step.
+
+**Canonical helper invocation** (deterministic, no LLM-side counting):
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/tests/workdoc_parity_check.py" <workdoc_path> --spec <spec_path> --step <N>
+```
+
+Exit `0` = PASS (every applicable step OK). Exit `1` = DRIFT (at least one applicable step mismatches). Output is line-oriented and machine-grep-friendly — one `step N — OK|DRIFT INV-1|DRIFT INV-2|N/A` line per applicable step, with anchor regexes `n=$((n+1))` count and `expected_pass increments` integer cited in the body of DRIFT lines.
+
+Invoke at every step where the workdoc carries a `passing_test_cmd`. Mismatch is DRIFT — developer must fix the spec §6.1 parenthetical OR fix the workdoc `expected_pass_pattern` OR add/remove the `n=$((n+1))` increment in `passing_test_cmd` so the three numbers agree. Never auto-FAIL on a WAP hit — process-truthfulness, not correctness.
+
 ### 4. Flag missing probe
 
 If `planned.integration_probe_cmd` is empty AND the step's goal involves wiring something into a call path or runtime behavior (not just a unit-testable function), flag this as a recommendation: "Consider adding an integration probe to confirm the feature is reachable at runtime."
@@ -196,6 +218,7 @@ Commit messages are public artifacts (squash-merge titles surface in release not
 - R2 (fresh tests in green capture): <none | advisory — list test files>
 - R3 (weak-phrase fresh tests): <clean | DRIFT — list test functions with sole weak-phrase assertion>
 - R8 (commit-message KB-leak / tooling-footer scan): <clean | FAIL — list `<sha>: <line>` hits | DRIFT — list spec-slug advisories>
+- WAP (workdoc assertion-count parity): <clean | DRIFT — list step Ns with INV-1 or INV-2 mismatch>
 
 ### Recommendation (if integration probe absent)
 <if applicable>
@@ -219,5 +242,6 @@ Commit messages are public artifacts (squash-merge titles surface in release not
 - Code quality R2 has two modes: (a) new fresh tests in the green capture is advisory only and never the sole reason for DRIFT; (b) a modified core test without spec §3 backing + Log entry is always DRIFT — core assertion changes are load-bearing and must be traceable to the spec's declared behaviour change.
 - Code quality R3 violations are DRIFT — flag a fresh test whose sole assertion matches a v1 weak-phrase regex (`assertIsNotNone` family or `call_count` / `assert_called_once` / `assert_called_with` family) and whose function body has no observable-effect assertion. Sole-assertion judgment is LLM-side; never auto-FAIL on regex hit alone.
 - Code quality R8 violations: footer-phrase or KB-path hits in commit messages are FAIL (load-bearing — KB references in public artifacts is the core failure R8 prevents). Spec-slug-as-token hits are DRIFT advisory pending LLM judgment of whether the slug is a code identifier or a KB pointer. Remediation lives in §5 R8 step 4 — amend if unpushed, follow-up `chore` commit if already published.
+- Code quality WAP violations are DRIFT — never FAIL. The runtime check (DONE rule) still passes when WAP catches a hit; what diverges is the spec §6.1 parenthetical or the workdoc internal `expected_pass_pattern` vs `n=$((n+1))` count. Process-truthfulness defect: spec narrative or workdoc internals are misleading. Developer must fix the spec §6.1 parenthetical OR fix the workdoc `expected_pass_pattern` OR add/remove the missing `n=$((n+1))` increment in `passing_test_cmd` so all three numbers agree, then re-run the §3b helper before proceeding.
 - Be specific. Every issue must name the file, the deviation, and what was expected.
 - Do not soften findings. A partial implementation is not a "good start" — it's DRIFT.

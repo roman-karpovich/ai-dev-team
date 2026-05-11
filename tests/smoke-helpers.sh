@@ -3169,6 +3169,98 @@ check_compliance_checker_r3_in_rules() {
   echo "## Rules has R3 DRIFT weak-phrase enforcement bullet in $path"
 }
 
+check_compliance_checker_wap_heading_present() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  grep -qF '#### WAP — Workdoc assertion-count parity (process-truthfulness)' "$path" \
+    || { echo "$path missing '#### WAP — Workdoc assertion-count parity (process-truthfulness)' subheading"; return 1; }
+  echo "WAP workdoc assertion-count parity heading present in $path"
+}
+
+check_compliance_checker_wap_lists_n_increment_anchor() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local WAP
+  WAP=$(awk '
+    $0 == "#### WAP — Workdoc assertion-count parity (process-truthfulness)" { in_s = 1; print; next }
+    in_s && (/^#### / || /^### /) { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$WAP" | grep -qF 'n=$((n+1))' \
+    || { echo "$path WAP subsection missing byte-exact 'n=\$((n+1))' anchor"; return 1; }
+  echo "WAP subsection lists byte-exact n=\$((n+1)) anchor in $path"
+}
+
+check_compliance_checker_wap_lists_expected_pass_increments_anchor() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local WAP
+  WAP=$(awk '
+    $0 == "#### WAP — Workdoc assertion-count parity (process-truthfulness)" { in_s = 1; print; next }
+    in_s && (/^#### / || /^### /) { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$WAP" | grep -qF 'expected_pass increments' \
+    || { echo "$path WAP subsection missing byte-exact 'expected_pass increments' anchor"; return 1; }
+  echo "WAP subsection lists byte-exact expected_pass increments anchor in $path"
+}
+
+check_compliance_checker_wap_in_verdict_template() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local SECT6
+  SECT6=$(awk '
+    $0 == "### 6. Return verdict" { in_s = 1; print; next }
+    in_s && $0 == "## Rules" { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$SECT6" | grep -qF -- '- WAP (workdoc assertion-count parity):' \
+    || { echo "$path ### 6. Return verdict section missing byte-exact WAP verdict-template line"; return 1; }
+  echo "WAP line present in verdict template ### Code quality block in $path"
+}
+
+check_compliance_checker_wap_in_rules() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local RULES
+  RULES=$(awk '
+    $0 == "## Rules" { in_s = 1; print; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$RULES" | grep -qF -- '- Code quality WAP violations are DRIFT' \
+    || { echo "$path ## Rules section missing byte-exact WAP DRIFT enforcement bullet opening"; return 1; }
+  echo "## Rules has WAP DRIFT enforcement bullet in $path"
+}
+
+# --- WAP (Workdoc Assertion-count Parity) helper behavioral pin (BACKLOG #63 — slice 1) ---
+
+check_workdoc_parity_helper_detects_drift() {
+  local helper='tests/workdoc_parity_check.py'
+  local fixture_workdoc='tests/fixtures/workdoc-assertion-count-parity/workdoc.md'
+  local fixture_spec='tests/fixtures/workdoc-assertion-count-parity/spec.md'
+
+  [ -f "$helper" ] \
+    || { echo "$helper missing — WAP helper not installed"; return 1; }
+  [ -f "$fixture_workdoc" ] \
+    || { echo "$fixture_workdoc missing — WAP fixture workdoc not installed"; return 1; }
+  [ -f "$fixture_spec" ] \
+    || { echo "$fixture_spec missing — WAP fixture spec not installed"; return 1; }
+
+  local out rc
+  out=$(python3 "$helper" "$fixture_workdoc" --spec "$fixture_spec" 2>&1)
+  rc=$?
+
+  [ "$rc" -eq 1 ] \
+    || { echo "WAP helper expected exit 1 on DRIFT fixture, got $rc; output:"; printf '%s\n' "$out"; return 1; }
+
+  printf '%s\n' "$out" | grep -qF "step 1 — OK" \
+    || { echo "WAP helper output missing 'step 1 — OK'; output:"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "step 2 — DRIFT INV-1" \
+    || { echo "WAP helper output missing 'step 2 — DRIFT INV-1'; output:"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "step 2 — DRIFT INV-2" \
+    || { echo "WAP helper output missing 'step 2 — DRIFT INV-2'; output:"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "step 3 — N/A" \
+    || { echo "WAP helper output missing 'step 3 — N/A'; output:"; printf '%s\n' "$out"; return 1; }
+
+  echo "WAP helper detects INV-1 + INV-2 drift and N/A skip on synthetic fixture (exit=1)"
+}
+
 # --- Librarian narrow-framing pins (BACKLOG #44 — actual-vs-declared role review, mode B) ---
 
 check_librarian_optional_helper_framing() {
