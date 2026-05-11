@@ -3169,6 +3169,65 @@ check_compliance_checker_r3_in_rules() {
   echo "## Rules has R3 DRIFT weak-phrase enforcement bullet in $path"
 }
 
+check_compliance_checker_wap_heading_present() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  grep -qF '#### WAP — Workdoc assertion-count parity (process-truthfulness)' "$path" \
+    || { echo "$path missing '#### WAP — Workdoc assertion-count parity (process-truthfulness)' subheading"; return 1; }
+  echo "WAP workdoc assertion-count parity heading present in $path"
+}
+
+check_compliance_checker_wap_lists_n_increment_anchor() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local WAP
+  WAP=$(awk '
+    $0 == "#### WAP — Workdoc assertion-count parity (process-truthfulness)" { in_s = 1; print; next }
+    in_s && (/^#### / || /^### /) { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$WAP" | grep -qF 'n=$((n+1))' \
+    || { echo "$path WAP subsection missing byte-exact 'n=\$((n+1))' anchor"; return 1; }
+  echo "WAP subsection lists byte-exact n=\$((n+1)) anchor in $path"
+}
+
+check_compliance_checker_wap_lists_expected_pass_increments_anchor() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local WAP
+  WAP=$(awk '
+    $0 == "#### WAP — Workdoc assertion-count parity (process-truthfulness)" { in_s = 1; print; next }
+    in_s && (/^#### / || /^### /) { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$WAP" | grep -qF 'expected_pass increments' \
+    || { echo "$path WAP subsection missing byte-exact 'expected_pass increments' anchor"; return 1; }
+  echo "WAP subsection lists byte-exact expected_pass increments anchor in $path"
+}
+
+check_compliance_checker_wap_in_verdict_template() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local SECT6
+  SECT6=$(awk '
+    $0 == "### 6. Return verdict" { in_s = 1; print; next }
+    in_s && $0 == "## Rules" { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$SECT6" | grep -qF -- '- WAP (workdoc assertion-count parity):' \
+    || { echo "$path ### 6. Return verdict section missing byte-exact WAP verdict-template line"; return 1; }
+  echo "WAP line present in verdict template ### Code quality block in $path"
+}
+
+check_compliance_checker_wap_in_rules() {
+  local path="${1:-agents/spec-compliance-checker.md}"
+  local RULES
+  RULES=$(awk '
+    $0 == "## Rules" { in_s = 1; print; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$RULES" | grep -qF -- '- Code quality WAP violations are DRIFT' \
+    || { echo "$path ## Rules section missing byte-exact WAP DRIFT enforcement bullet opening"; return 1; }
+  echo "## Rules has WAP DRIFT enforcement bullet in $path"
+}
+
 # --- WAP (Workdoc Assertion-count Parity) helper behavioral pin (BACKLOG #63 — slice 1) ---
 
 check_workdoc_parity_helper_detects_drift() {

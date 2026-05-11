@@ -3943,6 +3943,12 @@ check "compliance_checker_r3_lists_assertisnotnone" check_compliance_checker_r3_
 check "compliance_checker_r3_lists_call_count"      check_compliance_checker_r3_lists_call_count       "$COMPLIANCE_CHECKER"
 check "compliance_checker_r3_in_verdict_template"   check_compliance_checker_r3_in_verdict_template    "$COMPLIANCE_CHECKER"
 check "compliance_checker_r3_in_rules"              check_compliance_checker_r3_in_rules               "$COMPLIANCE_CHECKER"
+
+check "compliance_checker_wap_heading_present"                       check_compliance_checker_wap_heading_present                       "$COMPLIANCE_CHECKER"
+check "compliance_checker_wap_lists_n_increment_anchor"              check_compliance_checker_wap_lists_n_increment_anchor              "$COMPLIANCE_CHECKER"
+check "compliance_checker_wap_lists_expected_pass_increments_anchor" check_compliance_checker_wap_lists_expected_pass_increments_anchor "$COMPLIANCE_CHECKER"
+check "compliance_checker_wap_in_verdict_template"                   check_compliance_checker_wap_in_verdict_template                   "$COMPLIANCE_CHECKER"
+check "compliance_checker_wap_in_rules"                              check_compliance_checker_wap_in_rules                              "$COMPLIANCE_CHECKER"
 echo
 
 # --- WAP (Workdoc Assertion-count Parity) helper behavioral pin (BACKLOG #63 — slice 1) ---
