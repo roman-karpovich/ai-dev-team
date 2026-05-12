@@ -180,6 +180,7 @@ def parse_spec_61_parentheticals(path: Path) -> Dict[int, int]:
     lines = text.splitlines()
 
     result: Dict[int, int] = {}
+    in_fence = False
     in_61 = False
     current_step: Optional[int] = None
     current_buf: List[str] = []
@@ -196,6 +197,13 @@ def parse_spec_61_parentheticals(path: Path) -> Dict[int, int]:
 
     for raw in lines:
         stripped = raw.rstrip("\n")
+
+        fence_match = FENCE_RE.match(stripped)
+        if fence_match:
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
 
         if SPEC_61_HEADING_RE.match(stripped):
             _commit()
