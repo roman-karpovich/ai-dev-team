@@ -467,6 +467,8 @@ Spawn `cross-auditor` subagent with the **same parameter block as the initial fu
 - OMIT: `kb_path` (spec mode does not write to KB)
 - OMIT: `accepted_ids` (no per-finding triage in spec mode)
 - OMIT: `base_branch` (spec mode does not need git context)
+- `iteration`: `<spec_audit_iteration>` (was `<code_audit_iteration>`)
+- `previously_fixed`: `<spec_audit_fixed_ids>` (was `<code_audit_fixed_ids>`)
 
 `project_type` resolution: identical to code mode (spec frontmatter → .ai-dev-team.local.yml → .ai-dev-team.yml → None).
 
@@ -480,7 +482,7 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 5. Increment `spec_audit_iteration`
 6. Before re-spawn, see §3.5c Stop criteria — REOPEN findings or same-defect-class on 2+ iters trigger a comprehensive sweep AFTER `/compact` or via a fresh-context subagent; hard cap iter ≤ 5 unless an explicit §3.1c-regex Log line justifies the exception. Then re-run Pass 1 self-review and re-spawn cross-auditor with updated `iteration` and `previously_fixed`.
 7. Repeat until no CRITICAL/HIGH remain
-8. Set spec `status: AUDIT_PASSED`. Populate `spec_audit_evidence:` from the cross-auditor's final-iteration return signal per §3.5b READ path (spec-mode parses two adjacent final lines `evidence_class:` + `evidence_blockers:` from the inline return text). Copy `evidence_blockers:` verbatim into `spec_audit_blockers:` (parse-failure → `contract_violated` per §3.5b).
+8. Set spec `status: AUDIT_PASSED`. Populate `spec_audit_evidence:` from the cross-auditor's final-iteration return signal per §3.5b READ path. Copy `evidence_blockers:` verbatim into `spec_audit_blockers:` (parse-failure → `contract_violated` per §3.5b).
 
 **If no CRITICAL or HIGH findings:**
 > Spec review passed — the spec is saved to KB. Moving to implementation.
