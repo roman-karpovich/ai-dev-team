@@ -169,29 +169,34 @@ def parse_workdoc_steps(path: Path) -> Dict[int, Dict[str, str]]:
     return steps
 
 
-def parse_spec_61_parentheticals(path: Path) -> Dict[int, int]:
+def parse_spec_61_parentheticals(path: Path) -> Tuple[Dict[int, int], Dict[int, str]]:
     """
     Parse spec §6.1 step bullets and extract `(<int> expected_pass increments…)`.
 
-    Returns {step_number: integer_count}. Steps without the parenthetical are
-    omitted from the result (INV-2 is N/A for them).
+    Returns ({step_number: integer_count}, {step_number: raw_parenthetical_text}).
+    Steps without the parenthetical are omitted from both results (INV-2 is N/A
+    for them).
     """
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
 
     result: Dict[int, int] = {}
+    result_malformed: Dict[int, str] = {}
     in_fence = False
     in_61 = False
     current_step: Optional[int] = None
     current_buf: List[str] = []
 
     def _commit() -> None:
-        nonlocal current_step, current_buf
+        nonlocal current_step, current_buf, result_malformed
         if current_step is not None and current_buf:
             joined = " ".join(current_buf)
+            has_expected_pass_parenthetical = "expected_pass increment" in joined
             match = SPEC_PAREN_RE.search(joined)
             if match:
                 result[current_step] = int(match.group(1))
+            elif has_expected_pass_parenthetical:
+                result_malformed[current_step] = joined
         current_step = None
         current_buf = []
 
@@ -236,7 +241,7 @@ def parse_spec_61_parentheticals(path: Path) -> Dict[int, int]:
             current_buf.append(stripped)
 
     _commit()
-    return result
+    return result, result_malformed
 
 
 def count_n_increments(passing_cmd: str) -> int:
@@ -262,6 +267,7 @@ def evaluate(
     workdoc_steps: Dict[int, Dict[str, str]],
     spec_parens: Dict[int, int],
     only_step: Optional[int] = None,
+    spec_malformed: Optional[Dict[int, str]] = None,
 ) -> Tuple[List[str], bool]:
     """
     Produce per-step verdict lines. Returns (lines, any_drift).
@@ -363,14 +369,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     workdoc_steps = parse_workdoc_steps(workdoc_path)
 
     spec_parens: Dict[int, int] = {}
+    spec_malformed: Dict[int, str] = {}
     if args.spec:
         spec_path = Path(args.spec)
         if not spec_path.is_file():
             print(f"spec not found: {spec_path}", file=sys.stderr)
             return 2
-        spec_parens = parse_spec_61_parentheticals(spec_path)
+        spec_parens, spec_malformed = parse_spec_61_parentheticals(spec_path)
 
-    lines, any_drift = evaluate(workdoc_steps, spec_parens, only_step=args.step)
+    lines, any_drift = evaluate(
+        workdoc_steps,
+        spec_parens,
+        only_step=args.step,
+        spec_malformed=spec_malformed,
+    )
     for ln in lines:
         print(ln)
 
