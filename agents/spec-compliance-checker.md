@@ -97,9 +97,9 @@ This rule catches **process-truthfulness defects** in the workdoc/spec narrative
 
 Two invariants apply per workdoc step, both opt-in by pattern presence:
 
-- **INV-1 (workdoc-internal)** — workdoc step's `expected_pass_pattern: N` (parsed as pure integer) MUST equal the count of literal `n=$((n+1))` occurrences inside that step's `passing_test_cmd` block. Skip when `expected_pass_pattern` is not a pure integer (e.g. `"Failed: 0"`, `"OK"`) OR when `passing_test_cmd` has zero `n=$((n+1))` occurrences — the rule is opt-in by counter-pattern presence.
+- **INV-1 (workdoc-internal)** — workdoc step's `expected_pass_pattern: N` (parsed as pure integer) MUST equal the count of literal `n=$((n+1))` occurrences inside that step's `passing_test_cmd` block. Skip ONLY when `expected_pass_pattern` is not a pure integer (e.g. `"Failed: 0"`, `"OK"`); n_count == 0 is a valid counted value and MUST mismatch any nonzero declared integer (DRIFT).
 
-- **INV-2 (spec ↔ workdoc)** — spec §6.1 step parenthetical of the form `(N expected_pass increments<.|, ...>)` MUST equal the corresponding workdoc step's `expected_pass_pattern` integer. Skip when the spec has no §6.1 parenthetical for the active step.
+- **INV-2 (spec ↔ workdoc)** — spec §6.1 step parenthetical of the form `(N expected_pass increments<.|, ...>)` MUST equal the corresponding workdoc step's `expected_pass_pattern` integer. Skip only when the spec has no §6.1 parenthetical at all; a present-but-unparseable parenthetical (e.g. worded numerals like `(three expected_pass increments)`) emits DRIFT INV-2 (parenthetical present but unparseable).
 
 **Canonical helper invocation** (deterministic, no LLM-side counting):
 
