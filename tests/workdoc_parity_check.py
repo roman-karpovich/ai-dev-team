@@ -19,9 +19,11 @@ Both INVs degrade to N/A when BOTH axes opt out. Three load-bearing DRIFT
 branches override N/A when one axis opts in but the other is provably
 broken:
   - DRIFT INV-1 zero-counter: spec §6.1 declares (N expected_pass increments)
-    AND workdoc expected_pass_pattern is integer N but passing_test_cmd has
-    zero n=$((n+1)) occurrences — the workdoc cannot satisfy the spec's
-    counter contract.
+    AND workdoc expected_pass_pattern is any integer (not necessarily N) but
+    passing_test_cmd has zero n=$((n+1)) occurrences — the workdoc cannot
+    satisfy the spec's counter contract. Note: when expected_pass_pattern ≠
+    spec N, INV-2 strict mismatch also fires, so the step gets two DRIFT
+    lines.
   - DRIFT INV-2 not-integer: spec §6.1 declares (N expected_pass increments)
     but workdoc expected_pass_pattern is not a pure integer — the spec
     narrative cannot be verified against the workdoc's pattern shape.
