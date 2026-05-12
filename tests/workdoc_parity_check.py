@@ -52,13 +52,13 @@ KEY_BLOCK_RE = re.compile(r"^(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*\|\s*$")
 FENCE_RE = re.compile(r"^\s*```")
 
 # Spec §6.1 step bullet: "- **Step <N>**: ... (<int> expected_pass increments...)".
-SPEC_STEP_BULLET_RE = re.compile(r"^[-*]\s+\*\*Step\s+(\d+)\*\*\s*:")
+SPEC_STEP_BULLET_RE = re.compile(r"^[-*]\s+(?:\*\*)?Step\s+(\d+)(?:\*\*)?\s*:")
 SPEC_PAREN_RE = re.compile(r"\((\d+)\s+expected_pass\s+increments?\b")
 
 # Spec §6.1 section heading (we accept "## 6.1" with optional trailing prose).
-SPEC_61_HEADING_RE = re.compile(r"^##\s+6\.1\b")
+SPEC_61_HEADING_RE = re.compile(r"^#{2,4}\s+6\.1\b")
 # Any other "## <digit>" heading terminates §6.1 scope.
-SPEC_NEXT_SECTION_RE = re.compile(r"^##\s+\d+(\.\d+)?\b")
+SPEC_NEXT_SECTION_RE = re.compile(r"^#{2,4}\s+\d+(\.\d+)?\b")
 
 
 def _strip_block_indent(lines: List[str]) -> str:
