@@ -6287,11 +6287,11 @@ check_eof_adjacency_parser_single_source() {
   [ -f "$ca" ] || { echo "$ca missing"; return 1; }
   # Positive — canonical preserved at cross-auditor.md.
   if ! grep -qF '### Spec-mode return contract' "$ca"; then
-    echo "cross-auditor.md missing '### Spec-mode return contract' heading"
+    echo "cross-auditor-evidence-handshake.md missing '### Spec-mode return contract' heading"
     return 1
   fi
   if ! grep -qF 'forgotten-footer-with-example-echo' "$ca"; then
-    echo "cross-auditor.md missing producer-side 'forgotten-footer-with-example-echo' token"
+    echo "cross-auditor-evidence-handshake.md missing producer-side 'forgotten-footer-with-example-echo' token"
     return 1
   fi
   # Negative — SKILL.md duplicate prose gone (byte-exact SKILL.md-resident fingerprint).
@@ -6300,8 +6300,8 @@ check_eof_adjacency_parser_single_source() {
     return 1
   fi
   # Positive — UNIQUELY-NEW pointer present.
-  if ! grep -qF 'parse per `agents/cross-auditor.md` §Spec-mode return contract' "$skl"; then
-    echo "SKILL.md missing UNIQUELY-NEW pointer literal 'parse per agents/cross-auditor.md §Spec-mode return contract'"
+  if ! grep -qF 'parse per `agents/references/cross-auditor-evidence-handshake.md` §Spec-mode return contract' "$skl"; then
+    echo "SKILL.md missing UNIQUELY-NEW pointer literal 'parse per agents/references/cross-auditor-evidence-handshake.md §Spec-mode return contract'"
     return 1
   fi
   # Positive — 4 consumer-shell variable literals preserved.
