@@ -49,6 +49,7 @@ STEP_HEADING_RE = re.compile(r"^##\s+Step\s+(\d+)\s*:")
 # YAML-ish key recognizers inside a Planned block.
 KEY_INLINE_RE = re.compile(r"^(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?P<value>.*?)\s*$")
 KEY_BLOCK_RE = re.compile(r"^(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*\|\s*$")
+FENCE_RE = re.compile(r"^\s*```")
 
 # Spec §6.1 step bullet: "- **Step <N>**: ... (<int> expected_pass increments...)".
 SPEC_STEP_BULLET_RE = re.compile(r"^[-*]\s+\*\*Step\s+(\d+)\*\*\s*:")
@@ -84,6 +85,7 @@ def parse_workdoc_steps(path: Path) -> Dict[int, Dict[str, str]]:
 
     current_step: Optional[int] = None
     in_planned = False
+    in_fence = False
     # When parsing a block-`|` value:
     block_key: Optional[str] = None
     block_indent: Optional[int] = None
@@ -92,7 +94,9 @@ def parse_workdoc_steps(path: Path) -> Dict[int, Dict[str, str]]:
     def _flush_block() -> None:
         nonlocal block_key, block_indent, block_lines
         if block_key is not None and current_step is not None:
-            steps.setdefault(current_step, {})[block_key] = _strip_block_indent(block_lines)
+            steps.setdefault(current_step, {})[block_key] = _strip_block_indent(
+                block_lines
+            )
         block_key = None
         block_indent = None
         block_lines = []
@@ -112,6 +116,13 @@ def parse_workdoc_steps(path: Path) -> Dict[int, Dict[str, str]]:
                 continue
             # De-indent — terminates the block. Fall through to process this line.
             _flush_block()
+
+        fence_match = FENCE_RE.match(stripped)
+        if fence_match:
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
 
         step_match = STEP_HEADING_RE.match(stripped)
         if step_match:
@@ -190,7 +201,11 @@ def parse_spec_61_parentheticals(path: Path) -> Dict[int, int]:
             _commit()
             in_61 = True
             continue
-        if in_61 and SPEC_NEXT_SECTION_RE.match(stripped) and not SPEC_61_HEADING_RE.match(stripped):
+        if (
+            in_61
+            and SPEC_NEXT_SECTION_RE.match(stripped)
+            and not SPEC_61_HEADING_RE.match(stripped)
+        ):
             _commit()
             in_61 = False
             continue
@@ -283,7 +298,9 @@ def evaluate(
 
         if inv1_applicable:
             if inv1_ok:
-                detail = f"expected_pass_pattern={expected_int}, n=$((n+1)) count={n_count}"
+                detail = (
+                    f"expected_pass_pattern={expected_int}, n=$((n+1)) count={n_count}"
+                )
                 if inv2_applicable and inv2_ok:
                     detail += f", spec §6.1 parenthetical={spec_int}"
                 lines.append(f"step {step} {EMDASH} OK ({detail})")
@@ -318,10 +335,16 @@ def evaluate(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("workdoc", help="Path to exec.md workdoc")
-    parser.add_argument("--spec", default=None, help="Optional spec.md path for INV-2 cross-check")
-    parser.add_argument("--step", type=int, default=None, help="Restrict to single step number")
+    parser.add_argument(
+        "--spec", default=None, help="Optional spec.md path for INV-2 cross-check"
+    )
+    parser.add_argument(
+        "--step", type=int, default=None, help="Restrict to single step number"
+    )
     args = parser.parse_args(argv)
 
     workdoc_path = Path(args.workdoc)
