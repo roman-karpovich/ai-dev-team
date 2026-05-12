@@ -22,6 +22,9 @@ It exercises INV-2 cross-check for the paired `workdoc.md` fixture:
   `DRIFT INV-2` since the workdoc value disagrees with this parenthetical too.
   (7 expected_pass increments.)
 - **Step 3**: Helper detects N/A class. AND emits a single `N/A` verdict line.
+- **Step 4**: probe. (5 expected_pass increments.)
+- **Step 5**: probe. (3 expected_pass increments.)
+- **Step 6**: probe. (three expected_pass increments.)
 
 ## 9. Log
 
