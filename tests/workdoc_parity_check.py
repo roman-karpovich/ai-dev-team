@@ -286,19 +286,58 @@ def evaluate(
         expected_int = parse_int_or_none(expected_raw)
         n_count = count_n_increments(passing_cmd) if passing_cmd else 0
 
-        # INV-1
-        inv1_applicable = expected_int is not None and n_count > 0
-        inv1_ok = inv1_applicable and expected_int == n_count
-
-        # INV-2
         spec_int = spec_parens.get(step) if spec_parens else None
-        inv2_applicable = spec_int is not None and expected_int is not None
-        inv2_ok = inv2_applicable and spec_int == expected_int
+        _spec_malformed = spec_malformed or {}
+        spec_unparseable = step in _spec_malformed
 
-        # Compose output:
-        # - If both INVs are non-applicable -> N/A line.
-        # - Else emit OK or DRIFT lines per applicable invariant.
-        if not inv1_applicable and not inv2_applicable:
+        inv2_applicable_strict = spec_int is not None and expected_int is not None
+        inv2_spec_present_but_pattern_invalid = (
+            spec_int is not None and expected_int is None
+        )  # X1
+        inv1_runtime_applicable = expected_int is not None and n_count > 0
+        inv1_spec_present_but_counter_absent = (
+            spec_int is not None and expected_int is not None and n_count == 0  # X4
+        )
+
+        emitted_new_drift = False
+
+        # 1. X6: spec parenthetical present but unparseable → DRIFT INV-2 unparseable
+        if spec_unparseable:
+            raw = _spec_malformed[step]
+            lines.append(
+                f"step {step} {EMDASH} DRIFT INV-2 "
+                f"(spec §6.1 parenthetical present but unparseable: {raw!r})"
+            )
+            any_drift = True
+            emitted_new_drift = True
+        # 2. X1: spec-present + workdoc-pattern-invalid → DRIFT INV-2 invalid
+        elif inv2_spec_present_but_pattern_invalid:
+            lines.append(
+                f"step {step} {EMDASH} DRIFT INV-2 "
+                f"(spec §6.1 parenthetical={spec_int} but "
+                f"workdoc expected_pass_pattern={expected_raw!r} is not a pure integer; "
+                f"cannot verify spec narrative)"
+            )
+            any_drift = True
+            emitted_new_drift = True
+
+        # 3. X4: spec-present + integer workdoc + zero counter → DRIFT INV-1 contract
+        if inv1_spec_present_but_counter_absent:
+            lines.append(
+                f"step {step} {EMDASH} DRIFT INV-1 "
+                f"(spec §6.1 declares {spec_int} expected_pass increments but "
+                f"workdoc passing_test_cmd has zero n=$((n+1)) occurrences; "
+                f"the counter the spec relies on does not exist)"
+            )
+            any_drift = True
+            emitted_new_drift = True
+
+        # 4. Fully N/A — no new DRIFT already emitted AND both INV axes opt out
+        if (
+            not emitted_new_drift
+            and not inv1_runtime_applicable
+            and not inv2_applicable_strict
+        ):
             if expected_int is None:
                 reason = "expected_pass_pattern not integer"
             elif n_count == 0:
@@ -310,12 +349,14 @@ def evaluate(
 
         all_ok = True
 
-        if inv1_applicable:
+        # 5. Retained OK/DRIFT logic (unchanged except for emitted_new_drift guard)
+        if inv1_runtime_applicable:
+            inv1_ok = expected_int == n_count
             if inv1_ok:
                 detail = (
                     f"expected_pass_pattern={expected_int}, n=$((n+1)) count={n_count}"
                 )
-                if inv2_applicable and inv2_ok:
+                if inv2_applicable_strict and spec_int == expected_int:
                     detail += f", spec §6.1 parenthetical={spec_int}"
                 lines.append(f"step {step} {EMDASH} OK ({detail})")
             else:
@@ -326,7 +367,8 @@ def evaluate(
                     f"(expected_pass_pattern={expected_int}, n=$((n+1)) count={n_count})"
                 )
 
-        if inv2_applicable:
+        if inv2_applicable_strict:
+            inv2_ok = spec_int == expected_int
             if not inv2_ok:
                 any_drift = True
                 all_ok = False
@@ -334,7 +376,7 @@ def evaluate(
                     f"step {step} {EMDASH} DRIFT INV-2 "
                     f"(workdoc expected_pass_pattern={expected_int}, spec §6.1 parenthetical={spec_int})"
                 )
-            elif not inv1_applicable:
+            elif not inv1_runtime_applicable and not emitted_new_drift:
                 # INV-1 N/A but INV-2 OK — emit a positive line so silence
                 # doesn't look like the step was skipped.
                 lines.append(
@@ -342,8 +384,7 @@ def evaluate(
                     f"(expected_pass_pattern={expected_int}, spec §6.1 parenthetical={spec_int})"
                 )
 
-        # Combined OK already covered above; nothing more to do.
-        _ = all_ok  # explicitly silence flake — already used via any_drift.
+        _ = all_ok
 
     return lines, any_drift
 
