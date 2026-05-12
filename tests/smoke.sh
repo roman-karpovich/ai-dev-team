@@ -3962,6 +3962,7 @@ check "check_wap_inv1_drift_on_zero_counter" check_wap_inv1_drift_on_zero_counte
 check "check_wap_inv2_drift_on_unparseable_parenthetical" check_wap_inv2_drift_on_unparseable_parenthetical
 check "check_wap_inv2_parses_non_canonical_spec_form" check_wap_inv2_parses_non_canonical_spec_form
 check "check_wap_inv2_no_drift_on_inline_code_in_paren" check_wap_inv2_no_drift_on_inline_code_in_paren
+check "check_no_dangling_section_anchor_references" check_no_dangling_section_anchor_references
 echo
 
 # --- R3 weak-phrase compliance check — fixture-based behavioral assertions ---
@@ -4238,15 +4239,15 @@ check_cross_auditor_spec_mode_return_contract() {
   #    pattern is treated as multiple OR alternatives, not literal adjacency
   #    (true on both BSD grep and ugrep).
   if ! awk 'p == "evidence_class: <value>" && $0 == "evidence_blockers: <YAML-list>" {found=1} {p=$0} END {exit (found?0:1)}' "$agent"; then
-    echo "cross-auditor.md missing the two adjacent literal final lines 'evidence_class: <value>' / 'evidence_blockers: <YAML-list>'"
+    echo "cross-auditor-evidence-handshake.md missing the two adjacent literal final lines 'evidence_class: <value>' / 'evidence_blockers: <YAML-list>'"
     return 1
   fi
   # 2. SKILL.md (READ-side prose doc) points at the cross-auditor.md canonical site.
   #    The literal token forms live canonically in cross-auditor.md (clause 1 above
   #    enforces them there as adjacent lines); SKILL.md's single-source consistent
   #    representation is a pointer to the §-anchor.
-  if ! grep -qF 'parse per `agents/cross-auditor.md` §Spec-mode return contract' "$skill"; then
-    echo "SKILL.md §3.5b missing pointer to 'agents/cross-auditor.md §Spec-mode return contract'"
+  if ! grep -qF 'parse per `agents/references/cross-auditor-evidence-handshake.md` §Spec-mode return contract' "$skill"; then
+    echo "SKILL.md §3.5b missing pointer to 'agents/references/cross-auditor-evidence-handshake.md §Spec-mode return contract'"
     return 1
   fi
   # 3. One of the two files names the "no trailing prose" wording verbatim.
