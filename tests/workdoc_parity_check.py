@@ -408,6 +408,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     workdoc_steps = parse_workdoc_steps(workdoc_path)
+    if args.step is not None and args.step not in workdoc_steps:
+        present = sorted(workdoc_steps.keys())
+        print(
+            f"step {args.step} not found in workdoc: present steps are {present}",
+            file=sys.stderr,
+        )
+        return 2
 
     spec_parens: Dict[int, int] = {}
     spec_malformed: Dict[int, str] = {}
