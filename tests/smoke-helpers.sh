@@ -3392,6 +3392,38 @@ print('OK')
   echo "WAP broadened parser recognises ### 6.1 H3 heading + plain Step N bullets, excludes Step 99 under sibling ### 6.2"
 }
 
+check_wap_inv2_no_drift_on_inline_code_in_paren() {
+  # Regression pin for code-audit iter-2 X3: MALFORMED_PAREN_RE absorbed
+  # backticks via `[^)]*`, causing false-positive DRIFT INV-2 on prose like
+  # `(spec §6.1 parenthetical present but unparseable: `three expected_pass increments` (X6))`.
+  # Fix strips inline-code spans before regex match. Pin asserts a
+  # parenthetical wrapping only backticked content is NOT flagged malformed.
+
+  local out rc
+  out=$(python3 -c "
+import sys; sys.path.insert(0, 'tests')
+from workdoc_parity_check import parse_spec_61_parentheticals
+from pathlib import Path
+import tempfile, os
+src = '# foo\n## 6.1 verification\n- **Step 1**: helper output reads (the literal \`expected_pass increment\` substring in backticks).\n'
+f = tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False)
+f.write(src); f.close()
+r = parse_spec_61_parentheticals(Path(f.name)); os.unlink(f.name)
+parens, malformed = r if isinstance(r, tuple) else (r, {})
+assert 1 not in malformed, f'X3 regression: Step 1 falsely malformed: {malformed!r}'
+assert 1 not in parens, f'unexpected paren match: {parens!r}'
+print('OK no false DRIFT on inline-code parens')
+" 2>&1)
+  rc=$?
+
+  [ "$rc" -eq 0 ] \
+    || { echo "X3 regression: expected exit 0, got $rc; output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "OK no false DRIFT on inline-code parens" \
+    || { echo "missing OK marker; output: $out"; return 1; }
+
+  echo "WAP MALFORMED_PAREN_RE pre-strips inline-code spans; no false DRIFT on backticked mentions"
+}
+
 # --- Librarian narrow-framing pins (BACKLOG #44 — actual-vs-declared role review, mode B) ---
 
 check_librarian_optional_helper_framing() {

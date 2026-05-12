@@ -3961,6 +3961,7 @@ check "check_wap_fence_skip_in_parser" check_wap_fence_skip_in_parser
 check "check_wap_inv1_drift_on_zero_counter" check_wap_inv1_drift_on_zero_counter
 check "check_wap_inv2_drift_on_unparseable_parenthetical" check_wap_inv2_drift_on_unparseable_parenthetical
 check "check_wap_inv2_parses_non_canonical_spec_form" check_wap_inv2_parses_non_canonical_spec_form
+check "check_wap_inv2_no_drift_on_inline_code_in_paren" check_wap_inv2_no_drift_on_inline_code_in_paren
 echo
 
 # --- R3 weak-phrase compliance check — fixture-based behavioral assertions ---

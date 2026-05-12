@@ -15,8 +15,19 @@ INV-2 (spec ↔ workdoc):
     `(<int> expected_pass increments<.|, …>)`, the parsed integer MUST equal
     the corresponding workdoc step's `expected_pass_pattern` integer.
 
-Both INVs degrade to N/A when their precondition is not met (non-integer
-pattern, missing parenthetical, missing block, etc.) — N/A is never DRIFT.
+Both INVs degrade to N/A when BOTH axes opt out. Three load-bearing DRIFT
+branches override N/A when one axis opts in but the other is provably
+broken:
+  - DRIFT INV-1 zero-counter: spec §6.1 declares (N expected_pass increments)
+    AND workdoc expected_pass_pattern is integer N but passing_test_cmd has
+    zero n=$((n+1)) occurrences — the workdoc cannot satisfy the spec's
+    counter contract.
+  - DRIFT INV-2 not-integer: spec §6.1 declares (N expected_pass increments)
+    but workdoc expected_pass_pattern is not a pure integer — the spec
+    narrative cannot be verified against the workdoc's pattern shape.
+  - DRIFT INV-2 unparseable: spec §6.1 parenthetical present but with a
+    worded numeral (e.g. (three expected_pass increments.)) — the spec
+    declared an unparseable count, not "opted out".
 
 CLI:
     python3 tests/workdoc_parity_check.py <workdoc> [--spec <spec>] [--step <N>]
@@ -54,6 +65,11 @@ FENCE_RE = re.compile(r"^\s*```")
 # Spec §6.1 step bullet: "- **Step <N>**: ... (<int> expected_pass increments...)".
 SPEC_STEP_BULLET_RE = re.compile(r"^[-*]\s+(?:\*\*)?Step\s+(\d+)(?:\*\*)?\s*:")
 SPEC_PAREN_RE = re.compile(r"\((\d+)\s+expected_pass\s+increments?\b")
+# Worded-numeral / otherwise-unparseable parenthetical anchored inside parens
+# (vs the integer SPEC_PAREN_RE). Scoping the "expected_pass increment" mention
+# to inside `(...)` prevents false-positive DRIFT on prose mentions outside
+# parens (e.g. backtick-quoted helper output in §6.1 narrative).
+MALFORMED_PAREN_RE = re.compile(r"\([^)]*\bexpected_pass\s+increments?\b[^)]*\)")
 
 # Spec §6.1 section heading (we accept "## 6.1" with optional trailing prose).
 SPEC_61_HEADING_RE = re.compile(r"^#{2,4}\s+6\.1\b")
@@ -191,12 +207,16 @@ def parse_spec_61_parentheticals(path: Path) -> Tuple[Dict[int, int], Dict[int, 
         nonlocal current_step, current_buf, result_malformed
         if current_step is not None and current_buf:
             joined = " ".join(current_buf)
-            has_expected_pass_parenthetical = "expected_pass increment" in joined
             match = SPEC_PAREN_RE.search(joined)
             if match:
                 result[current_step] = int(match.group(1))
-            elif has_expected_pass_parenthetical:
-                result_malformed[current_step] = joined
+            else:
+                # Strip inline-code spans before MALFORMED_PAREN_RE so the
+                # parser doesn't false-DRIFT on backticked helper-output /
+                # documentation examples inside narrative parens.
+                joined_stripped = re.sub(r"`[^`]*`", "", joined)
+                if MALFORMED_PAREN_RE.search(joined_stripped):
+                    result_malformed[current_step] = joined
         current_step = None
         current_buf = []
 
