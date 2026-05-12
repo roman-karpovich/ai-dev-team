@@ -3261,6 +3261,191 @@ check_workdoc_parity_helper_detects_drift() {
   echo "WAP helper detects INV-1 + INV-2 drift and N/A skip on synthetic fixture (exit=1)"
 }
 
+check_wap_inv2_drift_on_invalid_pattern() {
+  local helper='tests/workdoc_parity_check.py'
+  local workdoc='tests/fixtures/workdoc-assertion-count-parity/workdoc.md'
+  local spec='tests/fixtures/workdoc-assertion-count-parity/spec.md'
+
+  local out rc
+  out=$(python3 "$helper" "$workdoc" --spec "$spec" --step 4 2>&1)
+  rc=$?
+
+  [ "$rc" -eq 1 ] \
+    || { echo "expected exit 1, got $rc; output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "DRIFT INV-2" \
+    || { echo "missing DRIFT INV-2 in output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "is not a pure integer" \
+    || { echo "missing 'is not a pure integer' in output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "cannot verify spec narrative" \
+    || { echo "missing 'cannot verify spec narrative' in output: $out"; return 1; }
+
+  echo "WAP INV-2 DRIFT emitted when workdoc expected_pass_pattern is non-integer but spec has parenthetical"
+}
+
+check_wap_step_not_found_exits_2() {
+  local helper='tests/workdoc_parity_check.py'
+  local workdoc='tests/fixtures/workdoc-assertion-count-parity/workdoc.md'
+  local spec='tests/fixtures/workdoc-assertion-count-parity/spec.md'
+
+  local stdout stderr rc
+  stdout=$(python3 "$helper" "$workdoc" --spec "$spec" --step 99 2>/tmp/wap_step_not_found_stderr)
+  rc=$?
+  stderr=$(cat /tmp/wap_step_not_found_stderr); rm -f /tmp/wap_step_not_found_stderr
+
+  [ "$rc" -eq 2 ] \
+    || { echo "expected exit 2, got $rc; stderr: $stderr"; return 1; }
+  [ -z "$stdout" ] \
+    || { echo "expected empty stdout, got: $stdout"; return 1; }
+  printf '%s\n' "$stderr" | grep -qF "not found in workdoc" \
+    || { echo "missing 'not found in workdoc' in stderr: $stderr"; return 1; }
+  printf '%s\n' "$stderr" | grep -qF "present steps are" \
+    || { echo "missing 'present steps are' in stderr: $stderr"; return 1; }
+
+  echo "WAP --step 99 emits stderr diagnostic and exits 2 with empty stdout"
+}
+
+check_wap_fence_skip_in_parser() {
+  local helper='tests/workdoc_parity_check.py'
+  local workdoc='tests/fixtures/workdoc-assertion-count-parity/workdoc-fenced.md'
+
+  local out rc
+  out=$(python3 "$helper" "$workdoc" 2>&1)
+  rc=$?
+
+  [ "$rc" -eq 0 ] \
+    || { echo "expected exit 0 (no DRIFT), got $rc; output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "OK" \
+    || { echo "missing OK verdict in output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "echo bogus" \
+    && { echo "fenced bogus value leaked into output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "99" \
+    && { echo "fenced pattern value '99' leaked into output: $out"; return 1; }
+
+  echo "WAP parser skips fenced-block overrides — real values used, fenced bogus values ignored"
+}
+
+check_wap_inv1_drift_on_zero_counter() {
+  local helper='tests/workdoc_parity_check.py'
+  local workdoc='tests/fixtures/workdoc-assertion-count-parity/workdoc.md'
+  local spec='tests/fixtures/workdoc-assertion-count-parity/spec.md'
+
+  local out rc
+  out=$(python3 "$helper" "$workdoc" --spec "$spec" --step 5 2>&1)
+  rc=$?
+
+  [ "$rc" -eq 1 ] \
+    || { echo "expected exit 1, got $rc; output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "DRIFT INV-1" \
+    || { echo "missing DRIFT INV-1 in output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "declares 3 expected_pass increments" \
+    || { echo "missing counter declaration in output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "zero n=" \
+    || { echo "missing 'zero n=' in output: $out"; return 1; }
+  # Must NOT emit a contradictory OK line for the same step
+  printf '%s\n' "$out" | grep -qF "step 5 — OK" \
+    && { echo "contradictory OK emitted alongside DRIFT INV-1 for step 5: $out"; return 1; }
+
+  echo "WAP INV-1 DRIFT emitted when spec declares counter but passing_test_cmd has zero n=\$((n+1)) occurrences"
+}
+
+check_wap_inv2_drift_on_unparseable_parenthetical() {
+  local helper='tests/workdoc_parity_check.py'
+  local workdoc='tests/fixtures/workdoc-assertion-count-parity/workdoc.md'
+  local spec='tests/fixtures/workdoc-assertion-count-parity/spec.md'
+
+  local out rc
+  out=$(python3 "$helper" "$workdoc" --spec "$spec" --step 6 2>&1)
+  rc=$?
+
+  [ "$rc" -eq 1 ] \
+    || { echo "expected exit 1, got $rc; output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "DRIFT INV-2" \
+    || { echo "missing DRIFT INV-2 in output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "parenthetical present but unparseable" \
+    || { echo "missing 'parenthetical present but unparseable' in output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "three expected_pass increments" \
+    || { echo "missing raw worded-numeral text in output: $out"; return 1; }
+
+  echo "WAP INV-2 DRIFT emitted when spec parenthetical present but unparseable (worded numeral)"
+}
+
+check_wap_inv2_parses_non_canonical_spec_form() {
+  local spec='tests/fixtures/workdoc-assertion-count-parity/spec-non-canonical.md'
+
+  local out rc
+  out=$(python3 -c "
+import sys; sys.path.insert(0, 'tests')
+from workdoc_parity_check import parse_spec_61_parentheticals
+from pathlib import Path
+r = parse_spec_61_parentheticals(Path('$spec'))
+parens = r[0] if isinstance(r, tuple) else r
+assert parens == {1: 2}, f'expected {{1: 2}}, got {parens!r}'
+print('OK')
+" 2>&1)
+  rc=$?
+
+  [ "$rc" -eq 0 ] \
+    || { echo "expected exit 0, got $rc; output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "OK" \
+    || { echo "missing OK in output: $out"; return 1; }
+
+  echo "WAP broadened parser recognises ### 6.1 H3 heading + plain Step N bullets, excludes Step 99 under sibling ### 6.2"
+}
+
+check_no_dangling_section_anchor_references() {
+  # Structural pin closing the pointer-rot defect class surfaced by
+  # PR-92 retroactive audit (X1, X2, X3, X4, X5, X7, X8) — same shape
+  # as the WAP-hardening "silent N/A" anti-pattern but on the doc-
+  # navigation surface. Forward-only protection: scans the doc set
+  # (cross-auditor.md + references/*.md + every skills/*/SKILL.md)
+  # for `<file>.md` §<heading> pointers, asserts each resolves to a
+  # real heading. Known residue (8 distinct anchors, 13 occurrences
+  # across the doc set) is allowlisted; new dangling pointers and
+  # stale-allowlist entries fail. Baseline=13 caps total occurrences.
+  local out rc
+  out=$(python3 tests/check_dangling_anchors.py --baseline 13 2>&1)
+  rc=$?
+
+  if [ "$rc" -ne 0 ]; then
+    echo "dangling section-anchor pin failed (exit $rc):"
+    printf '%s\n' "$out"
+    return 1
+  fi
+  echo "no dangling §-anchor references beyond known residue (13 residue occurrences allowlisted)"
+}
+
+check_wap_inv2_no_drift_on_inline_code_in_paren() {
+  # Regression pin for code-audit iter-2 X3: MALFORMED_PAREN_RE absorbed
+  # backticks via `[^)]*`, causing false-positive DRIFT INV-2 on prose like
+  # `(spec §6.1 parenthetical present but unparseable: `three expected_pass increments` (X6))`.
+  # Fix strips inline-code spans before regex match. Pin asserts a
+  # parenthetical wrapping only backticked content is NOT flagged malformed.
+
+  local out rc
+  out=$(python3 -c "
+import sys; sys.path.insert(0, 'tests')
+from workdoc_parity_check import parse_spec_61_parentheticals
+from pathlib import Path
+import tempfile, os
+src = '# foo\n## 6.1 verification\n- **Step 1**: helper output reads (the literal \`expected_pass increment\` substring in backticks).\n'
+f = tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False)
+f.write(src); f.close()
+r = parse_spec_61_parentheticals(Path(f.name)); os.unlink(f.name)
+parens, malformed = r if isinstance(r, tuple) else (r, {})
+assert 1 not in malformed, f'X3 regression: Step 1 falsely malformed: {malformed!r}'
+assert 1 not in parens, f'unexpected paren match: {parens!r}'
+print('OK no false DRIFT on inline-code parens')
+" 2>&1)
+  rc=$?
+
+  [ "$rc" -eq 0 ] \
+    || { echo "X3 regression: expected exit 0, got $rc; output: $out"; return 1; }
+  printf '%s\n' "$out" | grep -qF "OK no false DRIFT on inline-code parens" \
+    || { echo "missing OK marker; output: $out"; return 1; }
+
+  echo "WAP MALFORMED_PAREN_RE pre-strips inline-code spans; no false DRIFT on backticked mentions"
+}
+
 # --- Librarian narrow-framing pins (BACKLOG #44 — actual-vs-declared role review, mode B) ---
 
 check_librarian_optional_helper_framing() {
@@ -6124,11 +6309,11 @@ check_eof_adjacency_parser_single_source() {
   [ -f "$ca" ] || { echo "$ca missing"; return 1; }
   # Positive — canonical preserved at cross-auditor.md.
   if ! grep -qF '### Spec-mode return contract' "$ca"; then
-    echo "cross-auditor.md missing '### Spec-mode return contract' heading"
+    echo "cross-auditor-evidence-handshake.md missing '### Spec-mode return contract' heading"
     return 1
   fi
   if ! grep -qF 'forgotten-footer-with-example-echo' "$ca"; then
-    echo "cross-auditor.md missing producer-side 'forgotten-footer-with-example-echo' token"
+    echo "cross-auditor-evidence-handshake.md missing producer-side 'forgotten-footer-with-example-echo' token"
     return 1
   fi
   # Negative — SKILL.md duplicate prose gone (byte-exact SKILL.md-resident fingerprint).
@@ -6137,8 +6322,8 @@ check_eof_adjacency_parser_single_source() {
     return 1
   fi
   # Positive — UNIQUELY-NEW pointer present.
-  if ! grep -qF 'parse per `agents/cross-auditor.md` §Spec-mode return contract' "$skl"; then
-    echo "SKILL.md missing UNIQUELY-NEW pointer literal 'parse per agents/cross-auditor.md §Spec-mode return contract'"
+  if ! grep -qF 'parse per `agents/references/cross-auditor-evidence-handshake.md` §Spec-mode return contract' "$skl"; then
+    echo "SKILL.md missing UNIQUELY-NEW pointer literal 'parse per agents/references/cross-auditor-evidence-handshake.md §Spec-mode return contract'"
     return 1
   fi
   # Positive — 4 consumer-shell variable literals preserved.

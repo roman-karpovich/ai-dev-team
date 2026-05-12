@@ -467,6 +467,8 @@ Spawn `cross-auditor` subagent with the **same parameter block as the initial fu
 - OMIT: `kb_path` (spec mode does not write to KB)
 - OMIT: `accepted_ids` (no per-finding triage in spec mode)
 - OMIT: `base_branch` (spec mode does not need git context)
+- `iteration`: `<spec_audit_iteration>` (was `<code_audit_iteration>`)
+- `previously_fixed`: `<spec_audit_fixed_ids>` (was `<code_audit_fixed_ids>`)
 
 `project_type` resolution: identical to code mode (spec frontmatter → .ai-dev-team.local.yml → .ai-dev-team.yml → None).
 
@@ -480,7 +482,7 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 5. Increment `spec_audit_iteration`
 6. Before re-spawn, see §3.5c Stop criteria — REOPEN findings or same-defect-class on 2+ iters trigger a comprehensive sweep AFTER `/compact` or via a fresh-context subagent; hard cap iter ≤ 5 unless an explicit §3.1c-regex Log line justifies the exception. Then re-run Pass 1 self-review and re-spawn cross-auditor with updated `iteration` and `previously_fixed`.
 7. Repeat until no CRITICAL/HIGH remain
-8. Set spec `status: AUDIT_PASSED`. Populate `spec_audit_evidence:` from the cross-auditor's final-iteration return signal per §3.5b READ path (spec-mode parses two adjacent final lines `evidence_class:` + `evidence_blockers:` from the inline return text). Copy `evidence_blockers:` verbatim into `spec_audit_blockers:` (parse-failure → `contract_violated` per §3.5b).
+8. Set spec `status: AUDIT_PASSED`. Populate `spec_audit_evidence:` from the cross-auditor's final-iteration return signal per §3.5b READ path. Copy `evidence_blockers:` verbatim into `spec_audit_blockers:` (parse-failure → `contract_violated` per §3.5b).
 
 **If no CRITICAL or HIGH findings:**
 > Spec review passed — the spec is saved to KB. Moving to implementation.
@@ -512,7 +514,7 @@ Per spec `2026-04-27-audit-evidence-enum.md`. Every audit-terminal site (spec au
 
 - **Code/full mode (file-backed)** — production-file parser. The cross-auditor writes a findings.md with the two scalars in the leading top-of-file YAML frontmatter block (NO `### findings.md` heading anchor — that anchor only applies to smoke validation against the agent SOURCE template). The orchestrator reads from the produced findings.md as `awk '/^---$/{c++; next} c==1' <audit_slug>-findings.md | grep -E '^(evidence_class|evidence_blockers): '`. The production file's H1 is `# Audit Findings: <scope>`, not `### findings.md` — the production parser is unanchored on top-of-file YAML.
 - **File-existence check (code/full mode only).** Before reading frontmatter, the orchestrator MUST check that `<kb>/repos/<project>/security/<audit_slug>-findings.md` exists on disk after the cross-auditor returns. If absent, record `*_audit_evidence: contract_violated` with blocker `'findings.md missing at <path>'` (use the resolved absolute or `<kb>`-relative path, sanitized per the Orchestrator blocker sanitization rule below) and skip the YAML extraction.
-- **Spec mode (inline return)** — parse per `agents/cross-auditor.md` §Spec-mode return contract (canonical: three-line footer at EOF; sentinel marker; producer-side EOF-adjacency rationale covering the forgotten-footer-with-example-echo and trailing-prose-after-real-footer failure modes — all in the agent prose, single source). The orchestrator's consumer-side parser:
+- **Spec mode (inline return)** — parse per `agents/references/cross-auditor-evidence-handshake.md` §Spec-mode return contract (canonical: three-line footer at EOF; sentinel marker; producer-side EOF-adjacency rationale covering the forgotten-footer-with-example-echo and trailing-prose-after-real-footer failure modes — all in the agent prose, single source). The orchestrator's consumer-side parser:
 
   ```bash
   while [[ "$captured" == *$'\n' ]]; do captured="${captured%$'\n'}"; done

@@ -80,3 +80,60 @@ expected_probe_signal: OK
 actual_files_touched: []
 commit_shas: []
 notes: ""
+
+---
+
+## Step 4: X1 invalid expected_pass_pattern despite spec parenthetical
+
+### Planned
+goal: Exercise the spec-present + non-integer expected_pass_pattern case.
+allowed_scope: tests/fixtures/workdoc-assertion-count-parity/**
+failing_test_cmd:
+expected_failure_pattern:
+passing_test_cmd: bash -c 'echo done'
+expected_pass_pattern: "Failed: 0"
+integration_probe_cmd:
+expected_probe_signal:
+
+### Observed
+actual_files_touched: []
+commit_shas: []
+notes: ""
+
+---
+
+## Step 5: X4 zero counter despite integer expected_pass_pattern
+
+### Planned
+goal: Exercise the spec-present + integer expected_pass_pattern + zero-counter command case.
+allowed_scope: tests/fixtures/workdoc-assertion-count-parity/**
+failing_test_cmd:
+expected_failure_pattern:
+passing_test_cmd: bash -c 'echo done'
+expected_pass_pattern: "3"
+integration_probe_cmd:
+expected_probe_signal:
+
+### Observed
+actual_files_touched: []
+commit_shas: []
+notes: ""
+
+---
+
+## Step 6: X6 worded-numeral parenthetical
+
+### Planned
+goal: Exercise a matching workdoc step for a spec parenthetical that uses a worded numeral.
+allowed_scope: tests/fixtures/workdoc-assertion-count-parity/**
+failing_test_cmd:
+expected_failure_pattern:
+passing_test_cmd: bash -c 'echo done'
+expected_pass_pattern: "Failed: 0"
+integration_probe_cmd:
+expected_probe_signal:
+
+### Observed
+actual_files_touched: []
+commit_shas: []
+notes: ""

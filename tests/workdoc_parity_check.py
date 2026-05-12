@@ -15,8 +15,21 @@ INV-2 (spec ↔ workdoc):
     `(<int> expected_pass increments<.|, …>)`, the parsed integer MUST equal
     the corresponding workdoc step's `expected_pass_pattern` integer.
 
-Both INVs degrade to N/A when their precondition is not met (non-integer
-pattern, missing parenthetical, missing block, etc.) — N/A is never DRIFT.
+Both INVs degrade to N/A when BOTH axes opt out. Three load-bearing DRIFT
+branches override N/A when one axis opts in but the other is provably
+broken:
+  - DRIFT INV-1 zero-counter: spec §6.1 declares (N expected_pass increments)
+    AND workdoc expected_pass_pattern is any integer (not necessarily N) but
+    passing_test_cmd has zero n=$((n+1)) occurrences — the workdoc cannot
+    satisfy the spec's counter contract. Note: when expected_pass_pattern ≠
+    spec N, INV-2 strict mismatch also fires, so the step gets two DRIFT
+    lines.
+  - DRIFT INV-2 not-integer: spec §6.1 declares (N expected_pass increments)
+    but workdoc expected_pass_pattern is not a pure integer — the spec
+    narrative cannot be verified against the workdoc's pattern shape.
+  - DRIFT INV-2 unparseable: spec §6.1 parenthetical present but with a
+    worded numeral (e.g. (three expected_pass increments.)) — the spec
+    declared an unparseable count, not "opted out".
 
 CLI:
     python3 tests/workdoc_parity_check.py <workdoc> [--spec <spec>] [--step <N>]
@@ -49,15 +62,21 @@ STEP_HEADING_RE = re.compile(r"^##\s+Step\s+(\d+)\s*:")
 # YAML-ish key recognizers inside a Planned block.
 KEY_INLINE_RE = re.compile(r"^(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?P<value>.*?)\s*$")
 KEY_BLOCK_RE = re.compile(r"^(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*\|\s*$")
+FENCE_RE = re.compile(r"^\s*```")
 
 # Spec §6.1 step bullet: "- **Step <N>**: ... (<int> expected_pass increments...)".
-SPEC_STEP_BULLET_RE = re.compile(r"^[-*]\s+\*\*Step\s+(\d+)\*\*\s*:")
+SPEC_STEP_BULLET_RE = re.compile(r"^[-*]\s+(?:\*\*)?Step\s+(\d+)(?:\*\*)?\s*:")
 SPEC_PAREN_RE = re.compile(r"\((\d+)\s+expected_pass\s+increments?\b")
+# Worded-numeral / otherwise-unparseable parenthetical anchored inside parens
+# (vs the integer SPEC_PAREN_RE). Scoping the "expected_pass increment" mention
+# to inside `(...)` prevents false-positive DRIFT on prose mentions outside
+# parens (e.g. backtick-quoted helper output in §6.1 narrative).
+MALFORMED_PAREN_RE = re.compile(r"\([^)]*\bexpected_pass\s+increments?\b[^)]*\)")
 
 # Spec §6.1 section heading (we accept "## 6.1" with optional trailing prose).
-SPEC_61_HEADING_RE = re.compile(r"^##\s+6\.1\b")
+SPEC_61_HEADING_RE = re.compile(r"^#{2,4}\s+6\.1\b")
 # Any other "## <digit>" heading terminates §6.1 scope.
-SPEC_NEXT_SECTION_RE = re.compile(r"^##\s+\d+(\.\d+)?\b")
+SPEC_NEXT_SECTION_RE = re.compile(r"^#{2,4}\s+\d+(\.\d+)?\b")
 
 
 def _strip_block_indent(lines: List[str]) -> str:
@@ -84,6 +103,7 @@ def parse_workdoc_steps(path: Path) -> Dict[int, Dict[str, str]]:
 
     current_step: Optional[int] = None
     in_planned = False
+    in_fence = False
     # When parsing a block-`|` value:
     block_key: Optional[str] = None
     block_indent: Optional[int] = None
@@ -92,7 +112,9 @@ def parse_workdoc_steps(path: Path) -> Dict[int, Dict[str, str]]:
     def _flush_block() -> None:
         nonlocal block_key, block_indent, block_lines
         if block_key is not None and current_step is not None:
-            steps.setdefault(current_step, {})[block_key] = _strip_block_indent(block_lines)
+            steps.setdefault(current_step, {})[block_key] = _strip_block_indent(
+                block_lines
+            )
         block_key = None
         block_indent = None
         block_lines = []
@@ -112,6 +134,13 @@ def parse_workdoc_steps(path: Path) -> Dict[int, Dict[str, str]]:
                 continue
             # De-indent — terminates the block. Fall through to process this line.
             _flush_block()
+
+        fence_match = FENCE_RE.match(stripped)
+        if fence_match:
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
 
         step_match = STEP_HEADING_RE.match(stripped)
         if step_match:
@@ -158,39 +187,60 @@ def parse_workdoc_steps(path: Path) -> Dict[int, Dict[str, str]]:
     return steps
 
 
-def parse_spec_61_parentheticals(path: Path) -> Dict[int, int]:
+def parse_spec_61_parentheticals(path: Path) -> Tuple[Dict[int, int], Dict[int, str]]:
     """
     Parse spec §6.1 step bullets and extract `(<int> expected_pass increments…)`.
 
-    Returns {step_number: integer_count}. Steps without the parenthetical are
-    omitted from the result (INV-2 is N/A for them).
+    Returns ({step_number: integer_count}, {step_number: raw_parenthetical_text}).
+    Steps without the parenthetical are omitted from both results (INV-2 is N/A
+    for them).
     """
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
 
     result: Dict[int, int] = {}
+    result_malformed: Dict[int, str] = {}
+    in_fence = False
     in_61 = False
     current_step: Optional[int] = None
     current_buf: List[str] = []
 
     def _commit() -> None:
-        nonlocal current_step, current_buf
+        nonlocal current_step, current_buf, result_malformed
         if current_step is not None and current_buf:
             joined = " ".join(current_buf)
             match = SPEC_PAREN_RE.search(joined)
             if match:
                 result[current_step] = int(match.group(1))
+            else:
+                # Strip inline-code spans before MALFORMED_PAREN_RE so the
+                # parser doesn't false-DRIFT on backticked helper-output /
+                # documentation examples inside narrative parens.
+                joined_stripped = re.sub(r"`[^`]*`", "", joined)
+                if MALFORMED_PAREN_RE.search(joined_stripped):
+                    result_malformed[current_step] = joined
         current_step = None
         current_buf = []
 
     for raw in lines:
         stripped = raw.rstrip("\n")
 
+        fence_match = FENCE_RE.match(stripped)
+        if fence_match:
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
         if SPEC_61_HEADING_RE.match(stripped):
             _commit()
             in_61 = True
             continue
-        if in_61 and SPEC_NEXT_SECTION_RE.match(stripped) and not SPEC_61_HEADING_RE.match(stripped):
+        if (
+            in_61
+            and SPEC_NEXT_SECTION_RE.match(stripped)
+            and not SPEC_61_HEADING_RE.match(stripped)
+        ):
             _commit()
             in_61 = False
             continue
@@ -213,7 +263,7 @@ def parse_spec_61_parentheticals(path: Path) -> Dict[int, int]:
             current_buf.append(stripped)
 
     _commit()
-    return result
+    return result, result_malformed
 
 
 def count_n_increments(passing_cmd: str) -> int:
@@ -239,6 +289,7 @@ def evaluate(
     workdoc_steps: Dict[int, Dict[str, str]],
     spec_parens: Dict[int, int],
     only_step: Optional[int] = None,
+    spec_malformed: Optional[Dict[int, str]] = None,
 ) -> Tuple[List[str], bool]:
     """
     Produce per-step verdict lines. Returns (lines, any_drift).
@@ -257,19 +308,58 @@ def evaluate(
         expected_int = parse_int_or_none(expected_raw)
         n_count = count_n_increments(passing_cmd) if passing_cmd else 0
 
-        # INV-1
-        inv1_applicable = expected_int is not None and n_count > 0
-        inv1_ok = inv1_applicable and expected_int == n_count
-
-        # INV-2
         spec_int = spec_parens.get(step) if spec_parens else None
-        inv2_applicable = spec_int is not None and expected_int is not None
-        inv2_ok = inv2_applicable and spec_int == expected_int
+        _spec_malformed = spec_malformed or {}
+        spec_unparseable = step in _spec_malformed
 
-        # Compose output:
-        # - If both INVs are non-applicable -> N/A line.
-        # - Else emit OK or DRIFT lines per applicable invariant.
-        if not inv1_applicable and not inv2_applicable:
+        inv2_applicable_strict = spec_int is not None and expected_int is not None
+        inv2_spec_present_but_pattern_invalid = (
+            spec_int is not None and expected_int is None
+        )  # X1
+        inv1_runtime_applicable = expected_int is not None and n_count > 0
+        inv1_spec_present_but_counter_absent = (
+            spec_int is not None and expected_int is not None and n_count == 0  # X4
+        )
+
+        emitted_new_drift = False
+
+        # 1. X6: spec parenthetical present but unparseable → DRIFT INV-2 unparseable
+        if spec_unparseable:
+            raw = _spec_malformed[step]
+            lines.append(
+                f"step {step} {EMDASH} DRIFT INV-2 "
+                f"(spec §6.1 parenthetical present but unparseable: {raw!r})"
+            )
+            any_drift = True
+            emitted_new_drift = True
+        # 2. X1: spec-present + workdoc-pattern-invalid → DRIFT INV-2 invalid
+        elif inv2_spec_present_but_pattern_invalid:
+            lines.append(
+                f"step {step} {EMDASH} DRIFT INV-2 "
+                f"(spec §6.1 parenthetical={spec_int} but "
+                f"workdoc expected_pass_pattern={expected_raw!r} is not a pure integer; "
+                f"cannot verify spec narrative)"
+            )
+            any_drift = True
+            emitted_new_drift = True
+
+        # 3. X4: spec-present + integer workdoc + zero counter → DRIFT INV-1 contract
+        if inv1_spec_present_but_counter_absent:
+            lines.append(
+                f"step {step} {EMDASH} DRIFT INV-1 "
+                f"(spec §6.1 declares {spec_int} expected_pass increments but "
+                f"workdoc passing_test_cmd has zero n=$((n+1)) occurrences; "
+                f"the counter the spec relies on does not exist)"
+            )
+            any_drift = True
+            emitted_new_drift = True
+
+        # 4. Fully N/A — no new DRIFT already emitted AND both INV axes opt out
+        if (
+            not emitted_new_drift
+            and not inv1_runtime_applicable
+            and not inv2_applicable_strict
+        ):
             if expected_int is None:
                 reason = "expected_pass_pattern not integer"
             elif n_count == 0:
@@ -281,10 +371,14 @@ def evaluate(
 
         all_ok = True
 
-        if inv1_applicable:
+        # 5. Retained OK/DRIFT logic (unchanged except for emitted_new_drift guard)
+        if inv1_runtime_applicable:
+            inv1_ok = expected_int == n_count
             if inv1_ok:
-                detail = f"expected_pass_pattern={expected_int}, n=$((n+1)) count={n_count}"
-                if inv2_applicable and inv2_ok:
+                detail = (
+                    f"expected_pass_pattern={expected_int}, n=$((n+1)) count={n_count}"
+                )
+                if inv2_applicable_strict and spec_int == expected_int:
                     detail += f", spec §6.1 parenthetical={spec_int}"
                 lines.append(f"step {step} {EMDASH} OK ({detail})")
             else:
@@ -295,7 +389,8 @@ def evaluate(
                     f"(expected_pass_pattern={expected_int}, n=$((n+1)) count={n_count})"
                 )
 
-        if inv2_applicable:
+        if inv2_applicable_strict:
+            inv2_ok = spec_int == expected_int
             if not inv2_ok:
                 any_drift = True
                 all_ok = False
@@ -303,7 +398,7 @@ def evaluate(
                     f"step {step} {EMDASH} DRIFT INV-2 "
                     f"(workdoc expected_pass_pattern={expected_int}, spec §6.1 parenthetical={spec_int})"
                 )
-            elif not inv1_applicable:
+            elif not inv1_runtime_applicable and not emitted_new_drift:
                 # INV-1 N/A but INV-2 OK — emit a positive line so silence
                 # doesn't look like the step was skipped.
                 lines.append(
@@ -311,17 +406,22 @@ def evaluate(
                     f"(expected_pass_pattern={expected_int}, spec §6.1 parenthetical={spec_int})"
                 )
 
-        # Combined OK already covered above; nothing more to do.
-        _ = all_ok  # explicitly silence flake — already used via any_drift.
+        _ = all_ok
 
     return lines, any_drift
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("workdoc", help="Path to exec.md workdoc")
-    parser.add_argument("--spec", default=None, help="Optional spec.md path for INV-2 cross-check")
-    parser.add_argument("--step", type=int, default=None, help="Restrict to single step number")
+    parser.add_argument(
+        "--spec", default=None, help="Optional spec.md path for INV-2 cross-check"
+    )
+    parser.add_argument(
+        "--step", type=int, default=None, help="Restrict to single step number"
+    )
     args = parser.parse_args(argv)
 
     workdoc_path = Path(args.workdoc)
@@ -330,16 +430,29 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     workdoc_steps = parse_workdoc_steps(workdoc_path)
+    if args.step is not None and args.step not in workdoc_steps:
+        present = sorted(workdoc_steps.keys())
+        print(
+            f"step {args.step} not found in workdoc: present steps are {present}",
+            file=sys.stderr,
+        )
+        return 2
 
     spec_parens: Dict[int, int] = {}
+    spec_malformed: Dict[int, str] = {}
     if args.spec:
         spec_path = Path(args.spec)
         if not spec_path.is_file():
             print(f"spec not found: {spec_path}", file=sys.stderr)
             return 2
-        spec_parens = parse_spec_61_parentheticals(spec_path)
+        spec_parens, spec_malformed = parse_spec_61_parentheticals(spec_path)
 
-    lines, any_drift = evaluate(workdoc_steps, spec_parens, only_step=args.step)
+    lines, any_drift = evaluate(
+        workdoc_steps,
+        spec_parens,
+        only_step=args.step,
+        spec_malformed=spec_malformed,
+    )
     for ln in lines:
         print(ln)
 
