@@ -3392,6 +3392,28 @@ print('OK')
   echo "WAP broadened parser recognises ### 6.1 H3 heading + plain Step N bullets, excludes Step 99 under sibling ### 6.2"
 }
 
+check_no_dangling_section_anchor_references() {
+  # Structural pin closing the pointer-rot defect class surfaced by
+  # PR-92 retroactive audit (X1, X2, X3, X4, X5, X7, X8) — same shape
+  # as the WAP-hardening "silent N/A" anti-pattern but on the doc-
+  # navigation surface. Forward-only protection: scans the doc set
+  # (cross-auditor.md + references/*.md + every skills/*/SKILL.md)
+  # for `<file>.md` §<heading> pointers, asserts each resolves to a
+  # real heading. Known residue (8 distinct anchors, 13 occurrences
+  # across the doc set) is allowlisted; new dangling pointers and
+  # stale-allowlist entries fail. Baseline=13 caps total occurrences.
+  local out rc
+  out=$(python3 tests/check_dangling_anchors.py --baseline 13 2>&1)
+  rc=$?
+
+  if [ "$rc" -ne 0 ]; then
+    echo "dangling section-anchor pin failed (exit $rc):"
+    printf '%s\n' "$out"
+    return 1
+  fi
+  echo "no dangling §-anchor references beyond known residue (13 residue occurrences allowlisted)"
+}
+
 check_wap_inv2_no_drift_on_inline_code_in_paren() {
   # Regression pin for code-audit iter-2 X3: MALFORMED_PAREN_RE absorbed
   # backticks via `[^)]*`, causing false-positive DRIFT INV-2 on prose like
