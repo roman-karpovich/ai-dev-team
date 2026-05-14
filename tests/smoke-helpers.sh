@@ -6343,3 +6343,231 @@ check_eof_adjacency_parser_single_source() {
   fi
   echo "eof-adjacency parser single source"
 }
+
+# --- cap-banner + empirical-verification (spec 2026-05-13) Step 5 pins ---
+# 4 pins anchoring the 4 prose surfaces from Steps 1-4 of
+# design/2026-05-13-cap-banner-and-empirical-verification.md:
+#   Pin A — agents/cross-auditor.md + agents/references/cross-auditor-codex-dispatch.md
+#           (Step 2.5 H2 + load-bearing invariant + 2 Codex prompt templates).
+#   Pin B — skills/feature/SKILL.md §3.5c AWAITING-YOUR-INPUT cap-banner block.
+#   Pin C — <kb>/repos/ai-dev-team/MISSION.md rule #11 amendment + new rule #13.
+#   Pin D — skills/feature/references/code-quality-rules.md R15 frontmatter +
+#           body section + structural placement (after R14, before §Taxonomy).
+
+check_cross_auditor_empirical_verification_step_present() {
+  local hub="agents/cross-auditor.md"
+  local codex_ref="agents/references/cross-auditor-codex-dispatch.md"
+  test -f "$hub" || { echo "$hub missing"; return 1; }
+  test -f "$codex_ref" || { echo "$codex_ref missing"; return 1; }
+
+  # Structural H2 anchor — column-0 heading literal.
+  if ! grep -qxF '## Step 2.5: Empirical claim verification' "$hub"; then
+    echo "$hub missing column-0 H2 '## Step 2.5: Empirical claim verification'"
+    return 1
+  fi
+
+  # Load-bearing invariant — byte-exact substring (no backticks, no bold markers
+  # in the asserted substring — the source line wraps it in **...** which leaves
+  # this raw substring intact between the bold delimiters).
+  local invariant='NEVER emit a HIGH or CRITICAL finding whose file:line claim has not been empirically verified at audit-emit time'
+  if ! grep -qF "$invariant" "$hub"; then
+    echo "$hub missing load-bearing invariant literal '$invariant'"
+    return 1
+  fi
+
+  # Codex prompt verification line — must appear AT LEAST 2 times (one per
+  # template: Code-mode + Spec-mode).
+  local codex_line="Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely."
+  local n
+  n=$(grep -cF "$codex_line" "$codex_ref" || true)
+  if [ "$n" -lt 2 ]; then
+    echo "$codex_ref contains the verification-instruction line $n times, expected >= 2 (Code-mode + Spec-mode)"
+    return 1
+  fi
+
+  echo "cross-auditor empirical-verification: Step 2.5 H2 + invariant + codex-dispatch verification line x$n OK"
+}
+
+check_skill_md_cap_banner_present() {
+  local skl="skills/feature/SKILL.md"
+  test -f "$skl" || { echo "$skl missing"; return 1; }
+
+  # Slice §3.5c — from the subsection heading down to the next H2 `## Implement`.
+  # Terminating on the next H2 (NOT on `^---$`) is load-bearing: the cap-banner
+  # block itself contains internal `---` separators per the AWAITING YOUR INPUT
+  # convention, so a `^---$` terminator would stop BEFORE reaching the banner.
+  local section
+  section=$(awk '/### 3.5c Stop criteria/,/^## Implement/' "$skl")
+  if [ -z "$section" ]; then
+    echo "$skl: awk range from '### 3.5c Stop criteria' to '^## Implement' produced empty output"
+    return 1
+  fi
+
+  # Banner H2 — column-0 heading literal.
+  if ! printf '%s\n' "$section" | grep -qxF '## ⏸ AWAITING YOUR INPUT'; then
+    echo "$skl §3.5c missing column-0 H2 '## ⏸ AWAITING YOUR INPUT'"
+    return 1
+  fi
+
+  # Banner title literal.
+  if ! printf '%s\n' "$section" | grep -qF 'Audit iteration cap reached'; then
+    echo "$skl §3.5c missing 'Audit iteration cap reached' banner title"
+    return 1
+  fi
+
+  # 4 option literals — all must appear inside §3.5c.
+  local opt
+  for opt in 'Continue with justification' 'Accept residue with explicit sign-off' 'Scope-cut' 'Abandon'; do
+    if ! printf '%s\n' "$section" | grep -qF "$opt"; then
+      echo "$skl §3.5c missing banner option literal '$opt'"
+      return 1
+    fi
+  done
+
+  echo "SKILL.md §3.5c cap banner OK (H2 + title + 4 options inside §3.5c)"
+}
+
+check_mission_rule_11_amended_and_audit_claims_rule_present() {
+  # MISSION.md lives in the KB, outside the plugin checkout. Resolve via the
+  # same convention as check_mission_r_enforcement_claim_narrow above:
+  # KB_PATH env var → sibling finance-learning path → plugin-root fallback.
+  local mission_path=""
+  if [ -n "${KB_PATH:-}" ] && [ -f "${KB_PATH}/repos/ai-dev-team/MISSION.md" ]; then
+    mission_path="${KB_PATH}/repos/ai-dev-team/MISSION.md"
+  elif [ -f "../../finance-learning/repos/ai-dev-team/MISSION.md" ]; then
+    mission_path="../../finance-learning/repos/ai-dev-team/MISSION.md"
+  elif [ -f "MISSION.md" ]; then
+    mission_path="MISSION.md"
+  fi
+
+  if [ -z "$mission_path" ]; then
+    echo "MISSION.md not found in plugin source tree (lives in KB) — skipped"
+    return 0
+  fi
+
+  # Rule #13 anchor literal.
+  if ! grep -qF 'Audit claims MUST be empirically verifiable' "$mission_path"; then
+    echo "$mission_path missing rule #13 anchor 'Audit claims MUST be empirically verifiable'"
+    return 1
+  fi
+
+  # Rule #11 amended phase-split clause — the AWAITING YOUR INPUT phase-split
+  # reference. Both substrings must appear (one line carries both; we assert
+  # presence rather than co-location to keep the pin robust to future wording
+  # tweaks within the rule body).
+  if ! grep -qF 'the orchestrator presents the' "$mission_path"; then
+    echo "$mission_path missing rule #11 'the orchestrator presents the' phase-split prefix"
+    return 1
+  fi
+  if ! grep -qF 'AWAITING YOUR INPUT' "$mission_path"; then
+    echo "$mission_path missing 'AWAITING YOUR INPUT' banner reference"
+    return 1
+  fi
+  if ! grep -qF 'cap banner per SKILL.md §3.5c' "$mission_path"; then
+    echo "$mission_path missing 'cap banner per SKILL.md §3.5c' phrase"
+    return 1
+  fi
+
+  # 2026-05-13 dated entry — count >= 1 (NOT exactly 1; rule #13 Source line
+  # also contains this literal in the retrospective filename anchor).
+  local n
+  n=$(grep -cF '2026-05-13' "$mission_path" || true)
+  if [ "$n" -lt 1 ]; then
+    echo "$mission_path: '2026-05-13' literal count=$n, expected >= 1"
+    return 1
+  fi
+
+  echo "MISSION rule #11 amended + rule #13 + 2026-05-13 entry (count=$n) OK"
+}
+
+check_r15_present_in_code_quality_rules() {
+  # Schema-shape pin parallel to check_r_rules_taxonomy_schema (smoke-helpers.sh
+  # ~L4092) — narrower scope: assert R15-specific frontmatter shape + body
+  # section + structural placement (after R14, before §Taxonomy).
+  local path="skills/feature/references/code-quality-rules.md"
+  test -f "$path" || { echo "$path missing"; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import re
+import sys
+
+path = sys.argv[1]
+try:
+    import yaml
+except ImportError:
+    print("PyYAML not available (required by check_r15_present_in_code_quality_rules)", file=sys.stderr)
+    sys.exit(1)
+
+text = open(path, encoding="utf-8").read()
+m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+if not m:
+    print(f"{path}: missing YAML frontmatter", file=sys.stderr)
+    sys.exit(1)
+try:
+    fm = yaml.safe_load(m.group(1))
+except yaml.YAMLError as exc:
+    print(f"{path}: frontmatter YAML parse failed: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+rules = fm.get("rules") if isinstance(fm, dict) else None
+if not isinstance(rules, list):
+    print(f"{path}: frontmatter `rules:` is not a list", file=sys.stderr)
+    sys.exit(1)
+
+by_id = {r.get("id"): r for r in rules if isinstance(r, dict)}
+r15 = by_id.get("R15")
+if r15 is None:
+    print(f"{path}: R15 entry absent from rules list", file=sys.stderr)
+    sys.exit(1)
+
+expected = {
+    "short": "fix-application-verifies-audit-claims",
+    "category": "process",
+    "applies_to": ["all"],
+    "enforced_by": ["none"],
+}
+for key, want in expected.items():
+    got = r15.get(key)
+    if got != want:
+        print(f"{path}: R15.{key}={got!r}, expected {want!r}", file=sys.stderr)
+        sys.exit(1)
+
+# Body section heading — column-0 H2 with the exact title.
+body_heading = "## R15 — Fix-application verifies audit's file:line claims empirically before edit"
+lines = text.splitlines()
+heading_line_idx = None
+for i, ln in enumerate(lines):
+    if ln == body_heading:
+        heading_line_idx = i
+        break
+if heading_line_idx is None:
+    print(f"{path}: missing R15 body H2 heading {body_heading!r}", file=sys.stderr)
+    sys.exit(1)
+
+# Structural anchor: R15 body appears AFTER R14 body AND BEFORE `## Taxonomy`.
+r14_heading_re = re.compile(r"^## R14 — ")
+taxonomy_heading = "## Taxonomy"
+r14_idx = None
+taxonomy_idx = None
+for i, ln in enumerate(lines):
+    if r14_idx is None and r14_heading_re.match(ln):
+        r14_idx = i
+    if ln == taxonomy_heading:
+        taxonomy_idx = i
+        break
+if r14_idx is None:
+    print(f"{path}: R14 body heading not found (structural anchor)", file=sys.stderr)
+    sys.exit(1)
+if taxonomy_idx is None:
+    print(f"{path}: `## Taxonomy` heading not found (structural anchor)", file=sys.stderr)
+    sys.exit(1)
+if not (r14_idx < heading_line_idx < taxonomy_idx):
+    print(
+        f"{path}: R15 body at line {heading_line_idx+1} is not strictly between "
+        f"R14 at line {r14_idx+1} and Taxonomy at line {taxonomy_idx+1}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+print(f"R15 frontmatter + body section + placement OK (line {heading_line_idx+1}, between R14 and Taxonomy)")
+PY
+}

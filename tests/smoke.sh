@@ -5985,6 +5985,19 @@ check "evidence-class-allowlist-single-source" check_evidence_class_allowlist_si
 check "eof-adjacency-parser-single-source" check_eof_adjacency_parser_single_source
 echo
 
+# --- cap-banner + empirical-verification (spec 2026-05-13) Step 5 pins ---
+# Pins A/B/C are prompt-text (byte-exact anchors on prose); Pin D is schema
+# (R15 frontmatter + body heading + structural placement). Pin C reaches into
+# the KB-resident MISSION.md via cross-repo path resolution (KB_PATH env var,
+# sibling finance-learning checkout, or plugin-root fallback) — same pattern
+# as check_mission_r_enforcement_claim_narrow.
+echo "cap-banner + empirical-verification pins (spec 2026-05-13):"
+check "cross-auditor-empirical-verification-step-present" check_cross_auditor_empirical_verification_step_present
+check "skill-md-cap-banner-present"                       check_skill_md_cap_banner_present
+check "mission-rule-11-amended-and-audit-claims-rule-present" check_mission_rule_11_amended_and_audit_claims_rule_present
+check "r15-present-in-code-quality-rules"                 check_r15_present_in_code_quality_rules
+echo
+
 
 echo
 echo "Passed: $PASS"

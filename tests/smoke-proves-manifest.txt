@@ -222,3 +222,9 @@ check_r8_single_source schema
 check_skill_dispatch_param_block_single_source schema
 check_evidence_class_allowlist_single_source schema
 check_eof_adjacency_parser_single_source schema
+
+# cap-banner + empirical-verification (spec 2026-05-13) Step 5 pins
+check_cross_auditor_empirical_verification_step_present prompt-text
+check_skill_md_cap_banner_present prompt-text
+check_mission_rule_11_amended_and_audit_claims_rule_present prompt-text
+check_r15_present_in_code_quality_rules schema
