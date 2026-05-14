@@ -55,6 +55,7 @@ Files to audit: [list paths — Codex reads them directly]
 Previously fixed (skip these): [previously_fixed list]
 [Severity ladder for mode]. Report [allowed_severities] only.
 For each finding: file:line, description, concrete fix suggestion.
+Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely.
 ```
 
 **Spec mode** Codex prompt template:
@@ -68,6 +69,7 @@ Read the spec file at: [spec_path]
 Focus areas: completeness, clarity, sequencing, correctness, dependency mapping, verification coverage, scope, risk
 [Severity ladder for spec mode]. Report [allowed_severities] only.
 For each finding: spec section/step reference, description, concrete fix suggestion.
+Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely.
 ```
 
 For **diff mode**: scope the audit to changed files only.

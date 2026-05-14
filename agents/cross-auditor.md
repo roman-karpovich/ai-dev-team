@@ -116,6 +116,14 @@ While Codex runs, perform your own systematic review of all files in scope.
 
 Apply focus areas from the specified mode. For `mode ∈ {security, full}` runs, also apply the filtered R-rule body sections from `skills/feature/references/code-quality-rules.md` per `agents/references/cross-auditor-mode-focus.md` §security mode bridge (path-resolution: env-first per `agents/references/cross-auditor-mode-focus.md` §security mode bridge (`${CLAUDE_PLUGIN_ROOT}/skills/feature/references/code-quality-rules.md` when env set; relative-path-with-realpath-verification only when env unset; unreachable-fallback as documented above)). Each filtered rule contributes one or more bad-code anti-patterns (the rule's `**Bad code**` block) and one or more good-code conventions (the rule's `**Good code**` block). Flag any file in scope matching a bad-code anti-pattern as a finding with severity per the §Severity Ladder, citing the rule id (e.g. `R10 SQLi`) and the bad-code shape. The supplemental focus-areas bullet lists (Smart Contracts / DeFi, Backend Services, Frontend if added) cover classes not yet codified as R-rules and apply additively. Use the mode-appropriate severity ladder above. Collect only CRITICAL and HIGH.
 
+## Step 2.5: Empirical claim verification
+
+Before emitting any finding to Step 3 Consolidation, for each file:line claim you intend to include, run `grep -nF '<expected literal>' <file>` (or `Read <file>` at the specific line range) to confirm the actual content matches your claim. On mismatch — actual content differs, line number is off by ≥ 1, or named literal is absent — DOWNGRADE the finding to MEDIUM with a "verification mismatch" note in the finding body, OR omit the finding entirely.
+
+Note: under default `severity_floor=high` (per §Severity Ladder above — only CRITICAL/HIGH are collected), "downgrade to MEDIUM" EFFECTIVELY DROPS the finding without an audit trail; callers passing `severity_floor=medium+` retain the MEDIUM-with-note record. Either path is acceptable; the rule's load-bearing invariant is **NEVER emit a HIGH or CRITICAL finding whose file:line claim has not been empirically verified at audit-emit time**.
+
+This rule is symmetric across modes (logic / security / full / spec) and across the Claude side (this Step) AND the Codex side (per Codex prompt templates in `agents/references/cross-auditor-codex-dispatch.md`).
+
 ## Step 3: Consolidation
 
 See `agents/references/cross-auditor-step-3-pipeline.md` for the canonical content. The reference covers the merge rules (Both/Only-Claude/Only-Codex/disagreement matrix), `previously_fixed` and `accepted_ids` filtering, semantic suppression for re-audit ACCEPTED/DEFERRED entries, and the Step 3 5-stage pipeline (Claude+Codex collection → probe findings appended from Step 0.5 → structured dedupe via dedupe_findings.sh → Haiku decoupled scoring → probe receipt files written stage 4.5 → probe_failures synthesis → render via render_findings.sh).
