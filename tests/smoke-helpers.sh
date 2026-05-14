@@ -3392,6 +3392,57 @@ print('OK')
   echo "WAP broadened parser recognises ### 6.1 H3 heading + plain Step N bullets, excludes Step 99 under sibling ### 6.2"
 }
 
+check_finding_claims_helper_flags_known_wrong_fixture() {
+  # Strong R3-form behavioral pin: exercises tests/check_finding_claims.py
+  # end-to-end against the synthetic known-wrong fixture at
+  # tests/fixtures/cap-banner-empirical-verification/known-wrong-findings.md.
+  # The fixture's five findings (X1-X5) are pre-verified against HEAD
+  # d29b0cf — X1/X2/X3/X4 are deliberately wrong (MISMATCH / MISMATCH /
+  # LINE-OUT-OF-RANGE / FILE-MISSING), X5 is a deliberately-correct
+  # control. The pin asserts:
+  #   (1) helper script + fixture both present,
+  #   (2) helper exits NON-ZERO against the fixture (flagging the
+  #       intentional wrongness — proves the verification logic actually
+  #       runs, not just byte-anchors prose),
+  #   (3) each diagnostic class (MISMATCH / LINE-OUT-OF-RANGE /
+  #       FILE-MISSING) appears with its expected X-id,
+  #   (4) the OK control (X5) is reported OK (proves the helper doesn't
+  #       false-positive — a degenerate "always-flag" helper would fail
+  #       this leg even though it satisfies leg #2 and leg #3).
+  # Source: spec 2026-05-13-cap-banner-and-empirical-verification.md Step 6.
+  local helper="tests/check_finding_claims.py"
+  local fixture="tests/fixtures/cap-banner-empirical-verification/known-wrong-findings.md"
+  [ -f "$helper" ] \
+    || { echo "missing $helper"; return 1; }
+  [ -f "$fixture" ] \
+    || { echo "missing $fixture"; return 1; }
+
+  local out rc
+  out=$(python3 "$helper" "$fixture" 2>&1)
+  rc=$?
+
+  if [ "$rc" -eq 0 ]; then
+    echo "expected helper to flag known-wrong fixture (exit non-zero), got rc=0"
+    printf '%s\n' "$out"
+    return 1
+  fi
+
+  printf '%s\n' "$out" | grep -qE '^X1: MISMATCH agents/cross-auditor\.md:99' \
+    || { echo "missing X1 MISMATCH diagnostic for agents/cross-auditor.md:99"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qE '^X2: MISMATCH skills/feature/SKILL\.md:42' \
+    || { echo "missing X2 MISMATCH diagnostic for skills/feature/SKILL.md:42"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qE '^X3: LINE-OUT-OF-RANGE agents/cross-auditor\.md:9999' \
+    || { echo "missing X3 LINE-OUT-OF-RANGE diagnostic"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qE '^X4: FILE-MISSING nonexistent/path\.md' \
+    || { echo "missing X4 FILE-MISSING diagnostic"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qE '^X5: OK agents/cross-auditor\.md:113' \
+    || { echo "missing X5 OK diagnostic (control case — helper must not false-positive)"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF 'Total: 5 findings, 4 mismatches' \
+    || { echo "missing summary line 'Total: 5 findings, 4 mismatches'"; printf '%s\n' "$out"; return 1; }
+
+  echo "check_finding_claims.py flags 4/5 known-wrong fixture findings (MISMATCH x2, LINE-OUT-OF-RANGE, FILE-MISSING); OK control verified"
+}
+
 check_no_dangling_section_anchor_references() {
   # Structural pin closing the pointer-rot defect class surfaced by
   # PR-92 retroactive audit (X1, X2, X3, X4, X5, X7, X8) — same shape
