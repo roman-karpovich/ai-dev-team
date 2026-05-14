@@ -4119,8 +4119,8 @@ rules = fm.get("rules") if isinstance(fm, dict) else None
 if not isinstance(rules, list):
     print(f"{path}: frontmatter `rules:` is not a list (assertion a)", file=sys.stderr)
     sys.exit(1)
-if len(rules) != 14:
-    print(f"{path}: rules length={len(rules)}, expected 14 (assertion a)", file=sys.stderr)
+if len(rules) != 15:
+    print(f"{path}: rules length={len(rules)}, expected 15 (assertion a)", file=sys.stderr)
     sys.exit(1)
 
 required_fields = {"id", "short", "category", "applies_to", "enforced_by"}
@@ -4191,13 +4191,14 @@ for entry in rules:
 # (i) Trigger A worked example: filter(rules, project_type="all") returns
 # R1..R8 [all] + any R-rule with [all] audience. Was 8 before any cluster
 # audience flips; 9 after PR-D Step 3 flipped R11 to [all]; 10 after
-# PR-D Step 4 flips R13 to [all].
+# PR-D Step 4 flipped R13 to [all]; 11 after R15 (process category, [all]
+# audience) was added by 2026-05-13-cap-banner-and-empirical-verification.
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_all = trigger_a_filter(rules, "all")
-if len(filtered_all) != 10:
-    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 10 (assertion i)", file=sys.stderr)
+if len(filtered_all) != 11:
+    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 11 (assertion i)", file=sys.stderr)
     sys.exit(1)
 
 # (j) per-rule golden mapping — imported from shared module so the same dict is
@@ -4404,21 +4405,22 @@ for rid in cluster_ids:
         print(f"{path}: {rid} body missing Radaro AND/OR POL-ENG-AIDEV-001 anchor (both required) (assertion e)", file=sys.stderr)
         sys.exit(1)
 
-# (f) backend filter returns 14 (R1..R8 [all] + R9..R14 [backend])
+# (f) backend filter returns 15 (R1..R8 [all] + R9..R14 [backend] + R15 [all])
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_backend = trigger_a_filter(rules, "backend")
-if len(filtered_backend) != 14:
-    print(f"{path}: backend filter returned {len(filtered_backend)}, expected 14 (assertion f)", file=sys.stderr)
+if len(filtered_backend) != 15:
+    print(f"{path}: backend filter returned {len(filtered_backend)}, expected 15 (assertion f)", file=sys.stderr)
     sys.exit(1)
 
 # (g) smart_contract filter returns R1..R8 + any R-rule with [all] audience.
 # Was 8 before any cluster audience flips; 9 after PR-D Step 3 flipped R11
-# to [all]; 10 after PR-D Step 4 flips R13 to [all].
+# to [all]; 10 after PR-D Step 4 flipped R13 to [all]; 11 after R15 (process
+# category, [all] audience) was added by 2026-05-13-cap-banner-and-empirical-verification.
 filtered_sc = trigger_a_filter(rules, "smart_contract")
-if len(filtered_sc) != 10:
-    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 10 (assertion g)", file=sys.stderr)
+if len(filtered_sc) != 11:
+    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 11 (assertion g)", file=sys.stderr)
     sys.exit(1)
 
 # (h) Per-rule canonical-pattern presence — Good code block ONLY (block-level

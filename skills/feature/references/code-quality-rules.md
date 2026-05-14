@@ -72,6 +72,11 @@ rules:
     category: security
     applies_to: [backend]
     enforced_by: [cross-auditor:security]
+  - id: R15
+    short: fix-application-verifies-audit-claims
+    category: process
+    applies_to: [all]
+    enforced_by: [none]
 ---
 
 # Code Quality Rules
@@ -826,6 +831,26 @@ def get_order(request, order_id):
     )
     return JsonResponse(serialize(order))
 ```
+
+---
+
+## R15 — Fix-application verifies audit's file:line claims empirically before edit
+
+**Rule**: when applying a fix to a finding that names a specific `file:line` target, verify the claim with `grep -nF '<expected literal>' <file>` (or `Read <file>` at the named line range) BEFORE editing. On mismatch — actual content differs, line number is off by ≥ 1, or named literal is absent — halt and surface the mismatch to the orchestrator. Do NOT apply the edit blindly. Do NOT "fix" the edit target by adjusting the literal to whatever is present at the named line.
+
+**Why**: the cross-auditor agent is fallible on `file:line` claims. The 2026-05-13 audit-cycle pollution incident (pointer-integrity spec iter-1/iter-2 cascade) demonstrated this empirically: iter-1 audit emitted confidently-wrong claims about referring-site counts (claimed 6, actual 4), smoke-pin line numbers (claimed `smoke.sh:4241`, actual `smoke.sh:4248-4249`), and §1.1 schema sibling keys (claimed `user_input`/`network_boundary`, actual `caller_identity`/`external_input`). The pointer-integrity DRAFT spec copy-pasted those numbers verbatim. Iter-1 senior dispatch trusted the line-anchored sed/grep targets and applied them blindly to wrong lines — the fix amplified the upstream error rather than catching it. ~4-6h consumed on audit cycles closed 0 findings before scope-cut to direct empirical fix. Without R15, the failure mode is structural: every downstream consumer that trusts cross-auditor claims as ground truth amplifies upstream errors through line-anchored edits to wrong lines.
+
+This is Khorikov's "test asserts state, not behaviour" anti-pattern (*Unit Testing* ch. 5, 7 — concept of observable behaviour vs implementation detail) applied at the audit layer: an audit finding that names file:line + literal is asserting a specific shape of production state. Acting on the finding requires verifying the asserted state is actually present, not just that the assertion exists. Pillar (1) regression-protection collapses when the asserted shape doesn't match reality — the fix introduces a NEW regression instead of catching one.
+
+**How to apply**:
+
+1. Before editing a file in response to a cross-auditor finding (Claude side OR Codex side, code/full/spec mode): re-grep the named `<file>` for the claimed `<literal>` and confirm the line number matches.
+2. If the literal is absent OR the line number is off by ≥ 1: STOP. Do not apply the edit. Surface the mismatch to the orchestrator with the finding ID and the actual file state. The orchestrator decides whether to re-spawn the auditor with corrected scope, downgrade the finding, or accept the mismatch with rationale.
+3. Verification applies to BOTH dev-agents (`developer-codex`, `developer-senior`) processing audit findings during a code-audit fix-application pass AND to spec authors copy-pasting finding details into §5 Implementation Checklist Step targets at spec-draft time.
+4. The cross-auditor agent itself runs an analogous verification at audit-emit time per `agents/cross-auditor.md` §Step 2.5 Empirical claim verification — R15 enforces the consumer-side mirror of that producer-side discipline.
+5. R15 is paired with the producer-side rule baked into `agents/cross-auditor.md` §Step 2.5. Both rules target the same defect class — unverified-file:line-claim amplification — at different layers (producer vs consumer).
+
+Source: 2026-05-13 audit-cycle pollution incident. Anchor: `research/release-retrospective/2026-05-13-1.19.0-audit-cycle-pollution.md`. Memory: none yet (codified directly via R15 + MISSION rule #13).
 
 ---
 
