@@ -17,12 +17,15 @@ Per-finding diagnostic classes emitted to stdout:
   - FILE-MISSING         <file>
   - LINE-OUT-OF-RANGE    <file>:<line>
   - NO-LITERAL-EXTRACTABLE  <file>:<line> (note only, NOT a mismatch)
+  - MALFORMED-FINDING    <fid> — <reason>
 
 Final summary line: `Total: N findings, M mismatches`.
 
 Exit code:
-  0 — no MISMATCH / FILE-MISSING / LINE-OUT-OF-RANGE findings.
-  1 — at least one mismatch, OR malformed findings.md (missing Details section).
+  0 — no MISMATCH / FILE-MISSING / LINE-OUT-OF-RANGE / MALFORMED-FINDING findings.
+  1 — at least one mismatch, at least one malformed H3 block (parseable
+      `### [X<n>]` heading but missing or unparseable `- **File**:` line),
+      OR malformed findings.md (missing Details section).
 
 CLI:
     python3 tests/check_finding_claims.py <findings-md-path>
@@ -60,20 +63,35 @@ BACKTICK_RE = re.compile(r"`([^`]+)`")
 DETAILS_HEADER_RE = re.compile(r"^##\s+Details\s*$", re.MULTILINE)
 
 
-def parse_findings(text: str) -> List[Tuple[str, str, int, Optional[str]]]:
-    """Return [(X-id, file_path, line_number, expected_literal_or_None), ...].
+def parse_findings(
+    text: str,
+) -> Tuple[List[Tuple[str, str, int, Optional[str]]], List[Tuple[str, str]]]:
+    """Return (findings, parse_errors).
+
+    `findings` is `[(X-id, file_path, line_number, expected_literal_or_None), ...]`
+    for H3 blocks where the `- **File**: <path>:<line>` line was found and parsed.
+
+    `parse_errors` is `[(X-id, reason), ...]` for H3 blocks whose heading was
+    parseable as `### [X<n>] <title>` but whose Details body was missing the
+    canonical `- **File**: <path>:<line>` line or had an unparseable line
+    number. Defeating the empirical-verification gate by silently dropping
+    such blocks is exactly the failure mode this helper exists to catch, so
+    callers MUST surface these and treat them as exit-1 conditions (see the
+    module docstring's exit-code contract).
 
     Splits text at the `## Details` header; iterates H3 finding blocks;
     for each, picks the first matching `- **File**: <path>:<line>` line and
     the first backticked literal from the `- **Description**:` body.
     """
+    findings: List[Tuple[str, str, int, Optional[str]]] = []
+    parse_errors: List[Tuple[str, str]] = []
+
     # Anchor to Details section.
     m = DETAILS_HEADER_RE.search(text)
     if not m:
-        return []
+        return findings, parse_errors
     details = text[m.end():]
 
-    findings: List[Tuple[str, str, int, Optional[str]]] = []
     # Split into per-finding blocks at H3 boundaries.
     lines = details.splitlines()
     cur_id: Optional[str] = None
@@ -96,6 +114,7 @@ def parse_findings(text: str) -> List[Tuple[str, str, int, Optional[str]]]:
         file_path: Optional[str] = None
         line_no: Optional[int] = None
         literal: Optional[str] = None
+        line_unparseable = False
         for bl in block:
             fm = FILE_LINE_RE.match(bl)
             if fm and file_path is None:
@@ -104,19 +123,28 @@ def parse_findings(text: str) -> List[Tuple[str, str, int, Optional[str]]]:
                     line_no = int(fm.group("line"))
                 except ValueError:
                     line_no = None
+                    line_unparseable = True
                 continue
             dm = DESC_RE.match(bl)
             if dm and literal is None:
                 bm = BACKTICK_RE.search(dm.group("body"))
                 if bm:
                     literal = bm.group(1)
-        if file_path is None or line_no is None:
-            # Malformed finding — skip silently; not the helper's job to
-            # validate Details schema, only to verify the claims that are
-            # parseable.
+        if file_path is None:
+            parse_errors.append(
+                (fid, "missing `- **File**: <path>:<line>` line in Details body")
+            )
+            continue
+        if line_no is None:
+            reason = (
+                "unparseable line number in `- **File**:` line"
+                if line_unparseable
+                else "missing line number in `- **File**:` line"
+            )
+            parse_errors.append((fid, reason))
             continue
         findings.append((fid, file_path, line_no, literal))
-    return findings
+    return findings, parse_errors
 
 
 def resolve_path(path_str: str, findings_md: Path) -> Optional[Path]:
@@ -188,8 +216,11 @@ def main(argv: List[str]) -> int:
         )
         return 1
 
-    findings = parse_findings(text)
+    findings, parse_errors = parse_findings(text)
     mismatch_count = 0
+    for fid, reason in parse_errors:
+        print(f"{fid}: MALFORMED-FINDING {reason}")
+        mismatch_count += 1
     for fid, fpath, lno, literal in findings:
         line, is_mismatch = verify_one(fid, fpath, lno, literal, findings_md)
         print(line)

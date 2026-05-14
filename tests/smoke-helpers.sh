@@ -3443,6 +3443,57 @@ check_finding_claims_helper_flags_known_wrong_fixture() {
   echo "check_finding_claims.py flags 4/5 known-wrong fixture findings (MISMATCH x2, LINE-OUT-OF-RANGE, FILE-MISSING); OK control verified"
 }
 
+check_finding_claims_helper_flags_malformed_no_file_line_fixture() {
+  # Regression pin for code-audit X1 (2026-05-14): tests/check_finding_claims.py
+  # used to silently skip H3 blocks whose `### [X<n>] <title>` heading was
+  # parseable but whose body lacked the canonical `- **File**: <path>:<line>`
+  # line. Net effect: a findings.md with `## Details` present but every
+  # finding missing the File line returned exit 0 with "Total: 0 findings,
+  # 0 mismatches" — defeating the empirical-verification gate precisely when
+  # upstream auditor failure was most severe.
+  #
+  # X1 fix introduced the MALFORMED-FINDING diagnostic class: parse_findings
+  # now returns (findings, parse_errors); main() prints one
+  # `Xn: MALFORMED-FINDING <reason>` per parse error and counts each into the
+  # mismatch tally so the exit code is 1. This pin asserts:
+  #   (1) helper script + new fixture both present,
+  #   (2) helper exits NON-ZERO against the malformed fixture,
+  #   (3) each X-id (X1/X2/X3) appears with the MALFORMED-FINDING diagnostic
+  #       and the canonical "missing `- **File**: <path>:<line>` line" reason,
+  #   (4) the summary reports 0 findings + 3 mismatches (defends against a
+  #       regression that drops parse-errors back to silent-skip but happens
+  #       to surface some other mismatch class).
+  # Source: code-audit iter-1 X1 (2026-05-14) on spec
+  # 2026-05-13-cap-banner-and-empirical-verification.md Step 6.
+  local helper="tests/check_finding_claims.py"
+  local fixture="tests/fixtures/cap-banner-empirical-verification/malformed-no-file-line.md"
+  [ -f "$helper" ] \
+    || { echo "missing $helper"; return 1; }
+  [ -f "$fixture" ] \
+    || { echo "missing $fixture"; return 1; }
+
+  local out rc
+  out=$(python3 "$helper" "$fixture" 2>&1)
+  rc=$?
+
+  if [ "$rc" -eq 0 ]; then
+    echo "expected helper to flag malformed-no-file-line fixture (exit non-zero), got rc=0"
+    printf '%s\n' "$out"
+    return 1
+  fi
+
+  printf '%s\n' "$out" | grep -qF 'X1: MALFORMED-FINDING missing `- **File**: <path>:<line>` line in Details body' \
+    || { echo "missing X1 MALFORMED-FINDING diagnostic with canonical reason"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF 'X2: MALFORMED-FINDING missing `- **File**: <path>:<line>` line in Details body' \
+    || { echo "missing X2 MALFORMED-FINDING diagnostic with canonical reason"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF 'X3: MALFORMED-FINDING missing `- **File**: <path>:<line>` line in Details body' \
+    || { echo "missing X3 MALFORMED-FINDING diagnostic with canonical reason"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF 'Total: 0 findings, 3 mismatches' \
+    || { echo "missing summary line 'Total: 0 findings, 3 mismatches'"; printf '%s\n' "$out"; return 1; }
+
+  echo "check_finding_claims.py flags 3/3 malformed (no-File-line) fixture blocks with MALFORMED-FINDING; exit 1"
+}
+
 check_no_dangling_section_anchor_references() {
   # Structural pin closing the pointer-rot defect class surfaced by
   # PR-92 retroactive audit (X1, X2, X3, X4, X5, X7, X8) — same shape

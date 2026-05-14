@@ -3967,6 +3967,7 @@ check "check_wap_inv2_parses_non_canonical_spec_form" check_wap_inv2_parses_non_
 check "check_wap_inv2_no_drift_on_inline_code_in_paren" check_wap_inv2_no_drift_on_inline_code_in_paren
 check "check_no_dangling_section_anchor_references" check_no_dangling_section_anchor_references
 check "check_finding_claims_helper_flags_known_wrong_fixture" check_finding_claims_helper_flags_known_wrong_fixture
+check "check_finding_claims_helper_flags_malformed_no_file_line_fixture" check_finding_claims_helper_flags_malformed_no_file_line_fixture
 echo
 
 # --- R3 weak-phrase compliance check — fixture-based behavioral assertions ---
