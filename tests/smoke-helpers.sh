@@ -3392,6 +3392,108 @@ print('OK')
   echo "WAP broadened parser recognises ### 6.1 H3 heading + plain Step N bullets, excludes Step 99 under sibling ### 6.2"
 }
 
+check_finding_claims_helper_flags_known_wrong_fixture() {
+  # Strong R3-form behavioral pin: exercises tests/check_finding_claims.py
+  # end-to-end against the synthetic known-wrong fixture at
+  # tests/fixtures/cap-banner-empirical-verification/known-wrong-findings.md.
+  # The fixture's five findings (X1-X5) are pre-verified against HEAD
+  # d29b0cf — X1/X2/X3/X4 are deliberately wrong (MISMATCH / MISMATCH /
+  # LINE-OUT-OF-RANGE / FILE-MISSING), X5 is a deliberately-correct
+  # control. The pin asserts:
+  #   (1) helper script + fixture both present,
+  #   (2) helper exits NON-ZERO against the fixture (flagging the
+  #       intentional wrongness — proves the verification logic actually
+  #       runs, not just byte-anchors prose),
+  #   (3) each diagnostic class (MISMATCH / LINE-OUT-OF-RANGE /
+  #       FILE-MISSING) appears with its expected X-id,
+  #   (4) the OK control (X5) is reported OK (proves the helper doesn't
+  #       false-positive — a degenerate "always-flag" helper would fail
+  #       this leg even though it satisfies leg #2 and leg #3).
+  # Source: spec 2026-05-13-cap-banner-and-empirical-verification.md Step 6.
+  local helper="tests/check_finding_claims.py"
+  local fixture="tests/fixtures/cap-banner-empirical-verification/known-wrong-findings.md"
+  [ -f "$helper" ] \
+    || { echo "missing $helper"; return 1; }
+  [ -f "$fixture" ] \
+    || { echo "missing $fixture"; return 1; }
+
+  local out rc
+  out=$(python3 "$helper" "$fixture" 2>&1)
+  rc=$?
+
+  if [ "$rc" -eq 0 ]; then
+    echo "expected helper to flag known-wrong fixture (exit non-zero), got rc=0"
+    printf '%s\n' "$out"
+    return 1
+  fi
+
+  printf '%s\n' "$out" | grep -qE '^X1: MISMATCH agents/cross-auditor\.md:99' \
+    || { echo "missing X1 MISMATCH diagnostic for agents/cross-auditor.md:99"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qE '^X2: MISMATCH skills/feature/SKILL\.md:42' \
+    || { echo "missing X2 MISMATCH diagnostic for skills/feature/SKILL.md:42"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qE '^X3: LINE-OUT-OF-RANGE agents/cross-auditor\.md:9999' \
+    || { echo "missing X3 LINE-OUT-OF-RANGE diagnostic"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qE '^X4: FILE-MISSING nonexistent/path\.md' \
+    || { echo "missing X4 FILE-MISSING diagnostic"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qE '^X5: OK agents/cross-auditor\.md:113' \
+    || { echo "missing X5 OK diagnostic (control case — helper must not false-positive)"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF 'Total: 5 findings, 4 mismatches' \
+    || { echo "missing summary line 'Total: 5 findings, 4 mismatches'"; printf '%s\n' "$out"; return 1; }
+
+  echo "check_finding_claims.py flags 4/5 known-wrong fixture findings (MISMATCH x2, LINE-OUT-OF-RANGE, FILE-MISSING); OK control verified"
+}
+
+check_finding_claims_helper_flags_malformed_no_file_line_fixture() {
+  # Regression pin for code-audit X1 (2026-05-14): tests/check_finding_claims.py
+  # used to silently skip H3 blocks whose `### [X<n>] <title>` heading was
+  # parseable but whose body lacked the canonical `- **File**: <path>:<line>`
+  # line. Net effect: a findings.md with `## Details` present but every
+  # finding missing the File line returned exit 0 with "Total: 0 findings,
+  # 0 mismatches" — defeating the empirical-verification gate precisely when
+  # upstream auditor failure was most severe.
+  #
+  # X1 fix introduced the MALFORMED-FINDING diagnostic class: parse_findings
+  # now returns (findings, parse_errors); main() prints one
+  # `Xn: MALFORMED-FINDING <reason>` per parse error and counts each into the
+  # mismatch tally so the exit code is 1. This pin asserts:
+  #   (1) helper script + new fixture both present,
+  #   (2) helper exits NON-ZERO against the malformed fixture,
+  #   (3) each X-id (X1/X2/X3) appears with the MALFORMED-FINDING diagnostic
+  #       and the canonical "missing `- **File**: <path>:<line>` line" reason,
+  #   (4) the summary reports 0 findings + 3 mismatches (defends against a
+  #       regression that drops parse-errors back to silent-skip but happens
+  #       to surface some other mismatch class).
+  # Source: code-audit iter-1 X1 (2026-05-14) on spec
+  # 2026-05-13-cap-banner-and-empirical-verification.md Step 6.
+  local helper="tests/check_finding_claims.py"
+  local fixture="tests/fixtures/cap-banner-empirical-verification/malformed-no-file-line.md"
+  [ -f "$helper" ] \
+    || { echo "missing $helper"; return 1; }
+  [ -f "$fixture" ] \
+    || { echo "missing $fixture"; return 1; }
+
+  local out rc
+  out=$(python3 "$helper" "$fixture" 2>&1)
+  rc=$?
+
+  if [ "$rc" -eq 0 ]; then
+    echo "expected helper to flag malformed-no-file-line fixture (exit non-zero), got rc=0"
+    printf '%s\n' "$out"
+    return 1
+  fi
+
+  printf '%s\n' "$out" | grep -qF 'X1: MALFORMED-FINDING missing `- **File**: <path>:<line>` line in Details body' \
+    || { echo "missing X1 MALFORMED-FINDING diagnostic with canonical reason"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF 'X2: MALFORMED-FINDING missing `- **File**: <path>:<line>` line in Details body' \
+    || { echo "missing X2 MALFORMED-FINDING diagnostic with canonical reason"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF 'X3: MALFORMED-FINDING missing `- **File**: <path>:<line>` line in Details body' \
+    || { echo "missing X3 MALFORMED-FINDING diagnostic with canonical reason"; printf '%s\n' "$out"; return 1; }
+  printf '%s\n' "$out" | grep -qF 'Total: 0 findings, 3 mismatches' \
+    || { echo "missing summary line 'Total: 0 findings, 3 mismatches'"; printf '%s\n' "$out"; return 1; }
+
+  echo "check_finding_claims.py flags 3/3 malformed (no-File-line) fixture blocks with MALFORMED-FINDING; exit 1"
+}
+
 check_no_dangling_section_anchor_references() {
   # Structural pin closing the pointer-rot defect class surfaced by
   # PR-92 retroactive audit (X1, X2, X3, X4, X5, X7, X8) — same shape
@@ -4119,8 +4221,8 @@ rules = fm.get("rules") if isinstance(fm, dict) else None
 if not isinstance(rules, list):
     print(f"{path}: frontmatter `rules:` is not a list (assertion a)", file=sys.stderr)
     sys.exit(1)
-if len(rules) != 14:
-    print(f"{path}: rules length={len(rules)}, expected 14 (assertion a)", file=sys.stderr)
+if len(rules) != 15:
+    print(f"{path}: rules length={len(rules)}, expected 15 (assertion a)", file=sys.stderr)
     sys.exit(1)
 
 required_fields = {"id", "short", "category", "applies_to", "enforced_by"}
@@ -4191,13 +4293,14 @@ for entry in rules:
 # (i) Trigger A worked example: filter(rules, project_type="all") returns
 # R1..R8 [all] + any R-rule with [all] audience. Was 8 before any cluster
 # audience flips; 9 after PR-D Step 3 flipped R11 to [all]; 10 after
-# PR-D Step 4 flips R13 to [all].
+# PR-D Step 4 flipped R13 to [all]; 11 after R15 (process category, [all]
+# audience) was added by 2026-05-13-cap-banner-and-empirical-verification.
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_all = trigger_a_filter(rules, "all")
-if len(filtered_all) != 10:
-    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 10 (assertion i)", file=sys.stderr)
+if len(filtered_all) != 11:
+    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 11 (assertion i)", file=sys.stderr)
     sys.exit(1)
 
 # (j) per-rule golden mapping — imported from shared module so the same dict is
@@ -4404,21 +4507,22 @@ for rid in cluster_ids:
         print(f"{path}: {rid} body missing Radaro AND/OR POL-ENG-AIDEV-001 anchor (both required) (assertion e)", file=sys.stderr)
         sys.exit(1)
 
-# (f) backend filter returns 14 (R1..R8 [all] + R9..R14 [backend])
+# (f) backend filter returns 15 (R1..R8 [all] + R9..R14 [backend] + R15 [all])
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_backend = trigger_a_filter(rules, "backend")
-if len(filtered_backend) != 14:
-    print(f"{path}: backend filter returned {len(filtered_backend)}, expected 14 (assertion f)", file=sys.stderr)
+if len(filtered_backend) != 15:
+    print(f"{path}: backend filter returned {len(filtered_backend)}, expected 15 (assertion f)", file=sys.stderr)
     sys.exit(1)
 
 # (g) smart_contract filter returns R1..R8 + any R-rule with [all] audience.
 # Was 8 before any cluster audience flips; 9 after PR-D Step 3 flipped R11
-# to [all]; 10 after PR-D Step 4 flips R13 to [all].
+# to [all]; 10 after PR-D Step 4 flipped R13 to [all]; 11 after R15 (process
+# category, [all] audience) was added by 2026-05-13-cap-banner-and-empirical-verification.
 filtered_sc = trigger_a_filter(rules, "smart_contract")
-if len(filtered_sc) != 10:
-    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 10 (assertion g)", file=sys.stderr)
+if len(filtered_sc) != 11:
+    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 11 (assertion g)", file=sys.stderr)
     sys.exit(1)
 
 # (h) Per-rule canonical-pattern presence — Good code block ONLY (block-level
@@ -6340,4 +6444,232 @@ check_eof_adjacency_parser_single_source() {
     return 1
   fi
   echo "eof-adjacency parser single source"
+}
+
+# --- cap-banner + empirical-verification (spec 2026-05-13) Step 5 pins ---
+# 4 pins anchoring the 4 prose surfaces from Steps 1-4 of
+# design/2026-05-13-cap-banner-and-empirical-verification.md:
+#   Pin A — agents/cross-auditor.md + agents/references/cross-auditor-codex-dispatch.md
+#           (Step 2.5 H2 + load-bearing invariant + 2 Codex prompt templates).
+#   Pin B — skills/feature/SKILL.md §3.5c AWAITING-YOUR-INPUT cap-banner block.
+#   Pin C — <kb>/repos/ai-dev-team/MISSION.md rule #11 amendment + new rule #13.
+#   Pin D — skills/feature/references/code-quality-rules.md R15 frontmatter +
+#           body section + structural placement (after R14, before §Taxonomy).
+
+check_cross_auditor_empirical_verification_step_present() {
+  local hub="agents/cross-auditor.md"
+  local codex_ref="agents/references/cross-auditor-codex-dispatch.md"
+  test -f "$hub" || { echo "$hub missing"; return 1; }
+  test -f "$codex_ref" || { echo "$codex_ref missing"; return 1; }
+
+  # Structural H2 anchor — column-0 heading literal.
+  if ! grep -qxF '## Step 2.5: Empirical claim verification' "$hub"; then
+    echo "$hub missing column-0 H2 '## Step 2.5: Empirical claim verification'"
+    return 1
+  fi
+
+  # Load-bearing invariant — byte-exact substring (no backticks, no bold markers
+  # in the asserted substring — the source line wraps it in **...** which leaves
+  # this raw substring intact between the bold delimiters).
+  local invariant='NEVER emit a HIGH or CRITICAL finding whose file:line claim has not been empirically verified at audit-emit time'
+  if ! grep -qF "$invariant" "$hub"; then
+    echo "$hub missing load-bearing invariant literal '$invariant'"
+    return 1
+  fi
+
+  # Codex prompt verification line — must appear AT LEAST 2 times (one per
+  # template: Code-mode + Spec-mode).
+  local codex_line="Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely."
+  local n
+  n=$(grep -cF "$codex_line" "$codex_ref" || true)
+  if [ "$n" -lt 2 ]; then
+    echo "$codex_ref contains the verification-instruction line $n times, expected >= 2 (Code-mode + Spec-mode)"
+    return 1
+  fi
+
+  echo "cross-auditor empirical-verification: Step 2.5 H2 + invariant + codex-dispatch verification line x$n OK"
+}
+
+check_skill_md_cap_banner_present() {
+  local skl="skills/feature/SKILL.md"
+  test -f "$skl" || { echo "$skl missing"; return 1; }
+
+  # Slice §3.5c — from the subsection heading down to the next H2 `## Implement`.
+  # Terminating on the next H2 (NOT on `^---$`) is load-bearing: the cap-banner
+  # block itself contains internal `---` separators per the AWAITING YOUR INPUT
+  # convention, so a `^---$` terminator would stop BEFORE reaching the banner.
+  local section
+  section=$(awk '/### 3.5c Stop criteria/,/^## Implement/' "$skl")
+  if [ -z "$section" ]; then
+    echo "$skl: awk range from '### 3.5c Stop criteria' to '^## Implement' produced empty output"
+    return 1
+  fi
+
+  # Banner H2 — column-0 heading literal.
+  if ! printf '%s\n' "$section" | grep -qxF '## ⏸ AWAITING YOUR INPUT'; then
+    echo "$skl §3.5c missing column-0 H2 '## ⏸ AWAITING YOUR INPUT'"
+    return 1
+  fi
+
+  # Banner title literal.
+  if ! printf '%s\n' "$section" | grep -qF 'Audit iteration cap reached'; then
+    echo "$skl §3.5c missing 'Audit iteration cap reached' banner title"
+    return 1
+  fi
+
+  # 4 option literals — all must appear inside §3.5c.
+  local opt
+  for opt in 'Continue with justification' 'Accept residue with explicit sign-off' 'Scope-cut' 'Abandon'; do
+    if ! printf '%s\n' "$section" | grep -qF "$opt"; then
+      echo "$skl §3.5c missing banner option literal '$opt'"
+      return 1
+    fi
+  done
+
+  echo "SKILL.md §3.5c cap banner OK (H2 + title + 4 options inside §3.5c)"
+}
+
+check_mission_rule_11_amended_and_audit_claims_rule_present() {
+  # MISSION.md lives in the KB, outside the plugin checkout. Resolve via the
+  # same convention as check_mission_r_enforcement_claim_narrow above:
+  # KB_PATH env var → sibling finance-learning path → plugin-root fallback.
+  local mission_path=""
+  if [ -n "${KB_PATH:-}" ] && [ -f "${KB_PATH}/repos/ai-dev-team/MISSION.md" ]; then
+    mission_path="${KB_PATH}/repos/ai-dev-team/MISSION.md"
+  elif [ -f "../../finance-learning/repos/ai-dev-team/MISSION.md" ]; then
+    mission_path="../../finance-learning/repos/ai-dev-team/MISSION.md"
+  elif [ -f "MISSION.md" ]; then
+    mission_path="MISSION.md"
+  fi
+
+  if [ -z "$mission_path" ]; then
+    echo "MISSION.md not found in plugin source tree (lives in KB) — skipped"
+    return 0
+  fi
+
+  # Rule #13 anchor literal.
+  if ! grep -qF 'Audit claims MUST be empirically verifiable' "$mission_path"; then
+    echo "$mission_path missing rule #13 anchor 'Audit claims MUST be empirically verifiable'"
+    return 1
+  fi
+
+  # Rule #11 amended phase-split clause — the AWAITING YOUR INPUT phase-split
+  # reference. Both substrings must appear (one line carries both; we assert
+  # presence rather than co-location to keep the pin robust to future wording
+  # tweaks within the rule body).
+  if ! grep -qF 'the orchestrator presents the' "$mission_path"; then
+    echo "$mission_path missing rule #11 'the orchestrator presents the' phase-split prefix"
+    return 1
+  fi
+  if ! grep -qF 'AWAITING YOUR INPUT' "$mission_path"; then
+    echo "$mission_path missing 'AWAITING YOUR INPUT' banner reference"
+    return 1
+  fi
+  if ! grep -qF 'cap banner per SKILL.md §3.5c' "$mission_path"; then
+    echo "$mission_path missing 'cap banner per SKILL.md §3.5c' phrase"
+    return 1
+  fi
+
+  # 2026-05-13 dated entry — count >= 1 (NOT exactly 1; rule #13 Source line
+  # also contains this literal in the retrospective filename anchor).
+  local n
+  n=$(grep -cF '2026-05-13' "$mission_path" || true)
+  if [ "$n" -lt 1 ]; then
+    echo "$mission_path: '2026-05-13' literal count=$n, expected >= 1"
+    return 1
+  fi
+
+  echo "MISSION rule #11 amended + rule #13 + 2026-05-13 entry (count=$n) OK"
+}
+
+check_r15_present_in_code_quality_rules() {
+  # Schema-shape pin parallel to check_r_rules_taxonomy_schema (smoke-helpers.sh
+  # ~L4092) — narrower scope: assert R15-specific frontmatter shape + body
+  # section + structural placement (after R14, before §Taxonomy).
+  local path="skills/feature/references/code-quality-rules.md"
+  test -f "$path" || { echo "$path missing"; return 1; }
+  python3 - "$path" <<'PY' || return 1
+import re
+import sys
+
+path = sys.argv[1]
+try:
+    import yaml
+except ImportError:
+    print("PyYAML not available (required by check_r15_present_in_code_quality_rules)", file=sys.stderr)
+    sys.exit(1)
+
+text = open(path, encoding="utf-8").read()
+m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+if not m:
+    print(f"{path}: missing YAML frontmatter", file=sys.stderr)
+    sys.exit(1)
+try:
+    fm = yaml.safe_load(m.group(1))
+except yaml.YAMLError as exc:
+    print(f"{path}: frontmatter YAML parse failed: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+rules = fm.get("rules") if isinstance(fm, dict) else None
+if not isinstance(rules, list):
+    print(f"{path}: frontmatter `rules:` is not a list", file=sys.stderr)
+    sys.exit(1)
+
+by_id = {r.get("id"): r for r in rules if isinstance(r, dict)}
+r15 = by_id.get("R15")
+if r15 is None:
+    print(f"{path}: R15 entry absent from rules list", file=sys.stderr)
+    sys.exit(1)
+
+expected = {
+    "short": "fix-application-verifies-audit-claims",
+    "category": "process",
+    "applies_to": ["all"],
+    "enforced_by": ["none"],
+}
+for key, want in expected.items():
+    got = r15.get(key)
+    if got != want:
+        print(f"{path}: R15.{key}={got!r}, expected {want!r}", file=sys.stderr)
+        sys.exit(1)
+
+# Body section heading — column-0 H2 with the exact title.
+body_heading = "## R15 — Fix-application verifies audit's file:line claims empirically before edit"
+lines = text.splitlines()
+heading_line_idx = None
+for i, ln in enumerate(lines):
+    if ln == body_heading:
+        heading_line_idx = i
+        break
+if heading_line_idx is None:
+    print(f"{path}: missing R15 body H2 heading {body_heading!r}", file=sys.stderr)
+    sys.exit(1)
+
+# Structural anchor: R15 body appears AFTER R14 body AND BEFORE `## Taxonomy`.
+r14_heading_re = re.compile(r"^## R14 — ")
+taxonomy_heading = "## Taxonomy"
+r14_idx = None
+taxonomy_idx = None
+for i, ln in enumerate(lines):
+    if r14_idx is None and r14_heading_re.match(ln):
+        r14_idx = i
+    if ln == taxonomy_heading:
+        taxonomy_idx = i
+        break
+if r14_idx is None:
+    print(f"{path}: R14 body heading not found (structural anchor)", file=sys.stderr)
+    sys.exit(1)
+if taxonomy_idx is None:
+    print(f"{path}: `## Taxonomy` heading not found (structural anchor)", file=sys.stderr)
+    sys.exit(1)
+if not (r14_idx < heading_line_idx < taxonomy_idx):
+    print(
+        f"{path}: R15 body at line {heading_line_idx+1} is not strictly between "
+        f"R14 at line {r14_idx+1} and Taxonomy at line {taxonomy_idx+1}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+print(f"R15 frontmatter + body section + placement OK (line {heading_line_idx+1}, between R14 and Taxonomy)")
+PY
 }

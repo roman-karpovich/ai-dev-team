@@ -551,7 +551,25 @@ Per MISSION rule #11 (spec/code audit stop criteria) and MISSION rule #10 (orche
 - `- YYYY-MM-DD: REOPEN sweep — context refreshed via /compact`
 - `- YYYY-MM-DD: REOPEN sweep — context refreshed via fresh @<agent>`
 
-**Phase split — spec audit (§3.5 Pass 2) is gating, not hard-blocking.** On cap-with-comprehensive-sweep, the orchestrator MAY move to Implement after one final sweep. Defects remaining at iter-5 are recorded in the spec Log as known-residue rather than re-iterated forever. Verification-rigor residue, if any, is caught more efficiently by the code audit on the actual implementation than by an unbounded spec audit on abstract contract prose.
+**Phase split — spec audit (§3.5 Pass 2) is gating, not hard-blocking.**
+
+When iteration count reaches `iter ≥ 5` cap OR a REOPEN-cycle trigger fires from the cross-auditor, the orchestrator MUST present the banner below — no silent escape to Implement remains.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+**Audit iteration cap reached.** Per MISSION rule #11 spec-audit gating-not-hard-blocking semantics, the orchestrator pauses for explicit user direction at the cap. Choose one:
+
+1. **Continue with justification** — defect class still converging OR comprehensive sweep producing value. Requires Log-line justification matching the §3.1c canonical regex `^- [0-9]{4}-[0-9]{2}-[0-9]{2}: (spec|code) audit iteration > 5 justified [—-] .+$` BEFORE iter-6 starts.
+2. **Accept residue with explicit sign-off** — user names the specific residue being shipped open; orchestrator appends Log line `- YYYY-MM-DD: spec audit residue accepted at iter-N — <verbatim user rationale>` and proceeds to Implement.
+3. **Scope-cut** — drop part of the spec; orchestrator trims §5 Implementation Checklist per user direction; returns to Pass 1 self-review for the reduced scope.
+4. **Abandon** — close spec without ship; sets `status: DISCARDED`; appends Log line `- YYYY-MM-DD: spec abandoned at iter-N audit cap — <verbatim user rationale>`.
+
+**Which option?**
+
+---
+
+Per `docs/user-input-banner-convention.md` inverse rule: the banner above appears ONLY at the iter ≥ 5 cap OR a REOPEN-cycle trigger. Routine residue-recording at iter ≤ 4 does NOT show this banner.
 
 **Phase split — code audit (§Code audit Pass 2) preserves the closed gate.** The per-finding `fix` / `accept` / `defer` mechanism remains the only legitimate way to clear CRITICAL/HIGH findings. Stop criteria here means "stop blind re-spawning of the cross-auditor" — when the comprehensive sweep finds no new parallel surfaces, the residue is funneled through per-finding triage:
 

@@ -1264,16 +1264,17 @@ check_banner_convention_doc_valid() {
   echo "banner convention doc has all 7 required substrings"
 }
 
-# (b) feature SKILL.md must have exactly 28 AWAITING banner lines. The total includes
-# the §Code audit triage banner, 5 Attack-surface profile slot prompts, and 6 STRIDE-lite prompts.
+# (b) feature SKILL.md must have exactly 29 AWAITING banner lines. The total includes
+# the §Code audit triage banner, 5 Attack-surface profile slot prompts, 6 STRIDE-lite
+# prompts, and the §3.5c audit-iteration-cap banner.
 check_feature_awaiting_count_17() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "28" ]; then
-    echo "feature AWAITING count=$n expected 28"
+  if [ "$n" != "29" ]; then
+    echo "feature AWAITING count=$n expected 29"
     return 1
   fi
-  echo "feature AWAITING count=28 OK"
+  echo "feature AWAITING count=29 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1421,9 +1422,10 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 25 — includes the
-# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1
-# and the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2).
+# (r) ruler-prefix count matches total banner count (expected 26 — includes the
+# §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1,
+# the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2,
+# and the §3.5c audit-iteration-cap banner added by spec 2026-05-13-cap-banner-and-empirical-verification Step 2).
 check_awaiting_ruler_prefix_count_matches() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1432,15 +1434,16 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "25" ]; then
-    echo "ruler-prefix count=$c expected 25"
+  if [ "$c" != "26" ]; then
+    echo "ruler-prefix count=$c expected 26"
     return 1
   fi
-  echo "ruler-prefix count=25 OK"
+  echo "ruler-prefix count=26 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 36 — includes
-# the feature Attack-surface profile and STRIDE-lite slot prompts).
+# (s) each banner has trailing bold question within 15 lines (expected 37 — includes
+# the feature Attack-surface profile and STRIDE-lite slot prompts, plus the §3.5c
+# audit-iteration-cap banner).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1451,11 +1454,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "36" ]; then
-    echo "trailing-bold-present-each count=$c expected 36"
+  if [ "$c" != "37" ]; then
+    echo "trailing-bold-present-each count=$c expected 37"
     return 1
   fi
-  echo "trailing-bold-present-each=36 OK"
+  echo "trailing-bold-present-each=37 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -3963,6 +3966,8 @@ check "check_wap_inv2_drift_on_unparseable_parenthetical" check_wap_inv2_drift_o
 check "check_wap_inv2_parses_non_canonical_spec_form" check_wap_inv2_parses_non_canonical_spec_form
 check "check_wap_inv2_no_drift_on_inline_code_in_paren" check_wap_inv2_no_drift_on_inline_code_in_paren
 check "check_no_dangling_section_anchor_references" check_no_dangling_section_anchor_references
+check "check_finding_claims_helper_flags_known_wrong_fixture" check_finding_claims_helper_flags_known_wrong_fixture
+check "check_finding_claims_helper_flags_malformed_no_file_line_fixture" check_finding_claims_helper_flags_malformed_no_file_line_fixture
 echo
 
 # --- R3 weak-phrase compliance check — fixture-based behavioral assertions ---
@@ -5980,6 +5985,19 @@ check "r8-single-source" check_r8_single_source
 check "skill-dispatch-param-block-single-source" check_skill_dispatch_param_block_single_source
 check "evidence-class-allowlist-single-source" check_evidence_class_allowlist_single_source
 check "eof-adjacency-parser-single-source" check_eof_adjacency_parser_single_source
+echo
+
+# --- cap-banner + empirical-verification (spec 2026-05-13) Step 5 pins ---
+# Pins A/B/C are prompt-text (byte-exact anchors on prose); Pin D is schema
+# (R15 frontmatter + body heading + structural placement). Pin C reaches into
+# the KB-resident MISSION.md via cross-repo path resolution (KB_PATH env var,
+# sibling finance-learning checkout, or plugin-root fallback) — same pattern
+# as check_mission_r_enforcement_claim_narrow.
+echo "cap-banner + empirical-verification pins (spec 2026-05-13):"
+check "cross-auditor-empirical-verification-step-present" check_cross_auditor_empirical_verification_step_present
+check "skill-md-cap-banner-present"                       check_skill_md_cap_banner_present
+check "mission-rule-11-amended-and-audit-claims-rule-present" check_mission_rule_11_amended_and_audit_claims_rule_present
+check "r15-present-in-code-quality-rules"                 check_r15_present_in_code_quality_rules
 echo
 
 
