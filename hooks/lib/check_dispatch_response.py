@@ -107,6 +107,15 @@ def _parse_blockers_literal(value):
     inner string scalars with the surrounding single quotes stripped but NO
     un-escaping applied (the caller inspects raw content for YAML-safety).
 
+    The cross-auditor's YAML-safety serialization contract (spec §2.5;
+    `agents/references/cross-auditor-evidence-handshake.md`) requires every
+    list item to be in **single-quoted YAML scalar form**. A list literal is
+    valid ONLY if it is `[]` or a comma-separated sequence of single-quoted
+    scalars. A bare/unquoted scalar item (`[codex unavailable: timeout]`), a
+    double-quoted item (`["double quoted"]`), an empty item, or a mapping is
+    rejected — `ok=False` — so the gate routes the response to the
+    MALFORMED enum rather than green-lighting a non-contract-form literal.
+
     Returns (list_of_raw_items, ok) where ok is False on unparseable shape.
     """
     text = value.strip()
@@ -119,32 +128,44 @@ def _parse_blockers_literal(value):
     i = 0
     n = len(inner)
     while i < n:
-        while i < n and inner[i] in " \t,":
+        while i < n and inner[i] in " \t":
             i += 1
         if i >= n:
-            break
+            # trailing comma / whitespace with no item — malformed
+            return [], False
         if inner[i] != "'":
-            # bare scalar — collect up to next comma
-            start = i
-            while i < n and inner[i] != ",":
-                i += 1
-            items.append(inner[start:i].strip())
-            continue
+            # The contract requires single-quoted scalars only. A bare or
+            # double-quoted item starting here is a non-contract-form list
+            # literal — reject it (X5: bracketed-bad-items hole).
+            return [], False
         # single-quoted scalar — scan to closing quote, honoring '' escape
         i += 1
-        start = i
         buf = []
+        closed = False
         while i < n:
             if inner[i] == "'":
                 if i + 1 < n and inner[i + 1] == "'":
                     buf.append("'")
                     i += 2
                     continue
+                closed = True
+                i += 1  # skip closing quote
                 break
             buf.append(inner[i])
             i += 1
+        if not closed:
+            # ran off the end without a closing quote — malformed
+            return [], False
         items.append("".join(buf))
-        i += 1  # skip closing quote
+        # after a closed scalar only whitespace then a comma (or end) is valid
+        while i < n and inner[i] in " \t":
+            i += 1
+        if i >= n:
+            break
+        if inner[i] != ",":
+            # trailing junk after the closing quote — malformed
+            return [], False
+        i += 1  # skip the comma
     return items, True
 
 

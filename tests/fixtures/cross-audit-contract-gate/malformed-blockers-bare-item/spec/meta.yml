@@ -1,0 +1,4 @@
+expected_classification: MALFORMED_FOOTER_EVIDENCE_BLOCKERS
+expected_exit: 1
+mode: spec
+notes: "synthetic; bracketed list with a bare/unquoted item — not YAML single-quoted scalar form (footer)"
