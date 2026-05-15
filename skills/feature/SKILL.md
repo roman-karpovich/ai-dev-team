@@ -637,7 +637,7 @@ When the initial classifier exit = 1 (any violation), the recovery algorithm dis
 | `CLEAN_SINGLE` + policy gate | Any violation (one of 10) | `contract_violated` | `['<retry-blocker>']` |
 | `CLEAN_SINGLE` + policy gate | classifier exit-2 (crash) | `contract_violated` | `['classifier crash on §3.5b-2a re-spawn: <stderr-excerpt>; initial CLEAN_SINGLE preserved at <raw-path-attempt-1>']` |
 
-The SAME-violation, DIFFERENT-violation, and classifier-exit-2-on-retry cases route to the AWAITING YOUR INPUT banner (the standalone terminal banner in skills/cross-audit/SKILL.md §3.4d for standalone mode, or the existing per-finding triage banner for feature-flow CRITICAL/HIGH residue). All blocker phrasing is sanitized through the §3.5b Orchestrator blocker sanitization rule before being recorded. **Two distinct blocker sources, by outcome:** the clean path (`CLEAN_DUAL` → `[]`; `CLEAN_SINGLE` consumer → Codex-fail-open reason) records the classifier's `blockers_yaml` field verbatim; the `contract_violated` path records the classifier's `violation_blocker` phrasing per the source rule above. `blockers_yaml` MUST NOT be used as the blocker source on the `contract_violated` path — for most violation classes it is `[]`, which would erase the active violation phrasing that §3.5b's Historical-event storage rule requires. Classifier `stderr` excerpts in the exit-2 rows are also orchestrator-sanitized before embedding.
+The SAME-violation, DIFFERENT-violation, and classifier-exit-2-on-retry cases route to the AWAITING YOUR INPUT terminal banner (the standalone terminal banner in skills/cross-audit/SKILL.md §3.4d for standalone mode, or the feature-mode contract-violation terminal banner §3.5b-2d for feature-flow — NOT the per-finding triage banner, which has no findings to present when the classifier gate blocked the read). All blocker phrasing is sanitized through the §3.5b Orchestrator blocker sanitization rule before being recorded. **Two distinct blocker sources, by outcome:** the clean path (`CLEAN_DUAL` → `[]`; `CLEAN_SINGLE` consumer → Codex-fail-open reason) records the classifier's `blockers_yaml` field verbatim; the `contract_violated` path records the classifier's `violation_blocker` phrasing per the source rule above. `blockers_yaml` MUST NOT be used as the blocker source on the `contract_violated` path — for most violation classes it is `[]`, which would erase the active violation phrasing that §3.5b's Historical-event storage rule requires. Classifier `stderr` excerpts in the exit-2 rows are also orchestrator-sanitized before embedding.
 
 ##### 3.5b-2c Capture-failure and classifier-crash banners
 
@@ -674,6 +674,27 @@ Raw response captured to `<capture-path>` for manual inspection. Three options:
 1. **Re-run the classifier with `--debug`** (re-enables the full traceback to stderr; user pastes paths) — the orchestrator does NOT auto-retry; the user diagnoses.
 2. **Manual self-verify** per `feedback_iter_2_audit_fallback.md` six criteria — the orchestrator proceeds with `<phase>_audit_evidence: self_fallback` and blocker `'classifier crash + manual self-verify: <stderr-excerpt>'`.
 3. **Re-spawn cross-auditor** ignoring the classifier crash — treat as if the classifier had returned `MISSING_FOOTER` and follow the §3.5b-2b matrix; the classifier is invoked again on the retry.
+
+**Which option?**
+
+---
+
+##### 3.5b-2d Feature-mode contract-violation terminal banner
+
+For the SAME-violation / DIFFERENT-violation / classifier-exit-2-on-retry branches of the §3.5b-2b retry-outcome matrix in **feature mode** — an Exit-1 violation that the one bounded retry did NOT recover. The §3.5a / callsite-2 gate prose states the classifier output **gates** whether triage runs: on an unrecovered violation no trusted findings were read, so there is nothing for the per-finding triage banner to present. This banner is the feature-mode counterpart of the standalone §3.4d terminal banner — both halves of the handshake terminate symmetrically. The orchestrator records `<phase>_audit_evidence: contract_violated` with the §3.5b-2b matrix blocker, then renders:
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Cross-auditor contract violation — auto-respawn attempted, classifier output:
+- attempt-1: `<initial-classification>` — `<initial-blocker>` (capture: `<raw-path-attempt-1>`)
+- attempt-2: `<retry-classification>` — `<retry-blocker>` (capture: `<raw-path-attempt-2>`)
+
+The classifier gate prevented findings from being read, so there is no per-finding triage to run. Spec frontmatter is set to `<phase>_audit_evidence: contract_violated`. Options:
+
+1. **Manual self-verify** per `feedback_iter_2_audit_fallback.md` six criteria — read the raw responses, decide whether to proceed; the orchestrator records `<phase>_audit_evidence: self_fallback` with the named cause + tracking entry.
+2. **Retry from scratch** — re-run the cross-audit (the cross-auditor is re-spawned with the same parameter block), treating the unrecovered violation as a transient transport failure.
+3. **Ship as-is** — keep `<phase>_audit_evidence: contract_violated`; the spec carries the degraded-flag glyph and the active violation phrasing in `<phase>_audit_blockers`.
 
 **Which option?**
 

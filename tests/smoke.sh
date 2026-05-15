@@ -1264,17 +1264,19 @@ check_banner_convention_doc_valid() {
   echo "banner convention doc has all 7 required substrings"
 }
 
-# (b) feature SKILL.md must have exactly 29 AWAITING banner lines. The total includes
+# (b) feature SKILL.md must have exactly 33 AWAITING banner lines. The total includes
 # the §Code audit triage banner, 5 Attack-surface profile slot prompts, 6 STRIDE-lite
-# prompts, and the §3.5c audit-iteration-cap banner.
+# prompts, the §3.5c audit-iteration-cap banner, the 3 §3.5b-2 recovery banners
+# (project-policy gate, capture-failure, classifier-crash), and the §3.5b-2d
+# feature-mode contract-violation terminal banner.
 check_feature_awaiting_count_17() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "32" ]; then
-    echo "feature AWAITING count=$n expected 32"
+  if [ "$n" != "33" ]; then
+    echo "feature AWAITING count=$n expected 33"
     return 1
   fi
-  echo "feature AWAITING count=32 OK"
+  echo "feature AWAITING count=33 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1422,15 +1424,16 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 32 — includes the
+# (r) ruler-prefix count matches total banner count (expected 33 — includes the
 # §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1,
 # the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2,
 # the §3.5c audit-iteration-cap banner added by spec 2026-05-13-cap-banner-and-empirical-verification Step 2,
 # the 3 §3.5b-2 recovery banners (project-policy gate, capture-failure, classifier-crash)
 # added by spec 2026-05-15-cross-auditor-contract-gate-automation Step 6, the
-# §3.4d standalone terminal banner added by that spec's Step 8, and the 2
+# §3.4d standalone terminal banner added by that spec's Step 8, the 2
 # standalone recovery banners (classifier-crash + project-policy gate) added
-# by that spec's code-audit iter-1 X4 fix).
+# by that spec's code-audit iter-1 X4 fix, and the §3.5b-2d feature-mode
+# contract-violation terminal banner added by that spec's code-audit iter-2 X8 fix).
 check_awaiting_ruler_prefix_count_matches() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1439,19 +1442,20 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "32" ]; then
-    echo "ruler-prefix count=$c expected 32"
+  if [ "$c" != "33" ]; then
+    echo "ruler-prefix count=$c expected 33"
     return 1
   fi
-  echo "ruler-prefix count=32 OK"
+  echo "ruler-prefix count=33 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 43 — includes
+# (s) each banner has trailing bold question within 15 lines (expected 44 — includes
 # the feature Attack-surface profile and STRIDE-lite slot prompts, the §3.5c
 # audit-iteration-cap banner, the 3 §3.5b-2 recovery banners added by spec
 # 2026-05-15-cross-auditor-contract-gate-automation Step 6, the §3.4d
-# standalone terminal banner added by that spec's Step 8, and the 2 standalone
-# recovery banners added by that spec's code-audit iter-1 X4 fix).
+# standalone terminal banner added by that spec's Step 8, the 2 standalone
+# recovery banners added by that spec's code-audit iter-1 X4 fix, and the
+# §3.5b-2d feature-mode terminal banner added by that spec's code-audit iter-2 X8 fix).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1462,11 +1466,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "43" ]; then
-    echo "trailing-bold-present-each count=$c expected 43"
+  if [ "$c" != "44" ]; then
+    echo "trailing-bold-present-each count=$c expected 44"
     return 1
   fi
-  echo "trailing-bold-present-each=43 OK"
+  echo "trailing-bold-present-each=44 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
