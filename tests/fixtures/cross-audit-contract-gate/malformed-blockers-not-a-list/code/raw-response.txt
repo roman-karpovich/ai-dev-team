@@ -1,0 +1,1 @@
+Code audit complete; bare scalar (non-list) evidence_blockers value.

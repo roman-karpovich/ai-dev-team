@@ -474,6 +474,10 @@ Spawn `cross-auditor` subagent with the **same parameter block as the initial fu
 
 The cross-auditor returns findings inline (no KB writes in spec mode).
 
+#### 3.5a Cross-auditor return-contract gate
+
+Before the CRITICAL/HIGH triage below runs, **apply the §3.5b-2 recovery algorithm** to the cross-auditor's raw inline return. This is callsite 1 of the 6 §3.5b-2 callsites — the feature spec-audit Pass 2 spawn. Capture the raw return to `<spec-path>.contract-violation-iter<N>-attempt<M>.raw.txt` per §3.5b-1, invoke `hooks/lib/check_dispatch_response.py --mode spec` (add `--project ai-dev-team` when the spec frontmatter resolves `project: ai-dev-team`), and branch on the classifier exit code per §3.5b-2 step 4. The classifier output **gates** whether the triage below runs: only an Exit-0 `policy_gate: null` PROCEED reaches the CRITICAL/HIGH triage; an Exit-0 `policy_gate: STOP_AND_DISCUSS` raises the §3.5b-2a banner, an Exit-1 violation enters the §3.5b-2b retry-outcome matrix, and an Exit-2 classifier crash raises the §3.5b-2c classifier-crash banner.
+
 **If CRITICAL or HIGH findings:**
 1. Present findings to user
 2. Update spec/workdoc (user edits in Obsidian, or ask Claude to apply the fix)
@@ -514,27 +518,187 @@ Per spec `2026-04-27-audit-evidence-enum.md`. Every audit-terminal site (spec au
 
 - **Code/full mode (file-backed)** — production-file parser. The cross-auditor writes a findings.md with the two scalars in the leading top-of-file YAML frontmatter block (NO `### findings.md` heading anchor — that anchor only applies to smoke validation against the agent SOURCE template). The orchestrator reads from the produced findings.md as `awk '/^---$/{c++; next} c==1' <audit_slug>-findings.md | grep -E '^(evidence_class|evidence_blockers): '`. The production file's H1 is `# Audit Findings: <scope>`, not `### findings.md` — the production parser is unanchored on top-of-file YAML.
 - **File-existence check (code/full mode only).** Before reading frontmatter, the orchestrator MUST check that `<kb>/repos/<project>/security/<audit_slug>-findings.md` exists on disk after the cross-auditor returns. If absent, record `*_audit_evidence: contract_violated` with blocker `'findings.md missing at <path>'` (use the resolved absolute or `<kb>`-relative path, sanitized per the Orchestrator blocker sanitization rule below) and skip the YAML extraction.
-- **Spec mode (inline return)** — parse per `agents/references/cross-auditor-evidence-handshake.md` §Spec-mode return contract (canonical: three-line footer at EOF; sentinel marker; producer-side EOF-adjacency rationale covering the forgotten-footer-with-example-echo and trailing-prose-after-real-footer failure modes — all in the agent prose, single source). The orchestrator's consumer-side parser:
-
-  ```bash
-  while [[ "$captured" == *$'\n' ]]; do captured="${captured%$'\n'}"; done
-  last_three=$(printf '%s\n' "$captured" | tail -3)
-  first_of_three=$(printf '%s\n' "$last_three" | head -1)
-  second_of_three=$(printf '%s\n' "$last_three" | sed -n '2p')
-  third_of_three=$(printf '%s\n' "$last_three" | tail -1)
-  ```
-
-  Routing on parser failure: any of (first-of-three byte-exact full-line equality against the canonical sentinel literal fails | second-of-three prefix `evidence_class: ` fails | third-of-three prefix `evidence_blockers: ` fails) → `*_audit_evidence: contract_violated` per Contract-violation rule below with blocker `'sentinel not at expected EOF-adjacent position'` (covers BOTH sentinel-absent + trailing-prose-after-real-footer cases).
+- **Spec mode (inline return)** — the orchestrator's consumer-side parser is **`hooks/lib/check_dispatch_response.py --mode spec`**, invoked by the §3.5b-2 recovery algorithm (the helper is the single authoritative spec-mode parser). The helper anchors on the LAST `# CROSS-AUDIT EVIDENCE FOOTER` sentinel line and reads the `evidence_class:` / `evidence_blockers:` lines that follow it; it tolerates a footer whose `evidence_blockers` list literal legitimately spans more than one physical line (the newline-unsafe defect — classified `BLOCKER_YAML_UNSAFE_NEWLINE`, a specifically-named violation) and routes the forgotten-footer / trailing-prose-after-footer cases to `MISSING_FOOTER`. The producer-side contract — three-line EOF-adjacent footer, sentinel marker, the rationale covering the forgotten-footer-with-example-echo and trailing-prose-after-real-footer failure modes — is documented canonically (parse per `agents/references/cross-auditor-evidence-handshake.md` §Spec-mode return contract); the `tail -3` parser shape described there is the producer-side reference description of the well-formed EOF-adjacent footer, and `hooks/lib/check_dispatch_response.py` is the authoritative consumer-side implementation (it additionally distinguishes the newline-unsafe defect from a plain missing footer — a distinction a literal `tail -3` cannot make). Routing on parser failure is the §3.5b-2 recovery algorithm's exit-code branch: any classification other than `CLEAN_DUAL` / `CLEAN_SINGLE` is a contract violation (exit 1) carrying the §3.5b-2b `violation_blocker` phrasing; the classifier crashing on its own (exit 2) raises the §3.5b-2c classifier-crash banner.
 
 **Contract-violation rule.** If the cross-auditor's return signal cannot be parsed (either footer line absent/malformed, OR any `evidence_blockers` list item fails YAML-safety scalar validation per cross-auditor's serialization rule: newline→space, truncate to 199 chars, `'`→`''` escape, single-quoted form), OR (code/full mode only) the expected `<kb>/repos/<project>/security/<audit_slug>-findings.md` file is missing on disk after the agent returns, the orchestrator MUST record `*_audit_evidence: contract_violated` and the specific violation as a blocker (e.g. `'cross-auditor return missing evidence_class footer line'`, `'cross-auditor return malformed evidence_class footer'`, `'evidence_blockers entry failed YAML-safety validation'`, `'findings.md missing at <path>'`). Additionally, if the parsed `evidence_class` value is not exactly one of `dual_model | single_model` (the cross-auditor's binary emit allowlist — the agent never writes the orchestrator-only values, so any other token signals a buggy or regressed emitter; including empty/whitespace-only values, which pass the parser shape check but carry no signal), the orchestrator MUST also record `*_audit_evidence: contract_violated` with blocker `'cross-auditor emitted disallowed evidence_class value: <sanitized-value>'` (sanitize the offending value through the Orchestrator blocker sanitization rule below before embedding). Additionally, the orchestrator MUST validate the cross-field invariant between `evidence_class` and `evidence_blockers` per the cross-auditor emit contract (`agents/cross-auditor.md` §When to set): `evidence_class: dual_model` MUST pair with `evidence_blockers: []` (empty list); a non-empty list paired with `dual_model` routes to `*_audit_evidence: contract_violated` with blocker `'cross-auditor emitted dual_model with non-empty evidence_blockers: <sanitized-value>'`. `evidence_class: single_model` MUST pair with a non-empty `evidence_blockers` list; an empty list paired with `single_model` routes to `*_audit_evidence: contract_violated` with blocker `'cross-auditor emitted single_model with empty evidence_blockers'`. Both blocker phrasings pass through the Orchestrator blocker sanitization rule below before embedding in spec frontmatter.
 
-The orchestrator's recovery action — re-spawn the cross-auditor, manually self-verify per `feedback_iter_2_audit_fallback.md` six criteria, or ship the unresolved label as-is — is a separate decision that MAY further update the final evidence value (re-spawn success → final `*_audit_evidence` reflects the successful retry's `evidence_class`; manual self-verify per six criteria → final `*_audit_evidence: self_fallback`). Automation of the recovery path is out of scope for this rule — see Q3 slice 2 (full reliability spec).
+The orchestrator's recovery action — re-spawn the cross-auditor, manually self-verify per `feedback_iter_2_audit_fallback.md` six criteria, or ship the unresolved label as-is — is a separate decision that MAY further update the final evidence value (re-spawn success → final `*_audit_evidence` reflects the successful retry's `evidence_class`; manual self-verify per six criteria → final `*_audit_evidence: self_fallback`). The recovery path is **automated** by the §3.5b-2 recovery algorithm below — every cross-auditor return at any of the 6 callsites runs the §3.5b-2 capture → classify → branch sequence, which dispatches a bounded retry and routes unrecovered violations to a banner.
 
 **Orchestrator blocker sanitization rule.** Every blocker string the orchestrator generates (file-existence-check `<path>`; `self_fallback` cause + tracking entry; explicit-Skip phrasing; Contract-violation example phrasings — including the disallowed-`evidence_class` value embedded per the X2 allowlist clause above) MUST pass through the same YAML-safety sanitizer as cross-auditor blockers (per `agents/cross-auditor.md` §YAML-safety serialization rule for blocker strings: newline→space; truncate to 199 chars and append `…` if truncated; escape single quotes by doubling (`'` → `''`); single-quoted YAML scalar form — see `agents/cross-auditor.md` §YAML-safety serialization rule for blocker strings for the canonical 4-step ordering). The blocker emission path is symmetric on both sides of the handshake — without this symmetry, a path containing an apostrophe (e.g. `/Users/.../it's-a-spec/...`) emitted into the file-existence-check blocker via the `<path>` slot would corrupt the spec's YAML frontmatter and silently de-card the spec from every reader (Status mode, smoke pins, analytical scripts).
 
 **Historical-event storage rule.** Prior `contract_violated` events that were superseded by a successful retry or manual self-verify are recorded in the spec Log ONLY (e.g. `- YYYY-MM-DD: spec audit retry — prior contract_violated event 'cross-auditor return missing evidence_class footer line' on iter-N; recovered iter-N+1`), NOT in `*_audit_blockers`. The `*_audit_blockers` list is tied to the FINAL `*_audit_evidence` value: `dual_model` keeps its `[]` invariant; `single_model` carries Codex-fail-open reasons; `contract_violated` carries the active violation phrasing; `self_fallback` carries the named cause + tracking entry; `skipped` carries the user-skip / zero-diff phrasing. Historical-event accumulation in `*_audit_blockers` is forbidden because it would erase the schema's "blockers describe what blocks the FINAL gold standard" semantics from the parent spec §3.1.
 
 The orchestrator copies `evidence_blockers` from the handshake verbatim into `*_audit_blockers`, then prepends any orchestrator-side blockers (e.g. for `self_fallback`: the named cause + tracking entry; for zero-diff skip: `'no auditable files in diff'`; for explicit Skip: `'spec audit skipped by user'`).
+
+#### 3.5b-1 Raw-response atomic-write protocol
+
+The §3.4 recovery algorithm (referenced from each of the 6 cross-auditor callsites) opens with a **capture step**: the raw cross-auditor response is written to disk BEFORE classification, because that captured file is the single source of post-mortem diagnostic state — without it, a same-iteration retry erases the only evidence of what the cross-auditor actually emitted. The capture MUST be atomic, and capture-failure MUST stop the flow.
+
+**Capture paths** (every path carries an `-attempt<M>` suffix — `M=1` for the initial spawn, `M=2` for a retry — so attempt-2 never overwrites attempt-1 evidence):
+
+- **Spec mode** (callsite 1): `<spec-path>.contract-violation-iter<N>-attempt<M>.raw.txt` — sibling file next to the spec file in `<kb>/repos/<project>/design/`. Raw cross-auditor inline-return text verbatim.
+- **Code/full feature mode** (callsites 2/3/4): `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.raw.txt` — alongside the findings.md path. Raw cross-auditor inline-return text verbatim (NOT the findings.md frontmatter — that is already on disk at `<audit_slug>-findings.md`).
+- **Standalone `/cross-audit`** (callsites 5/6): TWO files — `<...>-contract-violation-iter<N>-attempt<M>.raw.txt` (raw response, captured BEFORE classification) plus a sidecar `<...>-contract-violation-iter<N>-attempt<M>.json` (written AFTER classification, carrying `classifier_output` + embedded-or-referenced raw response per skills/cross-audit/SKILL.md §3.4d).
+
+**Atomic-write protocol.** The atomic-write uses `O_EXCL`-equivalent semantics — a pre-existing target at the `(iter, attempt)` slot is an **error, NOT a silent overwrite** (the same audit slug + iteration + attempt cannot legitimately fire twice; a pre-existing target means a programming bug elsewhere in the orchestrator double-fired, and it MUST fail loud):
+
+```python
+# Atomic capture of the raw cross-auditor response. <capture-path> is the
+# mode-specific contract-violation-iter<N>-attempt<M>.raw.txt path above.
+import os
+
+def capture_raw_response(capture_path, raw_text):
+    # capture_path is the contract-violation-iter<N>-attempt<M>.raw.txt path.
+    # O_EXCL: raises FileExistsError if <capture-path> already exists.
+    try:
+        # os.open + O_EXCL atomic write of the contract-violation-iter
+        # capture — pre-existing target raises, never silently clobbered.
+        fd = os.open(capture_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        # Pre-existing capture target — orchestrator double-fired for the
+        # same (iter, attempt) pair. Distinct error class so the §3.4c
+        # capture-failure banner can name it. Do NOT overwrite.
+        raise PreExistingCaptureTarget(capture_path)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(raw_text)
+```
+
+Alternative implementation via a same-directory temp file (same-filesystem `os.rename` is atomic on POSIX) — equivalent guarantee, also fails loud on a pre-existing target:
+
+```python
+# Equivalent atomic-write of the contract-violation-iter<N>-attempt<M>.raw.txt
+# capture via temp-file + rename. Verify the canonical target is absent first.
+tmp = capture_path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    fh.write(raw_text)
+if os.path.exists(capture_path):
+    raise PreExistingCaptureTarget(capture_path)   # fail loud, never clobber
+os.rename(tmp, capture_path)
+```
+
+The standalone sidecar JSON (`contract-violation-iter<N>-attempt<M>.json`) is written with the same atomic-write protocol AFTER classification. Its shape is **exit-code aware** (§3.5b-2 step 3): on classifier exit 0/1 the `classifier_output` field is populated from the classifier's stdout JSON and `classifier_exit` records the exit code; on classifier exit 2 (crash — empty stdout, no JSON) `classifier_output` is `null`, `classifier_exit` is `2`, and `classifier_stderr` carries the classifier's stderr truncated to 1000 chars. The `raw_response` field carries the full text inline when the raw byte count ≤ 65536 (64 KiB) or `null` plus a `raw_response_path` reference otherwise — independent of the classifier exit code (the raw response is captured in step 1, before classification).
+
+On atomic-write failure — disk full, permission denied, read-only filesystem, or pre-existing target — the orchestrator jumps to the §3.5b-2 capture-failure banner and STOPS (a retry without a captured response would erase the diagnostic). `PreExistingCaptureTarget` is reported with the distinct phrasing `Pre-existing capture target: <path> — orchestrator double-fired for the same (iter, attempt) pair`.
+
+#### 3.5b-2 Cross-auditor return-contract recovery algorithm
+
+Automates the recovery path that §3.5b's Contract-violation rule formerly carved out. After **every** cross-auditor return at any of the 6 callsites (§2.2 of the source spec — feature spec audit, feature code audit Pass 2 spawn, feature code-audit triage-loop re-spawn, feature Continue-mode resume re-spawn, standalone `/cross-audit` initial dispatch, standalone Phase 5 re-audit re-spawn), the orchestrator runs this sequence. All capture paths carry the `-attempt<M>` suffix per §3.5b-1 so an attempt-2 retry never overwrites attempt-1 evidence.
+
+1. **Capture the raw response atomically** as a `contract-violation-iter<N>-attempt<M>.raw.txt` file per §3.5b-1. On atomic-write failure (disk full, permission denied, read-only filesystem, or pre-existing target) → jump to the **capture-failure banner** (§3.5b-2c) and STOP.
+2. **Invoke the classifier** — `python3 hooks/lib/check_dispatch_response.py --mode <spec|code|full> --raw-response-file <captured-.raw.txt-path> --audit-slug <slug> --iteration <N>` plus `--findings-path <path>` for code/full mode, plus `--project ai-dev-team` ONLY when the resolved spec frontmatter has `project: ai-dev-team`. Read the JSON from stdout, the exit code, and stderr.
+3. **(Standalone mode only)** Write the sidecar JSON atomically at `contract-violation-iter<N>-attempt<M>.json` per §3.5b-1. The sidecar shape is **exit-code aware** — the orchestrator reads step 2's exit code first: for exit 0/1 (the classifier ran and produced a JSON) `classifier_output` is populated from step 2's stdout JSON and `classifier_exit` records `0`/`1`; for exit 2 (classifier crash — empty stdout, no JSON) `classifier_output` is `null`, `classifier_exit` is `2`, and `classifier_stderr` carries the classifier's stderr (truncated to 1000 chars). On sidecar-write failure → capture-failure banner (§3.5b-2c) and STOP.
+4. **Branch on the classifier exit code:**
+   - **Exit `2`** (classifier crash — the classifier's own failure; we cannot tell whether the response was valid) → **classifier-crash banner** (§3.5b-2c).
+   - **Exit `0` AND `policy_gate: null`** → **PROCEED**. Copy `evidence_class` + `blockers_yaml` from the classifier JSON into the spec frontmatter (feature mode) or render the Phase 3 banner (standalone mode). `blockers_yaml` is the verbatim blocker source ONLY on this clean path (Exit-0); a `contract_violated` outcome instead records the classifier's `violation_blocker` phrasing per §3.5b-2b. Standard rest-of-flow.
+   - **Exit `0` AND `policy_gate: STOP_AND_DISCUSS`** → the §3.5b-2a project-policy gate fires (ai-dev-team `CLEAN_SINGLE`). **BANNER.**
+   - **Exit `1`** (any of the 10 violation classifications) → contract violation. Branch into the §3.5b-2b retry-outcome decision.
+
+##### 3.5b-2a Project-policy post-classification gate
+
+For `project: ai-dev-team`, `classification: CLEAN_SINGLE` does NOT auto-proceed. Per project policy `feedback_ai_dev_team_dual_model_cross_audit_always.md`: a `single_model` result from a Codex stall must be STOP-and-DISCUSS, not a silent fold to `single_model` evidence. The classifier flags this via `policy_gate: STOP_AND_DISCUSS` (set only when `--project ai-dev-team` was passed AND `classification == CLEAN_SINGLE`). The gate is **detected by the classifier flag but enforced by this orchestrator prose** — the classifier never blocks. Consumer projects (no `--project ai-dev-team`) keep the existing fail-open path (PROCEED with `*_audit_evidence: single_model`) per §3.5b. The orchestrator renders this banner:
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Cross-auditor returned `CLEAN_SINGLE` — Claude-only audit (Codex stalled with reason: `<reason>`). For ai-dev-team project, project policy requires `dual_model` terminal evidence.
+
+Options:
+1. **Re-spawn cross-auditor** to retry Codex (may take 8-15 min; counts as a TRANSPORT retry — does NOT consume `*_audit_iteration` per §3.1c cap-regex semantics). Re-spawn outcome governed by §3.5b-2b Matrix B.
+2. **STOP and discuss** — pause the flow; review whether to escalate the Codex outage, or accept `single_model` evidence as a documented one-time exception with an explicit Log directive.
+3. **Accept single_model** (override project policy for this audit) — record `<phase>_audit_evidence: single_model`, append the Log directive `- YYYY-MM-DD: project-policy override — accepted single_model evidence for <slug> iter-<N>: <reason>`.
+
+**Which option?**
+
+---
+
+##### 3.5b-2b Retry-outcome decision matrix
+
+When the initial classifier exit = 1 (any violation), the recovery algorithm dispatches **one** retry per `feedback_session_handoff_queue_visibility.md` retry-discipline. The retry is a TRANSPORT retry — it does NOT consume `*_audit_iteration` (the iter ≤ 5 cap counts SEMANTIC re-spawns only). Before the retry, append a historical-event Log line per §3.5b Historical-event storage rule (single-line form; the `.raw.txt` sibling / standalone sidecar JSON carries the diagnostic detail). The retry uses **identical parameters** to the initial spawn (same `audit_slug`, `iteration`, `previously_fixed`, `accepted_ids`, `next_finding_id`).
+
+**Source of the `<initial-blocker>` / `<retry-blocker>` strings.** For a `contract_violated` outcome, `*_audit_blockers` carries the **violation-description phrasing**, NOT `blockers_yaml`. The classifier emits this phrasing in its JSON `violation_blocker` field — a canonical per-classification string (e.g. `SINGLE_MODEL_WITHOUT_BLOCKERS` → `'cross-auditor emitted single_model with empty evidence_blockers'`; `FINDINGS_MISSING` → `'findings.md missing at <path>'` with the path slot filled). `violation_blocker` is non-null for every one of the 10 violation classifications and `null` for the two clean classifications. In the matrix below, `<initial-blocker>` is the initial classification's `violation_blocker`, `<retry-blocker>` is the retry classification's `violation_blocker`. (The classifier's `blockers_yaml` field is the YAML-list literal of the *parsed* `evidence_blockers` content — useful only on the clean path; for most violation classes it is `[]` and is NOT the blocker source.)
+
+**Matrix A — contract-violation initial (initial classifier exit = 1):**
+
+| Initial class | Retry class | Final `*_audit_evidence` | Final `*_audit_blockers` |
+|---|---|---|---|
+| Any violation | `CLEAN_DUAL` | `dual_model` | `[]` |
+| Any violation | `CLEAN_SINGLE` (consumer project) | `single_model` | `['codex audit unavailable: <reason>']` |
+| Any violation | `CLEAN_SINGLE` (ai-dev-team) | gated by §3.5b-2a (Re-spawn / STOP / Accept — per user choice) | per user choice |
+| Any violation | SAME violation classification | `contract_violated` | `['<initial-blocker>']` (verbatim — same defect both attempts) |
+| Any violation | DIFFERENT violation classification | `contract_violated` | `['<retry-blocker>']` (retry phrasing wins; initial recorded in Log per §3.5b Historical-event storage rule) |
+| Any violation | classifier exit-2 (crash on retry) | `contract_violated` | `['<initial-blocker>'; 'classifier crash on retry: <stderr-excerpt>']` |
+
+**Matrix B — `CLEAN_SINGLE` policy-gate re-spawn (entered when §3.5b-2a Option 1 "Re-spawn" is chosen for an ai-dev-team `CLEAN_SINGLE` initial):**
+
+| Initial (policy-gated) | Re-spawn class | Final `*_audit_evidence` | Final `*_audit_blockers` |
+|---|---|---|---|
+| `CLEAN_SINGLE` + policy gate | `CLEAN_DUAL` | `dual_model` | `[]` |
+| `CLEAN_SINGLE` + policy gate | `CLEAN_SINGLE` (Codex still stalled) | re-render §3.5b-2a banner with attempt-2 reason | per final user choice |
+| `CLEAN_SINGLE` + policy gate | Any violation (one of 10) | `contract_violated` | `['<retry-blocker>']` |
+| `CLEAN_SINGLE` + policy gate | classifier exit-2 (crash) | `contract_violated` | `['classifier crash on §3.5b-2a re-spawn: <stderr-excerpt>; initial CLEAN_SINGLE preserved at <raw-path-attempt-1>']` |
+
+The SAME-violation, DIFFERENT-violation, and classifier-exit-2-on-retry cases route to the AWAITING YOUR INPUT terminal banner (the standalone terminal banner in skills/cross-audit/SKILL.md §3.4d for standalone mode, or the feature-mode contract-violation terminal banner §3.5b-2d for feature-flow — NOT the per-finding triage banner, which has no findings to present when the classifier gate blocked the read). All blocker phrasing is sanitized through the §3.5b Orchestrator blocker sanitization rule before being recorded. **Two distinct blocker sources, by outcome:** the clean path (`CLEAN_DUAL` → `[]`; `CLEAN_SINGLE` consumer → Codex-fail-open reason) records the classifier's `blockers_yaml` field verbatim; the `contract_violated` path records the classifier's `violation_blocker` phrasing per the source rule above. `blockers_yaml` MUST NOT be used as the blocker source on the `contract_violated` path — for most violation classes it is `[]`, which would erase the active violation phrasing that §3.5b's Historical-event storage rule requires. Classifier `stderr` excerpts in the exit-2 rows are also orchestrator-sanitized before embedding.
+
+##### 3.5b-2c Capture-failure and classifier-crash banners
+
+**Capture-failure banner** (atomic write of the `.raw.txt` or sidecar JSON failed) — without a captured response a retry would erase the diagnostic, so the flow STOPS:
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Cross-auditor returned with contract violation `<classification>`, but raw-response capture FAILED at `<capture-path>.tmp`: `<errno message>`.
+
+Without a captured response, a retry would erase the diagnostic evidence. Three options:
+
+1. **Fix the filesystem issue** (clear disk, fix permissions) and re-run `/feature continue` — the recovery flow resumes from "capture + retry" with the diagnostic preserved.
+2. **Skip capture and retry anyway** (LOSSY — diagnostic lost). Record `<phase>_audit_evidence: contract_violated` with blocker `'capture failed and skipped: <errno>; retry attempt-2 result <classification>'`.
+3. **Ship as-is** without retry — `<phase>_audit_evidence: contract_violated` with blocker `'capture failed; no retry attempted: <errno>'`.
+
+**Which option?**
+
+---
+
+**Classifier-crash banner** (`hooks/lib/check_dispatch_response.py` exited 2 — its own failure; distinct from a contract violation because we do not know whether the response was valid):
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+`hooks/lib/check_dispatch_response.py` exited with code 2 (classifier crash). Stderr:
+
+```
+<classifier stderr verbatim, truncated to 1000 chars>
+```
+
+Raw response captured to `<capture-path>` for manual inspection. Three options:
+
+1. **Re-run the classifier with `--debug`** (re-enables the full traceback to stderr; user pastes paths) — the orchestrator does NOT auto-retry; the user diagnoses.
+2. **Manual self-verify** per `feedback_iter_2_audit_fallback.md` six criteria — the orchestrator proceeds with `<phase>_audit_evidence: self_fallback` and blocker `'classifier crash + manual self-verify: <stderr-excerpt>'`.
+3. **Re-spawn cross-auditor** ignoring the classifier crash — treat as if the classifier had returned `MISSING_FOOTER` and follow the §3.5b-2b matrix; the classifier is invoked again on the retry.
+
+**Which option?**
+
+---
+
+##### 3.5b-2d Feature-mode contract-violation terminal banner
+
+For the SAME-violation / DIFFERENT-violation / classifier-exit-2-on-retry branches of the §3.5b-2b retry-outcome matrix in **feature mode** — an Exit-1 violation that the one bounded retry did NOT recover. The §3.5a / callsite-2 gate prose states the classifier output **gates** whether triage runs: on an unrecovered violation no trusted findings were read, so there is nothing for the per-finding triage banner to present. This banner is the feature-mode counterpart of the standalone §3.4d terminal banner — both halves of the handshake terminate symmetrically. The orchestrator records `<phase>_audit_evidence: contract_violated` with the §3.5b-2b matrix blocker, then renders:
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Cross-auditor contract violation — auto-respawn attempted, classifier output:
+- attempt-1: `<initial-classification>` — `<initial-blocker>` (capture: `<raw-path-attempt-1>`)
+- attempt-2: `<retry-classification>` — `<retry-blocker>` (capture: `<raw-path-attempt-2>`)
+
+The classifier gate prevented findings from being read, so there is no per-finding triage to run. Spec frontmatter is set to `<phase>_audit_evidence: contract_violated`. Options:
+
+1. **Manual self-verify** per `feedback_iter_2_audit_fallback.md` six criteria — read the raw responses, decide whether to proceed; the orchestrator records `<phase>_audit_evidence: self_fallback` with the named cause + tracking entry.
+2. **Retry from scratch** — re-run the cross-audit (the cross-auditor is re-spawned with the same parameter block), treating the unrecovered violation as a transient transport failure.
+3. **Ship as-is** — keep `<phase>_audit_evidence: contract_violated`; the spec carries the degraded-flag glyph and the active violation phrasing in `<phase>_audit_blockers`.
+
+**Which option?**
+
+---
 
 ### 3.5c Stop criteria
 
@@ -614,7 +778,7 @@ See `skills/feature/references/agent-routing.md` for routing triggers and the ca
 
 **Which agent?**
 
-If the current checklist step in §5 carries a `@codex` or `@senior` suffix (case-insensitive; the orchestrator lowercases before matching), evaluate the tag against the routing matrix in `skills/feature/references/agent-routing.md`: the tag is honored iff the step's description matches at least one positive trigger for the tagged agent AND no anti-trigger contradicts it. On honored tag, pre-fill that agent as the banner default and log rationale using the **actual matched positive trigger** — one of `T-C1` / `T-C2` / `T-C3` for `@codex`, one of `T-S1` / `T-S2` / `T-S3` / `T-S4` for `@senior` (never `T-S0`, which is reserved for the fallback case where no positive trigger matched) — with `notes=pre-tagged by spec author` appended. Log only after the user confirms the banner pick (rationale-logging fires post-confirmation per the existing Agent-selection flow); if the user overrides the tagged default, log the final pick with its own rationale, not the tag's. On tag-trigger mismatch (tag present but positive-trigger check fails, or an anti-trigger hits), treat as untagged and emit a one-line preamble warning above the banner noting the mismatch. On malformed tag (unknown agent, wrong spacing, or any suffix form other than `@codex`/`@senior`), hard-stop with a banner asking the user to correct the checklist line before continuing — do NOT silently untag. Untagged steps → use the routing matrix triggers as today.
+If the current checklist step in §5 carries a `@codex` or `@senior` suffix (case-insensitive; the orchestrator lowercases before matching), evaluate the tag against the routing matrix in `skills/feature/references/agent-routing.md`: the tag is honored iff the step's description matches at least one positive trigger for the tagged agent AND no anti-trigger contradicts it. On honored tag, pre-fill that agent as the banner default and log rationale using the **actual matched positive trigger** — one of `T-C1` / `T-C2` / `T-C3` for `@codex`, one of `T-S1` / `T-S2` / `T-S3` / `T-S4` / `T-S5` for `@senior` (never `T-S0`, which is reserved for the fallback case where no positive trigger matched) — with `notes=pre-tagged by spec author` appended. Log only after the user confirms the banner pick (rationale-logging fires post-confirmation per the existing Agent-selection flow); if the user overrides the tagged default, log the final pick with its own rationale, not the tag's. On tag-trigger mismatch (tag present but positive-trigger check fails, or an anti-trigger hits), treat as untagged and emit a one-line preamble warning above the banner noting the mismatch. On malformed tag (unknown agent, wrong spacing, or any suffix form other than `@codex`/`@senior`), hard-stop with a banner asking the user to correct the checklist line before continuing — do NOT silently untag. Untagged steps → use the routing matrix triggers as today.
 
 **Remember the choice**: once the user has picked an agent, append to the spec Log per the canonical format in `skills/feature/references/agent-routing.md` §Rationale logging. Continue mode reads the most recent `last_agent=` entry from the Log and offers that as the default on resume (the user can still override).
 
@@ -721,6 +885,8 @@ Spawn `cross-auditor` with mode: full on the diff (dual-model). Parameters:
 
 If `project_type` resolves to `None`, the cross-auditor normalizes the R-rule filter to `"all"` per `references/code-quality-rules.md` Trigger A, emits a degraded warning header in the findings document at the H1 bullet block (per `agents/cross-auditor.md` §R-rule cluster gate "Warning emit location"), and runs the filter as usual — rules with `applies_to: ["all"]` continue to load; rules with project-specific `applies_to` lists do not match. This is by design — silent skip ships R-rules dead. To activate full project-specific R-rule loading, set `project_type:` in spec frontmatter (recommended), in the project's `.ai-dev-team.local.yml`, or in `.ai-dev-team.yml`.
 
+**Cross-auditor return-contract gate (callsite 2).** When the cross-auditor returns for round `N`, **apply the §3.5b-2 recovery algorithm** before the Log marker is written. This is callsite 2 of the 6 §3.5b-2 callsites — the feature code-audit Pass 2 initial spawn. Capture the raw return to `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.raw.txt` per §3.5b-1, invoke `hooks/lib/check_dispatch_response.py --mode full --findings-path <kb>/repos/<project>/security/<audit_slug>-findings.md` (add `--project ai-dev-team` when the spec frontmatter resolves `project: ai-dev-team`), and branch on the classifier exit code per §3.5b-2 step 4. The classifier output **gates** whether the iteration Log marker below is written: only an Exit-0 `policy_gate: null` PROCEED writes the marker with the round's `evidence=<value>; blockers=[...]`; an Exit-0 `policy_gate: STOP_AND_DISCUSS` raises the §3.5b-2a banner, an Exit-1 violation enters the §3.5b-2b retry-outcome matrix, and an Exit-2 classifier crash raises the §3.5b-2c classifier-crash banner.
+
 The cross-auditor persists code findings in KB. After the cross-auditor
 returns findings for round `N`, write this Log marker immediately. Do
 not write it before the spawn call:
@@ -802,6 +968,7 @@ the rationale `false positive — both auditors erred: <explanation>`.
    - `NO_TESTS`: use the Verify NO_TESTS manual sign-off rules, then
      continue.
 7. Re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`.
+7a. **Apply the §3.4 recovery algorithm** (the §3.5b-2 recovery algorithm) to this re-spawn's classifier output before the Log marker append below — this is callsite 3 of the 6 §3.5b-2 callsites (the code-audit triage-loop re-spawn). The project-policy gate (§3.5b-2a) and retry-outcome matrix (§3.5b-2b) apply identically. Classifier output gates whether step 8 fires (Exit-0 `policy_gate: null` PROCEED) or §3.5b-2b/2c routes to a banner.
 8. After the cross-auditor returns, append:
 `- YYYY-MM-DD: code audit iteration=N+1; fixed_ids=[...]; accepted_ids=[...]`
 
@@ -964,7 +1131,7 @@ Edge cases:
      |---|---|
      | `code audit passed` | Skip straight to hand-off. Code audit already complete. |
      | `code audit: no auditable files in diff; skipping` | Skip to hand-off — deterministic empty-diff skip already applied. |
-     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. |
+     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. **Apply the §3.4 recovery algorithm** (the §3.5b-2 recovery algorithm — callsite 4 of 6) to the re-spawn's classifier output before resuming the triage loop; project-policy gate (§3.5b-2a) and retry-outcome matrix (§3.5b-2b) apply identically. |
      | `code audit iteration=N` (without a later `decisions recorded` or `passed` marker) | Round N findings were returned but triage is pending — **do not** re-spawn the cross-auditor. Re-read the findings file at `<kb>/repos/<project>/security/<slug>-code-findings.md`, collect the findings whose status is `OPEN` or `REOPENED`, re-present them to the user, and resume the §Code audit triage loop from step 1 with those findings. |
      | No code-audit Log entry at all | Fresh code-audit run: re-run the verifier first to confirm the baseline is still green (defensive), then spawn `iteration=1` with `previously_fixed=[]` and `accepted_ids=[]`. |
 

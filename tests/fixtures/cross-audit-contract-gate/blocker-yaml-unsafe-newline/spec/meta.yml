@@ -1,0 +1,4 @@
+expected_classification: BLOCKER_YAML_UNSAFE_NEWLINE
+expected_exit: 1
+mode: spec
+notes: "synthetic; physical newline inside blockers scalar (footer)"

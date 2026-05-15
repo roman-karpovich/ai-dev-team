@@ -1,0 +1,4 @@
+expected_classification: FINDINGS_MALFORMED
+expected_exit: 1
+mode: code
+notes: "synthetic; X11 — frontmatter with two evidence_class: lines is invalid YAML (duplicate mapping key) — must route to FINDINGS_MALFORMED, not classify on the last value"

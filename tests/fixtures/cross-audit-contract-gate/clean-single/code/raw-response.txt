@@ -1,0 +1,1 @@
+Code audit complete (single-model fail-open).

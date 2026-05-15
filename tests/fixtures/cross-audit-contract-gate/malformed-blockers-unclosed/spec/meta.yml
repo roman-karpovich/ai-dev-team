@@ -1,0 +1,4 @@
+expected_classification: MALFORMED_FOOTER_EVIDENCE_BLOCKERS
+expected_exit: 1
+mode: spec
+notes: "synthetic; unclosed bracket — list literal never terminated (footer)"

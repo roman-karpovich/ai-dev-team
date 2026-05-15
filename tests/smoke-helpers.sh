@@ -167,10 +167,31 @@ check_skill_md_agent_selection_tag_read() {
   range=$(awk '/^\*\*Which agent\?\*\*$/,/^\*\*Remember the choice\*\*:/' "$path")
   printf '%s\n' "$range" | grep -qF -- "the tag is honored iff the step's description matches at least one positive trigger for the tagged agent AND no anti-trigger contradicts it" \
     || { echo "$path Agent-selection range missing byte-exact positive-trigger-gate sentence"; return 1; }
-  printf '%s\n' "$range" | grep -qF -- 'one of `T-C1` / `T-C2` / `T-C3` for `@codex`' \
-    || { echo "$path Agent-selection range missing byte-exact Codex rationale-ID enumeration"; return 1; }
-  printf '%s\n' "$range" | grep -qF -- 'one of `T-S1` / `T-S2` / `T-S3` / `T-S4` for `@senior`' \
-    || { echo "$path Agent-selection range missing byte-exact Senior rationale-ID enumeration"; return 1; }
+  # Codex / Senior rationale-ID enumerations: rather than hard-pinning a
+  # byte-exact ID string (which locks the SKILL.md prose to a STALE trigger
+  # set whenever agent-routing.md gains a new T-S#/T-C# — exactly the X13
+  # drift), DERIVE the expected ID list from agent-routing.md and assert
+  # SKILL.md's §Agent selection enumeration matches it. A future T-S6/T-C4
+  # added to agent-routing.md then forces this pin to fail until SKILL.md is
+  # updated, instead of silently re-introducing the drift.
+  local routing='skills/feature/references/agent-routing.md'
+  [ -f "$routing" ] \
+    || { echo "$path Agent-selection pin: agent-routing.md not found at $routing"; return 1; }
+  # Positive Senior triggers are the `**T-S#**:` definition lines EXCLUDING
+  # T-S0 (the fallback — never a pre-tag rationale). Codex triggers are all
+  # `**T-C#**:` lines. extract_md_section-free: grep the bold-ID definitions.
+  local codex_ids senior_ids codex_enum senior_enum
+  codex_ids=$(grep -oE '^\- \*\*T-C[0-9]+\*\*' "$routing" | grep -oE 'T-C[0-9]+' | sort -u)
+  senior_ids=$(grep -oE '^\- \*\*T-S[0-9]+\*\*' "$routing" | grep -oE 'T-S[0-9]+' | grep -v '^T-S0$' | sort -u)
+  [ -n "$codex_ids" ] && [ -n "$senior_ids" ] \
+    || { echo "$path Agent-selection pin: could not extract T-C#/T-S# IDs from agent-routing.md"; return 1; }
+  # Build the expected `\`T-C1\` / \`T-C2\` / ...` enumeration string.
+  codex_enum=$(printf '%s\n' "$codex_ids" | sed 's/.*/`&`/' | paste -sd'~' - | sed 's/~/ \/ /g')
+  senior_enum=$(printf '%s\n' "$senior_ids" | sed 's/.*/`&`/' | paste -sd'~' - | sed 's/~/ \/ /g')
+  printf '%s\n' "$range" | grep -qF -- "one of $codex_enum for \`@codex\`" \
+    || { echo "$path Agent-selection range Codex rationale-ID enumeration drifted from agent-routing.md — expected 'one of $codex_enum for \`@codex\`'"; return 1; }
+  printf '%s\n' "$range" | grep -qF -- "one of $senior_enum for \`@senior\`" \
+    || { echo "$path Agent-selection range Senior rationale-ID enumeration drifted from agent-routing.md — expected 'one of $senior_enum for \`@senior\`'"; return 1; }
   printf '%s\n' "$range" | grep -qF -- 'never `T-S0`' \
     || { echo "$path Agent-selection range missing 'never \`T-S0\`' clause"; return 1; }
   printf '%s\n' "$range" | grep -qF -- 'notes=pre-tagged by spec author' \
@@ -5899,15 +5920,22 @@ check_cross_auditor_replaces_silent_skip_gate() {
 check_spec_mode_footer_sentinel_marker_contract() {
   local f="agents/references/cross-auditor-evidence-handshake.md"
   local skl="skills/feature/SKILL.md"
-  local ca_sent ca_obfusc skl_sent skl_tail3 skl_eof skl_old skl_l424
+  local ca_sent ca_obfusc skl_sent skl_delegate skl_eof skl_old skl_l424
   local ca_l424 ca_l445_parser ca_l445_sem ca_l445_summary ca_l445_4th
   local ca_l424_pos ca_l445_pos
   # Producer fenced positive (X12 locked) — exactly one canonical-spaced sentinel literal site.
   ca_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$f")
   # Producer obfuscated-form positive (X12) — at least one obfuscated form documents the rule.
   ca_obfusc=$(grep -cF 'CROSS-AUDIT-EVIDENCE-FOOTER' "$f")
-  # Consumer parser-shape positives — locks the EOF-adjacency parser shape.
-  skl_tail3=$(grep -cF 'tail -3' "$skl")
+  # Consumer parser positive (code-audit iter-1 X3 reconciliation) — SKILL.md
+  # §3.5b spec-mode READ path delegates to the runtime classifier, which is the
+  # single authoritative consumer-side parser. The superseded inline `tail -3`
+  # shell snippet was removed; `check_dispatch_response.py` distinguishes the
+  # newline-unsafe defect from a plain missing footer (a literal `tail -3`
+  # cannot). The producer doc still describes the `tail -3` shape as the
+  # well-formed-footer reference; the executable parser-shape harness moved to
+  # the classifier's own smoke pin (check_dispatch_response_classification).
+  skl_delegate=$(grep -cF 'hooks/lib/check_dispatch_response.py --mode spec' "$skl")
   skl_eof=$(grep -cF 'EOF-adjacent' "$skl")
   # Consumer parser-shape negative (SKILL.md) — old form removed.
   skl_old=$(grep -cF "awk 'NF' | tail -2" "$skl")
@@ -5925,7 +5953,7 @@ check_spec_mode_footer_sentinel_marker_contract() {
   ca_l445_pos=$(grep -cF 'byte-exact full-line equality' "$f")
   [ "$ca_sent" = "1" ] || { echo "agents: canonical-spaced sentinel literal must appear at EXACTLY ONE site (got $ca_sent)"; return 1; }
   [ "$ca_obfusc" -ge 1 ] || { echo "agents: obfuscated form 'CROSS-AUDIT-EVIDENCE-FOOTER' (hyphenated) missing — required by sentinel-obfuscation rule"; return 1; }
-  [ "$skl_tail3" -ge 1 ] || { echo "SKILL.md: 'tail -3' literal missing — locks EOF-adjacency parser shape"; return 1; }
+  [ "$skl_delegate" -ge 1 ] || { echo "SKILL.md: §3.5b spec-mode READ path must delegate to 'hooks/lib/check_dispatch_response.py --mode spec' (X3 reconciliation — the classifier is the single authoritative consumer-side parser)"; return 1; }
   [ "$skl_eof" -ge 1 ] || { echo "SKILL.md: 'EOF-adjacent' literal missing"; return 1; }
   [ "$skl_old" = "0" ] || { echo "SKILL.md: stale 'awk \\'NF\\' | tail -2' parser form still present"; return 1; }
   [ "$skl_l424" = "0" ] || { echo "SKILL.md: stale 'TWO adjacent literal final lines' wording still present at parallel surface"; return 1; }
@@ -5936,27 +5964,15 @@ check_spec_mode_footer_sentinel_marker_contract() {
   [ "$ca_l445_4th" = "0" ] || { echo "agents: stale L445 'grep -E … | tail -2' historical form still present"; return 1; }
   [ "$ca_l424_pos" -ge 1 ] || { echo "agents: post-rewrite L424 'EXACTLY THREE physical lines' literal missing — locks the rewrite to mandated phrasing"; return 1; }
   [ "$ca_l445_pos" -ge 1 ] || { echo "agents: post-rewrite L445 'byte-exact full-line equality' literal missing"; return 1; }
-  # Executable harness — actually run the published parser shape against three trailing-newline
-  # fixtures (no trailing \n / one trailing \n / two trailing \n) and assert all three route to PASS.
-  # Coincidentally-correct bash $(cmd) capture strips trailing \n; file reads / read -d '' / MCP
-  # byte-exact transport preserve them and used to shift tail -3 off the real footer. The trailing-
-  # newline strip loop normalizes captured input before tail -3.
-  parser_test() {
-    local _captured="$1"
-    while [[ "$_captured" == *$'\n' ]]; do _captured="${_captured%$'\n'}"; done
-    local _last_three _first
-    _last_three=$(printf '%s\n' "$_captured" | tail -3)
-    _first=$(printf '%s\n' "$_last_three" | head -1)
-    [[ "$_first" == "# CROSS-AUDIT EVIDENCE FOOTER" ]]
-  }
-  local parser_pass_cases=0
-  local _variant _fixture
-  for _variant in '' $'\n' $'\n\n'; do
-    _fixture=$'some prose\n# CROSS-AUDIT EVIDENCE FOOTER\nevidence_class: dual_model\nevidence_blockers: []'"$_variant"
-    if parser_test "$_fixture"; then parser_pass_cases=$((parser_pass_cases+1)); fi
-  done
-  [ "$parser_pass_cases" = "3" ] || { echo "executable harness: parser failed on at least one trailing-newline shape (got $parser_pass_cases / 3)"; return 1; }
-  unset -f parser_test
+  # Executable consumer-parser coverage (X3 reconciliation): the SKILL.md
+  # §3.5b spec-mode READ path no longer carries an inline `tail -3` shell
+  # snippet — the runtime classifier `hooks/lib/check_dispatch_response.py`
+  # is the single authoritative consumer-side parser, and it is exercised
+  # against the trailing-newline + sentinel-position fixture set by the
+  # `check_dispatch_response_classification` behavioral pin. No separate
+  # shell-shape harness here would add coverage (it would only re-test a
+  # parser SKILL.md no longer publishes).
+  echo "spec-mode footer sentinel-marker contract OK (consumer parser delegated to check_dispatch_response.py)"
 }
 
 check_cross_auditor_probe_failures_schema_aligned() {
@@ -6401,17 +6417,22 @@ check_evidence_class_allowlist_single_source() {
   echo "evidence_class allowlist single source"
 }
 
-# Step 8 — EOF-adjacency / tail -3 parser single-source.
-# Canonical at agents/cross-auditor.md L430-L450 preserved (heading + producer-side
-# 'forgotten-footer-with-example-echo' token at the closing parser-rationale paragraph).
-# SKILL.md L515 producer-prose duplicate collapsed to 3-line pointer + retained consumer shell
-# + contract-violation routing.
+# Step 8 — EOF-adjacency / spec-mode parser single-source.
+# Canonical at agents/references/cross-auditor-evidence-handshake.md preserved
+# (heading + producer-side 'forgotten-footer-with-example-echo' token at the
+# closing parser-rationale paragraph). SKILL.md §3.5b producer-prose duplicate
+# stays collapsed to the doc pointer. Code-audit iter-1 X3 reconciliation:
+# the §3.5b spec-mode READ path no longer carries the inline `tail -3` shell
+# snippet — the runtime classifier `hooks/lib/check_dispatch_response.py` is
+# the single authoritative consumer-side parser — so the four consumer-shell
+# variable literals and the inline routing-blocker phrasing are no longer
+# pinned here; the classifier-delegation prose is pinned instead.
 check_eof_adjacency_parser_single_source() {
   local skl="skills/feature/SKILL.md"
   local ca="agents/references/cross-auditor-evidence-handshake.md"
   [ -f "$skl" ] || { echo "$skl missing"; return 1; }
   [ -f "$ca" ] || { echo "$ca missing"; return 1; }
-  # Positive — canonical preserved at cross-auditor.md.
+  # Positive — canonical preserved at cross-auditor-evidence-handshake.md.
   if ! grep -qF '### Spec-mode return contract' "$ca"; then
     echo "cross-auditor-evidence-handshake.md missing '### Spec-mode return contract' heading"
     return 1
@@ -6425,25 +6446,19 @@ check_eof_adjacency_parser_single_source() {
     echo "SKILL.md still contains pre-fix duplicate-prose fingerprint 'the prior parser shape, which stripped blank lines'"
     return 1
   fi
-  # Positive — UNIQUELY-NEW pointer present.
+  # Positive — UNIQUELY-NEW pointer to the producer-side contract present.
   if ! grep -qF 'parse per `agents/references/cross-auditor-evidence-handshake.md` §Spec-mode return contract' "$skl"; then
     echo "SKILL.md missing UNIQUELY-NEW pointer literal 'parse per agents/references/cross-auditor-evidence-handshake.md §Spec-mode return contract'"
     return 1
   fi
-  # Positive — 4 consumer-shell variable literals preserved.
-  local v
-  for v in 'last_three=$(' 'first_of_three=$(' 'second_of_three=$(' 'third_of_three=$('; do
-    if ! grep -qF "$v" "$skl"; then
-      echo "SKILL.md missing consumer-shell literal '$v'"
-      return 1
-    fi
-  done
-  # Positive — contract-violation routing preserved.
-  if ! grep -qF "'sentinel not at expected EOF-adjacent position'" "$skl"; then
-    echo "SKILL.md missing canonical contract-violation routing blocker phrasing"
+  # Positive (X3 reconciliation) — the §3.5b spec-mode READ path delegates the
+  # consumer-side parser to the runtime classifier; the superseded inline
+  # `tail -3` shell snippet was removed.
+  if ! grep -qF 'hooks/lib/check_dispatch_response.py --mode spec' "$skl"; then
+    echo "SKILL.md §3.5b spec-mode READ path must delegate to 'hooks/lib/check_dispatch_response.py --mode spec' (X3 reconciliation)"
     return 1
   fi
-  echo "eof-adjacency parser single source"
+  echo "eof-adjacency parser single source (consumer parser delegated to classifier)"
 }
 
 # --- cap-banner + empirical-verification (spec 2026-05-13) Step 5 pins ---
@@ -6672,4 +6687,241 @@ if not (r14_idx < heading_line_idx < taxonomy_idx):
 
 print(f"R15 frontmatter + body section + placement OK (line {heading_line_idx+1}, between R14 and Taxonomy)")
 PY
+}
+
+# Behavioral pin for the cross-auditor return-contract classifier
+# (`hooks/lib/check_dispatch_response.py`). Iterates every sub-fixture under
+# tests/fixtures/cross-audit-contract-gate/*/*/ (27 directories per spec
+# 2026-05-15-cross-auditor-contract-gate-automation §3.3.1 — 21 baseline +
+# 6 X1 malformed-blockers sub-fixtures from code-audit iter-1), invokes the
+# helper as a black box, and asserts:
+#   (a) helper exit code matches meta.yml `expected_exit`;
+#   (b) helper stdout JSON `classification` matches meta.yml
+#       `expected_classification`;
+#   (c) for CLEAN_DUAL / CLEAN_SINGLE fixtures: JSON `evidence_class` is
+#       non-null and `blockers_yaml` is a valid YAML-list literal;
+#   (d) the two policy-gate fixtures (invoked with / without
+#       `--project ai-dev-team`) emit the correct `policy_gate` value.
+check_dispatch_response_classification() {
+  local helper="$PLUGIN_ROOT/hooks/lib/check_dispatch_response.py"
+  local fixture_root="$PLUGIN_ROOT/tests/fixtures/cross-audit-contract-gate"
+  if [ ! -f "$helper" ]; then
+    echo "classifier helper missing: $helper"
+    return 1
+  fi
+  if [ ! -d "$fixture_root" ]; then
+    echo "fixture root missing: $fixture_root"
+    return 1
+  fi
+  local d meta mode expected_class expected_exit project
+  local out_file rc got_class checked=0
+  out_file=$(mktemp)
+  for d in "$fixture_root"/*/*/; do
+    meta="$d/meta.yml"
+    if [ ! -f "$meta" ] || [ ! -f "$d/raw-response.txt" ]; then
+      echo "sub-fixture $d missing meta.yml or raw-response.txt"
+      rm -f "$out_file"
+      return 1
+    fi
+    mode=$(sed -n 's/^mode: *//p' "$meta")
+    expected_class=$(sed -n 's/^expected_classification: *//p' "$meta")
+    expected_exit=$(sed -n 's/^expected_exit: *//p' "$meta")
+    # Policy-gate fixtures: the ai-dev-team variant is invoked WITH
+    # `--project ai-dev-team`; the consumer variant WITHOUT it.
+    project=""
+    case "$d" in
+      *clean-single-policy-gate-ai-dev-team/*) project="ai-dev-team" ;;
+    esac
+    if [ "$mode" = "code" ] || [ "$mode" = "full" ]; then
+      # findings-missing/code/ deliberately lacks findings.md — pass a
+      # non-existent path so the absence triggers FINDINGS_MISSING.
+      if [ -f "$d/findings.md" ]; then
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "$d/raw-response.txt" \
+          --audit-slug "fixture-$expected_class" --iteration 1 \
+          --findings-path "$d/findings.md" >"$out_file" 2>/dev/null
+      else
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "$d/raw-response.txt" \
+          --audit-slug "fixture-$expected_class" --iteration 1 \
+          --findings-path "$d/findings.md" >"$out_file" 2>/dev/null
+      fi
+      rc=$?
+    else
+      if [ -n "$project" ]; then
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "$d/raw-response.txt" \
+          --audit-slug "fixture-$expected_class" --iteration 1 \
+          --project "$project" >"$out_file" 2>/dev/null
+      else
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "$d/raw-response.txt" \
+          --audit-slug "fixture-$expected_class" --iteration 1 \
+          >"$out_file" 2>/dev/null
+      fi
+      rc=$?
+    fi
+    if [ "$rc" != "$expected_exit" ]; then
+      echo "sub-fixture $d: exit $rc, expected $expected_exit"
+      rm -f "$out_file"
+      return 1
+    fi
+    # Assert classification + (conditional) CLEAN_* + policy-gate fields via
+    # python3 reading the JSON from a file (embedded newlines in the
+    # newline-unsafe fixture mean a shell-variable round-trip would corrupt
+    # the payload — read straight from disk).
+    if ! python3 - "$out_file" "$expected_class" "$d" "$project" <<'PY'
+import json
+import sys
+
+out_file, expected_class, fixture_dir, project = sys.argv[1:5]
+try:
+    with open(out_file, "r", encoding="utf-8") as fh:
+        j = json.load(fh)
+except (OSError, ValueError) as exc:
+    print(f"sub-fixture {fixture_dir}: classifier output not valid JSON: "
+          f"{exc}")
+    sys.exit(1)
+
+got = j.get("classification")
+if got != expected_class:
+    print(f"sub-fixture {fixture_dir}: classification {got!r}, "
+          f"expected {expected_class!r}")
+    sys.exit(1)
+
+if expected_class in ("CLEAN_DUAL", "CLEAN_SINGLE"):
+    if j.get("evidence_class") is None:
+        print(f"sub-fixture {fixture_dir}: CLEAN_* but evidence_class is null")
+        sys.exit(1)
+    by = j.get("blockers_yaml")
+    if not isinstance(by, str) or not (by.startswith("[")
+                                       and by.endswith("]")):
+        print(f"sub-fixture {fixture_dir}: blockers_yaml not a list literal: "
+              f"{by!r}")
+        sys.exit(1)
+
+# Policy-gate assertion: ai-dev-team CLEAN_SINGLE -> STOP_AND_DISCUSS;
+# consumer CLEAN_SINGLE -> null.
+if "clean-single-policy-gate" in fixture_dir:
+    pg = j.get("policy_gate")
+    if project == "ai-dev-team":
+        if pg != "STOP_AND_DISCUSS":
+            print(f"sub-fixture {fixture_dir}: policy_gate {pg!r}, "
+                  f"expected STOP_AND_DISCUSS")
+            sys.exit(1)
+    else:
+        if pg is not None:
+            print(f"sub-fixture {fixture_dir}: policy_gate {pg!r}, "
+                  f"expected null")
+            sys.exit(1)
+PY
+    then
+      rm -f "$out_file"
+      return 1
+    fi
+    checked=$((checked + 1))
+  done
+  rm -f "$out_file"
+  if [ "$checked" != "43" ]; then
+    echo "expected 43 sub-fixtures, checked $checked"
+    return 1
+  fi
+  echo "dispatch-response classifier: 43/43 sub-fixtures classified correctly"
+}
+
+# Behavioral pin for the classifier's enum -> violation-blocker phrasing
+# (code-audit iter-1 X2 fix). The §3.5b-2b retry-outcome matrix records the
+# classifier JSON `violation_blocker` string in `*_audit_blockers` for a
+# contract_violated outcome — so every one of the 10 violation classes MUST
+# emit a specific, non-empty, canonical blocker string (and the 2 clean
+# classes MUST emit `violation_blocker: null`). This pin is an INDEPENDENT
+# oracle: the 10 expected (classification, violation_blocker) pairs below are
+# hard-coded here, NOT derived from the classifier's VIOLATION_BLOCKERS dict,
+# so a regression that silently changes a phrasing is caught.
+check_dispatch_response_violation_blocker_mapping() {
+  local helper="$PLUGIN_ROOT/hooks/lib/check_dispatch_response.py"
+  local fxroot="$PLUGIN_ROOT/tests/fixtures/cross-audit-contract-gate"
+  if [ ! -f "$helper" ]; then
+    echo "classifier helper missing: $helper"
+    return 1
+  fi
+  # Each row: <fixture-slug>/<mode> | <expected classification> |
+  # <expected violation_blocker>. One fixture per violation class — the
+  # mode is whichever the fixture provides. Three classes carry a templated
+  # slot the classifier fills from the fixture's offending value:
+  # FINDINGS_MISSING -> <path> (FINDINGS_MISSING_PATH sentinel below);
+  # EVIDENCE_CLASS_DISALLOWED -> the sanitized disallowed evidence_class;
+  # DUAL_MODEL_WITH_BLOCKERS -> the sanitized offending blockers_yaml literal.
+  local rows='missing-footer/spec|MISSING_FOOTER|cross-auditor return missing evidence_class footer line
+malformed-footer-evidence-class/spec|MALFORMED_FOOTER_EVIDENCE_CLASS|cross-auditor return malformed evidence_class footer
+malformed-footer-evidence-blockers/spec|MALFORMED_FOOTER_EVIDENCE_BLOCKERS|cross-auditor return malformed evidence_blockers footer
+findings-missing/code|FINDINGS_MISSING|FINDINGS_MISSING_PATH
+findings-malformed/code|FINDINGS_MALFORMED|cross-auditor findings.md frontmatter malformed
+blocker-yaml-unsafe-apostrophe/spec|BLOCKER_YAML_UNSAFE_APOSTROPHE|evidence_blockers entry failed YAML-safety validation: unescaped apostrophe
+blocker-yaml-unsafe-newline/spec|BLOCKER_YAML_UNSAFE_NEWLINE|evidence_blockers entry failed YAML-safety validation: embedded newline
+evidence-class-disallowed/spec|EVIDENCE_CLASS_DISALLOWED|cross-auditor emitted disallowed evidence_class value: contract_violated
+dual-model-with-blockers/spec|DUAL_MODEL_WITH_BLOCKERS|cross-auditor emitted dual_model with non-empty evidence_blockers: ['"'"''"'"'something'"'"''"'"']
+single-model-without-blockers/spec|SINGLE_MODEL_WITHOUT_BLOCKERS|cross-auditor emitted single_model with empty evidence_blockers'
+  local out_file count=0 line slug mode expect_class expect_blocker
+  out_file=$(mktemp)
+  while IFS='|' read -r slug expect_class expect_blocker; do
+    [ -z "$slug" ] && continue
+    mode="${slug##*/}"
+    local d="$fxroot/${slug%/*}/$mode/"
+    if [ "$mode" = "code" ]; then
+      if [ -f "${d}findings.md" ]; then
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "${d}raw-response.txt" --audit-slug fx \
+          --iteration 1 --findings-path "${d}findings.md" \
+          >"$out_file" 2>/dev/null
+      else
+        # findings-missing: pass the (absent) findings.md path verbatim so
+        # the FINDINGS_MISSING <path> slot is filled deterministically.
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "${d}raw-response.txt" --audit-slug fx \
+          --iteration 1 --findings-path "${d}findings.md" \
+          >"$out_file" 2>/dev/null
+      fi
+    else
+      python3 "$helper" --mode "$mode" \
+        --raw-response-file "${d}raw-response.txt" --audit-slug fx \
+        --iteration 1 >"$out_file" 2>/dev/null
+    fi
+    if ! python3 - "$out_file" "$expect_class" "$expect_blocker" "${d}findings.md" <<'PY'
+import json
+import sys
+
+out_file, expect_class, expect_blocker, findings_path = sys.argv[1:5]
+try:
+    with open(out_file, "r", encoding="utf-8") as fh:
+        j = json.load(fh)
+except (OSError, ValueError) as exc:
+    print(f"violation-blocker pin: classifier output not valid JSON for "
+          f"{expect_class}: {exc}")
+    sys.exit(1)
+if j.get("classification") != expect_class:
+    print(f"violation-blocker pin: classification {j.get('classification')!r}, "
+          f"expected {expect_class!r}")
+    sys.exit(1)
+# FINDINGS_MISSING carries a <path> slot — expected is the resolved path.
+if expect_blocker == "FINDINGS_MISSING_PATH":
+    expect_blocker = f"findings.md missing at {findings_path}"
+got = j.get("violation_blocker")
+if got != expect_blocker:
+    print(f"violation-blocker pin: {expect_class} violation_blocker {got!r}, "
+          f"expected {expect_blocker!r}")
+    sys.exit(1)
+PY
+    then
+      rm -f "$out_file"
+      return 1
+    fi
+    count=$((count + 1))
+  done <<< "$rows"
+  rm -f "$out_file"
+  if [ "$count" != "10" ]; then
+    echo "expected 10 violation classes pinned, checked $count"
+    return 1
+  fi
+  echo "dispatch-response classifier: enum->violation_blocker mapping pinned for all 10 violation classes"
 }

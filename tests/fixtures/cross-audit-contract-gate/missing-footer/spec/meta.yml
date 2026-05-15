@@ -1,0 +1,4 @@
+expected_classification: MISSING_FOOTER
+expected_exit: 1
+mode: spec
+notes: "synthetic; mid-sentence prose ending; no sentinel"

@@ -1,0 +1,4 @@
+expected_classification: SINGLE_MODEL_WITHOUT_BLOCKERS
+expected_exit: 1
+mode: spec
+notes: "synthetic; cross-field invariant violation single_model + empty blockers (footer)"
