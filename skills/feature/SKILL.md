@@ -955,6 +955,7 @@ the rationale `false positive — both auditors erred: <explanation>`.
    - `NO_TESTS`: use the Verify NO_TESTS manual sign-off rules, then
      continue.
 7. Re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`.
+7a. **Apply the §3.4 recovery algorithm** (the §3.5b-2 recovery algorithm) to this re-spawn's classifier output before the Log marker append below — this is callsite 3 of the 6 §3.5b-2 callsites (the code-audit triage-loop re-spawn). The project-policy gate (§3.5b-2a) and retry-outcome matrix (§3.5b-2b) apply identically. Classifier output gates whether step 8 fires (Exit-0 `policy_gate: null` PROCEED) or §3.5b-2b/2c routes to a banner.
 8. After the cross-auditor returns, append:
 `- YYYY-MM-DD: code audit iteration=N+1; fixed_ids=[...]; accepted_ids=[...]`
 
@@ -1117,7 +1118,7 @@ Edge cases:
      |---|---|
      | `code audit passed` | Skip straight to hand-off. Code audit already complete. |
      | `code audit: no auditable files in diff; skipping` | Skip to hand-off — deterministic empty-diff skip already applied. |
-     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. |
+     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. **Apply the §3.4 recovery algorithm** (the §3.5b-2 recovery algorithm — callsite 4 of 6) to the re-spawn's classifier output before resuming the triage loop; project-policy gate (§3.5b-2a) and retry-outcome matrix (§3.5b-2b) apply identically. |
      | `code audit iteration=N` (without a later `decisions recorded` or `passed` marker) | Round N findings were returned but triage is pending — **do not** re-spawn the cross-auditor. Re-read the findings file at `<kb>/repos/<project>/security/<slug>-code-findings.md`, collect the findings whose status is `OPEN` or `REOPENED`, re-present them to the user, and resume the §Code audit triage loop from step 1 with those findings. |
      | No code-audit Log entry at all | Fresh code-audit run: re-run the verifier first to confirm the baseline is still green (defensive), then spawn `iteration=1` with `previously_fixed=[]` and `accepted_ids=[]`. |
 
