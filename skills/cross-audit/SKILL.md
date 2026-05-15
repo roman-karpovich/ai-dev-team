@@ -206,7 +206,7 @@ Standalone `/cross-audit` runs the same return-contract recovery as the feature 
    - **Exit `2`** (classifier crash — empty stdout, no JSON; the classifier's own failure) → the **standalone classifier-crash banner** below. This is a single-attempt diagnostic — it does NOT use the two-attempt §3.4d template, because an exit-2 crash on the initial dispatch produced no classifier JSON to populate `attempt-1`/`attempt-2` with.
    - **Exit `0` AND `policy_gate: null`** → **PROCEED** to the findings.md read (step 1 above).
    - **Exit `0` AND `policy_gate: STOP_AND_DISCUSS`** (arises standalone when `--project ai-dev-team` was passed and the classification is `CLEAN_SINGLE`) → the **standalone project-policy gate banner** below.
-   - **Exit `1`** (any of the 10 violation classifications) → enter the §3.5b-2b retry-outcome matrix (one bounded TRANSPORT retry). If the retry recovers (`CLEAN_DUAL`, or consumer-project `CLEAN_SINGLE`), PROCEED. If the retry is an unrecovered SAME-violation / DIFFERENT-violation, route to the §3.4d standalone terminal banner below.
+   - **Exit `1`** (any of the 10 violation classifications) → enter the §3.5b-2b retry-outcome matrix (one bounded TRANSPORT retry). If the retry recovers (`CLEAN_DUAL`, or consumer-project `CLEAN_SINGLE`), PROCEED. If the retry is an unrecovered SAME-violation / DIFFERENT-violation, OR the retry's classifier itself crashes (classifier exit-2 on the retry — §3.5b-2b Matrix A's third terminal row), route to the §3.4d standalone terminal banner below. The retry's classifier-exit-2 outcome is NOT the same as an exit-2 on the INITIAL dispatch: an initial-dispatch crash produced no classifier JSON and uses the single-attempt classifier-crash banner above; a crash on the RETRY has an attempt-1 violation classification to present and routes to the two-attempt §3.4d banner.
 
 #### Standalone classifier-crash banner
 
@@ -252,14 +252,16 @@ Options:
 
 #### §3.4d Standalone terminal banner
 
-For the SAME-violation / DIFFERENT-violation branches of the §3.5b-2b retry-outcome matrix in standalone mode — i.e. an Exit-1 violation that the one bounded retry did NOT recover (no spec frontmatter — the `.raw.txt` + sidecar JSON pair is the persistent record). This banner is restricted to that unrecovered-after-retry case; an Exit-2 classifier crash uses the standalone classifier-crash banner above, not this template.
+For the SAME-violation / DIFFERENT-violation / classifier-exit-2-on-retry branches of the §3.5b-2b retry-outcome matrix in standalone mode — i.e. an Exit-1 violation that the one bounded retry did NOT recover (no spec frontmatter — the `.raw.txt` + sidecar JSON pair is the persistent record). This is the standalone counterpart of the feature-mode §3.5b-2d terminal banner; both halves of the handshake terminate symmetrically. This banner is restricted to the unrecovered-after-retry case: it covers an Exit-2 classifier crash on the RETRY (attempt-1 still carries a violation classification to present), but an Exit-2 classifier crash on the INITIAL dispatch — which produced no attempt-1 classifier JSON — uses the standalone classifier-crash banner above, not this template.
 
 ---
 ## ⏸ AWAITING YOUR INPUT
 
 Cross-audit contract violation — auto-respawn attempted, classifier output:
 - attempt-1: `<initial-classification>` — `<initial-blocker>` (captures: `<raw-path-attempt-1>` + `<sidecar-path-attempt-1>`)
-- attempt-2: `<retry-classification>` — `<retry-blocker>` (captures: `<raw-path-attempt-2>` + `<sidecar-path-attempt-2>`)
+- attempt-2: `<retry-classification-or-crash>` — `<retry-blocker>` (captures: `<raw-path-attempt-2>` + `<sidecar-path-attempt-2>`)
+
+When attempt-2 is a classifier crash, `<retry-classification-or-crash>` reads `classifier exit-2 (crash on retry)` and `<retry-blocker>` carries the §3.5b-2b Matrix A blocker `['<initial-blocker>'; 'classifier crash on retry: <stderr-excerpt>']`.
 
 Options:
 1. **Manual review of raw output** — read the sidecar JSON(s); if findings can be salvaged from the raw response, paste manually into Phase 3 triage.
