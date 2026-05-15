@@ -6676,8 +6676,9 @@ PY
 
 # Behavioral pin for the cross-auditor return-contract classifier
 # (`hooks/lib/check_dispatch_response.py`). Iterates every sub-fixture under
-# tests/fixtures/cross-audit-contract-gate/*/*/ (21 directories per spec
-# 2026-05-15-cross-auditor-contract-gate-automation §3.3.1), invokes the
+# tests/fixtures/cross-audit-contract-gate/*/*/ (27 directories per spec
+# 2026-05-15-cross-auditor-contract-gate-automation §3.3.1 — 21 baseline +
+# 6 X1 malformed-blockers sub-fixtures from code-audit iter-1), invokes the
 # helper as a black box, and asserts:
 #   (a) helper exit code matches meta.yml `expected_exit`;
 #   (b) helper stdout JSON `classification` matches meta.yml
@@ -6806,9 +6807,9 @@ PY
     checked=$((checked + 1))
   done
   rm -f "$out_file"
-  if [ "$checked" != "21" ]; then
-    echo "expected 21 sub-fixtures, checked $checked"
+  if [ "$checked" != "27" ]; then
+    echo "expected 27 sub-fixtures, checked $checked"
     return 1
   fi
-  echo "dispatch-response classifier: 21/21 sub-fixtures classified correctly"
+  echo "dispatch-response classifier: 27/27 sub-fixtures classified correctly"
 }

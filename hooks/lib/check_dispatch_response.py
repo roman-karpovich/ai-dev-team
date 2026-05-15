@@ -290,7 +290,14 @@ def classify_spec(raw_text):
     if spanned == 1 and blockers_idx != len(lines) - 1:
         return "MISSING_FOOTER", None, [], "[]"
     blockers_safety = _scan_blocker_safety(blockers_raw)
-    blockers_items, _ = _parse_blockers_literal(blockers_raw)
+    blockers_items, blockers_ok = _parse_blockers_literal(blockers_raw)
+    # A non-list `evidence_blockers` value (bare scalar, unclosed bracket,
+    # empty value) is a malformed footer — NOT a silently-empty list. The
+    # newline-unsafe case still has a parseable bracketed shape, so the
+    # safety scan ("unsafe_newline"/"unsafe_apostrophe") takes precedence;
+    # `blockers_ok` only gates the genuinely non-list shape.
+    if not blockers_ok and blockers_safety == "ok":
+        return "MALFORMED_FOOTER_EVIDENCE_BLOCKERS", evidence_class, [], "[]"
     classification = _classify_fields(
         evidence_class, blockers_safety, blockers_items
     )
@@ -328,7 +335,12 @@ def classify_code(findings_path):
     if evidence_class is None or blockers_raw is None:
         return "FINDINGS_MALFORMED", None, [], "[]"
     blockers_safety = _scan_blocker_safety(blockers_raw)
-    blockers_items, _ = _parse_blockers_literal(blockers_raw)
+    blockers_items, blockers_ok = _parse_blockers_literal(blockers_raw)
+    # A non-list `evidence_blockers` value in the findings.md frontmatter is
+    # a malformed findings file — NOT a silently-empty list. As in spec mode
+    # the newline-unsafe safety scan takes precedence over the shape check.
+    if not blockers_ok and blockers_safety == "ok":
+        return "FINDINGS_MALFORMED", evidence_class, [], "[]"
     classification = _classify_fields(
         evidence_class, blockers_safety, blockers_items
     )
