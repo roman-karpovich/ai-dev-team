@@ -1,0 +1,4 @@
+expected_classification: CLEAN_SINGLE
+expected_exit: 0
+mode: code
+notes: "synthetic; X10 — findings.md blocker scalar containing a literal '[' with a following tags: [a, b] frontmatter line must NOT be joined as a continuation"

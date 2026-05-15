@@ -175,6 +175,53 @@ def _parse_blockers_literal(value):
     return items, True
 
 
+def _bracket_depth_delta(text, depth=0, in_quote=False):
+    """Net `[`/`]` depth change of `text`, counting brackets ONLY outside
+    single-quoted scalars.
+
+    Shared quote-aware flow-sequence scanner — the SAME single-quote state
+    machine `_parse_blockers_literal` / `_scan_blocker_safety` use, so all
+    three helpers agree on what counts as structural. A `[` or `]` that
+    appears INSIDE a single-quoted YAML scalar (honoring the `''` doubled
+    escape) is human-readable blocker text, NOT a list delimiter, and must
+    not move the depth (X10: a literal `[` in a blocker scalar formerly
+    tricked the naive `count()` into joining the next frontmatter line).
+
+    `depth` / `in_quote` carry the running state from a prior physical line
+    so a single-quoted scalar that legitimately spans a physical newline
+    (the BLOCKER_YAML_UNSAFE_NEWLINE defect) keeps a `[` or `]` on the
+    continuation line correctly suppressed when it falls inside the still-
+    open quote span (X10 inverse: a `]` inside a newline-split scalar must
+    not balance the literal early and miss the real defect).
+
+    Returns (depth, in_quote) — the updated running state.
+    """
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_quote:
+            if ch == "'":
+                if i + 1 < n and text[i + 1] == "'":
+                    i += 2  # `''` escaped apostrophe — stays inside the span
+                    continue
+                in_quote = False
+                i += 1
+                continue
+            i += 1
+            continue
+        if ch == "'":
+            in_quote = True
+            i += 1
+            continue
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+        i += 1
+    return depth, in_quote
+
+
 def _gather_blockers_value(lines, start_idx):
     """Reconstruct the `evidence_blockers:` value, joining physical lines.
 
@@ -182,6 +229,12 @@ def _gather_blockers_value(lines, start_idx):
     list literal MAY have been split across a physical newline (the
     BLOCKER_YAML_UNSAFE_NEWLINE defect). This helper joins continuation
     lines until the `[` bracket balances (or input is exhausted).
+
+    Bracket balancing is **quote-aware** (`_bracket_depth_delta`): a `[` or
+    `]` inside a single-quoted scalar is blocker text, not a delimiter, so a
+    legitimate single-line blocker whose human-readable text contains a
+    literal bracket is NOT mistaken for an unbalanced multi-line literal
+    (X10).
 
     Returns (joined_value, spanned_lines) where `joined_value` is the text
     after `evidence_blockers: ` with embedded newlines preserved as `\\n`
@@ -192,13 +245,18 @@ def _gather_blockers_value(lines, start_idx):
         else lines[start_idx]
     value = first.lstrip()
     spanned = 1
-    # Balance brackets on the first line.
-    depth = value.count("[") - value.count("]")
+    # Balance brackets on the first line — quote-aware (X10). The `in_quote`
+    # state is carried across continuation joins so a quoted scalar split by
+    # a physical newline keeps later brackets correctly suppressed.
+    depth, in_quote = _bracket_depth_delta(value)
     idx = start_idx + 1
     while depth > 0 and idx < len(lines):
         cont = lines[idx]
         value = value + "\n" + cont
-        depth += cont.count("[") - cont.count("]")
+        # A newline inside an open quote span is itself the structure
+        # `_scan_blocker_safety` flags as unsafe_newline — `'\n'` re-opens
+        # nothing; the quote span simply continues across the join.
+        depth, in_quote = _bracket_depth_delta(cont, depth, in_quote)
         spanned += 1
         idx += 1
     return value, spanned

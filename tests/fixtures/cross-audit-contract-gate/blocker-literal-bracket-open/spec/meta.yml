@@ -1,0 +1,4 @@
+expected_classification: CLEAN_SINGLE
+expected_exit: 0
+mode: spec
+notes: "synthetic; X10 — single-line blocker scalar containing a literal '[' must NOT be misread as an unbalanced multi-line literal"

@@ -6801,11 +6801,11 @@ PY
     checked=$((checked + 1))
   done
   rm -f "$out_file"
-  if [ "$checked" != "33" ]; then
-    echo "expected 33 sub-fixtures, checked $checked"
+  if [ "$checked" != "39" ]; then
+    echo "expected 39 sub-fixtures, checked $checked"
     return 1
   fi
-  echo "dispatch-response classifier: 33/33 sub-fixtures classified correctly"
+  echo "dispatch-response classifier: 39/39 sub-fixtures classified correctly"
 }
 
 # Behavioral pin for the classifier's enum -> violation-blocker phrasing
