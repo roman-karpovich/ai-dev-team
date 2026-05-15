@@ -536,6 +536,56 @@ The orchestrator's recovery action — re-spawn the cross-auditor, manually self
 
 The orchestrator copies `evidence_blockers` from the handshake verbatim into `*_audit_blockers`, then prepends any orchestrator-side blockers (e.g. for `self_fallback`: the named cause + tracking entry; for zero-diff skip: `'no auditable files in diff'`; for explicit Skip: `'spec audit skipped by user'`).
 
+#### 3.5b-1 Raw-response atomic-write protocol
+
+The §3.4 recovery algorithm (referenced from each of the 6 cross-auditor callsites) opens with a **capture step**: the raw cross-auditor response is written to disk BEFORE classification, because that captured file is the single source of post-mortem diagnostic state — without it, a same-iteration retry erases the only evidence of what the cross-auditor actually emitted. The capture MUST be atomic, and capture-failure MUST stop the flow.
+
+**Capture paths** (every path carries an `-attempt<M>` suffix — `M=1` for the initial spawn, `M=2` for a retry — so attempt-2 never overwrites attempt-1 evidence):
+
+- **Spec mode** (callsite 1): `<spec-path>.contract-violation-iter<N>-attempt<M>.raw.txt` — sibling file next to the spec file in `<kb>/repos/<project>/design/`. Raw cross-auditor inline-return text verbatim.
+- **Code/full feature mode** (callsites 2/3/4): `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.raw.txt` — alongside the findings.md path. Raw cross-auditor inline-return text verbatim (NOT the findings.md frontmatter — that is already on disk at `<audit_slug>-findings.md`).
+- **Standalone `/cross-audit`** (callsites 5/6): TWO files — `<...>-contract-violation-iter<N>-attempt<M>.raw.txt` (raw response, captured BEFORE classification) plus a sidecar `<...>-contract-violation-iter<N>-attempt<M>.json` (written AFTER classification, carrying `classifier_output` + embedded-or-referenced raw response per skills/cross-audit/SKILL.md §3.4d).
+
+**Atomic-write protocol.** The atomic-write uses `O_EXCL`-equivalent semantics — a pre-existing target at the `(iter, attempt)` slot is an **error, NOT a silent overwrite** (the same audit slug + iteration + attempt cannot legitimately fire twice; a pre-existing target means a programming bug elsewhere in the orchestrator double-fired, and it MUST fail loud):
+
+```python
+# Atomic capture of the raw cross-auditor response. <capture-path> is the
+# mode-specific contract-violation-iter<N>-attempt<M>.raw.txt path above.
+import os
+
+def capture_raw_response(capture_path, raw_text):
+    # capture_path is the contract-violation-iter<N>-attempt<M>.raw.txt path.
+    # O_EXCL: raises FileExistsError if <capture-path> already exists.
+    try:
+        # os.open + O_EXCL atomic write of the contract-violation-iter
+        # capture — pre-existing target raises, never silently clobbered.
+        fd = os.open(capture_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        # Pre-existing capture target — orchestrator double-fired for the
+        # same (iter, attempt) pair. Distinct error class so the §3.4c
+        # capture-failure banner can name it. Do NOT overwrite.
+        raise PreExistingCaptureTarget(capture_path)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(raw_text)
+```
+
+Alternative implementation via a same-directory temp file (same-filesystem `os.rename` is atomic on POSIX) — equivalent guarantee, also fails loud on a pre-existing target:
+
+```python
+# Equivalent atomic-write of the contract-violation-iter<N>-attempt<M>.raw.txt
+# capture via temp-file + rename. Verify the canonical target is absent first.
+tmp = capture_path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    fh.write(raw_text)
+if os.path.exists(capture_path):
+    raise PreExistingCaptureTarget(capture_path)   # fail loud, never clobber
+os.rename(tmp, capture_path)
+```
+
+The standalone sidecar JSON (`contract-violation-iter<N>-attempt<M>.json`) is written with the same atomic-write protocol AFTER classification — its `classifier_output` field is populated from the classifier's stdout JSON, and its `raw_response` field carries the full text inline when the raw byte count ≤ 65536 (64 KiB) or `null` plus a `raw_response_path` reference otherwise.
+
+On atomic-write failure — disk full, permission denied, read-only filesystem, or pre-existing target — the orchestrator jumps to the §3.4c capture-failure banner and STOPS (a retry without a captured response would erase the diagnostic). `PreExistingCaptureTarget` is reported with the distinct phrasing `Pre-existing capture target: <path> — orchestrator double-fired for the same (iter, attempt) pair`.
+
 ### 3.5c Stop criteria
 
 Per MISSION rule #11 (spec/code audit stop criteria) and MISSION rule #10 (orchestrator-delegation discipline) as the paired control. This subsection documents how the rules apply at orchestrator-runtime decision points after each cross-audit iteration. Applies to BOTH spec audit (§3.5 Pass 2) and code audit (§Code audit Pass 2) phases.
