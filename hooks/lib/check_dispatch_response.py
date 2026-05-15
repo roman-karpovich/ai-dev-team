@@ -70,8 +70,9 @@ ALLOWED_EVIDENCE_CLASSES = ("dual_model", "single_model")
 #     (`evidence_class: value`), no-space (`evidence_class:value`),
 #     tab-after-colon, `=` instead of `:`, hyphen-vs-underscore key spelling,
 #     leading whitespace, case variants. The goal is to DETECT a malformed
-#     attempt, never to silently skip it. Capture group 1 is the normalized
-#     key spelling (lower-cased, `-`/`_` collapsed to `_`).
+#     attempt, never to silently skip it. Only the boolean match result is
+#     used — the validator does not need to bucket an attempt by which key
+#     it was reaching for, so the recognized key spelling is not extracted.
 #
 #   EVIDENCE_KEY_CANONICAL_RE — STRICT canonical form: line start, the exact
 #     lower-case underscore key, a colon, exactly one space, then the value.
@@ -93,16 +94,6 @@ EVIDENCE_KEY_ATTEMPT_RE = re.compile(
 EVIDENCE_KEY_CANONICAL_RE = re.compile(
     r"^(evidence_class|evidence_blockers): ",
 )
-
-
-def _normalize_evidence_key(raw_key):
-    """Normalize a recognized evidence-key spelling to its canonical form.
-
-    Lower-cases and collapses `-` to `_` so `Evidence-Class` / `EVIDENCE_CLASS`
-    / `evidence-class` all map to `evidence_class`. Used only to bucket a
-    malformed attempt under the key it was attempting.
-    """
-    return raw_key.lower().replace("-", "_")
 
 
 def _validate_evidence_keys(fm_lines, skip_lines):
