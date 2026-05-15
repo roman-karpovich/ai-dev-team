@@ -64,8 +64,13 @@ ALLOWED_EVIDENCE_CLASSES = ("dual_model", "single_model")
 # retry-outcome matrix). The clean classifications (CLEAN_DUAL / CLEAN_SINGLE)
 # have no violation blocker — the JSON `violation_blocker` field is null for
 # them and the orchestrator uses `blockers_yaml` instead (the clean path).
-# `FINDINGS_MISSING` carries a `<path>` slot the classifier fills from the
-# resolved findings path.
+# Three entries carry a templated slot the classifier fills in `run()`:
+#   FINDINGS_MISSING          -> `<path>`  (resolved findings path)
+#   EVIDENCE_CLASS_DISALLOWED -> `<value>` (sanitized offending evidence_class)
+#   DUAL_MODEL_WITH_BLOCKERS  -> `<value>` (the offending blockers_yaml literal)
+# The two `<value>` slots satisfy SKILL.md §3.5b's mandate that the
+# disallowed-class and dual_model+blockers phrasings embed the offending
+# value (sanitized) for post-mortem diagnostics.
 VIOLATION_BLOCKERS = {
     "MISSING_FOOTER":
         "cross-auditor return missing evidence_class footer line",
@@ -84,9 +89,10 @@ VIOLATION_BLOCKERS = {
         "evidence_blockers entry failed YAML-safety validation: "
         "embedded newline",
     "EVIDENCE_CLASS_DISALLOWED":
-        "cross-auditor emitted disallowed evidence_class value",
+        "cross-auditor emitted disallowed evidence_class value: <value>",
     "DUAL_MODEL_WITH_BLOCKERS":
-        "cross-auditor emitted dual_model with non-empty evidence_blockers",
+        "cross-auditor emitted dual_model with non-empty "
+        "evidence_blockers: <value>",
     "SINGLE_MODEL_WITHOUT_BLOCKERS":
         "cross-auditor emitted single_model with empty evidence_blockers",
 }
@@ -485,12 +491,25 @@ def run(args):
     # Violation-blocker phrasing: the canonical string the orchestrator
     # records in `*_audit_blockers` for a `contract_violated` outcome (§3.5b-2b
     # retry-outcome matrix). Null for the clean classifications — those use
-    # `blockers_yaml` (the clean path). FINDINGS_MISSING fills its <path> slot.
+    # `blockers_yaml` (the clean path). Three classes carry a templated slot:
+    #   FINDINGS_MISSING          -> <path>  : resolved findings path
+    #   EVIDENCE_CLASS_DISALLOWED -> <value> : sanitized offending evidence_class
+    #   DUAL_MODEL_WITH_BLOCKERS  -> <value> : the offending blockers_yaml literal
+    # The offending value is sanitized through the canonical blocker
+    # sanitizer (§2.5) before embedding, per SKILL.md §3.5b L523.
     violation_blocker = VIOLATION_BLOCKERS.get(classification)
     if violation_blocker is not None and "<path>" in violation_blocker:
         violation_blocker = violation_blocker.replace(
             "<path>", findings_path if findings_path else "<unknown>"
         )
+    if violation_blocker is not None and "<value>" in violation_blocker:
+        if classification == "EVIDENCE_CLASS_DISALLOWED":
+            offending = sanitize_blocker(evidence_class or "")
+        elif classification == "DUAL_MODEL_WITH_BLOCKERS":
+            offending = sanitize_blocker(blockers_yaml or "[]")
+        else:
+            offending = "<unknown>"
+        violation_blocker = violation_blocker.replace("<value>", offending)
 
     result = {
         "classification": classification,

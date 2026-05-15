@@ -6826,7 +6826,11 @@ check_dispatch_response_violation_blocker_mapping() {
   fi
   # Each row: <fixture-slug>/<mode> | <expected classification> |
   # <expected violation_blocker>. One fixture per violation class — the
-  # mode is whichever the fixture provides.
+  # mode is whichever the fixture provides. Three classes carry a templated
+  # slot the classifier fills from the fixture's offending value:
+  # FINDINGS_MISSING -> <path> (FINDINGS_MISSING_PATH sentinel below);
+  # EVIDENCE_CLASS_DISALLOWED -> the sanitized disallowed evidence_class;
+  # DUAL_MODEL_WITH_BLOCKERS -> the sanitized offending blockers_yaml literal.
   local rows='missing-footer/spec|MISSING_FOOTER|cross-auditor return missing evidence_class footer line
 malformed-footer-evidence-class/spec|MALFORMED_FOOTER_EVIDENCE_CLASS|cross-auditor return malformed evidence_class footer
 malformed-footer-evidence-blockers/spec|MALFORMED_FOOTER_EVIDENCE_BLOCKERS|cross-auditor return malformed evidence_blockers footer
@@ -6834,8 +6838,8 @@ findings-missing/code|FINDINGS_MISSING|FINDINGS_MISSING_PATH
 findings-malformed/code|FINDINGS_MALFORMED|cross-auditor findings.md frontmatter malformed
 blocker-yaml-unsafe-apostrophe/spec|BLOCKER_YAML_UNSAFE_APOSTROPHE|evidence_blockers entry failed YAML-safety validation: unescaped apostrophe
 blocker-yaml-unsafe-newline/spec|BLOCKER_YAML_UNSAFE_NEWLINE|evidence_blockers entry failed YAML-safety validation: embedded newline
-evidence-class-disallowed/spec|EVIDENCE_CLASS_DISALLOWED|cross-auditor emitted disallowed evidence_class value
-dual-model-with-blockers/spec|DUAL_MODEL_WITH_BLOCKERS|cross-auditor emitted dual_model with non-empty evidence_blockers
+evidence-class-disallowed/spec|EVIDENCE_CLASS_DISALLOWED|cross-auditor emitted disallowed evidence_class value: contract_violated
+dual-model-with-blockers/spec|DUAL_MODEL_WITH_BLOCKERS|cross-auditor emitted dual_model with non-empty evidence_blockers: ['"'"''"'"'something'"'"''"'"']
 single-model-without-blockers/spec|SINGLE_MODEL_WITHOUT_BLOCKERS|cross-auditor emitted single_model with empty evidence_blockers'
   local out_file count=0 line slug mode expect_class expect_blocker
   out_file=$(mktemp)
