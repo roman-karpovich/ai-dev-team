@@ -269,13 +269,39 @@ def _emit_blockers_yaml(items):
 
 
 def _frontmatter_lines(text):
-    """Return the lines of the first YAML frontmatter block (between the
-    first two `---` delimiter lines), or None if no frontmatter block."""
+    """Return the lines of the leading top-of-file YAML frontmatter block.
+
+    Per the cross-auditor contract (SKILL.md §3.5b — the two scalars are
+    written "in the **leading** top-of-file YAML frontmatter block"), the
+    opening `---` MUST be the first non-empty line of the file. A non-leading
+    `---` block (prose-then-frontmatter) is NOT findings frontmatter and
+    returns None — the caller routes that to FINDINGS_MALFORMED.
+
+    Narrow tolerance: leading blank lines and a leading UTF-8 BOM are
+    permitted before the opening `---` (editor / encoding artifacts); any
+    non-blank prose line before the opening `---` rejects the block.
+
+    Returns the lines between the opening and the next `---` delimiter, or
+    None if there is no leading frontmatter block.
+    """
     lines = text.splitlines()
-    delim_idx = [i for i, ln in enumerate(lines) if ln.rstrip() == "---"]
-    if len(delim_idx) < 2:
+    # Find the first non-empty line, tolerating a leading BOM.
+    open_idx = None
+    for i, ln in enumerate(lines):
+        bare = ln.lstrip("﻿") if i == 0 else ln
+        if bare.strip() == "":
+            continue
+        # First non-empty line: must be the opening `---` delimiter.
+        if bare.rstrip() == "---":
+            open_idx = i
+        break
+    if open_idx is None:
         return None
-    return lines[delim_idx[0] + 1 : delim_idx[1]]
+    # Closing `---` is the next delimiter line after the opening one.
+    for j in range(open_idx + 1, len(lines)):
+        if lines[j].rstrip() == "---":
+            return lines[open_idx + 1 : j]
+    return None
 
 
 def _classify_fields(evidence_class, blockers_safety, blockers_items):
@@ -379,10 +405,14 @@ def classify_code(findings_path):
         return "FINDINGS_MALFORMED", None, [], "[]"
     evidence_class = None
     blockers_raw = None
+    # Match the exact trailing-space key prefix as `classify_spec` does — a
+    # no-space key (`evidence_class:dual_model`) is a malformed frontmatter
+    # line, not a tolerated shape. Keeps spec-mode and code-mode strict in
+    # lockstep (X9: code-mode parser was the lenient one).
     for idx, ln in enumerate(fm):
-        if ln.startswith("evidence_class:"):
-            evidence_class = ln[len("evidence_class:"):].strip()
-        elif ln.startswith("evidence_blockers:"):
+        if ln.startswith("evidence_class: "):
+            evidence_class = ln[len("evidence_class: "):].strip()
+        elif ln.startswith("evidence_blockers: "):
             # Gather the value across physical lines — a list literal split
             # by an embedded newline (the newline-unsafe defect) lands its
             # continuation on subsequent frontmatter lines.

@@ -1,0 +1,1 @@
+Code audit complete; findings.md has prose before the frontmatter block.
