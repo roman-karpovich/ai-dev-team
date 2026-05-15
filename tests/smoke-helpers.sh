@@ -5899,15 +5899,22 @@ check_cross_auditor_replaces_silent_skip_gate() {
 check_spec_mode_footer_sentinel_marker_contract() {
   local f="agents/references/cross-auditor-evidence-handshake.md"
   local skl="skills/feature/SKILL.md"
-  local ca_sent ca_obfusc skl_sent skl_tail3 skl_eof skl_old skl_l424
+  local ca_sent ca_obfusc skl_sent skl_delegate skl_eof skl_old skl_l424
   local ca_l424 ca_l445_parser ca_l445_sem ca_l445_summary ca_l445_4th
   local ca_l424_pos ca_l445_pos
   # Producer fenced positive (X12 locked) — exactly one canonical-spaced sentinel literal site.
   ca_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$f")
   # Producer obfuscated-form positive (X12) — at least one obfuscated form documents the rule.
   ca_obfusc=$(grep -cF 'CROSS-AUDIT-EVIDENCE-FOOTER' "$f")
-  # Consumer parser-shape positives — locks the EOF-adjacency parser shape.
-  skl_tail3=$(grep -cF 'tail -3' "$skl")
+  # Consumer parser positive (code-audit iter-1 X3 reconciliation) — SKILL.md
+  # §3.5b spec-mode READ path delegates to the runtime classifier, which is the
+  # single authoritative consumer-side parser. The superseded inline `tail -3`
+  # shell snippet was removed; `check_dispatch_response.py` distinguishes the
+  # newline-unsafe defect from a plain missing footer (a literal `tail -3`
+  # cannot). The producer doc still describes the `tail -3` shape as the
+  # well-formed-footer reference; the executable parser-shape harness moved to
+  # the classifier's own smoke pin (check_dispatch_response_classification).
+  skl_delegate=$(grep -cF 'hooks/lib/check_dispatch_response.py --mode spec' "$skl")
   skl_eof=$(grep -cF 'EOF-adjacent' "$skl")
   # Consumer parser-shape negative (SKILL.md) — old form removed.
   skl_old=$(grep -cF "awk 'NF' | tail -2" "$skl")
@@ -5925,7 +5932,7 @@ check_spec_mode_footer_sentinel_marker_contract() {
   ca_l445_pos=$(grep -cF 'byte-exact full-line equality' "$f")
   [ "$ca_sent" = "1" ] || { echo "agents: canonical-spaced sentinel literal must appear at EXACTLY ONE site (got $ca_sent)"; return 1; }
   [ "$ca_obfusc" -ge 1 ] || { echo "agents: obfuscated form 'CROSS-AUDIT-EVIDENCE-FOOTER' (hyphenated) missing — required by sentinel-obfuscation rule"; return 1; }
-  [ "$skl_tail3" -ge 1 ] || { echo "SKILL.md: 'tail -3' literal missing — locks EOF-adjacency parser shape"; return 1; }
+  [ "$skl_delegate" -ge 1 ] || { echo "SKILL.md: §3.5b spec-mode READ path must delegate to 'hooks/lib/check_dispatch_response.py --mode spec' (X3 reconciliation — the classifier is the single authoritative consumer-side parser)"; return 1; }
   [ "$skl_eof" -ge 1 ] || { echo "SKILL.md: 'EOF-adjacent' literal missing"; return 1; }
   [ "$skl_old" = "0" ] || { echo "SKILL.md: stale 'awk \\'NF\\' | tail -2' parser form still present"; return 1; }
   [ "$skl_l424" = "0" ] || { echo "SKILL.md: stale 'TWO adjacent literal final lines' wording still present at parallel surface"; return 1; }
@@ -5936,27 +5943,15 @@ check_spec_mode_footer_sentinel_marker_contract() {
   [ "$ca_l445_4th" = "0" ] || { echo "agents: stale L445 'grep -E … | tail -2' historical form still present"; return 1; }
   [ "$ca_l424_pos" -ge 1 ] || { echo "agents: post-rewrite L424 'EXACTLY THREE physical lines' literal missing — locks the rewrite to mandated phrasing"; return 1; }
   [ "$ca_l445_pos" -ge 1 ] || { echo "agents: post-rewrite L445 'byte-exact full-line equality' literal missing"; return 1; }
-  # Executable harness — actually run the published parser shape against three trailing-newline
-  # fixtures (no trailing \n / one trailing \n / two trailing \n) and assert all three route to PASS.
-  # Coincidentally-correct bash $(cmd) capture strips trailing \n; file reads / read -d '' / MCP
-  # byte-exact transport preserve them and used to shift tail -3 off the real footer. The trailing-
-  # newline strip loop normalizes captured input before tail -3.
-  parser_test() {
-    local _captured="$1"
-    while [[ "$_captured" == *$'\n' ]]; do _captured="${_captured%$'\n'}"; done
-    local _last_three _first
-    _last_three=$(printf '%s\n' "$_captured" | tail -3)
-    _first=$(printf '%s\n' "$_last_three" | head -1)
-    [[ "$_first" == "# CROSS-AUDIT EVIDENCE FOOTER" ]]
-  }
-  local parser_pass_cases=0
-  local _variant _fixture
-  for _variant in '' $'\n' $'\n\n'; do
-    _fixture=$'some prose\n# CROSS-AUDIT EVIDENCE FOOTER\nevidence_class: dual_model\nevidence_blockers: []'"$_variant"
-    if parser_test "$_fixture"; then parser_pass_cases=$((parser_pass_cases+1)); fi
-  done
-  [ "$parser_pass_cases" = "3" ] || { echo "executable harness: parser failed on at least one trailing-newline shape (got $parser_pass_cases / 3)"; return 1; }
-  unset -f parser_test
+  # Executable consumer-parser coverage (X3 reconciliation): the SKILL.md
+  # §3.5b spec-mode READ path no longer carries an inline `tail -3` shell
+  # snippet — the runtime classifier `hooks/lib/check_dispatch_response.py`
+  # is the single authoritative consumer-side parser, and it is exercised
+  # against the trailing-newline + sentinel-position fixture set by the
+  # `check_dispatch_response_classification` behavioral pin. No separate
+  # shell-shape harness here would add coverage (it would only re-test a
+  # parser SKILL.md no longer publishes).
+  echo "spec-mode footer sentinel-marker contract OK (consumer parser delegated to check_dispatch_response.py)"
 }
 
 check_cross_auditor_probe_failures_schema_aligned() {
