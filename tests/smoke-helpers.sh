@@ -6813,3 +6813,96 @@ PY
   fi
   echo "dispatch-response classifier: 27/27 sub-fixtures classified correctly"
 }
+
+# Behavioral pin for the classifier's enum -> violation-blocker phrasing
+# (code-audit iter-1 X2 fix). The §3.5b-2b retry-outcome matrix records the
+# classifier JSON `violation_blocker` string in `*_audit_blockers` for a
+# contract_violated outcome — so every one of the 10 violation classes MUST
+# emit a specific, non-empty, canonical blocker string (and the 2 clean
+# classes MUST emit `violation_blocker: null`). This pin is an INDEPENDENT
+# oracle: the 10 expected (classification, violation_blocker) pairs below are
+# hard-coded here, NOT derived from the classifier's VIOLATION_BLOCKERS dict,
+# so a regression that silently changes a phrasing is caught.
+check_dispatch_response_violation_blocker_mapping() {
+  local helper="$PLUGIN_ROOT/hooks/lib/check_dispatch_response.py"
+  local fxroot="$PLUGIN_ROOT/tests/fixtures/cross-audit-contract-gate"
+  if [ ! -f "$helper" ]; then
+    echo "classifier helper missing: $helper"
+    return 1
+  fi
+  # Each row: <fixture-slug>/<mode> | <expected classification> |
+  # <expected violation_blocker>. One fixture per violation class — the
+  # mode is whichever the fixture provides.
+  local rows='missing-footer/spec|MISSING_FOOTER|cross-auditor return missing evidence_class footer line
+malformed-footer-evidence-class/spec|MALFORMED_FOOTER_EVIDENCE_CLASS|cross-auditor return malformed evidence_class footer
+malformed-footer-evidence-blockers/spec|MALFORMED_FOOTER_EVIDENCE_BLOCKERS|cross-auditor return malformed evidence_blockers footer
+findings-missing/code|FINDINGS_MISSING|FINDINGS_MISSING_PATH
+findings-malformed/code|FINDINGS_MALFORMED|cross-auditor findings.md frontmatter malformed
+blocker-yaml-unsafe-apostrophe/spec|BLOCKER_YAML_UNSAFE_APOSTROPHE|evidence_blockers entry failed YAML-safety validation: unescaped apostrophe
+blocker-yaml-unsafe-newline/spec|BLOCKER_YAML_UNSAFE_NEWLINE|evidence_blockers entry failed YAML-safety validation: embedded newline
+evidence-class-disallowed/spec|EVIDENCE_CLASS_DISALLOWED|cross-auditor emitted disallowed evidence_class value
+dual-model-with-blockers/spec|DUAL_MODEL_WITH_BLOCKERS|cross-auditor emitted dual_model with non-empty evidence_blockers
+single-model-without-blockers/spec|SINGLE_MODEL_WITHOUT_BLOCKERS|cross-auditor emitted single_model with empty evidence_blockers'
+  local out_file count=0 line slug mode expect_class expect_blocker
+  out_file=$(mktemp)
+  while IFS='|' read -r slug expect_class expect_blocker; do
+    [ -z "$slug" ] && continue
+    mode="${slug##*/}"
+    local d="$fxroot/${slug%/*}/$mode/"
+    if [ "$mode" = "code" ]; then
+      if [ -f "${d}findings.md" ]; then
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "${d}raw-response.txt" --audit-slug fx \
+          --iteration 1 --findings-path "${d}findings.md" \
+          >"$out_file" 2>/dev/null
+      else
+        # findings-missing: pass the (absent) findings.md path verbatim so
+        # the FINDINGS_MISSING <path> slot is filled deterministically.
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "${d}raw-response.txt" --audit-slug fx \
+          --iteration 1 --findings-path "${d}findings.md" \
+          >"$out_file" 2>/dev/null
+      fi
+    else
+      python3 "$helper" --mode "$mode" \
+        --raw-response-file "${d}raw-response.txt" --audit-slug fx \
+        --iteration 1 >"$out_file" 2>/dev/null
+    fi
+    if ! python3 - "$out_file" "$expect_class" "$expect_blocker" "${d}findings.md" <<'PY'
+import json
+import sys
+
+out_file, expect_class, expect_blocker, findings_path = sys.argv[1:5]
+try:
+    with open(out_file, "r", encoding="utf-8") as fh:
+        j = json.load(fh)
+except (OSError, ValueError) as exc:
+    print(f"violation-blocker pin: classifier output not valid JSON for "
+          f"{expect_class}: {exc}")
+    sys.exit(1)
+if j.get("classification") != expect_class:
+    print(f"violation-blocker pin: classification {j.get('classification')!r}, "
+          f"expected {expect_class!r}")
+    sys.exit(1)
+# FINDINGS_MISSING carries a <path> slot — expected is the resolved path.
+if expect_blocker == "FINDINGS_MISSING_PATH":
+    expect_blocker = f"findings.md missing at {findings_path}"
+got = j.get("violation_blocker")
+if got != expect_blocker:
+    print(f"violation-blocker pin: {expect_class} violation_blocker {got!r}, "
+          f"expected {expect_blocker!r}")
+    sys.exit(1)
+PY
+    then
+      rm -f "$out_file"
+      return 1
+    fi
+    count=$((count + 1))
+  done <<< "$rows"
+  rm -f "$out_file"
+  if [ "$count" != "10" ]; then
+    echo "expected 10 violation classes pinned, checked $count"
+    return 1
+  fi
+  echo "dispatch-response classifier: enum->violation_blocker mapping pinned for all 10 violation classes"
+}

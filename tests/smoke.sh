@@ -5519,6 +5519,7 @@ check "orchestrator-blocker-sanitization-rule"             check_skill_orchestra
 check "contract-violated-evidence-pair-invariant"          check_skill_evidence_pair_invariant
 check "findings-path-coherence"                            check_skill_findings_path_coherence
 check "dispatch-response-classifier-fixtures"              check_dispatch_response_classification
+check "dispatch-response-violation-blocker-mapping"        check_dispatch_response_violation_blocker_mapping
 check "repo-findings-path-coherence"                       check_repo_findings_path_coherence
 check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected

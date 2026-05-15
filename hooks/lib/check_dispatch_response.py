@@ -57,6 +57,40 @@ SENTINEL = "# CROSS-AUDIT EVIDENCE FOOTER"
 
 ALLOWED_EVIDENCE_CLASSES = ("dual_model", "single_model")
 
+# Canonical enum -> violation-blocker phrasing. For every non-clean
+# classification this is the string the orchestrator records in
+# `*_audit_blockers` when the outcome is `contract_violated` (see
+# skills/feature/SKILL.md §3.5b Contract-violation rule + §3.5b-2b
+# retry-outcome matrix). The clean classifications (CLEAN_DUAL / CLEAN_SINGLE)
+# have no violation blocker — the JSON `violation_blocker` field is null for
+# them and the orchestrator uses `blockers_yaml` instead (the clean path).
+# `FINDINGS_MISSING` carries a `<path>` slot the classifier fills from the
+# resolved findings path.
+VIOLATION_BLOCKERS = {
+    "MISSING_FOOTER":
+        "cross-auditor return missing evidence_class footer line",
+    "MALFORMED_FOOTER_EVIDENCE_CLASS":
+        "cross-auditor return malformed evidence_class footer",
+    "MALFORMED_FOOTER_EVIDENCE_BLOCKERS":
+        "cross-auditor return malformed evidence_blockers footer",
+    "FINDINGS_MISSING":
+        "findings.md missing at <path>",
+    "FINDINGS_MALFORMED":
+        "cross-auditor findings.md frontmatter malformed",
+    "BLOCKER_YAML_UNSAFE_APOSTROPHE":
+        "evidence_blockers entry failed YAML-safety validation: "
+        "unescaped apostrophe",
+    "BLOCKER_YAML_UNSAFE_NEWLINE":
+        "evidence_blockers entry failed YAML-safety validation: "
+        "embedded newline",
+    "EVIDENCE_CLASS_DISALLOWED":
+        "cross-auditor emitted disallowed evidence_class value",
+    "DUAL_MODEL_WITH_BLOCKERS":
+        "cross-auditor emitted dual_model with non-empty evidence_blockers",
+    "SINGLE_MODEL_WITHOUT_BLOCKERS":
+        "cross-auditor emitted single_model with empty evidence_blockers",
+}
+
 
 class ClassifierCrash(Exception):
     """Raised for the classifier's own failure (usage / IO / marshalling).
@@ -397,12 +431,23 @@ def run(args):
 
     exit_code = 0 if classification in ("CLEAN_DUAL", "CLEAN_SINGLE") else 1
 
+    # Violation-blocker phrasing: the canonical string the orchestrator
+    # records in `*_audit_blockers` for a `contract_violated` outcome (§3.5b-2b
+    # retry-outcome matrix). Null for the clean classifications — those use
+    # `blockers_yaml` (the clean path). FINDINGS_MISSING fills its <path> slot.
+    violation_blocker = VIOLATION_BLOCKERS.get(classification)
+    if violation_blocker is not None and "<path>" in violation_blocker:
+        violation_blocker = violation_blocker.replace(
+            "<path>", findings_path if findings_path else "<unknown>"
+        )
+
     result = {
         "classification": classification,
         "evidence_class": evidence_class,
         "evidence_blockers": list(blockers_items),
         "blockers_yaml": blockers_yaml,
         "blockers": list(blockers_items),
+        "violation_blocker": violation_blocker,
         "policy_gate": policy_gate,
         "iteration": args.iteration,
         "audit_slug": args.audit_slug,
