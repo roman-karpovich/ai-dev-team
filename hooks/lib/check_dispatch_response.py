@@ -114,6 +114,35 @@ def _parse_blockers_literal(value):
     return items, True
 
 
+def _gather_blockers_value(lines, start_idx):
+    """Reconstruct the `evidence_blockers:` value, joining physical lines.
+
+    `lines[start_idx]` is the `evidence_blockers: ...` line; its bracketed
+    list literal MAY have been split across a physical newline (the
+    BLOCKER_YAML_UNSAFE_NEWLINE defect). This helper joins continuation
+    lines until the `[` bracket balances (or input is exhausted).
+
+    Returns (joined_value, spanned_lines) where `joined_value` is the text
+    after `evidence_blockers: ` with embedded newlines preserved as `\\n`
+    and `spanned_lines` is the count of physical lines the value occupied
+    (1 = well-formed single-line literal; >1 = physical-newline defect).
+    """
+    first = lines[start_idx].split(":", 1)[1] if ":" in lines[start_idx] \
+        else lines[start_idx]
+    value = first.lstrip()
+    spanned = 1
+    # Balance brackets on the first line.
+    depth = value.count("[") - value.count("]")
+    idx = start_idx + 1
+    while depth > 0 and idx < len(lines):
+        cont = lines[idx]
+        value = value + "\n" + cont
+        depth += cont.count("[") - cont.count("]")
+        spanned += 1
+        idx += 1
+    return value, spanned
+
+
 def _scan_blocker_safety(raw_value):
     """Inspect the raw blockers literal text for YAML-safety violations.
 
@@ -121,7 +150,8 @@ def _scan_blocker_safety(raw_value):
     Operates on the raw literal text (pre-parse) because an unescaped
     apostrophe is detectable only in the raw single-quoted form.
     """
-    # Physical newline anywhere inside the list literal is unsafe.
+    # Physical newline anywhere inside the list literal is unsafe — the
+    # canonical YAML-safety rule (§2.5) requires newline->space before emit.
     if "\n" in raw_value or "\r" in raw_value:
         return "unsafe_newline"
     text = raw_value.strip()
@@ -223,21 +253,42 @@ def classify_spec(raw_text):
     """Classify a spec-mode inline-return text.
 
     Returns (classification, evidence_class, blockers_items, blockers_yaml).
+
+    The footer is the LAST sentinel-anchored block: the sentinel line, then
+    an `evidence_class: ` line, then the `evidence_blockers: ` line whose
+    list literal may span >1 physical line (the newline-unsafe defect — the
+    `evidence_blockers` value is the rest of the response after the
+    `evidence_class:` line).
     """
-    # Strip ALL trailing newlines (transport artifact) then take last 3 lines.
+    # Strip ALL trailing newlines (transport artifact).
     stripped = raw_text.rstrip("\n").rstrip("\r\n")
     lines = stripped.splitlines()
     if len(lines) < 3:
         return "MISSING_FOOTER", None, [], "[]"
-    footer = lines[-3:]
-    if footer[0] != SENTINEL:
+    # Anchor on the LAST occurrence of the sentinel line.
+    sentinel_idx = None
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i] == SENTINEL:
+            sentinel_idx = i
+            break
+    # The sentinel must be 3rd-from-EOF for a well-formed footer; a sentinel
+    # further from EOF is acceptable ONLY when the extra trailing lines are
+    # the continuation of a multi-line (newline-unsafe) evidence_blockers
+    # value. Anything else (no sentinel, sentinel not near EOF) is missing.
+    if sentinel_idx is None or sentinel_idx > len(lines) - 3:
         return "MISSING_FOOTER", None, [], "[]"
-    if not footer[1].startswith("evidence_class: "):
+    class_line = lines[sentinel_idx + 1]
+    blockers_idx = sentinel_idx + 2
+    if not class_line.startswith("evidence_class: "):
         return "MALFORMED_FOOTER_EVIDENCE_CLASS", None, [], "[]"
-    if not footer[2].startswith("evidence_blockers: "):
+    if not lines[blockers_idx].startswith("evidence_blockers: "):
         return "MALFORMED_FOOTER_EVIDENCE_BLOCKERS", None, [], "[]"
-    evidence_class = footer[1][len("evidence_class: "):].strip()
-    blockers_raw = footer[2][len("evidence_blockers: "):]
+    evidence_class = class_line[len("evidence_class: "):].strip()
+    blockers_raw, spanned = _gather_blockers_value(lines, blockers_idx)
+    # A footer that is exactly 3 physical lines (spanned == 1) AND has no
+    # trailing lines beyond the blockers line is the well-formed shape.
+    if spanned == 1 and blockers_idx != len(lines) - 1:
+        return "MISSING_FOOTER", None, [], "[]"
     blockers_safety = _scan_blocker_safety(blockers_raw)
     blockers_items, _ = _parse_blockers_literal(blockers_raw)
     classification = _classify_fields(
@@ -266,11 +317,14 @@ def classify_code(findings_path):
         return "FINDINGS_MALFORMED", None, [], "[]"
     evidence_class = None
     blockers_raw = None
-    for ln in fm:
+    for idx, ln in enumerate(fm):
         if ln.startswith("evidence_class:"):
             evidence_class = ln[len("evidence_class:"):].strip()
         elif ln.startswith("evidence_blockers:"):
-            blockers_raw = ln[len("evidence_blockers:"):].strip()
+            # Gather the value across physical lines — a list literal split
+            # by an embedded newline (the newline-unsafe defect) lands its
+            # continuation on subsequent frontmatter lines.
+            blockers_raw, _ = _gather_blockers_value(fm, idx)
     if evidence_class is None or blockers_raw is None:
         return "FINDINGS_MALFORMED", None, [], "[]"
     blockers_safety = _scan_blocker_safety(blockers_raw)
