@@ -6396,17 +6396,22 @@ check_evidence_class_allowlist_single_source() {
   echo "evidence_class allowlist single source"
 }
 
-# Step 8 — EOF-adjacency / tail -3 parser single-source.
-# Canonical at agents/cross-auditor.md L430-L450 preserved (heading + producer-side
-# 'forgotten-footer-with-example-echo' token at the closing parser-rationale paragraph).
-# SKILL.md L515 producer-prose duplicate collapsed to 3-line pointer + retained consumer shell
-# + contract-violation routing.
+# Step 8 — EOF-adjacency / spec-mode parser single-source.
+# Canonical at agents/references/cross-auditor-evidence-handshake.md preserved
+# (heading + producer-side 'forgotten-footer-with-example-echo' token at the
+# closing parser-rationale paragraph). SKILL.md §3.5b producer-prose duplicate
+# stays collapsed to the doc pointer. Code-audit iter-1 X3 reconciliation:
+# the §3.5b spec-mode READ path no longer carries the inline `tail -3` shell
+# snippet — the runtime classifier `hooks/lib/check_dispatch_response.py` is
+# the single authoritative consumer-side parser — so the four consumer-shell
+# variable literals and the inline routing-blocker phrasing are no longer
+# pinned here; the classifier-delegation prose is pinned instead.
 check_eof_adjacency_parser_single_source() {
   local skl="skills/feature/SKILL.md"
   local ca="agents/references/cross-auditor-evidence-handshake.md"
   [ -f "$skl" ] || { echo "$skl missing"; return 1; }
   [ -f "$ca" ] || { echo "$ca missing"; return 1; }
-  # Positive — canonical preserved at cross-auditor.md.
+  # Positive — canonical preserved at cross-auditor-evidence-handshake.md.
   if ! grep -qF '### Spec-mode return contract' "$ca"; then
     echo "cross-auditor-evidence-handshake.md missing '### Spec-mode return contract' heading"
     return 1
@@ -6420,25 +6425,19 @@ check_eof_adjacency_parser_single_source() {
     echo "SKILL.md still contains pre-fix duplicate-prose fingerprint 'the prior parser shape, which stripped blank lines'"
     return 1
   fi
-  # Positive — UNIQUELY-NEW pointer present.
+  # Positive — UNIQUELY-NEW pointer to the producer-side contract present.
   if ! grep -qF 'parse per `agents/references/cross-auditor-evidence-handshake.md` §Spec-mode return contract' "$skl"; then
     echo "SKILL.md missing UNIQUELY-NEW pointer literal 'parse per agents/references/cross-auditor-evidence-handshake.md §Spec-mode return contract'"
     return 1
   fi
-  # Positive — 4 consumer-shell variable literals preserved.
-  local v
-  for v in 'last_three=$(' 'first_of_three=$(' 'second_of_three=$(' 'third_of_three=$('; do
-    if ! grep -qF "$v" "$skl"; then
-      echo "SKILL.md missing consumer-shell literal '$v'"
-      return 1
-    fi
-  done
-  # Positive — contract-violation routing preserved.
-  if ! grep -qF "'sentinel not at expected EOF-adjacent position'" "$skl"; then
-    echo "SKILL.md missing canonical contract-violation routing blocker phrasing"
+  # Positive (X3 reconciliation) — the §3.5b spec-mode READ path delegates the
+  # consumer-side parser to the runtime classifier; the superseded inline
+  # `tail -3` shell snippet was removed.
+  if ! grep -qF 'hooks/lib/check_dispatch_response.py --mode spec' "$skl"; then
+    echo "SKILL.md §3.5b spec-mode READ path must delegate to 'hooks/lib/check_dispatch_response.py --mode spec' (X3 reconciliation)"
     return 1
   fi
-  echo "eof-adjacency parser single source"
+  echo "eof-adjacency parser single source (consumer parser delegated to classifier)"
 }
 
 # --- cap-banner + empirical-verification (spec 2026-05-13) Step 5 pins ---
