@@ -193,8 +193,7 @@ def _frontmatter_lines(text):
     return lines[delim_idx[0] + 1 : delim_idx[1]]
 
 
-def _classify_fields(evidence_class, blockers_raw, blockers_safety,
-                      blockers_items):
+def _classify_fields(evidence_class, blockers_safety, blockers_items):
     """Apply the value/cross-field invariants common to spec + code mode.
 
     Returns a classification enum value. Caller has already confirmed the
@@ -242,7 +241,7 @@ def classify_spec(raw_text):
     blockers_safety = _scan_blocker_safety(blockers_raw)
     blockers_items, _ = _parse_blockers_literal(blockers_raw)
     classification = _classify_fields(
-        evidence_class, blockers_raw, blockers_safety, blockers_items
+        evidence_class, blockers_safety, blockers_items
     )
     blockers_yaml = _emit_blockers_yaml(blockers_items)
     return classification, evidence_class, blockers_items, blockers_yaml
@@ -277,7 +276,7 @@ def classify_code(findings_path):
     blockers_safety = _scan_blocker_safety(blockers_raw)
     blockers_items, _ = _parse_blockers_literal(blockers_raw)
     classification = _classify_fields(
-        evidence_class, blockers_raw, blockers_safety, blockers_items
+        evidence_class, blockers_safety, blockers_items
     )
     blockers_yaml = _emit_blockers_yaml(blockers_items)
     return classification, evidence_class, blockers_items, blockers_yaml
