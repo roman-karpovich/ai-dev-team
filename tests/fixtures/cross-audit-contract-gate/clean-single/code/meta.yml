@@ -1,0 +1,4 @@
+expected_classification: CLEAN_SINGLE
+expected_exit: 0
+mode: code
+notes: "synthetic; clean single-model findings.md frontmatter"

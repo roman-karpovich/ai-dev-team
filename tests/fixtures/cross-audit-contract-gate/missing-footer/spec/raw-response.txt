@@ -1,0 +1,2 @@
+Cross-audit findings summary: I reviewed the diff and was about to consolidate the
+results when the response ended mid-sent

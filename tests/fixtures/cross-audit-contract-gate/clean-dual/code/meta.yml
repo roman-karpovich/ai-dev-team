@@ -1,0 +1,4 @@
+expected_classification: CLEAN_DUAL
+expected_exit: 0
+mode: code
+notes: "synthetic; clean dual-model findings.md frontmatter"
