@@ -1,0 +1,4 @@
+expected_classification: MALFORMED_FOOTER_EVIDENCE_BLOCKERS
+expected_exit: 1
+mode: spec
+notes: "synthetic; bare scalar (non-list) evidence_blockers value (footer)"

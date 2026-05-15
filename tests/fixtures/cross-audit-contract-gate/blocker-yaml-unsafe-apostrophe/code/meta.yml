@@ -1,0 +1,4 @@
+expected_classification: BLOCKER_YAML_UNSAFE_APOSTROPHE
+expected_exit: 1
+mode: code
+notes: "synthetic; unescaped apostrophe in single-quoted scalar (findings.md)"

@@ -1,0 +1,4 @@
+expected_classification: CLEAN_SINGLE
+expected_exit: 0
+mode: spec
+notes: "synthetic; policy-gate fixture — pin invokes WITHOUT --project flag; expect policy_gate null"

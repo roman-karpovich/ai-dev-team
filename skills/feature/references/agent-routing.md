@@ -28,6 +28,7 @@ resume. Trigger IDs below (`T-C#`, `T-S#`) are the only valid `rationale=` value
 - **T-S2**: Soroban / smart-contract logic
 - **T-S3**: security-sensitive code (auth, crypto, secret handling, contract authorization)
 - **T-S4**: scope is ambiguous, design decisions emerge during implementation
+- **T-S5**: ai-dev-team plugin work (project policy override per feedback_ai_dev_team_dev_senior_default.md)
 
 **Anti-triggers** (don't pick Senior if):
 - spec is fully prompt-specifiable and a pattern already exists (prefer Codex)

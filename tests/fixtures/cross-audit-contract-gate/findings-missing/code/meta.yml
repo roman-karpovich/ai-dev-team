@@ -1,0 +1,4 @@
+expected_classification: FINDINGS_MISSING
+expected_exit: 1
+mode: code
+notes: "synthetic; no findings.md present; non-existent --findings-path passed by pin"

@@ -1,0 +1,1 @@
+Code audit complete; findings.md frontmatter has a malformed no-space evidence_blockers sibling key alongside a valid canonical line.

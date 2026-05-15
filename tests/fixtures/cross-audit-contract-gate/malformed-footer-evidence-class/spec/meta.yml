@@ -1,0 +1,4 @@
+expected_classification: MALFORMED_FOOTER_EVIDENCE_CLASS
+expected_exit: 1
+mode: spec
+notes: "synthetic; line 2 has hyphen typo evidence-class:"

@@ -1,0 +1,4 @@
+expected_classification: DUAL_MODEL_WITH_BLOCKERS
+expected_exit: 1
+mode: spec
+notes: "synthetic; cross-field invariant violation dual_model + non-empty blockers (footer)"

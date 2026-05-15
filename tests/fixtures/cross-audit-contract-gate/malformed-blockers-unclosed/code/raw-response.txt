@@ -1,0 +1,1 @@
+Code audit complete; unclosed bracket — list literal never terminated.

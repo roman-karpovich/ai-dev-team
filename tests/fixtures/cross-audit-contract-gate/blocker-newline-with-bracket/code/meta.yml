@@ -1,0 +1,4 @@
+expected_classification: BLOCKER_YAML_UNSAFE_NEWLINE
+expected_exit: 1
+mode: code
+notes: "synthetic; X10 inverse — genuine newline-split blocker whose first physical line contains a literal '[' inside the scalar must still be detected as unsafe_newline"

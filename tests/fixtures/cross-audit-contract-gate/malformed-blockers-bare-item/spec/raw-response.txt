@@ -1,0 +1,4 @@
+Cross-audit findings summary: no CRITICAL or HIGH findings.
+# CROSS-AUDIT EVIDENCE FOOTER
+evidence_class: single_model
+evidence_blockers: [codex unavailable: timeout]

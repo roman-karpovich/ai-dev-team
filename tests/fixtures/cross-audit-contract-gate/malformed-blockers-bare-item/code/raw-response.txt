@@ -1,0 +1,1 @@
+Code audit complete; bracketed list with a bare/unquoted evidence_blockers item.

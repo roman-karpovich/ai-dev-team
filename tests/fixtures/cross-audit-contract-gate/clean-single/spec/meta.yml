@@ -1,0 +1,4 @@
+expected_classification: CLEAN_SINGLE
+expected_exit: 0
+mode: spec
+notes: "synthetic; clean single-model spec footer with reason"

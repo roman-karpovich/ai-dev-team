@@ -1,0 +1,1 @@
+Code audit complete; empty evidence_blockers value (no list literal).
