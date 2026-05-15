@@ -1270,11 +1270,11 @@ check_banner_convention_doc_valid() {
 check_feature_awaiting_count_17() {
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "29" ]; then
-    echo "feature AWAITING count=$n expected 29"
+  if [ "$n" != "32" ]; then
+    echo "feature AWAITING count=$n expected 32"
     return 1
   fi
-  echo "feature AWAITING count=29 OK"
+  echo "feature AWAITING count=32 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1422,10 +1422,12 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 26 — includes the
+# (r) ruler-prefix count matches total banner count (expected 29 — includes the
 # §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1,
 # the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2,
-# and the §3.5c audit-iteration-cap banner added by spec 2026-05-13-cap-banner-and-empirical-verification Step 2).
+# the §3.5c audit-iteration-cap banner added by spec 2026-05-13-cap-banner-and-empirical-verification Step 2,
+# and the 3 §3.5b-2 recovery banners (project-policy gate, capture-failure, classifier-crash)
+# added by spec 2026-05-15-cross-auditor-contract-gate-automation Step 6).
 check_awaiting_ruler_prefix_count_matches() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1434,16 +1436,17 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "26" ]; then
-    echo "ruler-prefix count=$c expected 26"
+  if [ "$c" != "29" ]; then
+    echo "ruler-prefix count=$c expected 29"
     return 1
   fi
-  echo "ruler-prefix count=26 OK"
+  echo "ruler-prefix count=29 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 37 — includes
-# the feature Attack-surface profile and STRIDE-lite slot prompts, plus the §3.5c
-# audit-iteration-cap banner).
+# (s) each banner has trailing bold question within 15 lines (expected 40 — includes
+# the feature Attack-surface profile and STRIDE-lite slot prompts, the §3.5c
+# audit-iteration-cap banner, and the 3 §3.5b-2 recovery banners added by spec
+# 2026-05-15-cross-auditor-contract-gate-automation Step 6).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1454,11 +1457,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "37" ]; then
-    echo "trailing-bold-present-each count=$c expected 37"
+  if [ "$c" != "40" ]; then
+    echo "trailing-bold-present-each count=$c expected 40"
     return 1
   fi
-  echo "trailing-bold-present-each=37 OK"
+  echo "trailing-bold-present-each=40 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
