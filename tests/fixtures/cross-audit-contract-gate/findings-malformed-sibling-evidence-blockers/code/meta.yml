@@ -1,0 +1,4 @@
+expected_classification: FINDINGS_MALFORMED
+expected_exit: 1
+mode: code
+notes: "synthetic; X14 — frontmatter with a valid canonical `evidence_blockers: [...]` line AND a malformed no-space sibling `evidence_blockers:[bad]`. The whole-block validator recognizes the malformed sibling as an evidence-key attempt and routes to FINDINGS_MALFORMED — a malformed sibling coexisting with a valid canonical line must NOT green-light as CLEAN_SINGLE."

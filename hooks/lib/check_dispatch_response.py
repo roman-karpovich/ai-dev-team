@@ -47,6 +47,7 @@ CLI:
 
 import argparse
 import json
+import re
 import sys
 
 # Canonical spaced EVIDENCE FOOTER sentinel literal. This is the single
@@ -56,6 +57,98 @@ import sys
 SENTINEL = "# CROSS-AUDIT EVIDENCE FOOTER"
 
 ALLOWED_EVIDENCE_CLASSES = ("dual_model", "single_model")
+
+# --- Code-mode frontmatter evidence-key recognizer (structural validation) ---
+#
+# `classify_code` validates the leading frontmatter block as a WHOLE for
+# evidence-key well-formedness, rather than scanning line-by-line for the
+# exact canonical prefix. Two regexes drive that whole-block validation:
+#
+#   EVIDENCE_KEY_ATTEMPT_RE — deliberately PERMISSIVE recognizer. It matches
+#     any line a reasonable reader would recognize as an *attempt* at an
+#     `evidence_class` / `evidence_blockers` key in ANY shape: canonical
+#     (`evidence_class: value`), no-space (`evidence_class:value`),
+#     tab-after-colon, `=` instead of `:`, hyphen-vs-underscore key spelling,
+#     leading whitespace, case variants. The goal is to DETECT a malformed
+#     attempt, never to silently skip it. Capture group 1 is the normalized
+#     key spelling (lower-cased, `-`/`_` collapsed to `_`).
+#
+#   EVIDENCE_KEY_CANONICAL_RE — STRICT canonical form: line start, the exact
+#     lower-case underscore key, a colon, exactly one space, then the value.
+#     This is the only shape `awk '/^---$/{c++;next} c==1' | grep -E
+#     '^(evidence_class|evidence_blockers): '` (the §2.2 consumer contract)
+#     accepts.
+#
+# Whole-block rule (subsumes X9 + X11 + X14): for each of the two keys,
+# require EXACTLY ONE line matching the canonical regex AND ZERO lines that
+# match the permissive recognizer but not the canonical regex. Any malformed
+# attempt — even one coexisting with a valid canonical line — routes the
+# whole findings.md to FINDINGS_MALFORMED. A line-scan loop matching exact
+# prefixes could only ever be tightened one missed shape at a time; the
+# permissive recognizer closes the asymmetry class structurally.
+EVIDENCE_KEY_ATTEMPT_RE = re.compile(
+    r"^[ \t]*(evidence[_-]?class|evidence[_-]?blockers)[ \t]*[:=]",
+    re.IGNORECASE,
+)
+EVIDENCE_KEY_CANONICAL_RE = re.compile(
+    r"^(evidence_class|evidence_blockers): ",
+)
+
+
+def _normalize_evidence_key(raw_key):
+    """Normalize a recognized evidence-key spelling to its canonical form.
+
+    Lower-cases and collapses `-` to `_` so `Evidence-Class` / `EVIDENCE_CLASS`
+    / `evidence-class` all map to `evidence_class`. Used only to bucket a
+    malformed attempt under the key it was attempting.
+    """
+    return raw_key.lower().replace("-", "_")
+
+
+def _validate_evidence_keys(fm_lines, skip_lines):
+    """Whole-block evidence-key well-formedness check for code-mode frontmatter.
+
+    `fm_lines` is the list of frontmatter lines; `skip_lines` is the set of
+    indices that are physical continuation lines of a newline-split
+    `evidence_blockers` value (already consumed by `_gather_blockers_value`)
+    and MUST NOT be inspected as keys — a continuation line that happens to
+    begin with `evidence_class`/`evidence_blockers` blocker text is value
+    content, not a key.
+
+    Scans EVERY non-continuation line. A line matching the permissive
+    `EVIDENCE_KEY_ATTEMPT_RE` is an *attempt* at one of the two evidence
+    keys. If it does NOT also match the strict `EVIDENCE_KEY_CANONICAL_RE`
+    it is a malformed attempt (no-space, tab-after-colon, `=`, hyphen key,
+    leading whitespace, case variant, ...) — regardless of whether a valid
+    canonical line for the same key also exists.
+
+    Returns True iff the block is well-formed: for EACH of the two keys
+    exactly one canonical line and zero malformed attempts. Returns False
+    on any malformed attempt or any count != 1 (subsumes X9 malformed-as-
+    sole-line, X11 duplicate-canonical, X14 malformed-coexisting-with-valid).
+    """
+    canonical_counts = {"evidence_class": 0, "evidence_blockers": 0}
+    malformed_seen = False
+    for idx, ln in enumerate(fm_lines):
+        if idx in skip_lines:
+            continue
+        m = EVIDENCE_KEY_ATTEMPT_RE.match(ln)
+        if not m:
+            continue
+        # This line is attempting an evidence key in some shape.
+        if EVIDENCE_KEY_CANONICAL_RE.match(ln):
+            # Strict canonical form — the regex's group 1 is already the
+            # canonical key spelling here, so no normalization is needed.
+            key = ln.split(":", 1)[0]
+            canonical_counts[key] += 1
+        else:
+            # Recognized as an evidence-key attempt but NOT in canonical
+            # form — a malformed key. Reject the whole block.
+            malformed_seen = True
+    if malformed_seen:
+        return False
+    return (canonical_counts["evidence_class"] == 1
+            and canonical_counts["evidence_blockers"] == 1)
 
 # Canonical enum -> violation-blocker phrasing. For every non-clean
 # classification this is the string the orchestrator records in
@@ -454,6 +547,20 @@ def classify_code(findings_path):
     """Classify a code/full-mode response from the on-disk findings.md.
 
     Returns (classification, evidence_class, blockers_items, blockers_yaml).
+
+    Code/spec-mode strictness parity: `classify_spec` reads the two scalars
+    strictly positionally (`lines[sentinel_idx + 1]` / `+ 2`), so a malformed
+    line right after the sentinel IS the line it reads and is rejected by the
+    canonical prefix check — spec mode is frontmatter-strict by construction.
+    Code mode reaches the same guarantee with `_validate_evidence_keys`, a
+    WHOLE-BLOCK validator: it recognizes EVERY line attempting an evidence
+    key in ANY shape (`EVIDENCE_KEY_ATTEMPT_RE`) and rejects the findings.md
+    unless each key appears exactly once in strict canonical form and zero
+    times in any malformed form. This structurally closes the code-mode
+    frontmatter-strictness asymmetry class — it is not a per-shape patch, so
+    it subsumes X9 (malformed-as-sole-line), X11 (duplicate canonical key)
+    and X14 (a malformed sibling coexisting with a valid canonical line) in
+    one predicate.
     """
     try:
         with open(findings_path, "r", encoding="utf-8") as fh:
@@ -467,43 +574,43 @@ def classify_code(findings_path):
     fm = _frontmatter_lines(text)
     if fm is None:
         return "FINDINGS_MALFORMED", None, [], "[]"
-    evidence_class = None
+    # First pass: locate the canonical `evidence_blockers:` line and gather
+    # its value across any physical continuation lines (a list literal split
+    # by an embedded newline — the newline-unsafe defect). The continuation
+    # line indices are recorded so the whole-block validator below does NOT
+    # mistake a continuation line that happens to begin with evidence-key
+    # text for a malformed key.
     blockers_raw = None
-    class_count = 0
-    blockers_count = 0
-    # Match the exact trailing-space key prefix as `classify_spec` does — a
-    # no-space key (`evidence_class:dual_model`) is a malformed frontmatter
-    # line, not a tolerated shape. Keeps spec-mode and code-mode strict in
-    # lockstep (X9: code-mode parser was the lenient one).
-    #
-    # Occurrence cardinality (X11): a duplicate `evidence_class:` /
-    # `evidence_blockers:` key is invalid YAML (a mapping cannot have two
-    # entries with the same key) and a strong signal of a buggy producer.
-    # `classify_spec` is immune by construction — it reads the two scalars
-    # strictly positionally (`lines[sentinel_idx + 1]` / `+ 2`). To keep
-    # code mode in lockstep, require EXACTLY ONE canonical line for each
-    # key; zero or >1 occurrences → FINDINGS_MALFORMED, rather than
-    # silently letting the last line win (which would green-light a
-    # malformed-then-valid pair). Physical continuation lines of a
-    # newline-split `evidence_blockers` value are skipped via `skip_until`
-    # so a continuation is never miscounted as a second key.
+    skip_lines = set()
     skip_until = -1
     for idx, ln in enumerate(fm):
         if idx <= skip_until:
             continue
-        if ln.startswith("evidence_class: "):
-            class_count += 1
-            evidence_class = ln[len("evidence_class: "):].strip()
-        elif ln.startswith("evidence_blockers: "):
-            blockers_count += 1
-            # Gather the value across physical lines — a list literal split
-            # by an embedded newline (the newline-unsafe defect) lands its
-            # continuation on subsequent frontmatter lines.
+        if EVIDENCE_KEY_CANONICAL_RE.match(ln) \
+                and ln.split(":", 1)[0] == "evidence_blockers":
             blockers_raw, spanned = _gather_blockers_value(fm, idx)
             skip_until = idx + spanned - 1
-    if evidence_class is None or blockers_raw is None:
+            for cont in range(idx + 1, idx + spanned):
+                skip_lines.add(cont)
+    # Whole-block evidence-key well-formedness check (structural — closes the
+    # X9/X11/X14 frontmatter-strictness asymmetry class). Any malformed
+    # attempt at either key, any count != 1, routes to FINDINGS_MALFORMED.
+    if not _validate_evidence_keys(fm, skip_lines):
         return "FINDINGS_MALFORMED", None, [], "[]"
-    if class_count != 1 or blockers_count != 1:
+    # The block is well-formed: exactly one canonical line for each key.
+    # Extract the `evidence_class` value from its canonical line.
+    evidence_class = None
+    for idx, ln in enumerate(fm):
+        if idx in skip_lines:
+            continue
+        if EVIDENCE_KEY_CANONICAL_RE.match(ln) \
+                and ln.split(":", 1)[0] == "evidence_class":
+            evidence_class = ln[len("evidence_class: "):].strip()
+            break
+    if evidence_class is None or blockers_raw is None:
+        # Unreachable given a passing _validate_evidence_keys (which requires
+        # exactly one canonical line for each key), but kept as a defensive
+        # invariant assertion for the value-extraction step.
         return "FINDINGS_MALFORMED", None, [], "[]"
     blockers_safety = _scan_blocker_safety(blockers_raw)
     blockers_items, blockers_ok = _parse_blockers_literal(blockers_raw)
