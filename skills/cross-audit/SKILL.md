@@ -202,11 +202,57 @@ Standalone `/cross-audit` runs the same return-contract recovery as the feature 
 1. **Captures the raw response atomically** to `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.raw.txt` per the §3.5b-1 atomic-write protocol in `skills/feature/SKILL.md`.
 2. **Invokes the classifier** — `invoke hooks/lib/check_dispatch_response.py --mode <spec|code|full> --raw-response-file <captured-.raw.txt-path> --audit-slug <slug> --iteration <N>` (plus `--findings-path <path>` for code/full mode). The `--project` flag is passed ONLY when KB-discovery resolution finds `.ai-dev-team.*yml project: ai-dev-team` — standalone callsites do not assume `ai-dev-team` otherwise.
 3. **Writes a sidecar JSON** atomically at `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.json` AFTER classification — standalone mode has no spec frontmatter to write `*_audit_evidence` into, so the **two-file pair** (`.raw.txt` + sidecar JSON) is the persistent record. The sidecar JSON carries `classifier_output` (the classifier's stdout JSON) plus the raw response embedded inline when its byte count ≤ 65536 (64 KiB), or `null` plus a `raw_response_path` reference otherwise.
-4. **Branches on the classifier exit code** per the skills/feature/SKILL.md §3.5b-2 recovery algorithm (step 4) — Exit-0 `policy_gate: null` PROCEED reaches the findings.md read; Exit-1 violations enter the §3.5b-2b retry-outcome matrix (one bounded TRANSPORT retry); Exit-2 classifier crash and unrecovered SAME/DIFFERENT violations route to the §3.4d standalone terminal banner below.
+4. **Branches on the classifier exit code** — the same four-way branch as the feature skills/feature/SKILL.md §3.5b-2 recovery algorithm (step 4), adapted for standalone mode (no spec frontmatter; the `.raw.txt` + sidecar JSON pair is the persistent record):
+   - **Exit `2`** (classifier crash — empty stdout, no JSON; the classifier's own failure) → the **standalone classifier-crash banner** below. This is a single-attempt diagnostic — it does NOT use the two-attempt §3.4d template, because an exit-2 crash on the initial dispatch produced no classifier JSON to populate `attempt-1`/`attempt-2` with.
+   - **Exit `0` AND `policy_gate: null`** → **PROCEED** to the findings.md read (step 1 above).
+   - **Exit `0` AND `policy_gate: STOP_AND_DISCUSS`** (arises standalone when `--project ai-dev-team` was passed and the classification is `CLEAN_SINGLE`) → the **standalone project-policy gate banner** below.
+   - **Exit `1`** (any of the 10 violation classifications) → enter the §3.5b-2b retry-outcome matrix (one bounded TRANSPORT retry). If the retry recovers (`CLEAN_DUAL`, or consumer-project `CLEAN_SINGLE`), PROCEED. If the retry is an unrecovered SAME-violation / DIFFERENT-violation, route to the §3.4d standalone terminal banner below.
+
+#### Standalone classifier-crash banner
+
+The classifier (`hooks/lib/check_dispatch_response.py`) exited 2 — its own failure, distinct from a contract violation (we cannot tell whether the cross-auditor's response was valid). Single attempt, no classifier JSON:
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+`hooks/lib/check_dispatch_response.py` exited 2 (classifier crash) on the cross-audit return. Stderr:
+
+```
+<classifier stderr verbatim, truncated to 1000 chars>
+```
+
+Raw response captured to `<raw-path-attempt-1>` for manual inspection. Options:
+
+1. **Re-run the classifier with `--debug`** (full traceback to stderr; you diagnose) — no auto-retry.
+2. **Manual review of the raw output** — read `<raw-path-attempt-1>`; if findings can be salvaged, paste manually into Phase 3 triage.
+3. **Re-run `/cross-audit`** from scratch (treats the crash as a transient transport failure).
+
+**Which option?**
+
+---
+
+#### Standalone project-policy gate banner
+
+The classifier returned `CLEAN_SINGLE` with `policy_gate: STOP_AND_DISCUSS` — Claude-only audit (Codex stalled), and `--project ai-dev-team` resolved, so project policy `feedback_ai_dev_team_dual_model_cross_audit_always.md` requires dual-model evidence. Standalone has no spec frontmatter to write, so the options are expressed in standalone terms:
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Cross-audit returned `CLEAN_SINGLE` — Claude-only audit (Codex stalled with reason: `<reason>`). For the ai-dev-team project, policy requires dual-model cross-audit evidence.
+
+Options:
+
+1. **Re-spawn cross-auditor** to retry Codex (may take 8-15 min; TRANSPORT retry). Re-spawn outcome governed by the §3.5b-2b Matrix B branch — `CLEAN_DUAL` recovers and the audit PROCEEDs; `CLEAN_SINGLE` again re-renders this banner; a violation routes to the §3.4d standalone terminal banner.
+2. **Accept single_model** for this audit — proceed to Phase 3 triage with the Claude-only findings; the sidecar JSON records `CLEAN_SINGLE` as the audit evidence.
+3. **Abandon this audit** — no findings recorded; consider escalating the Codex outage.
+
+**Which option?**
+
+---
 
 #### §3.4d Standalone terminal banner
 
-For the SAME-violation / DIFFERENT-violation branches of the §3.5b-2b retry-outcome matrix in standalone mode (no spec frontmatter — the `.raw.txt` + sidecar JSON pair is the persistent record):
+For the SAME-violation / DIFFERENT-violation branches of the §3.5b-2b retry-outcome matrix in standalone mode — i.e. an Exit-1 violation that the one bounded retry did NOT recover (no spec frontmatter — the `.raw.txt` + sidecar JSON pair is the persistent record). This banner is restricted to that unrecovered-after-retry case; an Exit-2 classifier crash uses the standalone classifier-crash banner above, not this template.
 
 ---
 ## ⏸ AWAITING YOUR INPUT
