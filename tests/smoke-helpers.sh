@@ -167,10 +167,31 @@ check_skill_md_agent_selection_tag_read() {
   range=$(awk '/^\*\*Which agent\?\*\*$/,/^\*\*Remember the choice\*\*:/' "$path")
   printf '%s\n' "$range" | grep -qF -- "the tag is honored iff the step's description matches at least one positive trigger for the tagged agent AND no anti-trigger contradicts it" \
     || { echo "$path Agent-selection range missing byte-exact positive-trigger-gate sentence"; return 1; }
-  printf '%s\n' "$range" | grep -qF -- 'one of `T-C1` / `T-C2` / `T-C3` for `@codex`' \
-    || { echo "$path Agent-selection range missing byte-exact Codex rationale-ID enumeration"; return 1; }
-  printf '%s\n' "$range" | grep -qF -- 'one of `T-S1` / `T-S2` / `T-S3` / `T-S4` for `@senior`' \
-    || { echo "$path Agent-selection range missing byte-exact Senior rationale-ID enumeration"; return 1; }
+  # Codex / Senior rationale-ID enumerations: rather than hard-pinning a
+  # byte-exact ID string (which locks the SKILL.md prose to a STALE trigger
+  # set whenever agent-routing.md gains a new T-S#/T-C# — exactly the X13
+  # drift), DERIVE the expected ID list from agent-routing.md and assert
+  # SKILL.md's §Agent selection enumeration matches it. A future T-S6/T-C4
+  # added to agent-routing.md then forces this pin to fail until SKILL.md is
+  # updated, instead of silently re-introducing the drift.
+  local routing='skills/feature/references/agent-routing.md'
+  [ -f "$routing" ] \
+    || { echo "$path Agent-selection pin: agent-routing.md not found at $routing"; return 1; }
+  # Positive Senior triggers are the `**T-S#**:` definition lines EXCLUDING
+  # T-S0 (the fallback — never a pre-tag rationale). Codex triggers are all
+  # `**T-C#**:` lines. extract_md_section-free: grep the bold-ID definitions.
+  local codex_ids senior_ids codex_enum senior_enum
+  codex_ids=$(grep -oE '^\- \*\*T-C[0-9]+\*\*' "$routing" | grep -oE 'T-C[0-9]+' | sort -u)
+  senior_ids=$(grep -oE '^\- \*\*T-S[0-9]+\*\*' "$routing" | grep -oE 'T-S[0-9]+' | grep -v '^T-S0$' | sort -u)
+  [ -n "$codex_ids" ] && [ -n "$senior_ids" ] \
+    || { echo "$path Agent-selection pin: could not extract T-C#/T-S# IDs from agent-routing.md"; return 1; }
+  # Build the expected `\`T-C1\` / \`T-C2\` / ...` enumeration string.
+  codex_enum=$(printf '%s\n' "$codex_ids" | sed 's/.*/`&`/' | paste -sd'~' - | sed 's/~/ \/ /g')
+  senior_enum=$(printf '%s\n' "$senior_ids" | sed 's/.*/`&`/' | paste -sd'~' - | sed 's/~/ \/ /g')
+  printf '%s\n' "$range" | grep -qF -- "one of $codex_enum for \`@codex\`" \
+    || { echo "$path Agent-selection range Codex rationale-ID enumeration drifted from agent-routing.md — expected 'one of $codex_enum for \`@codex\`'"; return 1; }
+  printf '%s\n' "$range" | grep -qF -- "one of $senior_enum for \`@senior\`" \
+    || { echo "$path Agent-selection range Senior rationale-ID enumeration drifted from agent-routing.md — expected 'one of $senior_enum for \`@senior\`'"; return 1; }
   printf '%s\n' "$range" | grep -qF -- 'never `T-S0`' \
     || { echo "$path Agent-selection range missing 'never \`T-S0\`' clause"; return 1; }
   printf '%s\n' "$range" | grep -qF -- 'notes=pre-tagged by spec author' \
