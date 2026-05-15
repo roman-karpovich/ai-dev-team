@@ -6673,3 +6673,142 @@ if not (r14_idx < heading_line_idx < taxonomy_idx):
 print(f"R15 frontmatter + body section + placement OK (line {heading_line_idx+1}, between R14 and Taxonomy)")
 PY
 }
+
+# Behavioral pin for the cross-auditor return-contract classifier
+# (`hooks/lib/check_dispatch_response.py`). Iterates every sub-fixture under
+# tests/fixtures/cross-audit-contract-gate/*/*/ (21 directories per spec
+# 2026-05-15-cross-auditor-contract-gate-automation §3.3.1), invokes the
+# helper as a black box, and asserts:
+#   (a) helper exit code matches meta.yml `expected_exit`;
+#   (b) helper stdout JSON `classification` matches meta.yml
+#       `expected_classification`;
+#   (c) for CLEAN_DUAL / CLEAN_SINGLE fixtures: JSON `evidence_class` is
+#       non-null and `blockers_yaml` is a valid YAML-list literal;
+#   (d) the two policy-gate fixtures (invoked with / without
+#       `--project ai-dev-team`) emit the correct `policy_gate` value.
+check_dispatch_response_classification() {
+  local helper="$PLUGIN_ROOT/hooks/lib/check_dispatch_response.py"
+  local fixture_root="$PLUGIN_ROOT/tests/fixtures/cross-audit-contract-gate"
+  if [ ! -f "$helper" ]; then
+    echo "classifier helper missing: $helper"
+    return 1
+  fi
+  if [ ! -d "$fixture_root" ]; then
+    echo "fixture root missing: $fixture_root"
+    return 1
+  fi
+  local d meta mode expected_class expected_exit project
+  local out_file rc got_class checked=0
+  out_file=$(mktemp)
+  for d in "$fixture_root"/*/*/; do
+    meta="$d/meta.yml"
+    if [ ! -f "$meta" ] || [ ! -f "$d/raw-response.txt" ]; then
+      echo "sub-fixture $d missing meta.yml or raw-response.txt"
+      rm -f "$out_file"
+      return 1
+    fi
+    mode=$(sed -n 's/^mode: *//p' "$meta")
+    expected_class=$(sed -n 's/^expected_classification: *//p' "$meta")
+    expected_exit=$(sed -n 's/^expected_exit: *//p' "$meta")
+    # Policy-gate fixtures: the ai-dev-team variant is invoked WITH
+    # `--project ai-dev-team`; the consumer variant WITHOUT it.
+    project=""
+    case "$d" in
+      *clean-single-policy-gate-ai-dev-team/*) project="ai-dev-team" ;;
+    esac
+    if [ "$mode" = "code" ] || [ "$mode" = "full" ]; then
+      # findings-missing/code/ deliberately lacks findings.md — pass a
+      # non-existent path so the absence triggers FINDINGS_MISSING.
+      if [ -f "$d/findings.md" ]; then
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "$d/raw-response.txt" \
+          --audit-slug "fixture-$expected_class" --iteration 1 \
+          --findings-path "$d/findings.md" >"$out_file" 2>/dev/null
+      else
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "$d/raw-response.txt" \
+          --audit-slug "fixture-$expected_class" --iteration 1 \
+          --findings-path "$d/findings.md" >"$out_file" 2>/dev/null
+      fi
+      rc=$?
+    else
+      if [ -n "$project" ]; then
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "$d/raw-response.txt" \
+          --audit-slug "fixture-$expected_class" --iteration 1 \
+          --project "$project" >"$out_file" 2>/dev/null
+      else
+        python3 "$helper" --mode "$mode" \
+          --raw-response-file "$d/raw-response.txt" \
+          --audit-slug "fixture-$expected_class" --iteration 1 \
+          >"$out_file" 2>/dev/null
+      fi
+      rc=$?
+    fi
+    if [ "$rc" != "$expected_exit" ]; then
+      echo "sub-fixture $d: exit $rc, expected $expected_exit"
+      rm -f "$out_file"
+      return 1
+    fi
+    # Assert classification + (conditional) CLEAN_* + policy-gate fields via
+    # python3 reading the JSON from a file (embedded newlines in the
+    # newline-unsafe fixture mean a shell-variable round-trip would corrupt
+    # the payload — read straight from disk).
+    if ! python3 - "$out_file" "$expected_class" "$d" "$project" <<'PY'
+import json
+import sys
+
+out_file, expected_class, fixture_dir, project = sys.argv[1:5]
+try:
+    with open(out_file, "r", encoding="utf-8") as fh:
+        j = json.load(fh)
+except (OSError, ValueError) as exc:
+    print(f"sub-fixture {fixture_dir}: classifier output not valid JSON: "
+          f"{exc}")
+    sys.exit(1)
+
+got = j.get("classification")
+if got != expected_class:
+    print(f"sub-fixture {fixture_dir}: classification {got!r}, "
+          f"expected {expected_class!r}")
+    sys.exit(1)
+
+if expected_class in ("CLEAN_DUAL", "CLEAN_SINGLE"):
+    if j.get("evidence_class") is None:
+        print(f"sub-fixture {fixture_dir}: CLEAN_* but evidence_class is null")
+        sys.exit(1)
+    by = j.get("blockers_yaml")
+    if not isinstance(by, str) or not (by.startswith("[")
+                                       and by.endswith("]")):
+        print(f"sub-fixture {fixture_dir}: blockers_yaml not a list literal: "
+              f"{by!r}")
+        sys.exit(1)
+
+# Policy-gate assertion: ai-dev-team CLEAN_SINGLE -> STOP_AND_DISCUSS;
+# consumer CLEAN_SINGLE -> null.
+if "clean-single-policy-gate" in fixture_dir:
+    pg = j.get("policy_gate")
+    if project == "ai-dev-team":
+        if pg != "STOP_AND_DISCUSS":
+            print(f"sub-fixture {fixture_dir}: policy_gate {pg!r}, "
+                  f"expected STOP_AND_DISCUSS")
+            sys.exit(1)
+    else:
+        if pg is not None:
+            print(f"sub-fixture {fixture_dir}: policy_gate {pg!r}, "
+                  f"expected null")
+            sys.exit(1)
+PY
+    then
+      rm -f "$out_file"
+      return 1
+    fi
+    checked=$((checked + 1))
+  done
+  rm -f "$out_file"
+  if [ "$checked" != "21" ]; then
+    echo "expected 21 sub-fixtures, checked $checked"
+    return 1
+  fi
+  echo "dispatch-response classifier: 21/21 sub-fixtures classified correctly"
+}

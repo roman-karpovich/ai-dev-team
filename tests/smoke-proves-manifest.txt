@@ -230,3 +230,6 @@ check_cross_auditor_empirical_verification_step_present prompt-text
 check_skill_md_cap_banner_present prompt-text
 check_mission_rule_11_amended_and_audit_claims_rule_present prompt-text
 check_r15_present_in_code_quality_rules schema
+
+# cross-auditor contract-gate automation (spec 2026-05-15) classifier pin
+check_dispatch_response_classification behavioral
