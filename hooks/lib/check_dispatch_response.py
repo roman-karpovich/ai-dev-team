@@ -469,19 +469,41 @@ def classify_code(findings_path):
         return "FINDINGS_MALFORMED", None, [], "[]"
     evidence_class = None
     blockers_raw = None
+    class_count = 0
+    blockers_count = 0
     # Match the exact trailing-space key prefix as `classify_spec` does — a
     # no-space key (`evidence_class:dual_model`) is a malformed frontmatter
     # line, not a tolerated shape. Keeps spec-mode and code-mode strict in
     # lockstep (X9: code-mode parser was the lenient one).
+    #
+    # Occurrence cardinality (X11): a duplicate `evidence_class:` /
+    # `evidence_blockers:` key is invalid YAML (a mapping cannot have two
+    # entries with the same key) and a strong signal of a buggy producer.
+    # `classify_spec` is immune by construction — it reads the two scalars
+    # strictly positionally (`lines[sentinel_idx + 1]` / `+ 2`). To keep
+    # code mode in lockstep, require EXACTLY ONE canonical line for each
+    # key; zero or >1 occurrences → FINDINGS_MALFORMED, rather than
+    # silently letting the last line win (which would green-light a
+    # malformed-then-valid pair). Physical continuation lines of a
+    # newline-split `evidence_blockers` value are skipped via `skip_until`
+    # so a continuation is never miscounted as a second key.
+    skip_until = -1
     for idx, ln in enumerate(fm):
+        if idx <= skip_until:
+            continue
         if ln.startswith("evidence_class: "):
+            class_count += 1
             evidence_class = ln[len("evidence_class: "):].strip()
         elif ln.startswith("evidence_blockers: "):
+            blockers_count += 1
             # Gather the value across physical lines — a list literal split
             # by an embedded newline (the newline-unsafe defect) lands its
             # continuation on subsequent frontmatter lines.
-            blockers_raw, _ = _gather_blockers_value(fm, idx)
+            blockers_raw, spanned = _gather_blockers_value(fm, idx)
+            skip_until = idx + spanned - 1
     if evidence_class is None or blockers_raw is None:
+        return "FINDINGS_MALFORMED", None, [], "[]"
+    if class_count != 1 or blockers_count != 1:
         return "FINDINGS_MALFORMED", None, [], "[]"
     blockers_safety = _scan_blocker_safety(blockers_raw)
     blockers_items, blockers_ok = _parse_blockers_literal(blockers_raw)
