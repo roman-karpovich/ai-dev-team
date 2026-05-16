@@ -7,7 +7,9 @@ Runs on every Stop event. Silent unless:
     feat, fix, refactor, ci, docs, test, chore, feature
     (the seven conventional prefixes plus legacy `feature` kept as an alias
     so in-flight specs pre-dating #15 keep emitting the branch-dirty warning)
-  - Working tree dirty OR branch has commits not merged into base
+  - Working tree dirty OR branch has commits not yet pushed
+    (no upstream → commits not merged into base; upstream set →
+    commits ahead of the upstream tracking ref)
   - Per-repo debounce (30 min) allows re-warn
 
 Output on match: JSON {"decision": "block", "reason": "..."} — Claude Code
@@ -85,14 +87,28 @@ def main() -> int:
             if rc == 0 and out.isdigit():
                 unmerged = int(out)
 
-        if dirty_count == 0 and unmerged == 0:
+        # Commits ahead of the branch's upstream tracking ref. None when the
+        # branch has no upstream (never pushed) — rc != 0 from rev-list.
+        unpushed = None
+        rc, out = run(["git", "rev-list", "--count", "@{u}..HEAD"], cwd=toplevel)
+        if rc == 0 and out.isdigit():
+            unpushed = int(out)
+
+        commit_fragment = None
+        if unpushed is None:
+            if unmerged > 0:
+                commit_fragment = f"{unmerged} commit(s) not yet pushed"
+        elif unpushed > 0:
+            commit_fragment = f"{unpushed} commit(s) since last push"
+
+        if dirty_count == 0 and commit_fragment is None:
             return 0
 
         parts = []
         if dirty_count:
             parts.append(f"{dirty_count} uncommitted change(s)")
-        if unmerged:
-            parts.append(f"{unmerged} unpushed commit(s)")
+        if commit_fragment:
+            parts.append(commit_fragment)
         summary = " and ".join(parts)
 
         base_label = base or "base"

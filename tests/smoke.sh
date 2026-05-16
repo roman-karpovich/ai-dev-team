@@ -407,10 +407,87 @@ print('Stop hook registered OK')
 "
 }
 
+# Behavioral: a pushed clean feature branch awaiting PR must stay silent.
+check_stop_check_pushed_clean_silent() {
+  local d out
+  d=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  mkdir -p "$d/r" "$d/tmp"
+  out=$(
+    cd "$d/r" || exit 1
+    git init -q .
+    git symbolic-ref HEAD refs/heads/master
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+    git clone -q . wc >/dev/null 2>&1
+    cd wc || exit 1
+    git checkout -q -b fix/2026-05-16-x
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m work
+    git push -q -u origin fix/2026-05-16-x >/dev/null 2>&1
+    TMPDIR="$d/tmp" python3 "$PLUGIN_ROOT/hooks/stop-check" </dev/null 2>&1
+  )
+  rm -rf "$d"
+  if [ -n "$out" ]; then
+    echo "expected silence for pushed-clean branch, got: $out"; return 1
+  fi
+  echo "stop-check silent for pushed clean branch awaiting PR"
+}
+
+# Behavioral: a new commit since the last push must warn "since last push".
+check_stop_check_unpushed_ahead_warns() {
+  local d out
+  d=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  mkdir -p "$d/r" "$d/tmp"
+  out=$(
+    cd "$d/r" || exit 1
+    git init -q .
+    git symbolic-ref HEAD refs/heads/master
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+    git clone -q . wc >/dev/null 2>&1
+    cd wc || exit 1
+    git checkout -q -b fix/2026-05-16-x
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m work
+    git push -q -u origin fix/2026-05-16-x >/dev/null 2>&1
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m more
+    TMPDIR="$d/tmp" python3 "$PLUGIN_ROOT/hooks/stop-check" </dev/null 2>&1
+  )
+  rm -rf "$d"
+  case "$out" in
+    *"commit(s) since last push"*)
+      echo "stop-check warns 'since last push' for unpushed-ahead branch" ;;
+    *)
+      echo "expected 'commit(s) since last push' warning, got: $out"; return 1 ;;
+  esac
+}
+
+# Behavioral: a never-pushed feature branch must warn "not yet pushed".
+check_stop_check_never_pushed_warns() {
+  local d out
+  d=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  mkdir -p "$d/r" "$d/tmp"
+  out=$(
+    cd "$d/r" || exit 1
+    git init -q .
+    git symbolic-ref HEAD refs/heads/master
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+    git checkout -q -b fix/2026-05-16-x
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m work
+    TMPDIR="$d/tmp" python3 "$PLUGIN_ROOT/hooks/stop-check" </dev/null 2>&1
+  )
+  rm -rf "$d"
+  case "$out" in
+    *"commit(s) not yet pushed"*)
+      echo "stop-check warns 'not yet pushed' for never-pushed branch" ;;
+    *)
+      echo "expected 'commit(s) not yet pushed' warning, got: $out"; return 1 ;;
+  esac
+}
+
 check "stop-check exists"                 check_stop_check_exists
 check "stop-check no shell=True"          check_stop_check_no_shell_true
 check "stop-check silent outside repo"    check_stop_check_silent_outside_repo
 check "Stop hook registered in hooks.json" check_stop_hook_registered
+check "stop-check pushed clean silent"   check_stop_check_pushed_clean_silent
+check "stop-check unpushed ahead warns"  check_stop_check_unpushed_ahead_warns
+check "stop-check never pushed warns"    check_stop_check_never_pushed_warns
 echo
 
 # --- Developer-workflow reference (DRY refactor 2026-04-17) ---

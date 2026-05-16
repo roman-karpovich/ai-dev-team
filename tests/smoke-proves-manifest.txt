@@ -60,6 +60,9 @@ check_stop_check_exists behavioral
 check_stop_check_no_shell_true behavioral
 check_stop_check_silent_outside_repo behavioral
 check_stop_hook_registered behavioral
+check_stop_check_pushed_clean_silent behavioral
+check_stop_check_unpushed_ahead_warns behavioral
+check_stop_check_never_pushed_warns behavioral
 
 # Thin session prompt and recent feature pins
 check_skill_bodies_have_migrated_content prompt-text
