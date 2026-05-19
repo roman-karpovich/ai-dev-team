@@ -5524,6 +5524,8 @@ check_json_schema_lint_self_test() {
   # bad enum / extra property under additionalProperties:false / bad array
   # item). A self-test with only a positive case proves nothing — each
   # negative case asserts the validator actually rejects the malformed shape.
+  # Also covers X3 (JSON-type-aware enum equality — true must not match int 1)
+  # and X4 (a misspelled schema keyword fails loud with exit 2).
   local lint="tests/lib/json_schema_lint.py"
   local schema="tests/fixtures/json-schema-lint/selftest.schema.json"
   test -f "$lint" || { echo "$lint missing"; return 1; }
@@ -5548,7 +5550,24 @@ check_json_schema_lint_self_test() {
   python3 "$lint" "$schema" >/dev/null 2>&1
   [ "$?" -eq 2 ] || { echo "validator did not exit 2 on a usage error"; return 1; }
 
-  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind"
+  # X3 — JSON-type-aware enum equality. Python `==` collapses True/1, so an
+  # integer-only enum {"enum":[1]} must still REJECT the JSON instance `true`
+  # (exit 1), and a boolean-only enum {"enum":[true]} must REJECT `1`.
+  local fdir="tests/fixtures/json-schema-lint"
+  python3 "$lint" "$fdir/enum-int.schema.json" "$fdir/enum-int-instance.json" >/dev/null 2>&1
+  [ "$?" -eq 1 ] || { echo "validator accepted JSON true for an integer-only enum [1] (X3 type collision)"; return 1; }
+  python3 "$lint" "$fdir/enum-bool.schema.json" "$fdir/enum-bool-instance.json" >/dev/null 2>&1
+  [ "$?" -eq 1 ] || { echo "validator accepted integer 1 for a boolean-only enum [true] (X3 type collision)"; return 1; }
+
+  # X4 — a misspelled/unsupported schema keyword must fail loud (exit 2), not
+  # silently no-op its gate.
+  out=$(python3 "$lint" "$fdir/misspelled-keyword.schema.json" "$fdir/misspelled-keyword-instance.json" 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || { echo "validator did not exit 2 on a misspelled schema keyword (got rc=$rc) — X4 silent no-op"; return 1; }
+  printf '%s' "$out" | grep -qF "addtionalProperties" \
+    || { echo "validator exit-2 diagnostic does not name the offending keyword (X4)"; return 1; }
+
+  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind + X3 enum type + X4 misspelled keyword"
 }
 
 # Shared helper: run a cross-audit probe (probe_g.sh / probe_h.sh) against a

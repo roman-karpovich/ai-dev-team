@@ -1,0 +1,5 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "X3 regression fixture — integer-only enum. JSON true must NOT match the integer 1 (bool is distinct from int).",
+  "enum": [1]
+}

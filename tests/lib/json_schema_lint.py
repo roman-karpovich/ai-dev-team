@@ -20,19 +20,32 @@ Supported keyword subset (Draft-07 semantics for each):
                           extra keys are permitted.
 
 Unsupported keywords (anyOf/oneOf/allOf/$ref/pattern/format/minimum/...) are
-NOT silently ignored at the contract level — they simply do not appear in the
-envelope schema. If a future schema needs them, extend this validator (and its
-self-test pins) rather than relying on a no-op.
+NOT silently ignored: a schema-walk pass runs before instance validation and
+rejects any schema object key outside the supported allowlist with exit 2 — so
+a misspelled keyword (e.g. `addtionalProperties`) fails loud instead of
+disabling its gate. If a future schema needs a new keyword, extend this
+validator (its `_SUPPORTED_KEYWORDS` set and self-test pins) rather than
+relying on a no-op.
 
 CLI:
   python3 json_schema_lint.py <schema.json> <instance.json>
   exit 0  — instance conforms
   exit 1  — instance violates the schema (each violation printed to stdout)
-  exit 2  — usage / load error (bad args, unreadable/invalid JSON)
+  exit 2  — usage / load error (bad args, unreadable/invalid JSON,
+            unsupported/misspelled schema keyword)
 """
 
 import json
 import sys
+
+# Keywords this subset validator implements. A schema object key NOT in this
+# allowlist (an unsupported keyword, or a typo like `requird`) is rejected with
+# exit 2 by _walk_schema — a misspelled keyword must fail loud, not no-op.
+_SUPPORTED_KEYWORDS = frozenset({
+    "$schema", "$comment", "$id", "title", "description",
+    "type", "required", "properties", "items", "enum",
+    "additionalProperties",
+})
 
 _TYPE_CHECKS = {
     "object": lambda v: isinstance(v, dict),
@@ -44,6 +57,52 @@ _TYPE_CHECKS = {
     "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
     "null": lambda v: v is None,
 }
+
+
+def _json_equal(a, b):
+    """JSON-type-aware equality for enum membership.
+
+    Python `==` collapses `True == 1` / `False == 0` because `bool` is an `int`
+    subclass — Draft-07 treats JSON `true` and `1` as distinct values. A match
+    requires the same JSON type (bool kept distinct from int/float) AND equal
+    values.
+    """
+    a_bool = isinstance(a, bool)
+    b_bool = isinstance(b, bool)
+    if a_bool != b_bool:
+        return False
+    if a_bool:  # both bool
+        return a == b
+    # Neither is bool: distinguish remaining JSON types.
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return a == b
+    return type(a) == type(b) and a == b
+
+
+def _walk_schema(schema, path="$"):
+    """Reject any schema object key outside the supported-keyword allowlist.
+
+    Exits 2 (usage / contract error) naming the offending key and its path so a
+    misspelled keyword fails loud rather than being silently no-op'd.
+    """
+    if isinstance(schema, dict):
+        for key in schema:
+            if key not in _SUPPORTED_KEYWORDS:
+                print(
+                    f"error: unsupported schema keyword '{key}' at {path} "
+                    f"(allowed: {', '.join(sorted(_SUPPORTED_KEYWORDS))})",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+        for key, value in schema.items():
+            if key == "properties" and isinstance(value, dict):
+                for prop, subschema in value.items():
+                    _walk_schema(subschema, f"{path}.properties.{prop}")
+            elif key == "items":
+                _walk_schema(value, f"{path}.items")
+    elif isinstance(schema, list):
+        for idx, element in enumerate(schema):
+            _walk_schema(element, f"{path}[{idx}]")
 
 
 def validate(schema, instance, path="$"):
@@ -70,7 +129,7 @@ def validate(schema, instance, path="$"):
 
     # --- enum ---
     if "enum" in schema:
-        if instance not in schema["enum"]:
+        if not any(_json_equal(instance, member) for member in schema["enum"]):
             errors.append(
                 f"{path}: value {instance!r} not in enum {schema['enum']!r}"
             )
@@ -149,6 +208,9 @@ def main(argv):
         return 2
     schema = _load_json("schema", argv[1])
     instance = _load_json("instance", argv[2])
+    # Schema-walk validation pass — reject misspelled/unsupported keywords
+    # (exit 2) before any instance validation.
+    _walk_schema(schema)
     errors = validate(schema, instance)
     if errors:
         for err in errors:
