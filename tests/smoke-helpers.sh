@@ -5559,6 +5559,16 @@ check_json_schema_lint_self_test() {
   python3 "$lint" "$fdir/enum-bool.schema.json" "$fdir/enum-bool-instance.json" >/dev/null 2>&1
   [ "$?" -eq 1 ] || { echo "validator accepted integer 1 for a boolean-only enum [true] (X3 type collision)"; return 1; }
 
+  # X5 — the bool/int distinction must hold inside container enum members too.
+  # _json_equal must recurse rather than delegate list/dict comparison to bare
+  # Python `==` (which re-collapses True/1 at every nesting level). A list-valued
+  # enum {"enum":[[1]]} must REJECT the JSON instance [true], and a dict-valued
+  # enum {"enum":[{"x":1}]} must REJECT {"x":true}.
+  python3 "$lint" "$fdir/enum-list.schema.json" "$fdir/enum-list-instance.json" >/dev/null 2>&1
+  [ "$?" -eq 1 ] || { echo "validator accepted [true] for a list-valued enum [[1]] (X5 nested type collision)"; return 1; }
+  python3 "$lint" "$fdir/enum-dict.schema.json" "$fdir/enum-dict-instance.json" >/dev/null 2>&1
+  [ "$?" -eq 1 ] || { echo "validator accepted {\"x\":true} for a dict-valued enum [{\"x\":1}] (X5 nested type collision)"; return 1; }
+
   # X4 — a misspelled/unsupported schema keyword must fail loud (exit 2), not
   # silently no-op its gate.
   out=$(python3 "$lint" "$fdir/misspelled-keyword.schema.json" "$fdir/misspelled-keyword-instance.json" 2>&1)
@@ -5567,7 +5577,7 @@ check_json_schema_lint_self_test() {
   printf '%s' "$out" | grep -qF "addtionalProperties" \
     || { echo "validator exit-2 diagnostic does not name the offending keyword (X4)"; return 1; }
 
-  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind + X3 enum type + X4 misspelled keyword"
+  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind + X3 scalar enum type + X5 nested container enum type + X4 misspelled keyword"
 }
 
 # Shared helper: run a cross-audit probe (probe_g.sh / probe_h.sh) against a

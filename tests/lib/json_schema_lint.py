@@ -60,12 +60,16 @@ _TYPE_CHECKS = {
 
 
 def _json_equal(a, b):
-    """JSON-type-aware equality for enum membership.
+    """JSON-type-aware equality for enum membership — recursive.
 
     Python `==` collapses `True == 1` / `False == 0` because `bool` is an `int`
     subclass — Draft-07 treats JSON `true` and `1` as distinct values. A match
     requires the same JSON type (bool kept distinct from int/float) AND equal
-    values.
+    values. For containers the comparison recurses element-wise rather than
+    delegating to Python `==`, which would re-collapse `bool`/`int` at every
+    nesting level (e.g. `[1] == [True]` is True under bare `==`): a list-valued
+    or dict-valued enum member is only equal when every nested scalar also
+    passes this type-aware test.
     """
     a_bool = isinstance(a, bool)
     b_bool = isinstance(b, bool)
@@ -73,7 +77,23 @@ def _json_equal(a, b):
         return False
     if a_bool:  # both bool
         return a == b
-    # Neither is bool: distinguish remaining JSON types.
+    # Lists: equal length AND element-wise type-aware equality. Checked before
+    # the int/float branch — neither operand is a bool here, but a list is
+    # never an int/float so order does not matter; explicit for clarity.
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(
+            _json_equal(x, y) for x, y in zip(a, b)
+        )
+    if isinstance(a, list) or isinstance(b, list):
+        return False
+    # Dicts: equal key set AND per-key type-aware equality.
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(
+            _json_equal(a[k], b[k]) for k in a
+        )
+    if isinstance(a, dict) or isinstance(b, dict):
+        return False
+    # Scalars (neither is bool here): distinguish remaining JSON types.
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
         return a == b
     return type(a) == type(b) and a == b
