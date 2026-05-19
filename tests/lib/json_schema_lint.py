@@ -27,6 +27,15 @@ disabling its gate. If a future schema needs a new keyword, extend this
 validator (its `_SUPPORTED_KEYWORDS` set and self-test pins) rather than
 relying on a no-op.
 
+The schema-walk also type-checks the VALUES of value-constrained supported
+keywords — a malformed value would otherwise silently misbehave under
+`validate()` exactly as a misspelled key would. `additionalProperties` MUST be
+a boolean (a non-boolean such as the string `"false"` would never be `is False`
+and would silently disable the extra-property gate); `required` MUST be a list
+(a string is iterated character-by-character); `properties` MUST be an object;
+`items` MUST be an object or a list; `enum` MUST be a non-empty list; `type`
+MUST be a known type-name string. Any malformed value fails loud with exit 2.
+
 CLI:
   python3 json_schema_lint.py <schema.json> <instance.json>
   exit 0  — instance conforms
@@ -99,11 +108,24 @@ def _json_equal(a, b):
     return type(a) == type(b) and a == b
 
 
+def _bad_value(path, key, observed, expected):
+    """Print an exit-2 diagnostic for a malformed keyword value and exit."""
+    print(
+        f"error: schema keyword '{key}' at {path} must be {expected}, got "
+        f"'{_json_type_name(observed)}'",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
 def _walk_schema(schema, path="$"):
-    """Reject any schema object key outside the supported-keyword allowlist.
+    """Reject any schema object key outside the supported-keyword allowlist,
+    and type-check the VALUES of value-constrained supported keywords.
 
     Exits 2 (usage / contract error) naming the offending key and its path so a
-    misspelled keyword fails loud rather than being silently no-op'd.
+    misspelled keyword OR a malformed keyword value fails loud rather than
+    being silently no-op'd (a non-boolean `additionalProperties` would never be
+    `is False` and would silently disable the extra-property gate).
     """
     if isinstance(schema, dict):
         for key in schema:
@@ -111,6 +133,34 @@ def _walk_schema(schema, path="$"):
                 print(
                     f"error: unsupported schema keyword '{key}' at {path} "
                     f"(allowed: {', '.join(sorted(_SUPPORTED_KEYWORDS))})",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+        # Type-check the values of value-constrained supported keywords. A
+        # malformed value silently misbehaves under validate() — the same
+        # "silent gate disable" class as a misspelled key.
+        if "additionalProperties" in schema and not isinstance(
+            schema["additionalProperties"], bool
+        ):
+            _bad_value(path, "additionalProperties",
+                       schema["additionalProperties"], "a boolean")
+        if "required" in schema and not isinstance(schema["required"], list):
+            _bad_value(path, "required", schema["required"], "a list")
+        if "properties" in schema and not isinstance(schema["properties"], dict):
+            _bad_value(path, "properties", schema["properties"], "an object")
+        if "items" in schema and not isinstance(schema["items"], (dict, list)):
+            _bad_value(path, "items", schema["items"],
+                       "an object or a list")
+        if "enum" in schema:
+            enum_value = schema["enum"]
+            if not isinstance(enum_value, list) or not enum_value:
+                _bad_value(path, "enum", enum_value, "a non-empty list")
+        if "type" in schema:
+            type_value = schema["type"]
+            if not isinstance(type_value, str) or type_value not in _TYPE_CHECKS:
+                print(
+                    f"error: schema keyword 'type' at {path} must be one of "
+                    f"{', '.join(sorted(_TYPE_CHECKS))}, got {type_value!r}",
                     file=sys.stderr,
                 )
                 sys.exit(2)

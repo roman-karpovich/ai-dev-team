@@ -5581,7 +5581,18 @@ check_json_schema_lint_self_test() {
   printf '%s' "$out" | grep -qF "addtionalProperties" \
     || { echo "validator exit-2 diagnostic does not name the offending keyword (X4)"; return 1; }
 
-  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind + X3 scalar enum type + X5 nested container enum type + X4 misspelled keyword"
+  # X8 — a malformed VALUE of a supported keyword must fail loud (exit 2), not
+  # silently no-op its gate. additionalProperties:"false" (a string, not a
+  # boolean) is never `is False`, so validate() would silently skip the
+  # extra-property gate and accept an EXTRA key. The schema-walk value-type
+  # check must reject it with exit 2 and the diagnostic must name the keyword.
+  out=$(python3 "$lint" "$fdir/bad-additionalproperties.schema.json" "$fdir/bad-additionalproperties-instance.json" 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || { echo "validator did not exit 2 on a non-boolean additionalProperties (got rc=$rc) — X8 silent gate disable"; return 1; }
+  printf '%s' "$out" | grep -qF "additionalProperties" \
+    || { echo "validator exit-2 diagnostic does not name the offending keyword (X8)"; return 1; }
+
+  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind + X3 scalar enum type + X5 nested container enum type + X4 misspelled keyword + X8 malformed keyword value"
 }
 
 # Shared helper: run a cross-audit probe (probe_g.sh / probe_h.sh) against a
