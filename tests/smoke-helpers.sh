@@ -6231,50 +6231,133 @@ check_cross_auditor_blocker_sanitization_truncate_before_escape() {
 }
 
 check_cross_auditor_r_rule_path_env_first_precedence() {
-  # §Codex dispatch + §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per
-  # Spec 2a Step 5 §3.3a row 8 (path-swap-only — both bounds co-located in the destination file
-  # post-Step-5). The L340 surface (the §3.5a L348 directional reference) lives in §Step 2 which
-  # stays in the hub; that literal was rewritten from "§security mode bridge above" to
-  # "agents/references/cross-auditor-mode-focus.md §security mode bridge" per §3.5a Step 5
-  # outbound — l340_post anchor updated to match the post-rewrite form.
+  # behavioral: the path-resolution logic that was 50+ lines of prose-grep on
+  # stale/post-rewrite literals now lives in the deterministic helper
+  # hooks/lib/resolve_rule_path.sh. This pin runs the helper across all nine
+  # §3.3a.2 decision-table rows, asserting the EXACT exit code and the
+  # ⚠ code-quality-rules.md not reachable stderr on each unreachable row.
+  # The C2-closure anti-regression negatives (stale contradictory phrasing
+  # stays removed) are RETAINED below.
+  local plugin_root rel warn helper
+  plugin_root="$(pwd)"
+  # Absolute helper path — the row 6/7/9 sub-checks cd into other dirs.
+  helper="$plugin_root/hooks/lib/resolve_rule_path.sh"
+  test -x "$helper" || test -f "$helper" || { echo "$helper missing"; return 1; }
+  rel='skills/feature/references/code-quality-rules.md'
+  warn='code-quality-rules.md not reachable'
+
+  # _rrp_resolved <expected-stdout-path> <env...> — exit 0, stdout = path, no warn.
+  _rrp_resolved() {
+    local want_path="$1"; shift
+    local out err rc
+    out=$("$@" bash "$helper" 2>/tmp/rrp-err.$$)
+    rc=$?
+    err=$(cat /tmp/rrp-err.$$); rm -f /tmp/rrp-err.$$
+    [ "$rc" -eq 0 ] || { echo "resolver: [$*] expected resolved exit 0, got $rc"; return 1; }
+    [ "$out" = "$want_path" ] || { echo "resolver: [$*] expected stdout '$want_path', got '$out'"; return 1; }
+    printf '%s' "$err" | grep -qF "$warn" \
+      && { echo "resolver: [$*] resolved row must not emit the unreachable warning"; return 1; }
+    return 0
+  }
+  # _rrp_unreachable <env...> — exit 3, empty stdout, ⚠ warning on stderr.
+  _rrp_unreachable() {
+    local out err rc
+    out=$("$@" bash "$helper" 2>/tmp/rrp-err.$$)
+    rc=$?
+    err=$(cat /tmp/rrp-err.$$); rm -f /tmp/rrp-err.$$
+    [ "$rc" -eq 3 ] || { echo "resolver: [$*] expected unreachable exit 3, got $rc"; return 1; }
+    [ -z "$out" ] || { echo "resolver: [$*] unreachable row must have empty stdout, got '$out'"; return 1; }
+    printf '%s' "$err" | grep -qF "$warn" \
+      || { echo "resolver: [$*] unreachable row missing '⚠ $warn' stderr"; return 1; }
+    return 0
+  }
+
+  # Row 1 — env set to an absolute path with a readable regular-file rules file.
+  _rrp_resolved "$plugin_root/$rel" env "CLAUDE_PLUGIN_ROOT=$plugin_root" || return 1
+
+  # Row 2 — env set to an absolute path missing the rules file.
+  local d_missing; d_missing=$(mktemp -d)
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=$d_missing" || { rm -rf "$d_missing"; return 1; }
+  # Row 2 variant — code-quality-rules.md exists but is a directory (not a regular file).
+  local d_notreg; d_notreg=$(mktemp -d); mkdir -p "$d_notreg/$rel"
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=$d_notreg" || { rm -rf "$d_missing" "$d_notreg"; return 1; }
+  rm -rf "$d_missing" "$d_notreg"
+
+  # Row 3 — env set to an absolute path, rules file is a regular file but chmod 000 unreadable.
+  local d_unread; d_unread=$(mktemp -d); mkdir -p "$d_unread/$(dirname "$rel")"
+  : > "$d_unread/$rel"; chmod 000 "$d_unread/$rel"
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=$d_unread" \
+    || { chmod 644 "$d_unread/$rel"; rm -rf "$d_unread"; return 1; }
+  chmod 644 "$d_unread/$rel"; rm -rf "$d_unread"
+
+  # Row 4 — env set to the empty string.
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=" || return 1
+
+  # Row 5 — env set to a relative path.
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=relative/dir" || return 1
+
+  # Row 6 — env unset, run from inside the plugin checkout (resolves inside + regular file + readable).
+  ( cd "$plugin_root" && _rrp_resolved "$plugin_root/$rel" env -u CLAUDE_PLUGIN_ROOT ) || return 1
+
+  # Row 7a — env unset, relative path resolves to a plain shadow file OUTSIDE the checkout.
+  local d_shadow; d_shadow=$(mktemp -d); mkdir -p "$d_shadow/$(dirname "$rel")"; : > "$d_shadow/$rel"
+  ( cd "$d_shadow" && _rrp_unreachable env -u CLAUDE_PLUGIN_ROOT ) \
+    || { rm -rf "$d_shadow"; return 1; }
+  rm -rf "$d_shadow"
+  # Row 7b — env unset, sibling <root>-shadow dir whose path string-prefixes the checkout root.
+  # A buggy string-prefix containment test would wrongly accept it; the separator-safe
+  # commonpath guard rejects it.
+  local d_sibling="$(dirname "$plugin_root")/$(basename "$plugin_root")-shadow"
+  mkdir -p "$d_sibling/$(dirname "$rel")"; : > "$d_sibling/$rel"
+  ( cd "$d_sibling" && _rrp_unreachable env -u CLAUDE_PLUGIN_ROOT ) \
+    || { rm -rf "$d_sibling"; return 1; }
+  rm -rf "$d_sibling"
+
+  # Row 8 — env unset, relative target inside the checkout but chmod 000 unreadable.
+  # The script is copied into a temp checkout so the BASH_SOURCE root computation
+  # still resolves. Run the copied script directly (not via the $helper wrapper).
+  local d_co; d_co=$(mktemp -d)/co
+  mkdir -p "$d_co/hooks/lib" "$d_co/$(dirname "$rel")"
+  cp "$helper" "$d_co/hooks/lib/"
+  : > "$d_co/$rel"; chmod 000 "$d_co/$rel"
+  local r8_out r8_err r8_rc
+  r8_out=$( cd "$d_co" && env -u CLAUDE_PLUGIN_ROOT bash "$d_co/hooks/lib/resolve_rule_path.sh" 2>/tmp/rrp-r8.$$ )
+  r8_rc=$?
+  r8_err=$(cat /tmp/rrp-r8.$$); rm -f /tmp/rrp-r8.$$
+  chmod 644 "$d_co/$rel"; rm -rf "$(dirname "$d_co")"
+  [ "$r8_rc" -eq 3 ] || { echo "resolver: row-8 (env-unset, inside-but-unreadable) expected exit 3, got $r8_rc"; return 1; }
+  [ -z "$r8_out" ] || { echo "resolver: row-8 must have empty stdout, got '$r8_out'"; return 1; }
+  printf '%s' "$r8_err" | grep -qF "$warn" \
+    || { echo "resolver: row-8 missing '⚠ $warn' stderr"; return 1; }
+
+  # Row 9 — env unset, relative path does not resolve to any file.
+  ( cd /tmp && _rrp_unreachable env -u CLAUDE_PLUGIN_ROOT ) || return 1
+
+  # --- C2 closure (RETAINED anti-regression negatives) ---
+  # The pre-rewrite L311 parenthetical claimed the unset-env fallback runs even
+  # when env IS set, contradicting the strict env-first / no-relative-fallback
+  # rule. The rewrite aligned the prose; these negatives guard that the removed
+  # contradiction stays removed and the post-rewrite phrasing stays present.
   local f_ref="agents/references/cross-auditor-codex-dispatch.md"
-  local f_hub="agents/cross-auditor.md"
-  local block uncond realp stale_l296 stale_l303 stale_l340 l303_post l340_post
-  # Stateful awk anchor: open at the new env-first paragraph, close at the next anchor.
-  # Robust to either physical layout (single paragraph or split into multiple physical lines)
-  # because the close pattern is a definite sentinel introduced by the rewrite itself.
-  block=$(awk '/^Path resolution: when/{p=1; print; next} p && /^If both resolutions fail/{print; exit} p{print}' "$f_ref")
-  uncond=$(echo "$block" | grep -cF 'UNCONDITIONALLY to `${CLAUDE_PLUGIN_ROOT}')
-  realp=$(echo "$block" | grep -cF 'realpath')
-  # Stale-prose pre-negatives (locks pre-rewrite literals absent at L296/L303/L340 surfaces).
-  # L296/L303 originals lived in §Step 1 → check ref. L340 original lived in §Step 2 → stays in hub.
-  stale_l296=$(grep -cF "legacy invocations the agent's launch cwd is the ai-dev-team plugin root" "$f_ref")
-  stale_l303=$(grep -cF 'not reachable at the relative path' "$f_ref")
-  stale_l340=$(grep -cF 'relative path from agent cwd' "$f_hub")
-  # Post-rewrite positives (locks the new wording at parallel surfaces L303 + L340 — the L296
-  # awk-bounded range exits before L303, so global grep is the right scope for those parallel sites).
-  l303_post=$(grep -cF 'not reachable at the env-var path' "$f_ref")
-  # L340 post-rewrite literal updated for §3.5a Step 5 outbound directional rewrite — was
-  # "env-first per §security mode bridge above"; rewritten to point at cross-auditor-mode-focus.md.
-  l340_post=$(grep -cF 'env-first per `agents/references/cross-auditor-mode-focus.md` §security mode bridge' "$f_hub")
-  [ "$uncond" -ge 1 ] || { echo "L296 paragraph missing 'UNCONDITIONALLY to \${CLAUDE_PLUGIN_ROOT}' env-first directive"; return 1; }
-  [ "$realp" -ge 1 ] || { echo "L296 paragraph missing 'realpath' fallback safety check"; return 1; }
-  [ "$stale_l296" = "0" ] || { echo "L296 stale pre-rewrite prose still present (legacy-cwd phrasing)"; return 1; }
-  [ "$stale_l303" = "0" ] || { echo "L303 stale 'not reachable at the relative path' wording still present"; return 1; }
-  [ "$stale_l340" = "0" ] || { echo "L340 stale 'relative path from agent cwd' parenthetical still present"; return 1; }
-  [ "$l303_post" -ge 1 ] || { echo "L303 missing post-rewrite 'not reachable at the env-var path' literal"; return 1; }
-  [ "$l340_post" -ge 1 ] || { echo "L340 missing post-rewrite 'env-first per agents/references/cross-auditor-mode-focus.md §security mode bridge' literal in $f_hub"; return 1; }
-  # C2 closure — L311 contradiction with L300 env-first semantics. The pre-rewrite L311
-  # parenthetical claimed the unset-env fallback runs even when env IS set ("env-set + file-
-  # missing AND the unset-env fallback above also fails"), contradicting L300's strict env-set
-  # → no-relative-fallback rule. The rewrite aligns L311 with L300: env-set + file-missing →
-  # warn directly; env-unset + relative-realpath fallback fails → warn. L311 lives in §Step 1
-  # which moved to the codex-dispatch reference per Spec 2a Step 5.
   local stale_l311 l311_post
   stale_l311=$(grep -cF 'unset-env fallback above also fails' "$f_ref")
   l311_post=$(grep -cF 'no relative fallback when env is set' "$f_ref")
   [ "$stale_l311" = "0" ] || { echo "L311 stale 'unset-env fallback above also fails' contradictory phrasing still present"; return 1; }
   [ "$l311_post" -ge 1 ] || { echo "L311 missing post-rewrite 'no relative fallback when env is set' literal"; return 1; }
+
+  echo "resolve_rule_path.sh: nine §3.3a.2 rows + retained C2-closure negatives all hold"
+}
+
+check_cross_auditor_codex_dispatch_names_resolve_helper() {
+  # prompt-text: guards the prose↔helper wiring — asserts
+  # agents/references/cross-auditor-codex-dispatch.md names the
+  # resolve_rule_path.sh helper, so a future edit silently dropping the
+  # helper invocation fails the smoke run.
+  local f="agents/references/cross-auditor-codex-dispatch.md"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'resolve_rule_path.sh' "$f" \
+    || { echo "$f no longer names resolve_rule_path.sh — prose↔helper wiring lost" >&2; return 1; }
+  echo "cross-auditor-codex-dispatch.md names the resolve_rule_path.sh helper"
 }
 
 # Step 1 — SKILL.md §3.5 Pass 2 re-spawn loop monotonic numbering invariant.
