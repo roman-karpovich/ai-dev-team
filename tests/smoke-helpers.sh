@@ -5592,7 +5592,36 @@ check_json_schema_lint_self_test() {
   printf '%s' "$out" | grep -qF "additionalProperties" \
     || { echo "validator exit-2 diagnostic does not name the offending keyword (X8)"; return 1; }
 
-  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind + X3 scalar enum type + X5 nested container enum type + X4 misspelled keyword + X8 malformed keyword value"
+  # X8/X10 — the schema-walk added six keyword value-type-checks but only
+  # additionalProperties had a negative fixture; the other five were unproven
+  # gates (R3/R6). Each malformed-value schema below must fail loud with exit 2
+  # and a diagnostic naming the offending keyword. The trailing instance file
+  # is irrelevant — _walk_schema exits before instance validation runs.
+  #   bad-required           required is a string, not a list
+  #   bad-properties         properties is a string, not an object
+  #   bad-enum-value         enum is an empty list
+  #   bad-type-keyword       type is an unknown type-name string
+  # X10 — _walk_schema must additionally recurse into properties member
+  # subschemas and reject the Draft-07 tuple-form items list (validate() does
+  # not implement tuple semantics — a malformed member or a tuple list would
+  # otherwise emit zero diagnostics or mis-classify every array element):
+  #   bad-properties-member  a properties member subschema is a non-object
+  #   bad-items-tuple        items is a tuple-form list of per-position schemas
+  local badschema badkw
+  for badschema in bad-required:required bad-properties:properties \
+                   bad-enum-value:enum bad-type-keyword:type \
+                   bad-properties-member:properties bad-items-tuple:items; do
+    badkw="${badschema##*:}"
+    badschema="${badschema%%:*}"
+    out=$(python3 "$lint" "$fdir/$badschema.schema.json" "$fdir/misspelled-keyword-instance.json" 2>&1)
+    rc=$?
+    [ "$rc" -eq 2 ] \
+      || { echo "validator did not exit 2 on '$badschema' malformed-value schema (got rc=$rc) — X8/X10 silent gate disable"; return 1; }
+    printf '%s' "$out" | grep -qF "$badkw" \
+      || { echo "validator exit-2 diagnostic for '$badschema' does not name the offending keyword '$badkw'"; return 1; }
+  done
+
+  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind + X3 scalar enum type + X5 nested container enum type + X4 misspelled keyword + X8/X10 malformed keyword value (additionalProperties/required/properties/enum/type + nested properties member + tuple-form items)"
 }
 
 # Shared helper: run a cross-audit probe (probe_g.sh / probe_h.sh) against a

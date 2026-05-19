@@ -14,6 +14,7 @@ Supported keyword subset (Draft-07 semantics for each):
   - required              list of property names that MUST be present on an object.
   - properties            per-property subschemas, applied when the key is present.
   - items                 a single subschema applied to every array element.
+                          The Draft-07 tuple-form (a list) is NOT supported.
   - enum                  the instance value must equal one of the listed values.
   - additionalProperties  boolean. When false, object keys not named in
                           `properties` are a violation. When true (or absent),
@@ -32,8 +33,13 @@ keywords — a malformed value would otherwise silently misbehave under
 `validate()` exactly as a misspelled key would. `additionalProperties` MUST be
 a boolean (a non-boolean such as the string `"false"` would never be `is False`
 and would silently disable the extra-property gate); `required` MUST be a list
-(a string is iterated character-by-character); `properties` MUST be an object;
-`items` MUST be an object or a list; `enum` MUST be a non-empty list; `type`
+(a string is iterated character-by-character); `properties` MUST be an object
+AND every member subschema inside it MUST itself be an object (a non-object
+member would either mis-classify as an exit-1 instance violation or, if the
+instance lacks that key, emit zero diagnostics); `items` MUST be an object —
+the Draft-07 tuple-form `items` (a list of per-position schemas) is NOT
+implemented by `validate()` and is rejected outright rather than silently
+mis-validating every array element; `enum` MUST be a non-empty list; `type`
 MUST be a known type-name string. Any malformed value fails loud with exit 2.
 
 CLI:
@@ -146,11 +152,28 @@ def _walk_schema(schema, path="$"):
                        schema["additionalProperties"], "a boolean")
         if "required" in schema and not isinstance(schema["required"], list):
             _bad_value(path, "required", schema["required"], "a list")
-        if "properties" in schema and not isinstance(schema["properties"], dict):
-            _bad_value(path, "properties", schema["properties"], "an object")
-        if "items" in schema and not isinstance(schema["items"], (dict, list)):
-            _bad_value(path, "items", schema["items"],
-                       "an object or a list")
+        if "properties" in schema:
+            if not isinstance(schema["properties"], dict):
+                _bad_value(path, "properties", schema["properties"],
+                           "an object")
+            # Each member subschema must itself be an object — a non-object
+            # member (e.g. the string "NOT-A-SCHEMA") is malformed schema
+            # usage: validate() would either mis-classify it as an exit-1
+            # instance violation or, if the instance lacks that key, emit
+            # ZERO diagnostics. It must fail loud with exit 2 here.
+            for prop, subschema in schema["properties"].items():
+                if not isinstance(subschema, dict):
+                    _bad_value(f"{path}.properties.{prop}",
+                               "properties", subschema, "an object")
+        if "items" in schema:
+            # validate() implements only the SINGLE-subschema `items` form
+            # (one schema applied to every element); it does NOT implement
+            # Draft-07 tuple-form `items` (a list of per-position schemas).
+            # A tuple-form list is therefore rejected outright with exit 2
+            # rather than silently mis-validating every array element — the
+            # minimal fix consistent with this validator's documented subset.
+            if not isinstance(schema["items"], dict):
+                _bad_value(path, "items", schema["items"], "an object")
         if "enum" in schema:
             enum_value = schema["enum"]
             if not isinstance(enum_value, list) or not enum_value:
