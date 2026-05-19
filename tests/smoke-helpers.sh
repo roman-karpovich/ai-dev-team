@@ -6306,12 +6306,27 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
   rm -rf "$d_shadow"
   # Row 7b — env unset, sibling <root>-shadow dir whose path string-prefixes the checkout root.
   # A buggy string-prefix containment test would wrongly accept it; the separator-safe
-  # commonpath guard rejects it.
-  local d_sibling="$(dirname "$plugin_root")/$(basename "$plugin_root")-shadow"
-  mkdir -p "$d_sibling/$(dirname "$rel")"; : > "$d_sibling/$rel"
-  ( cd "$d_sibling" && _rrp_unreachable env -u CLAUDE_PLUGIN_ROOT ) \
-    || { rm -rf "$d_sibling"; return 1; }
-  rm -rf "$d_sibling"
+  # commonpath guard rejects it. The checkout-root vs sibling-prefix relationship is
+  # synthesized entirely inside a fresh mktemp -d parent — the script is copied into a
+  # temp checkout "$sib_parent/plug" so BASH_SOURCE root computation resolves to it, and
+  # the sibling "$sib_parent/plug-shadow" carries the relative target. NO real filesystem
+  # path outside the temp tree is created or removed (the deterministic real
+  # "<checkout>-shadow" path would clobber a developer's worktree/backup of that name).
+  local sib_parent; sib_parent=$(mktemp -d)
+  local sib_root="$sib_parent/plug"
+  local sib_shadow="$sib_parent/plug-shadow"
+  mkdir -p "$sib_root/hooks/lib"
+  cp "$helper" "$sib_root/hooks/lib/"
+  mkdir -p "$sib_shadow/$(dirname "$rel")"; : > "$sib_shadow/$rel"
+  local r7b_out r7b_err r7b_rc
+  r7b_out=$( cd "$sib_shadow" && env -u CLAUDE_PLUGIN_ROOT bash "$sib_root/hooks/lib/resolve_rule_path.sh" 2>/tmp/rrp-r7b.$$ )
+  r7b_rc=$?
+  r7b_err=$(cat /tmp/rrp-r7b.$$); rm -f /tmp/rrp-r7b.$$
+  rm -rf "$sib_parent"
+  [ "$r7b_rc" -eq 3 ] || { echo "resolver: row-7b (env-unset, sibling <root>-shadow prefix) expected exit 3, got $r7b_rc"; return 1; }
+  [ -z "$r7b_out" ] || { echo "resolver: row-7b must have empty stdout, got '$r7b_out'"; return 1; }
+  printf '%s' "$r7b_err" | grep -qF "$warn" \
+    || { echo "resolver: row-7b missing '⚠ $warn' stderr"; return 1; }
 
   # Row 8 — env unset, relative target inside the checkout but chmod 000 unreadable.
   # The script is copied into a temp checkout so the BASH_SOURCE root computation
