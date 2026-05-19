@@ -6004,6 +6004,7 @@ echo
 
 # --- Dependency freshness probe (Probe G — supply-chain layer) ---
 echo "Dependency freshness probe (Probe G):"
+check "probe-g-fixtures-schema-conform" check_probe_g_fixtures_schema_conform
 check "probe-g-corpus-fixture-valid" check_probe_g_corpus_fixture_valid
 check "probe-g-detector-fires-on-major-drift" check_probe_g_detector_fires_on_major_drift
 check "probe-g-detector-clean-at-current-major" check_probe_g_detector_clean_at_current_major
@@ -6031,6 +6032,7 @@ echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---
 echo "Typosquatting probe (Probe H):"
+check "probe-h-fixtures-schema-conform" check_probe_h_fixtures_schema_conform
 check "probe-h-corpus-path-resolution" check_probe_h_corpus_path_resolution
 check "probe-h-detector-fires-on-typosquat" check_probe_h_detector_fires_on_typosquat
 check "probe-h-detector-clean-canonical-name" check_probe_h_detector_clean_canonical_name

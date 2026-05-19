@@ -5473,43 +5473,122 @@ check_json_schema_lint_self_test() {
   echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind"
 }
 
-# Shared helper: run hooks/lib/probe_g.sh against a fixture dir and byte-diff
-# the full JSON output against expected_stdout.json. The probe is invoked with
-# cwd = $fixture_dir so repo_root paths resolve inside the fixture.
-# PROBE_G_FAKE_NOW is set for determinism so emitted_at byte-matches expected.
-_probe_g_byte_diff() {
-  # $1 = fixture dir (relative to plugin root)
+# Shared helper: run a cross-audit probe (probe_g.sh / probe_h.sh) against a
+# fixture dir, structurally validate the live stdout against the
+# probe-envelope JSON-Schema, then compare it with expected_stdout.json after
+# stripping the closed non-deterministic field set.
+#
+# This replaces the former _probe_envelope_check / g _probe_envelope_check full h
+# byte-diff helpers (X10): a raw byte-diff broke whenever input.json was
+# reformatted, because receipt_metadata.trigger_input_hash = sha256(stdin)
+# flips on any whitespace change with NO semantic regression. Here the volatile
+# hash is stripped from BOTH sides before the value compare, so cosmetic input
+# drift no longer breaks the pin; a structural regression is caught by the
+# schema gate; a value/detection regression is caught by the hash-stripped
+# compare against the frozen expected_stdout.json snapshot.
+#
+# Non-deterministic strip list — a CLOSED list: { receipt_metadata.trigger_input_hash }.
+# emitted_at is NOT stripped — it is pinned deterministically by *_FAKE_NOW.
+# A future non-deterministic receipt field would be added here with a rationale.
+#
+# Usage: _probe_envelope_check <fixture-dir> <probe>   where <probe> is g or h.
+_probe_envelope_check() {
   local fdir="$1"
+  local probe="$2"
   local input="$fdir/input.json"
   local expected="$fdir/expected_stdout.json"
   [ -r "$input" ] || { echo "$input not readable"; return 1; }
   [ -r "$expected" ] || { echo "$expected not readable"; return 1; }
+  local probe_script fake_now_var
+  case "$probe" in
+    g) probe_script="probe_g.sh"; fake_now_var="PROBE_G_FAKE_NOW" ;;
+    h) probe_script="probe_h.sh"; fake_now_var="PROBE_H_FAKE_NOW" ;;
+    *) echo "_probe_envelope_check: unknown probe '$probe' (expected g or h)"; return 1 ;;
+  esac
   local plugin_root
   plugin_root="$(pwd)"
-  local out_tmp="/tmp/smoke-probe-g-out.$$"
+  local schema="$plugin_root/tests/fixtures/probe-envelope.schema.json"
+  [ -r "$schema" ] || { echo "probe-envelope schema $schema not readable"; return 1; }
+  local out_tmp="/tmp/smoke-probe-${probe}-out.$$"
+  local err_tmp="/tmp/smoke-probe-${probe}-err.$$"
   local exit_code=0
   ( cd "$fdir" \
-    && PROBE_G_FAKE_NOW="2026-05-07T00:00:00Z" \
-    CLAUDE_PLUGIN_ROOT="$plugin_root" \
-    bash "$plugin_root/hooks/lib/probe_g.sh" < input.json ) >"$out_tmp" 2>/tmp/smoke-probe-g-err.$$ || exit_code=$?
+    && env "$fake_now_var=2026-05-07T00:00:00Z" \
+       CLAUDE_PLUGIN_ROOT="$plugin_root" \
+    bash "$plugin_root/hooks/lib/$probe_script" < input.json ) >"$out_tmp" 2>"$err_tmp" || exit_code=$?
   if [ "$exit_code" -ne 0 ]; then
-    echo "probe_g.sh exited $exit_code against $fdir; stderr:"
-    head -5 /tmp/smoke-probe-g-err.$$
-    rm -f "$out_tmp" /tmp/smoke-probe-g-err.$$
+    echo "$probe_script exited $exit_code against $fdir; stderr:"
+    head -5 "$err_tmp"
+    rm -f "$out_tmp" "$err_tmp"
     return 1
   fi
-  rm -f /tmp/smoke-probe-g-err.$$
-  # Canonicalize actual + expected via sort_keys.
+  rm -f "$err_tmp"
+
+  # (2) Structural gate: validate the live stdout against the envelope schema.
+  local schema_err
+  schema_err=$(python3 "$plugin_root/tests/lib/json_schema_lint.py" "$schema" "$out_tmp" 2>&1)
+  if [ "$?" -ne 0 ]; then
+    echo "$probe_script output for $fdir violates probe-envelope.schema.json:"
+    printf '%s\n' "$schema_err" | head -10
+    rm -f "$out_tmp"
+    return 1
+  fi
+
+  # (3) Strip the closed non-deterministic field set, then canonical-compare.
   local actual exp
-  actual=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
-  exp=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected")
+  actual=$(python3 - "$out_tmp" <<'PYEOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d.get("receipt_metadata", {}).pop("trigger_input_hash", None)
+sys.stdout.write(json.dumps(d, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+PYEOF
+)
+  exp=$(python3 - "$expected" <<'PYEOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d.get("receipt_metadata", {}).pop("trigger_input_hash", None)
+sys.stdout.write(json.dumps(d, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+PYEOF
+)
   rm -f "$out_tmp"
   if [ "$actual" != "$exp" ]; then
-    echo "probe_g output mismatch for $fdir:"
+    echo "probe_$probe hash-stripped output mismatch for $fdir:"
     diff <(printf '%s\n' "$actual") <(printf '%s\n' "$exp") | head -20
     return 1
   fi
-  echo "probe_g output byte-matches expected for $fdir"
+  echo "probe_$probe output schema-conforms and hash-stripped-matches expected for $fdir"
+}
+
+# Shared helper: assert every expected_stdout.json under a probe fixture root
+# conforms to the probe-envelope JSON-Schema. This is the structural-contract
+# gate (schema class) — distinct from _probe_envelope_check, which additionally
+# runs the probe and value-compares (behavioral).
+_probe_fixtures_schema_conform() {
+  local froot="$1"
+  local schema="tests/fixtures/probe-envelope.schema.json"
+  test -d "$froot" || { echo "$froot fixture root missing"; return 1; }
+  test -f "$schema" || { echo "$schema missing"; return 1; }
+  local count=0 expected out
+  for expected in "$froot"/*/expected_stdout.json; do
+    [ -f "$expected" ] || continue
+    count=$((count + 1))
+    out=$(python3 tests/lib/json_schema_lint.py "$schema" "$expected" 2>&1)
+    if [ "$?" -ne 0 ]; then
+      echo "$expected does not conform to probe-envelope.schema.json:"
+      printf '%s\n' "$out" | head -10
+      return 1
+    fi
+  done
+  [ "$count" -gt 0 ] || { echo "no expected_stdout.json fixtures found under $froot"; return 1; }
+  echo "all $count expected_stdout.json fixtures under $froot conform to probe-envelope.schema.json"
+}
+
+check_probe_g_fixtures_schema_conform() {
+  _probe_fixtures_schema_conform tests/fixtures/cross-audit-probe-g
+}
+
+check_probe_h_fixtures_schema_conform() {
+  _probe_fixtures_schema_conform tests/fixtures/cross-audit-probe-h
 }
 
 check_probe_g_corpus_fixture_valid() {
@@ -5538,50 +5617,15 @@ PYEOF
 }
 
 check_probe_g_detector_fires_on_major_drift() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/01-positive-major-drift
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/01-positive-major-drift g
 }
 
 check_probe_g_detector_clean_at_current_major() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/02-clean-current-major
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/02-clean-current-major g
 }
 
 check_probe_g_detector_ineligible_no_lockfile() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/03-ineligible-no-lockfile
-}
-
-_probe_h_byte_diff() {
-  # $1 = fixture dir (relative to plugin root)
-  local fdir="$1"
-  local input="$fdir/input.json"
-  local expected="$fdir/expected_stdout.json"
-  [ -r "$input" ] || { echo "$input not readable"; return 1; }
-  [ -r "$expected" ] || { echo "$expected not readable"; return 1; }
-  local plugin_root
-  plugin_root="$(pwd)"
-  local out_tmp="/tmp/smoke-probe-h-out.$$"
-  local exit_code=0
-  ( cd "$fdir" \
-    && PROBE_H_FAKE_NOW="2026-05-07T00:00:00Z" \
-    CLAUDE_PLUGIN_ROOT="$plugin_root" \
-    bash "$plugin_root/hooks/lib/probe_h.sh" < input.json ) >"$out_tmp" 2>/tmp/smoke-probe-h-err.$$ || exit_code=$?
-  if [ "$exit_code" -ne 0 ]; then
-    echo "probe_h.sh exited $exit_code against $fdir; stderr:"
-    head -5 /tmp/smoke-probe-h-err.$$
-    rm -f "$out_tmp" /tmp/smoke-probe-h-err.$$
-    return 1
-  fi
-  rm -f /tmp/smoke-probe-h-err.$$
-  # Canonicalize actual + expected via sort_keys.
-  local actual exp
-  actual=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
-  exp=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected")
-  rm -f "$out_tmp"
-  if [ "$actual" != "$exp" ]; then
-    echo "probe_h output mismatch for $fdir:"
-    diff <(printf '%s\n' "$actual") <(printf '%s\n' "$exp") | head -20
-    return 1
-  fi
-  echo "probe_h output byte-matches expected for $fdir"
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/03-ineligible-no-lockfile g
 }
 
 check_probe_h_corpus_path_resolution() {
@@ -5639,155 +5683,155 @@ if not m or int(m.group(1)) <= 0:
 }
 
 check_probe_h_detector_fires_on_typosquat() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/01-positive-typosquat
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/01-positive-typosquat h
 }
 
 check_probe_h_detector_clean_canonical_name() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/02-clean-canonical-name
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/02-clean-canonical-name h
 }
 
 check_probe_h_detector_clean_distant_name() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/03-clean-distant-name
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/03-clean-distant-name h
 }
 
 check_probe_g_detector_fires_on_major_only_no_dot() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/06-major-only-no-dot
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/06-major-only-no-dot g
 }
 
 check_probe_h_detector_fires_on_major_only_no_dot() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/06-major-only-no-dot
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/06-major-only-no-dot h
 }
 
 check_probe_g_detector_fires_on_extras_syntax() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/08-extras-syntax
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/08-extras-syntax g
 }
 
 check_probe_h_detector_fires_on_extras_syntax() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/08-extras-syntax
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/08-extras-syntax h
 }
 
 check_probe_g_detector_fires_on_whitespace_eq() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/09-whitespace-eq
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/09-whitespace-eq g
 }
 
 check_probe_h_detector_fires_on_whitespace_eq() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/09-whitespace-eq
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/09-whitespace-eq h
 }
 
 check_probe_g_detector_rejects_malformed_requirements() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/19-malformed-requirements
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/19-malformed-requirements g
 }
 
 check_probe_g_detector_fires_on_uppercase_name_package_lock() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/07-uppercase-name-package-lock
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/07-uppercase-name-package-lock g
 }
 
 check_probe_g_detector_out_of_diff_lockfile_ignored() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/11-out-of-diff-lockfile-ignored
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/11-out-of-diff-lockfile-ignored g
 }
 
 check_probe_h_detector_out_of_diff_lockfile_ignored() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/11-out-of-diff-lockfile-ignored
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/11-out-of-diff-lockfile-ignored h
 }
 
 check_probe_g_detector_in_diff_lockfile_evaluated() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/11-in-diff-lockfile-evaluated
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/11-in-diff-lockfile-evaluated g
 }
 
 check_probe_h_detector_in_diff_lockfile_evaluated() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/11-in-diff-lockfile-evaluated
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/11-in-diff-lockfile-evaluated h
 }
 
 check_probe_g_yarn_berry_peer_dep() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/12-yarn-berry-peer-dep
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/12-yarn-berry-peer-dep g
 }
 
 check_probe_h_yarn_berry_peer_dep() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/12-yarn-berry-peer-dep
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/12-yarn-berry-peer-dep h
 }
 
 check_probe_g_yarn_scoped_npm_protocol() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/13-yarn-scoped-npm-protocol
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/13-yarn-scoped-npm-protocol g
 }
 
 check_probe_h_yarn_scoped_npm_protocol() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/13-yarn-scoped-npm-protocol
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/13-yarn-scoped-npm-protocol h
 }
 
 check_probe_g_pnpm_v9_format() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/14-pnpm-v9-format
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/14-pnpm-v9-format g
 }
 
 check_probe_h_pnpm_v9_format() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/14-pnpm-v9-format
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/14-pnpm-v9-format h
 }
 
 check_probe_g_pnpm_v9_quoted_scoped() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/20-pnpm-v9-quoted-scoped
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/20-pnpm-v9-quoted-scoped g
 }
 
 check_probe_h_pnpm_v9_quoted_scoped() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/20-pnpm-v9-quoted-scoped
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/20-pnpm-v9-quoted-scoped h
 }
 
 check_probe_g_yarn_scoped_alias_target() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/21-yarn-scoped-alias-target
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/21-yarn-scoped-alias-target g
 }
 
 check_probe_h_yarn_scoped_alias_target() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/21-yarn-scoped-alias-target
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/21-yarn-scoped-alias-target h
 }
 
 check_probe_g_yarn_portal_and_github() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/22-yarn-portal-and-github
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/22-yarn-portal-and-github g
 }
 
 check_probe_h_yarn_portal_and_github() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/22-yarn-portal-and-github
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/22-yarn-portal-and-github h
 }
 
 check_probe_h_levenshtein_length_cap() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/15-levenshtein-length-cap
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/15-levenshtein-length-cap h
 }
 
 check_probe_g_vendored_excluded() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/10-vendored-excluded
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/10-vendored-excluded g
 }
 
 check_probe_h_vendored_excluded() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/10-vendored-excluded
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/10-vendored-excluded h
 }
 
 check_probe_g_boundary_drift_2_suppressed() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/04-boundary-drift-2-suppressed
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/04-boundary-drift-2-suppressed g
 }
 
 check_probe_g_boundary_drift_3_fired() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/05-boundary-drift-3-fired
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/05-boundary-drift-3-fired g
 }
 
 check_probe_g_npm_v7_packages_walk_and_dep_classes() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/16-npm-v7-and-dep-classes
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/16-npm-v7-and-dep-classes g
 }
 
 check_probe_h_npm_v7_packages_walk_and_dep_classes() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/16-npm-v7-and-dep-classes
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/16-npm-v7-and-dep-classes h
 }
 
 check_probe_g_npm_range_vs_resolved_dedup() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/17-range-vs-resolved-dedup
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/17-range-vs-resolved-dedup g
 }
 
 check_probe_h_npm_range_vs_resolved_dedup() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/17-range-vs-resolved-dedup
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/17-range-vs-resolved-dedup h
 }
 
 check_probe_g_pre_1_0_skipped() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/18-pre-1-0-skipped
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/18-pre-1-0-skipped g
 }
 
 check_probe_h_detector_rejects_malformed_requirements() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/19-malformed-requirements h
 }
 
 check_skill_stride_lite_block_gated() {

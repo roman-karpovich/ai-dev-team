@@ -15,9 +15,21 @@
 #
 # Blank lines and lines starting with "#" are ignored.
 #
+# Probe G/H detector pins:
+#   The probe-G/H detector and parser/boundary pins run the probe and compare
+#   its stdout against a frozen expected_stdout.json with the volatile
+#   receipt_metadata.trigger_input_hash stripped from both sides (a
+#   hash-stripped canonical compare, NOT a raw byte-diff) plus a structural
+#   gate against probe-envelope.schema.json. They genuinely assert
+#   detection/parse logic, so they are classified `behavioral`. The separate
+#   probe-*-fixtures-schema-conform pins validate only the fixture envelope
+#   shape and are classified `schema`.
+#
 # Runtime:
-#   The canonical smoke harness uses Bash 4+ associative arrays
-#   (`declare -A PROVES_MAP`) to load this manifest.
+#   The canonical smoke harness loads this manifest into a Bash 4+ associative
+#   array when available (`declare -A PROVES_MAP`) and falls back to parallel
+#   indexed arrays on Bash 3.2 (stock macOS) — see the PROVES_MAP_SUPPORTS_ASSOC
+#   branch in tests/smoke.sh.
 
 # Manifest integrity
 validate_plugin_json schema
@@ -157,6 +169,7 @@ check_cross_auditor_consumes_attack_surface_profile prompt-text
 check_json_schema_lint_self_test behavioral
 
 # Dependency freshness probe (Probe G — supply-chain layer)
+check_probe_g_fixtures_schema_conform schema
 check_probe_g_corpus_fixture_valid schema
 check_probe_g_detector_fires_on_major_drift behavioral
 check_probe_g_detector_clean_at_current_major behavioral
@@ -182,6 +195,7 @@ check_probe_g_npm_range_vs_resolved_dedup behavioral
 check_probe_g_pre_1_0_skipped behavioral
 
 # Typosquatting probe (Probe H — supply-chain layer)
+check_probe_h_fixtures_schema_conform schema
 check_probe_h_corpus_path_resolution schema
 check_probe_h_detector_fires_on_typosquat behavioral
 check_probe_h_detector_clean_canonical_name behavioral
