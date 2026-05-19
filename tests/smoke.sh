@@ -5997,6 +5997,11 @@ check "spec-template-attack-surface-section" check_spec_template_attack_surface_
 check "cross-auditor-consumes-attack-surface-profile" check_cross_auditor_consumes_attack_surface_profile
 echo
 
+# --- Probe-envelope JSON-Schema validator self-test ---
+echo "Probe-envelope schema validator:"
+check "json-schema-lint-self-test" check_json_schema_lint_self_test
+echo
+
 # --- Dependency freshness probe (Probe G — supply-chain layer) ---
 echo "Dependency freshness probe (Probe G):"
 check "probe-g-corpus-fixture-valid" check_probe_g_corpus_fixture_valid

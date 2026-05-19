@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Structural contract for the shared cross-audit probe stdout envelope emitted by probe_g.sh and probe_h.sh. Both probes emit the identical finding shape (the fixed 9-key payload). Validated by the stdlib subset validator tests/lib/json_schema_lint.py — see that file's header for the supported keyword subset.",
+  "type": "object",
+  "required": ["findings", "receipt_metadata"],
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "canonical_payload",
+          "description",
+          "file",
+          "fingerprint_anchors",
+          "fix",
+          "provisional_id",
+          "severity",
+          "sources",
+          "title"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "canonical_payload": { "type": "object" },
+          "description": { "type": "string" },
+          "file": { "type": "string" },
+          "fingerprint_anchors": { "type": "object" },
+          "fix": { "type": "string" },
+          "provisional_id": { "type": "string" },
+          "severity": { "type": "string", "enum": ["HIGH"] },
+          "sources": { "type": "array" },
+          "title": { "type": "string" }
+        }
+      }
+    },
+    "receipt_metadata": {
+      "type": "object",
+      "required": [
+        "degraded_mode",
+        "eligible_reason",
+        "emitted_at",
+        "probe_id",
+        "probe_version",
+        "scope_files_read",
+        "skipped_files",
+        "trigger_input_hash"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "degraded_mode": { "type": "boolean" },
+        "eligible_reason": { "type": "string" },
+        "emitted_at": { "type": "string" },
+        "probe_id": { "type": "string" },
+        "probe_version": { "type": "string" },
+        "scope_files_read": { "type": "array" },
+        "skipped_files": { "type": "array" },
+        "trigger_input_hash": { "type": "string" }
+      }
+    }
+  }
+}

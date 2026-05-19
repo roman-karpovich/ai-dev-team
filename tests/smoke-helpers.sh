@@ -5439,6 +5439,40 @@ check_cross_auditor_consumes_attack_surface_profile() {
   echo "cross-auditor spec mode carries Attack-surface profile consumption rules with all required fingerprints"
 }
 
+check_json_schema_lint_self_test() {
+  # behavioral: exercises the pure-stdlib JSON-Schema validator
+  # tests/lib/json_schema_lint.py against a known-VALID instance and one
+  # known-INVALID instance per violation kind (wrong type / missing required /
+  # bad enum / extra property under additionalProperties:false / bad array
+  # item). A self-test with only a positive case proves nothing — each
+  # negative case asserts the validator actually rejects the malformed shape.
+  local lint="tests/lib/json_schema_lint.py"
+  local schema="tests/fixtures/json-schema-lint/selftest.schema.json"
+  test -f "$lint" || { echo "$lint missing"; return 1; }
+  test -f "$schema" || { echo "$schema missing"; return 1; }
+
+  # Positive: a valid instance exits 0.
+  python3 "$lint" "$schema" tests/fixtures/json-schema-lint/valid.json >/dev/null 2>&1 \
+    || { echo "validator rejected a known-valid instance"; return 1; }
+
+  # Negative cases: each malformed instance exits 1 with a diagnostic.
+  local kind out rc
+  for kind in bad-type missing-required bad-enum extra-property bad-items; do
+    out=$(python3 "$lint" "$schema" "tests/fixtures/json-schema-lint/$kind.json" 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "validator did not exit 1 on '$kind' instance (got rc=$rc)"; return 1; }
+    [ -n "$out" ] \
+      || { echo "validator emitted no diagnostic on '$kind' instance"; return 1; }
+  done
+
+  # Usage error: wrong arg count exits 2.
+  python3 "$lint" "$schema" >/dev/null 2>&1
+  [ "$?" -eq 2 ] || { echo "validator did not exit 2 on a usage error"; return 1; }
+
+  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind"
+}
+
 # Shared helper: run hooks/lib/probe_g.sh against a fixture dir and byte-diff
 # the full JSON output against expected_stdout.json. The probe is invoked with
 # cwd = $fixture_dir so repo_root paths resolve inside the fixture.

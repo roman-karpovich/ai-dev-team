@@ -153,6 +153,9 @@ check_skill_attack_surface_slot_prompts prompt-text
 check_spec_template_attack_surface_section schema
 check_cross_auditor_consumes_attack_surface_profile prompt-text
 
+# Probe-envelope JSON-Schema validator self-test
+check_json_schema_lint_self_test behavioral
+
 # Dependency freshness probe (Probe G — supply-chain layer)
 check_probe_g_corpus_fixture_valid schema
 check_probe_g_detector_fires_on_major_drift behavioral
