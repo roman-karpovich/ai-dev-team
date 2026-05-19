@@ -2465,7 +2465,7 @@ check_probe_e_merged_receipt_written() {
   # §3.3 receipt_metadata; pick audit_slug matching fixture 06 and an
   # emitted_at deterministic to match on-disk bytes.
   local work
-  work=$(mktemp -d)
+  work=$(mktemp -d) || return 1
   trap "rm -rf '$work'" RETURN
   local kb_root="$work/kb"
   local audit_slug="2026-04-21-fixture-06-merged-receipt"
@@ -2993,7 +2993,7 @@ check_probe_f_merged_receipt_written() {
   local fdir="tests/fixtures/cross-audit-probe-f/06-dedupe-with-llm"
   [ -r "$fdir/input.json" ] || { echo "$fdir/input.json missing"; return 1; }
   local work
-  work=$(mktemp -d)
+  work=$(mktemp -d) || return 1
   trap "rm -rf '$work'" RETURN
   local kb_root="$work/kb"
   local audit_slug="2026-04-21-fixture-06-f-merged-receipt"
@@ -3780,8 +3780,8 @@ check_cross_audit_agent_handles_range_spec() {
 
 check_codex_audit_dispatch_helper_positive() {
   local tmpdir tmpout stdout
-  tmpdir=$(mktemp -d)
-  tmpout=$(mktemp)
+  tmpdir=$(mktemp -d) || return 1
+  tmpout=$(mktemp) || { rm -rf "$tmpdir"; return 1; }
   rm -f "$tmpout"
 
   stdout=$(echo "test prompt" | CODEX_BIN="$PLUGIN_ROOT/tests/fixtures/codex-audit-dispatch/mock_codex.sh" bash hooks/lib/codex_audit_dispatch.sh "$tmpdir" "$tmpout" gpt-5.5 xhigh) \
@@ -3796,7 +3796,7 @@ check_codex_audit_dispatch_helper_positive() {
 
 check_codex_audit_dispatch_helper_propagates_exit_code() {
   local tmpstderr rc
-  tmpstderr=$(mktemp)
+  tmpstderr=$(mktemp) || return 1
   rc=0
   CODEX_BIN="$PLUGIN_ROOT/tests/fixtures/codex-audit-dispatch/mock_codex_fail.sh" bash hooks/lib/codex_audit_dispatch.sh /tmp /tmp/codex-noop.txt gpt-5.5 xhigh < /dev/null 2>"$tmpstderr" || rc=$?
   [ "$rc" = "2" ] || { echo "expected exit code 2, got $rc"; rm -f "$tmpstderr"; return 1; }
@@ -3807,7 +3807,7 @@ check_codex_audit_dispatch_helper_propagates_exit_code() {
 
 check_codex_audit_dispatch_helper_arg_validation() {
   local tmpstderr rc
-  tmpstderr=$(mktemp)
+  tmpstderr=$(mktemp) || return 1
   rc=0
   bash hooks/lib/codex_audit_dispatch.sh 2>"$tmpstderr" || rc=$?
   [ "$rc" -ne 0 ] || { echo "expected non-zero exit"; rm -f "$tmpstderr"; return 1; }
@@ -6309,15 +6309,17 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
   _rrp_resolved "$plugin_root/$rel" env "CLAUDE_PLUGIN_ROOT=$plugin_root" || return 1
 
   # Row 2 — env set to an absolute path missing the rules file.
-  local d_missing; d_missing=$(mktemp -d)
+  local d_missing; d_missing=$(mktemp -d) || return 1
   _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=$d_missing" || { rm -rf "$d_missing"; return 1; }
   # Row 2 variant — code-quality-rules.md exists but is a directory (not a regular file).
-  local d_notreg; d_notreg=$(mktemp -d); mkdir -p "$d_notreg/$rel"
+  local d_notreg; d_notreg=$(mktemp -d) || { rm -rf "$d_missing"; return 1; }
+  mkdir -p "$d_notreg/$rel"
   _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=$d_notreg" || { rm -rf "$d_missing" "$d_notreg"; return 1; }
   rm -rf "$d_missing" "$d_notreg"
 
   # Row 3 — env set to an absolute path, rules file is a regular file but chmod 000 unreadable.
-  local d_unread; d_unread=$(mktemp -d); mkdir -p "$d_unread/$(dirname "$rel")"
+  local d_unread; d_unread=$(mktemp -d) || return 1
+  mkdir -p "$d_unread/$(dirname "$rel")"
   : > "$d_unread/$rel"; chmod 000 "$d_unread/$rel"
   _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=$d_unread" \
     || { chmod 644 "$d_unread/$rel"; rm -rf "$d_unread"; return 1; }
@@ -6333,7 +6335,8 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
   ( cd "$plugin_root" && _rrp_resolved "$plugin_root/$rel" env -u CLAUDE_PLUGIN_ROOT ) || return 1
 
   # Row 7a — env unset, relative path resolves to a plain shadow file OUTSIDE the checkout.
-  local d_shadow; d_shadow=$(mktemp -d); mkdir -p "$d_shadow/$(dirname "$rel")"; : > "$d_shadow/$rel"
+  local d_shadow; d_shadow=$(mktemp -d) || return 1
+  mkdir -p "$d_shadow/$(dirname "$rel")"; : > "$d_shadow/$rel"
   ( cd "$d_shadow" && _rrp_unreachable env -u CLAUDE_PLUGIN_ROOT ) \
     || { rm -rf "$d_shadow"; return 1; }
   rm -rf "$d_shadow"
@@ -6345,7 +6348,7 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
   # the sibling "$sib_parent/plug-shadow" carries the relative target. NO real filesystem
   # path outside the temp tree is created or removed (the deterministic real
   # "<checkout>-shadow" path would clobber a developer's worktree/backup of that name).
-  local sib_parent; sib_parent=$(mktemp -d)
+  local sib_parent; sib_parent=$(mktemp -d) || return 1
   local sib_root="$sib_parent/plug"
   local sib_shadow="$sib_parent/plug-shadow"
   mkdir -p "$sib_root/hooks/lib"
@@ -6364,7 +6367,13 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
   # Row 8 — env unset, relative target inside the checkout but chmod 000 unreadable.
   # The script is copied into a temp checkout so the BASH_SOURCE root computation
   # still resolves. Run the copied script directly (not via the $helper wrapper).
-  local d_co; d_co=$(mktemp -d)/co
+  # The temp checkout is a subdir of a guarded mktemp -d parent — the cleanup
+  # rm -rf targets that parent variable directly, never `dirname` of a path
+  # derived from an unchecked mktemp (the X1/X7 destructive class: on mktemp
+  # failure an appended-segment path round-tripped through dirname resolves to
+  # `/`, and a routine `bash tests/smoke.sh` runs `rm -rf /`).
+  local d_co_parent; d_co_parent=$(mktemp -d) || return 1
+  local d_co="$d_co_parent/co"
   mkdir -p "$d_co/hooks/lib" "$d_co/$(dirname "$rel")"
   cp "$helper" "$d_co/hooks/lib/"
   : > "$d_co/$rel"; chmod 000 "$d_co/$rel"
@@ -6372,7 +6381,7 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
   r8_out=$( cd "$d_co" && env -u CLAUDE_PLUGIN_ROOT bash "$d_co/hooks/lib/resolve_rule_path.sh" 2>/tmp/rrp-r8.$$ )
   r8_rc=$?
   r8_err=$(cat /tmp/rrp-r8.$$); rm -f /tmp/rrp-r8.$$
-  chmod 644 "$d_co/$rel"; rm -rf "$(dirname "$d_co")"
+  chmod 644 "$d_co/$rel"; rm -rf "$d_co_parent"
   [ "$r8_rc" -eq 3 ] || { echo "resolver: row-8 (env-unset, inside-but-unreadable) expected exit 3, got $r8_rc"; return 1; }
   [ -z "$r8_out" ] || { echo "resolver: row-8 must have empty stdout, got '$r8_out'"; return 1; }
   printf '%s' "$r8_err" | grep -qF "$warn" \
@@ -7006,7 +7015,7 @@ check_dispatch_response_classification() {
   fi
   local d meta mode expected_class expected_exit project
   local out_file rc got_class checked=0
-  out_file=$(mktemp)
+  out_file=$(mktemp) || return 1
   for d in "$fixture_root"/*/*/; do
     meta="$d/meta.yml"
     if [ ! -f "$meta" ] || [ ! -f "$d/raw-response.txt" ]; then
@@ -7154,7 +7163,7 @@ evidence-class-disallowed/spec|EVIDENCE_CLASS_DISALLOWED|cross-auditor emitted d
 dual-model-with-blockers/spec|DUAL_MODEL_WITH_BLOCKERS|cross-auditor emitted dual_model with non-empty evidence_blockers: ['"'"''"'"'something'"'"''"'"']
 single-model-without-blockers/spec|SINGLE_MODEL_WITHOUT_BLOCKERS|cross-auditor emitted single_model with empty evidence_blockers'
   local out_file count=0 line slug mode expect_class expect_blocker
-  out_file=$(mktemp)
+  out_file=$(mktemp) || return 1
   while IFS='|' read -r slug expect_class expect_blocker; do
     [ -z "$slug" ] && continue
     mode="${slug##*/}"
@@ -7215,4 +7224,77 @@ PY
     return 1
   fi
   echo "dispatch-response classifier: enum->violation_blocker mapping pinned for all 10 violation classes"
+}
+
+# Static lint: every `mktemp` invocation in tests/smoke-helpers.sh must be guarded
+# and must never have a path segment appended to an unchecked `$(mktemp ...)`.
+#
+# This pin closes the destructive `rm -rf` class twice found in this file:
+#   - X1 (iter-1): a deterministic real-path `rm -rf` triggered by `bash tests/smoke.sh`.
+#   - X7 (iter-3): `d_co=$(mktemp -d)/co` with no success guard — on `mktemp`
+#     failure `d_co` becomes the literal `/co`, and a downstream
+#     `rm -rf "$(dirname "$d_co")"` resolves to `rm -rf /` during a routine
+#     smoke run, with the developer's own privileges.
+#
+# What this lint scans for (the X1/X7 shape), per non-comment line of
+# tests/smoke-helpers.sh:
+#   A. Path-segment-appended unchecked mktemp — a `$(mktemp ...)` command
+#      substitution with a `/`-prefixed path segment glued directly onto its
+#      closing paren (e.g. `=$(mktemp -d)/co`). This manufactures the
+#      `dirname -> /` footgun and is BANNED outright, guarded or not.
+#   B. Unguarded assignment-from-mktemp — a `VAR=$(mktemp ...)` (or
+#      `VAR=$(mktemp ...)/...`) line that is NOT followed on the same line by a
+#      success guard: either `|| return` / `|| { ... }` after the substitution,
+#      or the inline `=$(mktemp ...) || { echo ...; return 1; }` idiom already
+#      used by the correctly-guarded rows. A bare `local VAR; VAR=$(mktemp -d)`
+#      with the guard on the SAME logical line counts as guarded.
+# A non-empty match list for A or B fails the pin and names every offending
+# line number + text, so the destructive class cannot recur a third time.
+check_smoke_helpers_mktemp_guarded() {
+  local target="tests/smoke-helpers.sh"
+  [ -r "$target" ] || { echo "lint target missing: $target"; return 1; }
+  local report
+  report=$(SMOKE_LINT_TARGET="$target" python3 <<'PY'
+import os, re, sys
+
+target = os.environ["SMOKE_LINT_TARGET"]
+with open(target, encoding="utf-8") as fh:
+    lines = fh.readlines()
+
+# Shape A: $(mktemp ...) with a path segment appended to the closing paren.
+# The closing paren of the substitution is immediately followed by `/`.
+appended = re.compile(r'\$\(\s*mktemp\b[^()]*\)/')
+# Any assignment that captures mktemp output: `VAR=$(mktemp ...)`.
+assign = re.compile(r'(?:^|[;\s])([A-Za-z_][A-Za-z0-9_]*)=\$\(\s*mktemp\b')
+# A same-line success guard following the substitution.
+guard = re.compile(r'\)\s*(?:/[^\s;]*)?\s*\|\|')
+
+violations = []
+for n, raw in enumerate(lines, start=1):
+    stripped = raw.lstrip()
+    if stripped.startswith("#"):
+        continue
+    line = raw.rstrip("\n")
+    if appended.search(line):
+        violations.append((n, "appended-segment", line.strip()))
+        # an appended-segment line is banned regardless of any guard.
+        continue
+    if assign.search(line) and not guard.search(line):
+        violations.append((n, "unguarded", line.strip()))
+
+if violations:
+    print("UNGUARDED MKTEMP SITE(S) — destructive rm-rf class (X1/X7):")
+    for n, kind, text in violations:
+        print(f"  L{n} [{kind}]: {text}")
+    sys.exit(1)
+print("ok")
+PY
+)
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "$report"
+    echo "lint: $target has an unguarded or path-appended mktemp — see lines above"
+    return 1
+  fi
+  echo "lint: all mktemp sites in $target are guarded; no path-appended \$(mktemp ...)"
 }

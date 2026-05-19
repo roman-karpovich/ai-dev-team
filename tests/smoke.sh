@@ -6004,6 +6004,11 @@ echo "Probe-envelope schema validator:"
 check "json-schema-lint-self-test" check_json_schema_lint_self_test
 echo
 
+# --- Smoke-harness self-protection lint ---
+echo "Smoke-harness lint:"
+check "smoke-helpers-mktemp-guarded" check_smoke_helpers_mktemp_guarded
+echo
+
 # --- Dependency freshness probe (Probe G — supply-chain layer) ---
 echo "Dependency freshness probe (Probe G):"
 check "probe-g-fixtures-schema-conform" check_probe_g_fixtures_schema_conform
