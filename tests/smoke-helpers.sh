@@ -7277,37 +7277,66 @@ PY
 #     smoke run, with the developer's own privileges.
 #
 # What this lint scans for (the X1/X7 shape), per non-comment line of
-# tests/smoke-helpers.sh:
-#   A. Path-segment-appended unchecked mktemp — a `$(mktemp ...)` command
-#      substitution with a `/`-prefixed path segment glued directly onto its
-#      closing paren (e.g. `=$(mktemp -d)/co`). This manufactures the
-#      `dirname -> /` footgun and is BANNED outright, guarded or not.
-#   B. Unguarded assignment-from-mktemp — a `VAR=$(mktemp ...)` (or
-#      `VAR=$(mktemp ...)/...`) line that is NOT followed on the same line by a
-#      success guard: either `|| return` / `|| { ... }` after the substitution,
-#      or the inline `=$(mktemp ...) || { echo ...; return 1; }` idiom already
-#      used by the correctly-guarded rows. A bare `local VAR; VAR=$(mktemp -d)`
-#      with the guard on the SAME logical line counts as guarded.
+# tests/smoke-helpers.sh. An mktemp command substitution is recognized in ALL
+# THREE legal bash forms — plain `$(mktemp ...)`, quoted `"$(mktemp ...)"`, and
+# backtick `` `mktemp ...` `` — since all three produce a poisoned path on
+# `mktemp` failure (X9: the original pin saw only the unquoted `$(` form):
+#   A. Path-segment-appended unchecked mktemp — an mktemp substitution with a
+#      `/`-prefixed path segment glued onto its close (e.g. `=$(mktemp -d)/co`
+#      OR the quoted variant `="$(mktemp -d)"/co` where a closing quote sits
+#      between `)` and `/`). This manufactures the `dirname -> /` footgun and
+#      is BANNED outright, guarded or not.
+#   B. Unguarded assignment-from-mktemp — a `VAR=$(mktemp ...)` (in any of the
+#      three forms) line NOT followed on the same line by a REAL success guard.
+#      A real guard's `||` branch must actually ABORT the pin — its branch must
+#      contain `return` or `exit` (`|| return`, `|| exit`, `|| { ...; return; }`,
+#      `|| { ...; exit; }`). A failure-swallowing `|| true` / `|| :` is NOT a
+#      guard (X9): it swallows the `mktemp` failure and execution proceeds with
+#      VAR empty — the exact poisoned-path footgun the pin exists to forbid.
+#      A bare `local VAR; VAR=$(mktemp -d)` with the guard on the SAME logical
+#      line counts as guarded.
 # A non-empty match list for A or B fails the pin and names every offending
 # line number + text, so the destructive class cannot recur a third time.
-check_smoke_helpers_mktemp_guarded() {
-  local target="tests/smoke-helpers.sh"
-  [ -r "$target" ] || { echo "lint target missing: $target"; return 1; }
-  local report
-  report=$(SMOKE_LINT_TARGET="$target" python3 <<'PY'
+# _smoke_mktemp_lint_scan <file> — the single source of truth for the mktemp
+# lint. Scans <file> and prints `ok` (exit 0) or the violation list (exit 1).
+# Both the real pin (against tests/smoke-helpers.sh) and the lint's own
+# self-test pin (against synthetic fixture snippets) drive THIS function, so
+# the negative fixtures exercise the exact regexes the real pin uses (R3/R6).
+_smoke_mktemp_lint_scan() {
+  SMOKE_LINT_TARGET="$1" python3 <<'PY'
 import os, re, sys
 
 target = os.environ["SMOKE_LINT_TARGET"]
 with open(target, encoding="utf-8") as fh:
     lines = fh.readlines()
 
-# Shape A: $(mktemp ...) with a path segment appended to the closing paren.
-# The closing paren of the substitution is immediately followed by `/`.
-appended = re.compile(r'\$\(\s*mktemp\b[^()]*\)/')
-# Any assignment that captures mktemp output: `VAR=$(mktemp ...)`.
-assign = re.compile(r'(?:^|[;\s])([A-Za-z_][A-Za-z0-9_]*)=\$\(\s*mktemp\b')
-# A same-line success guard following the substitution.
-guard = re.compile(r'\)\s*(?:/[^\s;]*)?\s*\|\|')
+# A mktemp command substitution in ANY of its three legal bash forms — plain
+# `$(mktemp ...)`, double/single-quoted `"$(mktemp ...)"`, or backtick
+# `` `mktemp ...` ``. All three are equally capable of producing a poisoned
+# path, so all three must be visible to the lint.
+_SUBST = r'(?:["\']?\$\(\s*mktemp\b[^()]*\)["\']?|["\']?`\s*mktemp\b[^`]*`["\']?)'
+
+# Shape A: a path segment appended to an mktemp substitution. The `/` may
+# follow the closing `)` / backtick directly OR a closing quote in between
+# (`"$(mktemp -d)"/co`) — both put the segment outside the guarded value.
+appended = re.compile(r'(?:\$\(\s*mktemp\b[^()]*\)|`\s*mktemp\b[^`]*`)["\']?/')
+# Any assignment that captures mktemp output, quoted or backtick form:
+# `VAR=$(mktemp ...)`, `VAR="$(mktemp ...)"`, `VAR=`mktemp ...``.
+assign = re.compile(
+    r'(?:^|[;\s])([A-Za-z_][A-Za-z0-9_]*)='
+    r'(?:["\']?\$\(\s*mktemp\b|["\']?`\s*mktemp\b)'
+)
+# A same-line success guard following the substitution. A REAL guard's `||`
+# branch must actually abort the pin — its branch text must contain `return`
+# or `exit`. A failure-swallowing `|| true` / `|| :` is NOT a guard: it lets
+# execution proceed with an empty VAR, the exact poisoned-path footgun the pin
+# forbids. The branch text is scanned from the `||` to end-of-line so the
+# multi-statement `|| { rm -rf ...; return 1; }` idiom (a `;` before `return`)
+# is still recognized as guarded — `[^;]*` would have stopped at that `;`.
+guard = re.compile(
+    r'(?:\$\(\s*mktemp\b[^()]*\)|`\s*mktemp\b[^`]*`)["\']?'
+    r'\s*(?:/[^\s;]*)?\s*\|\|.*\b(?:return|exit)\b'
+)
 
 violations = []
 for n, raw in enumerate(lines, start=1):
@@ -7329,7 +7358,13 @@ if violations:
     sys.exit(1)
 print("ok")
 PY
-)
+}
+
+check_smoke_helpers_mktemp_guarded() {
+  local target="tests/smoke-helpers.sh"
+  [ -r "$target" ] || { echo "lint target missing: $target"; return 1; }
+  local report
+  report=$(_smoke_mktemp_lint_scan "$target")
   local rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "$report"
@@ -7337,4 +7372,35 @@ PY
     return 1
   fi
   echo "lint: all mktemp sites in $target are guarded; no path-appended \$(mktemp ...)"
+}
+
+# behavioral: the mktemp lint's own correctness self-test. A lint pin with no
+# negative case proves nothing (R3/R6) — these synthetic fixture snippets are
+# the exact X9 evading shapes (quoted `"$(mktemp ...)"`, backtick `` `mktemp` ``,
+# the `)"/segment` appended form, and the failure-swallowing `|| true` / `|| :`
+# non-guards) plus a clean control. Each evader MUST make _smoke_mktemp_lint_scan
+# FAIL (exit 1); the control MUST pass. This is what proves the strengthened
+# X9 regexes actually reject the shapes the weak regexes let through.
+check_smoke_helpers_mktemp_lint_self_test() {
+  local fdir="tests/fixtures/smoke-mktemp-lint"
+  test -d "$fdir" || { echo "$fdir fixture dir missing"; return 1; }
+  local kind out rc
+  # Negative fixtures: each is an X9 evading shape — must FAIL the lint.
+  for kind in quoted-subst-unguarded backtick-subst-unguarded \
+              quoted-appended-segment guard-or-true guard-or-colon; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X9 evading shape slipped through"; return 1; }
+    printf '%s' "$out" | grep -qE 'unguarded|appended-segment' \
+      || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
+  done
+  # Positive control: a correctly-guarded snippet must PASS.
+  local ctl="$fdir/clean-guarded.sh"
+  test -f "$ctl" || { echo "$ctl fixture missing"; return 1; }
+  _smoke_mktemp_lint_scan "$ctl" >/dev/null 2>&1 \
+    || { echo "mktemp lint wrongly flagged a correctly-guarded control snippet"; return 1; }
+  echo "mktemp lint self-test: every X9 evading shape (quoted/backtick subst, )\"/seg, || true, || :) is flagged; clean control passes"
 }

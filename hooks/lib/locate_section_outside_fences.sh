@@ -23,11 +23,20 @@
 #   1  not-found   (stdout: "not-found")
 #   2  arg-error   (stderr: "⚠ locate_section_outside_fences: ...")
 #
-# Fence grammar — column-0 scope only (up-to-3-space-indented CommonMark
-# fences are out of scope; every fence in this repo opens at column 0):
+# Fence grammar — column-0 BACKTICK fences only:
 #   Opener — ^(`{3,})[^`]*$        (N>=3 backticks + optional info string)
 #   Closer — ^`{N,}\s*$           (>=N backticks, no info string)
 # A closer longer than its opener still closes; a shorter run does not.
+#
+# Deliberate, documented out-of-scope limitations (NOT silent gaps):
+#   - CommonMark `~~~` TILDE fences are NOT recognized — a heading inside a
+#     `~~~` block is treated as a real outside-fence heading. This is an
+#     accepted scope decision: spec-template.md and every spec in design/ use
+#     backtick fences exclusively, so a section placed only inside a tilde
+#     fence is not an observed input. Reactivate via a follow-up spec if a
+#     real spec ever needs `~~~` fences.
+#   - Up-to-3-space-indented CommonMark fences are also out of scope; every
+#     fence in this repo opens at column 0.
 
 set -u
 

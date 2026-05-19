@@ -6007,6 +6007,7 @@ echo
 # --- Smoke-harness self-protection lint ---
 echo "Smoke-harness lint:"
 check "smoke-helpers-mktemp-guarded" check_smoke_helpers_mktemp_guarded
+check "smoke-helpers-mktemp-lint-self-test" check_smoke_helpers_mktemp_lint_self_test
 echo
 
 # --- Dependency freshness probe (Probe G — supply-chain layer) ---
