@@ -42,13 +42,14 @@ SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
 # The whole decision is delegated to python3 (stdlib): realpath, isfile,
 # os.access, commonpath are all needed and python3 is the established pattern.
 result=$(
-  CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT-__UNSET__}" \
   python3 - "$SCRIPT_SOURCE" "$REL_PATH" <<'PYEOF'
 import os, sys
 
 script_source, rel_path = sys.argv[1], sys.argv[2]
-env = os.environ.get("CLAUDE_PLUGIN_ROOT", "__UNSET__")
-UNSET = env == "__UNSET__"
+# Test presence directly — os.environ distinguishes unset from set-to-empty
+# natively, so no in-band sentinel (which a real env value could collide with).
+UNSET = "CLAUDE_PLUGIN_ROOT" not in os.environ
+env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
 
 
 def emit_resolved(path):
