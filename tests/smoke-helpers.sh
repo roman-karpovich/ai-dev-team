@@ -5508,13 +5508,17 @@ check_locate_section_outside_fences_helper() {
 check_cross_auditor_mode_focus_names_locate_helper() {
   # prompt-text: guards the prose↔helper wiring — asserts
   # agents/references/cross-auditor-mode-focus.md §1.1 prose names the
-  # locate_section_outside_fences.sh helper, so a future edit silently
-  # dropping the helper invocation fails the smoke run.
+  # locate_section_outside_fences.sh helper via the env-anchored ABSOLUTE
+  # path. The cross-auditor's cwd during an audit is the target repo, so a
+  # bare relative `hooks/lib/...` invocation would let an adversarial target
+  # repo shadow the trusted plugin helper (X6) — assert the
+  # ${CLAUDE_PLUGIN_ROOT}/hooks/lib/ prefix, not merely the basename, so a
+  # regression to a relative path fails the smoke run.
   local f="agents/references/cross-auditor-mode-focus.md"
   test -f "$f" || { echo "$f missing"; return 1; }
-  grep -qF 'locate_section_outside_fences.sh' "$f" \
-    || { echo "$f no longer names locate_section_outside_fences.sh — prose↔helper wiring lost" >&2; return 1; }
-  echo "cross-auditor-mode-focus.md names the locate_section_outside_fences.sh helper"
+  grep -qF '${CLAUDE_PLUGIN_ROOT}/hooks/lib/locate_section_outside_fences.sh' "$f" \
+    || { echo "$f does not invoke locate_section_outside_fences.sh via the \${CLAUDE_PLUGIN_ROOT}/hooks/lib/ absolute prefix — bare-relative path is a target-repo shadowing vector (X6)" >&2; return 1; }
+  echo "cross-auditor-mode-focus.md invokes locate_section_outside_fences.sh via the \${CLAUDE_PLUGIN_ROOT}/hooks/lib/ absolute path"
 }
 
 check_json_schema_lint_self_test() {
@@ -6394,14 +6398,18 @@ check_cross_auditor_r_rule_path_env_first_precedence() {
 
 check_cross_auditor_codex_dispatch_names_resolve_helper() {
   # prompt-text: guards the prose↔helper wiring — asserts
-  # agents/references/cross-auditor-codex-dispatch.md names the
-  # resolve_rule_path.sh helper, so a future edit silently dropping the
-  # helper invocation fails the smoke run.
+  # agents/references/cross-auditor-codex-dispatch.md invokes the
+  # resolve_rule_path.sh helper via the env-anchored ABSOLUTE path. The
+  # cross-auditor's cwd during an audit is the target repo, so a bare
+  # relative `hooks/lib/...` invocation would let an adversarial target repo
+  # shadow the trusted plugin helper (X6) — assert the
+  # ${CLAUDE_PLUGIN_ROOT}/hooks/lib/ prefix, not merely the basename, so a
+  # regression to a relative path fails the smoke run.
   local f="agents/references/cross-auditor-codex-dispatch.md"
   test -f "$f" || { echo "$f missing"; return 1; }
-  grep -qF 'resolve_rule_path.sh' "$f" \
-    || { echo "$f no longer names resolve_rule_path.sh — prose↔helper wiring lost" >&2; return 1; }
-  echo "cross-auditor-codex-dispatch.md names the resolve_rule_path.sh helper"
+  grep -qF '${CLAUDE_PLUGIN_ROOT}/hooks/lib/resolve_rule_path.sh' "$f" \
+    || { echo "$f does not invoke resolve_rule_path.sh via the \${CLAUDE_PLUGIN_ROOT}/hooks/lib/ absolute prefix — bare-relative path is a target-repo shadowing vector (X6)" >&2; return 1; }
+  echo "cross-auditor-codex-dispatch.md invokes resolve_rule_path.sh via the \${CLAUDE_PLUGIN_ROOT}/hooks/lib/ absolute path"
 }
 
 # Step 1 — SKILL.md §3.5 Pass 2 re-spawn loop monotonic numbering invariant.
