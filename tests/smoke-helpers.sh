@@ -5401,8 +5401,6 @@ check_cross_auditor_consumes_attack_surface_profile() {
     || { echo "$path spec mode missing 'Spec declares external_input=true' finding-text fingerprint" >&2; return 1; }
   printf '%s\n' "$sec" | grep -qF 'Spec missing required §1.1 Attack-surface profile section' \
     || { echo "$path spec mode missing absent-section finding-text fingerprint" >&2; return 1; }
-  printf '%s\n' "$sec" | grep -qF 'outside fenced code blocks' \
-    || { echo "$path spec mode missing 'outside fenced code blocks' absent-section tightening token" >&2; return 1; }
   printf '%s\n' "$sec" | grep -qF 'missing or carry non-null values' \
     || { echo "$path spec mode missing cross-field consistency finding-text fingerprint" >&2; return 1; }
   printf '%s\n' "$sec" | grep -qF 'violates §3.3 schema' \
@@ -5437,6 +5435,86 @@ check_cross_auditor_consumes_attack_surface_profile() {
     || { echo "$path spec mode missing 'pydantic' input-validation alternate" >&2; return 1; }
 
   echo "cross-auditor spec mode carries Attack-surface profile consumption rules with all required fingerprints"
+}
+
+check_locate_section_outside_fences_helper() {
+  # behavioral: exercises hooks/lib/locate_section_outside_fences.sh against
+  # the 10 §3.3a.1 fixtures plus the arg-error channel. Replaces the former
+  # 'outside fenced code blocks' substring-grep — the fence-aware §1.1
+  # detection logic now lives in a deterministic, fixture-tested helper.
+  # The pin asserts the EXACT exit code per fixture (0 found / 1 not-found),
+  # never merely "non-zero", so an exit-2 arg-error is never accepted as
+  # not-found.
+  local helper="hooks/lib/locate_section_outside_fences.sh"
+  local fdir="tests/fixtures/locate-section-outside-fences"
+  test -x "$helper" || test -f "$helper" || { echo "$helper missing"; return 1; }
+  local s='^## 1\.1 Attack-surface profile$'
+  local b1='^## 1\. Context$'
+  local b2='^## 2\. Current State$'
+
+  # _expect <expected-rc> <expected-stdout> <args...>
+  _lsof_expect() {
+    local want_rc="$1" want_out="$2"; shift 2
+    local out rc
+    out=$(bash "$helper" "$@" 2>/dev/null)
+    rc=$?
+    [ "$rc" -eq "$want_rc" ] \
+      || { echo "locate helper: args [$*] expected exit $want_rc, got $rc"; return 1; }
+    [ "$out" = "$want_out" ] \
+      || { echo "locate helper: args [$*] expected stdout '$want_out', got '$out'"; return 1; }
+    return 0
+  }
+  # _expect_argerr <args...> — exit 2, empty stdout, a ⚠ stderr diagnostic.
+  _lsof_expect_argerr() {
+    local out err rc
+    out=$(bash "$helper" "$@" 2>/tmp/lsof-err.$$)
+    rc=$?
+    err=$(cat /tmp/lsof-err.$$); rm -f /tmp/lsof-err.$$
+    [ "$rc" -eq 2 ] \
+      || { echo "locate helper: args [$*] expected arg-error exit 2, got $rc"; return 1; }
+    [ -z "$out" ] \
+      || { echo "locate helper: args [$*] arg-error should have empty stdout, got '$out'"; return 1; }
+    printf '%s' "$err" | grep -qF '⚠ locate_section_outside_fences:' \
+      || { echo "locate helper: args [$*] arg-error missing ⚠ stderr diagnostic"; return 1; }
+    return 0
+  }
+
+  # Found / not-found fixtures — exact exit code asserted.
+  _lsof_expect 0 found "$fdir/outside/spec.md" "$s" || return 1
+  _lsof_expect 0 found "$fdir/outside/spec.md" "$s" "$b1" "$b2" || return 1
+  _lsof_expect 1 not-found "$fdir/inside-3bt/spec.md" "$s" || return 1
+  _lsof_expect 1 not-found "$fdir/inside-4bt/spec.md" "$s" || return 1
+  _lsof_expect 0 found "$fdir/outside-plus-fenced-dup/spec.md" "$s" || return 1
+  _lsof_expect 1 not-found "$fdir/inside-4bt-markdown-info/spec.md" "$s" || return 1
+  _lsof_expect 1 not-found "$fdir/longer-closer/spec.md" "$s" || return 1
+  _lsof_expect 0 found "$fdir/crlf-outside/spec.md" "$s" || return 1
+  _lsof_expect 1 not-found "$fdir/section-matches-fence-opener/spec.md" '^\x60{3,}' || return 1
+  _lsof_expect 1 not-found "$fdir/misordered-after/spec.md" "$s" "$b1" "$b2" || return 1
+  _lsof_expect 1 not-found "$fdir/misordered-before/spec.md" "$s" "$b1" "$b2" || return 1
+
+  # Arg-error channel — every precedence check.
+  _lsof_expect_argerr || return 1
+  _lsof_expect_argerr onlyonearg || return 1
+  _lsof_expect_argerr "$fdir/outside/spec.md" "$s" b3 b4 b5 || return 1
+  _lsof_expect_argerr /nonexistent/spec.md "$s" || return 1
+  _lsof_expect_argerr "$fdir/outside/spec.md" '' || return 1
+  _lsof_expect_argerr "$fdir/outside/spec.md" '(' || return 1
+  _lsof_expect_argerr /nonexistent/spec.md '(' || return 1
+  _lsof_expect_argerr "$fdir/outside/spec.md" "$s" onlyonebound || return 1
+
+  echo "locate_section_outside_fences.sh: 10 fixtures + arg-error channel match the §3.3a.1 decision table"
+}
+
+check_cross_auditor_mode_focus_names_locate_helper() {
+  # prompt-text: guards the prose↔helper wiring — asserts
+  # agents/references/cross-auditor-mode-focus.md §1.1 prose names the
+  # locate_section_outside_fences.sh helper, so a future edit silently
+  # dropping the helper invocation fails the smoke run.
+  local f="agents/references/cross-auditor-mode-focus.md"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'locate_section_outside_fences.sh' "$f" \
+    || { echo "$f no longer names locate_section_outside_fences.sh — prose↔helper wiring lost" >&2; return 1; }
+  echo "cross-auditor-mode-focus.md names the locate_section_outside_fences.sh helper"
 }
 
 check_json_schema_lint_self_test() {

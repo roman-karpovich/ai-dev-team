@@ -5995,6 +5995,8 @@ echo "Attack-surface profile pins:"
 check "skill-attack-surface-slot-prompts" check_skill_attack_surface_slot_prompts
 check "spec-template-attack-surface-section" check_spec_template_attack_surface_section
 check "cross-auditor-consumes-attack-surface-profile" check_cross_auditor_consumes_attack_surface_profile
+check "locate-section-outside-fences-helper" check_locate_section_outside_fences_helper
+check "cross-auditor-mode-focus-names-locate-helper" check_cross_auditor_mode_focus_names_locate_helper
 echo
 
 # --- Probe-envelope JSON-Schema validator self-test ---
