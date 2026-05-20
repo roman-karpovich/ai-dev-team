@@ -7675,6 +7675,8 @@ _MKTEMP_LINT_SCOPE() {
   cat <<'EOF'
 tests/smoke.sh z_postcheck
 tests/smoke-helpers.sh same_line
+tests/smoke-helpers-check-phase0-wiring.sh same_line
+tests/smoke-helpers-check-wiring.sh same_line
 hooks/lib/build_pr_files.sh same_line
 hooks/lib/codex_audit_dispatch.sh same_line
 hooks/lib/cross_audit_resolve_range.sh same_line
