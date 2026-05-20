@@ -7332,14 +7332,32 @@ dialect = os.environ["SMOKE_LINT_DIALECT"]
 with open(target, encoding="utf-8") as fh:
     lines = fh.readlines()
 
-# Shared mktemp invocation pattern. Matches:
-#   - bare `mktemp`
-#   - path-prefixed `/bin/mktemp`, `/usr/bin/mktemp`, etc.
-#   - `command mktemp` (and `command  mktemp` with multiple spaces)
-# The X12 finding showed each of these collapses to the same destructive
-# poisoned-path shape on mktemp failure; all three must be visible to the
-# substitution recognizer.
-_MKTEMP = r'(?:command\s+)?(?:/[\w./-]+/)?mktemp\b'
+# Shared mktemp invocation pattern. Matches the bare `mktemp` token,
+# optionally preceded by a run of bash command-prefix tokens that all
+# legitimately execute mktemp:
+#   - `env mktemp`, `eval mktemp`, `time mktemp`, `exec mktemp`,
+#     `builtin mktemp`, `command mktemp`
+#   - inline env-var assignments: `TMPDIR=/tmp mktemp`, `LC_ALL=C mktemp`,
+#     and combinations (`env TMPDIR=/tmp mktemp`)
+#   - alias-suppressing backslash: `\mktemp`
+#   - explicit path: `/bin/mktemp`, `/usr/bin/mktemp`
+# All these forms collapse to the same destructive poisoned-path shape on
+# mktemp failure; the prefix vocabulary is admitted at the assignment
+# recognizer level so the UNGUARDED-MKTEMP check (`VAR=$(<form>)` without
+# a guard) catches each form. The APPENDED-SEGMENT check uses a DIFFERENT
+# strategy (structural ban on `mktemp anywhere in subst body` + `/seg`
+# after close) because the prefix vocabulary is unbounded in the wild;
+# the structural anchor is the appended segment itself, not the prefix.
+_MKTEMP_PREFIX_TOKEN = (
+    r'(?:[A-Za-z_][A-Za-z0-9_]*=\S*|env|eval|time|exec|builtin|command)'
+)
+_MKTEMP_PREFIX = r'(?:' + _MKTEMP_PREFIX_TOKEN + r'\s+)*'
+# `_MKTEMP_BODY` admits an optional path prefix (`/bin/mktemp`) AND an
+# optional alias-suppressing backslash directly before `mktemp` (no
+# whitespace between `\` and `mktemp` — bash treats `\mktemp` as one
+# token).
+_MKTEMP_BODY = r'(?:/[\w./-]+/)?\\?mktemp\b'
+_MKTEMP = _MKTEMP_PREFIX + _MKTEMP_BODY
 
 # A mktemp command substitution in either legal bash form:
 #   - `$(...)` form (optionally surrounded by " or ' quotes)
@@ -7350,17 +7368,48 @@ _SUBST_DOLLAR = r'\$\(\s*' + _MKTEMP + r'[^()]*\)'
 _SUBST_BACKTICK = r'`\s*' + _MKTEMP + r'[^`]*`'
 _SUBST = r'(?:["\']?(?:' + _SUBST_DOLLAR + r'|' + _SUBST_BACKTICK + r')["\']?)'
 
-# Shape A: a path segment appended to an mktemp substitution. The `/`
-# follows the closing `)` / backtick directly OR a closing quote in between
-# (`"$(mktemp -d)"/co`) — both put the segment outside the guarded value.
+# Shape A (iter-6 X14 structural defense): a path segment appended to a
+# command substitution whose body contains the bare `mktemp` token
+# ANYWHERE — regardless of preceding command-prefix tokens, regardless of
+# any trailing `||` guard. The destructive class structurally requires
+# (a) a substitution producing the mktemp output, (b) a `/seg` appended at
+# substitution-close time; the prefix vocabulary the substitution body
+# uses is irrelevant. The iter-5 `APPENDED` pattern required the body
+# match `_MKTEMP` exactly, which the iter-6 X14 prefix-form bypass class
+# evaded. The new shape: `$(...mktemp...)` or `` `...mktemp...` `` with
+# `mktemp` as a whitespace-delimited token (also allowing a `/path/`
+# prefix) followed (after the substitution close + optional quote) by
+# `/`. A real `|| return` guard does NOT rescue this shape — the
+# downstream `rm -rf "$(dirname "$VAR")"` still resolves to `/` because
+# the appended segment poisons the LHS value regardless of whether the
+# assignment was guarded.
+# Inside the substitution body, the bare `mktemp` token may appear at the
+# very start (`$(mktemp ...)`, `$(\mktemp ...)`) or after any
+# whitespace-delimited prefix token run (`env mktemp`, `TMPDIR=/tmp
+# mktemp`, etc). The simple, robust rule per the iter-6 structural-defense
+# brief: a non-paren body that contains the `mktemp` token at a word
+# boundary qualifies. The leading `(?:[^()]*?[\s/(])?` (lazy, optional)
+# admits a prefix-token run or absence; the `mktemp\b` end-anchor ensures
+# we don't accept identifier suffixes like `_mktemp`. The optional `\\?`
+# absorbs the alias-suppression backslash.
+_BARE_MKTEMP_IN_SUBST = r'(?:[^()]*?[\s/(])?\\?mktemp\b'
+_APPENDED_SUBST_DOLLAR = (
+    r'\$\(' + _BARE_MKTEMP_IN_SUBST + r'[^()]*\)'
+)
+# Backtick form: equivalent rule, but the open delimiter is a backtick
+# (not `(`) and the body forbids backticks.
+_BARE_MKTEMP_IN_BACKTICK = r'(?:[^`]*?[\s/`])?\\?mktemp\b'
+_APPENDED_SUBST_BACKTICK = (
+    r'`' + _BARE_MKTEMP_IN_BACKTICK + r'[^`]*`'
+)
 APPENDED = re.compile(
-    r'(?:' + _SUBST_DOLLAR + r'|' + _SUBST_BACKTICK + r')["\']?/'
+    r'(?:' + _APPENDED_SUBST_DOLLAR + r'|' + _APPENDED_SUBST_BACKTICK + r')["\']?/'
 )
 
 # Any assignment that captures mktemp output (quoted or unquoted, $() or
-# backtick, bare-or-path-qualified-or-`command`-prefixed mktemp). Captures
-# the LHS name so the post-assignment `[ -z ]` idiom recognizer can match
-# the same variable later in the file.
+# backtick, with any prefix-vocabulary token admitted by `_MKTEMP`).
+# Captures the LHS name so the post-assignment `[ -z ]` idiom recognizer
+# can match the same variable later in the file.
 ASSIGN = re.compile(
     r'(?:^|[;\s&|])([A-Za-z_][A-Za-z0-9_]*)='
     r'(?:["\']?\$\(\s*' + _MKTEMP + r'|["\']?`\s*' + _MKTEMP + r')'
@@ -7774,6 +7823,42 @@ check_all_shell_scripts_mktemp_lint_self_test() {
       || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
   done
 
+  # X14 negative fixtures (iter-6, same_line dialect) — appended-segment
+  # structural defense MUST flag the mktemp-inside-subst-body + appended-
+  # `/seg` shape regardless of preceding prefix tokens (env / TMPDIR= /
+  # eval / time / `\mktemp` / LC_ALL= / combined) and regardless of any
+  # trailing `||` guard (the structural shape destroys the LHS value
+  # before the downstream `rm -rf "$(dirname "$VAR")"` ever runs).
+  for kind in x14-env-prefix-appended x14-tmpdir-prefix-appended \
+              x14-eval-prefix-appended x14-time-prefix-appended \
+              x14-backslash-prefix-appended x14-lcall-prefix-appended \
+              x14-env-tmpdir-combined-appended \
+              x14-with-real-guard-still-fails; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X14 appended-segment structural defense slipped through"; return 1; }
+    printf '%s' "$out" | grep -q 'appended-segment' \
+      || { echo "mktemp lint did not emit appended-segment violation kind for '$kind'"; return 1; }
+  done
+
+  # X14 negative fixtures (iter-6, same_line dialect) — unguarded-mktemp
+  # check MUST recognize the extended command-prefix vocabulary (env /
+  # TMPDIR= / `\mktemp`) when the assignment is unguarded with no
+  # appended segment.
+  for kind in x14-env-unguarded x14-tmpdir-unguarded x14-backslash-unguarded; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X14 prefix-vocabulary unguarded shape slipped through"; return 1; }
+    printf '%s' "$out" | grep -q 'unguarded' \
+      || { echo "mktemp lint did not emit unguarded violation kind for '$kind'"; return 1; }
+  done
+
   # X13 negative fixture (z_postcheck dialect — variable name mismatch).
   for kind in external-file-z-idiom-wrong-var; do
     local fx="$fdir/$kind.sh"
@@ -7786,8 +7871,12 @@ check_all_shell_scripts_mktemp_lint_self_test() {
       || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
   done
 
-  # Positive controls (same_line dialect).
-  for ctl in clean-guarded guard-brace-group-valid multi-assignment-both-guarded; do
+  # Positive controls (same_line dialect). x14-env-guarded is the iter-6
+  # control proving the extended prefix vocabulary still recognizes a
+  # CORRECTLY-guarded prefixed mktemp (`env mktemp -d) || return 1`) as
+  # guarded (no false positive on real guards).
+  for ctl in clean-guarded guard-brace-group-valid multi-assignment-both-guarded \
+             x14-env-guarded; do
     local fx="$fdir/$ctl.sh"
     test -f "$fx" || { echo "$fx fixture missing"; return 1; }
     _smoke_mktemp_lint_scan "$fx" same_line >/dev/null 2>&1 \
@@ -7820,5 +7909,5 @@ check_all_shell_scripts_mktemp_lint_self_test() {
   _smoke_mktemp_lint_scan tests/smoke.sh z_postcheck >/dev/null 2>&1 \
     || { echo "scope regression: tests/smoke.sh failed the z_postcheck dialect lint — the multi-line [ -z ] idiom is not being accepted"; return 1; }
 
-  echo "mktemp lint self-test: every X9 + X12 evading shape flagged; clean controls pass; X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
+  echo "mktemp lint self-test: every X9 + X12 + X14 evading shape flagged (X14 = appended-segment structural defense regardless of prefix/guard + extended unguarded prefix vocabulary); clean controls pass (incl. x14-env-guarded); X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
 }
