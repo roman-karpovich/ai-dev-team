@@ -7531,6 +7531,103 @@ def _split_top_level_semis(line):
     return segments
 
 
+def _branch_has_pipeline_or_background(text):
+    """Quote/brace-aware scan for an unquoted pipeline (`|` not `||`) or
+    background (`&` not `&&`) operator before the first top-level `;` or
+    end-of-text. Returns True if found.
+
+    iter-6 X15: bash runs `return`/`exit` placed in a pipeline tail in a
+    subshell and a `&`-background command asynchronously — in both cases
+    the abort does NOT propagate to the outer function. A `||` branch
+    that LOOKS like an abort (begins with `return`/`exit`) but contains
+    `| <cmd>` or trails with `&` is therefore NOT a real guard. This
+    check is the "simple-command position" gate: after `_guard_branch_aborts`
+    confirms the abort keyword (or terminal-abort brace group), this
+    scan must also pass.
+    """
+    n = len(text)
+    i = 0
+    in_single = False
+    in_double = False
+    in_backtick = False
+    paren_depth = 0
+    brace_depth = 0
+    while i < n:
+        ch = text[i]
+        if in_single:
+            if ch == "'":
+                in_single = False
+            i += 1
+            continue
+        if in_double:
+            if ch == '\\' and i + 1 < n:
+                i += 2
+                continue
+            if ch == '"':
+                in_double = False
+            i += 1
+            continue
+        if in_backtick:
+            if ch == '`':
+                in_backtick = False
+            i += 1
+            continue
+        if ch == "'":
+            in_single = True
+            i += 1
+            continue
+        if ch == '"':
+            in_double = True
+            i += 1
+            continue
+        if ch == '`':
+            in_backtick = True
+            i += 1
+            continue
+        if ch == '\\' and i + 1 < n:
+            # escaped char (e.g. `\|`, `\&`) — consume both, no metachar
+            i += 2
+            continue
+        if ch == '(':
+            paren_depth += 1
+            i += 1
+            continue
+        if ch == ')':
+            if paren_depth > 0:
+                paren_depth -= 1
+            i += 1
+            continue
+        if ch == '{':
+            brace_depth += 1
+            i += 1
+            continue
+        if ch == '}':
+            if brace_depth > 0:
+                brace_depth -= 1
+            i += 1
+            continue
+        if paren_depth == 0 and brace_depth == 0:
+            if ch == ';':
+                # top-level `;` ends the current statement; no
+                # pipeline/background found in the abort statement.
+                return False
+            if ch == '|':
+                # `||` is two chars — not a pipeline. Otherwise single
+                # `|` is a pipeline operator.
+                if i + 1 < n and text[i + 1] == '|':
+                    i += 2
+                    continue
+                return True
+            if ch == '&':
+                # `&&` is two chars — short-circuit AND, not background.
+                if i + 1 < n and text[i + 1] == '&':
+                    i += 2
+                    continue
+                return True
+        i += 1
+    return False
+
+
 def _guard_branch_aborts(branch):
     """Decide whether the text of a `||` branch is a real aborting guard.
 
@@ -7539,13 +7636,23 @@ def _guard_branch_aborts(branch):
       - the keyword `exit`   (optionally followed by an exit code)
       - a brace group `{ ...; return|exit ... ; }` whose FINAL non-empty
         top-level statement is `return` or `exit`
+    AND the abort statement must be in SIMPLE-COMMAND position — no
+    unquoted `|` (pipeline) or `&` (background) before the next top-level
+    `;` / end-of-branch (iter-6 X15: bash runs pipeline-tail/background
+    statements in a subshell, so the abort does NOT reach the caller).
+
     All other forms (`echo return`, `echo "see return"`, `true`, `:`,
-    `echo failed; return 1` with the `return` outside the branch) are NOT
-    aborting guards: they let execution proceed with the assignment's VAR
-    still empty, which is the destructive footgun the pin exists to forbid.
+    `echo failed; return 1` with the `return` outside the branch,
+    `return 1 | cat`, `return 1 &`) are NOT aborting guards: they let
+    execution proceed with the assignment's VAR still empty, which is
+    the destructive footgun the pin exists to forbid.
     """
     text = branch.strip()
     if not text:
+        return False
+    # iter-6 X15: pipeline or background in the branch defeats the abort
+    # regardless of the keyword shape. Run this check first.
+    if _branch_has_pipeline_or_background(text):
         return False
     # Brace-group form: `{ stmt; ...; stmt; }`
     if text.startswith('{'):
@@ -7859,6 +7966,25 @@ check_all_shell_scripts_mktemp_lint_self_test() {
       || { echo "mktemp lint did not emit unguarded violation kind for '$kind'"; return 1; }
   done
 
+  # X15 negative fixtures (iter-6, same_line dialect) — simple-command
+  # guard discipline. Bash runs `return`/`exit` in a pipeline tail in a
+  # subshell and a `&`-background command asynchronously; in both cases
+  # the abort does NOT reach the caller. The `||` branch must be a simple
+  # command with no unquoted `|` (pipeline) / `&` (background) before
+  # the next top-level `;` / end-of-branch.
+  for kind in x15-guard-pipeline-cat x15-guard-pipeline-exit \
+              x15-guard-brace-pipeline x15-guard-background \
+              x15-guard-background-then-fake-return; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X15 pipeline/background subshell evasion slipped through"; return 1; }
+    printf '%s' "$out" | grep -q 'unguarded' \
+      || { echo "mktemp lint did not emit unguarded violation kind for '$kind'"; return 1; }
+  done
+
   # X13 negative fixture (z_postcheck dialect — variable name mismatch).
   for kind in external-file-z-idiom-wrong-var; do
     local fx="$fdir/$kind.sh"
@@ -7909,5 +8035,5 @@ check_all_shell_scripts_mktemp_lint_self_test() {
   _smoke_mktemp_lint_scan tests/smoke.sh z_postcheck >/dev/null 2>&1 \
     || { echo "scope regression: tests/smoke.sh failed the z_postcheck dialect lint — the multi-line [ -z ] idiom is not being accepted"; return 1; }
 
-  echo "mktemp lint self-test: every X9 + X12 + X14 evading shape flagged (X14 = appended-segment structural defense regardless of prefix/guard + extended unguarded prefix vocabulary); clean controls pass (incl. x14-env-guarded); X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
+  echo "mktemp lint self-test: every X9 + X12 + X14 + X15 evading shape flagged (X14 = appended-segment structural defense regardless of prefix/guard + extended unguarded prefix vocabulary; X15 = simple-command guard discipline rejecting pipeline/background false guards); clean controls pass (incl. x14-env-guarded); X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
 }
