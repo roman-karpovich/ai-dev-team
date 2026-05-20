@@ -7435,6 +7435,111 @@ def _strip_assign_prefix(segment):
     return segment
 
 
+def _strip_inline_comment(line):
+    """Return `line` with any trailing `#`-introduced shell comment removed.
+
+    iter-6 X16: a `#` outside single/double quotes AND outside `$(...)` /
+    `` `...` `` / brace groups, when at line-start OR preceded by
+    whitespace OR preceded by a shell metacharacter (`;`, `|`, `&`, `(`,
+    `)`, `{`, `}`), starts a comment that runs to end-of-line. The lint
+    parses each line for assign / guard; an unstripped `#` lets the
+    literal `||` and `return` inside a comment falsely satisfy the abort
+    check, even though bash never sees them.
+
+    A `#` inside an unquoted word (`foo#bar`) is NOT a comment delimiter:
+    it's part of the word. So the predicate is "previous char is none /
+    whitespace / metachar".
+
+    Heredoc bodies and `$'...'` ANSI-C strings are out of scope (X16
+    finding tail flags them as latent risks; the current corpus does not
+    exercise them).
+    """
+    n = len(line)
+    i = 0
+    prev = None  # the previous non-skipped character (None at line start)
+    in_single = False
+    in_double = False
+    in_backtick = False
+    paren_depth = 0
+    brace_depth = 0
+    metachars = ';|&(){}'
+    while i < n:
+        ch = line[i]
+        if in_single:
+            if ch == "'":
+                in_single = False
+            prev = ch
+            i += 1
+            continue
+        if in_double:
+            if ch == '\\' and i + 1 < n:
+                # escaped char inside double quotes
+                prev = line[i + 1]
+                i += 2
+                continue
+            if ch == '"':
+                in_double = False
+            prev = ch
+            i += 1
+            continue
+        if in_backtick:
+            if ch == '`':
+                in_backtick = False
+            prev = ch
+            i += 1
+            continue
+        if ch == "'":
+            in_single = True
+            prev = ch
+            i += 1
+            continue
+        if ch == '"':
+            in_double = True
+            prev = ch
+            i += 1
+            continue
+        if ch == '`':
+            in_backtick = True
+            prev = ch
+            i += 1
+            continue
+        if ch == '\\' and i + 1 < n:
+            # escaped char (e.g. `\#` is a literal `#`, not a comment start)
+            prev = line[i + 1]
+            i += 2
+            continue
+        if ch == '(':
+            paren_depth += 1
+            prev = ch
+            i += 1
+            continue
+        if ch == ')':
+            if paren_depth > 0:
+                paren_depth -= 1
+            prev = ch
+            i += 1
+            continue
+        if ch == '{':
+            brace_depth += 1
+            prev = ch
+            i += 1
+            continue
+        if ch == '}':
+            if brace_depth > 0:
+                brace_depth -= 1
+            prev = ch
+            i += 1
+            continue
+        if ch == '#' and paren_depth == 0 and brace_depth == 0:
+            # word-boundary check: comment starts only at line-start, after
+            # whitespace, or after a shell metacharacter.
+            if prev is None or prev.isspace() or prev in metachars:
+                return line[:i]
+        prev = ch
+        i += 1
+    return line
+
+
 def _split_top_level_semis(line):
     """Split a line on TOP-LEVEL `;` (statement-separators).
 
@@ -7777,6 +7882,11 @@ for n, raw in enumerate(lines, start=1):
     if stripped.startswith("#"):
         continue
     line = raw.rstrip("\n")
+    # iter-6 X16: strip any trailing `#`-introduced shell comment before
+    # tokenizing. A `# || return` inside a comment is NOT a real guard —
+    # bash never sees it. Apply at the line level so both the APPENDED
+    # check and the per-segment scan run on the comment-stripped line.
+    line = _strip_inline_comment(line)
     # First: appended-segment is banned outright at the line level (even if
     # subsequently guarded, the `dirname -> /` footgun is structural). The
     # APPENDED regex looks for the substitution-close-then-`/` shape across
@@ -7788,6 +7898,11 @@ for n, raw in enumerate(lines, start=1):
     # assign/guard per segment. This rejects the X12 multi-assignment
     # bypass.
     for seg, _off in _split_top_level_semis(line):
+        # iter-6 X16: also strip inline comments at the segment level
+        # for defense-in-depth (a `#` inside a segment that survived the
+        # line-level strip — e.g. a future heredoc-bypass shape — would
+        # be caught here too).
+        seg = _strip_inline_comment(seg)
         seg_tail = _strip_assign_prefix(seg)
         m = ASSIGN.search(seg_tail)
         if not m:
@@ -7985,6 +8100,23 @@ check_all_shell_scripts_mktemp_lint_self_test() {
       || { echo "mktemp lint did not emit unguarded violation kind for '$kind'"; return 1; }
   done
 
+  # X16 negative fixtures (iter-6, same_line dialect) — shell-comment
+  # stripping. A `#` outside quotes at a word boundary starts a comment
+  # that runs to end-of-line; bash never sees the `||`/`return` tokens
+  # inside it, so the lint's tokenizer must strip the comment before
+  # parsing for guards.
+  for kind in x16-comment-or-return x16-comment-todo-return \
+              x16-comment-or-exit; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X16 comment-as-guard slipped through"; return 1; }
+    printf '%s' "$out" | grep -q 'unguarded' \
+      || { echo "mktemp lint did not emit unguarded violation kind for '$kind'"; return 1; }
+  done
+
   # X13 negative fixture (z_postcheck dialect — variable name mismatch).
   for kind in external-file-z-idiom-wrong-var; do
     local fx="$fdir/$kind.sh"
@@ -8001,8 +8133,11 @@ check_all_shell_scripts_mktemp_lint_self_test() {
   # control proving the extended prefix vocabulary still recognizes a
   # CORRECTLY-guarded prefixed mktemp (`env mktemp -d) || return 1`) as
   # guarded (no false positive on real guards).
+  # x16-real-guard-with-trailing-comment is the iter-6 X16 positive
+  # control proving the comment-strip does NOT remove a real `||` guard
+  # that is BEFORE the trailing `#` comment.
   for ctl in clean-guarded guard-brace-group-valid multi-assignment-both-guarded \
-             x14-env-guarded; do
+             x14-env-guarded x16-real-guard-with-trailing-comment; do
     local fx="$fdir/$ctl.sh"
     test -f "$fx" || { echo "$fx fixture missing"; return 1; }
     _smoke_mktemp_lint_scan "$fx" same_line >/dev/null 2>&1 \
@@ -8035,5 +8170,5 @@ check_all_shell_scripts_mktemp_lint_self_test() {
   _smoke_mktemp_lint_scan tests/smoke.sh z_postcheck >/dev/null 2>&1 \
     || { echo "scope regression: tests/smoke.sh failed the z_postcheck dialect lint — the multi-line [ -z ] idiom is not being accepted"; return 1; }
 
-  echo "mktemp lint self-test: every X9 + X12 + X14 + X15 evading shape flagged (X14 = appended-segment structural defense regardless of prefix/guard + extended unguarded prefix vocabulary; X15 = simple-command guard discipline rejecting pipeline/background false guards); clean controls pass (incl. x14-env-guarded); X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
+  echo "mktemp lint self-test: every X9 + X12 + X14 + X15 + X16 evading shape flagged (X14 = appended-segment structural defense regardless of prefix/guard + extended unguarded prefix vocabulary; X15 = simple-command guard discipline rejecting pipeline/background false guards; X16 = shell-comment stripping rejecting comment-as-guard); clean controls pass (incl. x14-env-guarded and x16-real-guard-with-trailing-comment); X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
 }
