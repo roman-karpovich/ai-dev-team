@@ -7266,42 +7266,45 @@ PY
   echo "dispatch-response classifier: enum->violation_blocker mapping pinned for all 10 violation classes"
 }
 
-# Static lint: every `mktemp` invocation in tests/smoke-helpers.sh must be guarded
-# and must never have a path segment appended to an unchecked `$(mktemp ...)`.
+# Static lint: every `mktemp` invocation in tests/smoke-helpers.sh must be
+# guarded and must never have a path segment appended to an unchecked
+# `$(mktemp ...)`.
 #
-# This pin closes the destructive `rm -rf` class twice found in this file:
+# This pin closes the destructive `rm -rf` class found multiple times in
+# this file's lineage:
 #   - X1 (iter-1): a deterministic real-path `rm -rf` triggered by `bash tests/smoke.sh`.
 #   - X7 (iter-3): `d_co=$(mktemp -d)/co` with no success guard — on `mktemp`
 #     failure `d_co` becomes the literal `/co`, and a downstream
 #     `rm -rf "$(dirname "$d_co")"` resolves to `rm -rf /` during a routine
-#     smoke run, with the developer's own privileges.
+#     smoke run.
+#   - X9 (iter-4): quoted/backtick assign forms + `|| true` non-guard bypassed
+#     the original regex-cascade pin.
+#   - X12 (iter-5): word-substring guard (`|| echo return`), path-qualified
+#     mktemp (`$(/bin/mktemp -d)` and `$(command mktemp -d)`), and
+#     multi-assignment-per-line (`a=$(mktemp); b=$(mktemp) || return 1`)
+#     bypassed the X9-strengthened regexes.
 #
-# What this lint scans for (the X1/X7 shape), per non-comment line of
-# tests/smoke-helpers.sh. An mktemp command substitution is recognized in ALL
-# THREE legal bash forms — plain `$(mktemp ...)`, quoted `"$(mktemp ...)"`, and
-# backtick `` `mktemp ...` `` — since all three produce a poisoned path on
-# `mktemp` failure (X9: the original pin saw only the unquoted `$(` form):
-#   A. Path-segment-appended unchecked mktemp — an mktemp substitution with a
-#      `/`-prefixed path segment glued onto its close (e.g. `=$(mktemp -d)/co`
-#      OR the quoted variant `="$(mktemp -d)"/co` where a closing quote sits
-#      between `)` and `/`). This manufactures the `dirname -> /` footgun and
-#      is BANNED outright, guarded or not.
-#   B. Unguarded assignment-from-mktemp — a `VAR=$(mktemp ...)` (in any of the
-#      three forms) line NOT followed on the same line by a REAL success guard.
-#      A real guard's `||` branch must actually ABORT the pin — its branch must
-#      contain `return` or `exit` (`|| return`, `|| exit`, `|| { ...; return; }`,
-#      `|| { ...; exit; }`). A failure-swallowing `|| true` / `|| :` is NOT a
-#      guard (X9): it swallows the `mktemp` failure and execution proceeds with
-#      VAR empty — the exact poisoned-path footgun the pin exists to forbid.
-#      A bare `local VAR; VAR=$(mktemp -d)` with the guard on the SAME logical
-#      line counts as guarded.
-# A non-empty match list for A or B fails the pin and names every offending
-# line number + text, so the destructive class cannot recur a third time.
-# _smoke_mktemp_lint_scan <file> — the single source of truth for the mktemp
-# lint. Scans <file> and prints `ok` (exit 0) or the violation list (exit 1).
-# Both the real pin (against tests/smoke-helpers.sh) and the lint's own
-# self-test pin (against synthetic fixture snippets) drive THIS function, so
-# the negative fixtures exercise the exact regexes the real pin uses (R3/R6).
+# What this lint scans for (the X1/X7 shape) is enumerated below as Shape A
+# (appended-segment) and Shape B (unguarded assign-from-mktemp). The iter-5
+# grammar redesign replaces the previous line-level regex-cascade with a
+# per-segment scan: each line is split on top-level `;` (statement-
+# separators, careful tokenizer honouring quotes / brace groups / parens
+# so a `;` inside an `echo "see;comma"` string is NOT a separator) and each
+# segment is independently checked for assign + guard. This rejects the
+# X12 multi-assignment-per-line bypass. A shared `_MKTEMP` pattern matches
+# bare `mktemp`, path-prefixed (`/usr/bin/mktemp`), and `command mktemp` —
+# rejecting the X12 path-qualified bypass. The `||` guard is tokenized:
+# a real guard's branch must be `return`/`exit` at branch position 0 (with
+# an optional exit code) OR a brace group `{ ...; return|exit ...; }` whose
+# FINAL statement is `return`/`exit` — rejecting the X12 word-substring
+# bypass `|| echo return`, `|| echo "see return"`, and
+# `|| echo failed; rm -rf "$d"; return 1` (the late `return` is a separate
+# top-level statement, not in the `||` branch).
+#
+# _smoke_mktemp_lint_scan <file> — single source of truth for the mktemp
+# lint. Prints `ok` (exit 0) or the violation list (exit 1). Both the real
+# pin and the lint's own self-test pin drive THIS function, so the negative
+# fixtures exercise the exact grammar the real pin uses (R3/R6).
 _smoke_mktemp_lint_scan() {
   SMOKE_LINT_TARGET="$1" python3 <<'PY'
 import os, re, sys
@@ -7310,33 +7313,243 @@ target = os.environ["SMOKE_LINT_TARGET"]
 with open(target, encoding="utf-8") as fh:
     lines = fh.readlines()
 
-# A mktemp command substitution in ANY of its three legal bash forms — plain
-# `$(mktemp ...)`, double/single-quoted `"$(mktemp ...)"`, or backtick
-# `` `mktemp ...` ``. All three are equally capable of producing a poisoned
-# path, so all three must be visible to the lint.
-_SUBST = r'(?:["\']?\$\(\s*mktemp\b[^()]*\)["\']?|["\']?`\s*mktemp\b[^`]*`["\']?)'
+# Shared mktemp invocation pattern. Matches:
+#   - bare `mktemp`
+#   - path-prefixed `/bin/mktemp`, `/usr/bin/mktemp`, etc.
+#   - `command mktemp` (and `command  mktemp` with multiple spaces)
+# The X12 finding showed each of these collapses to the same destructive
+# poisoned-path shape on mktemp failure; all three must be visible to the
+# substitution recognizer.
+_MKTEMP = r'(?:command\s+)?(?:/[\w./-]+/)?mktemp\b'
 
-# Shape A: a path segment appended to an mktemp substitution. The `/` may
-# follow the closing `)` / backtick directly OR a closing quote in between
+# A mktemp command substitution in either legal bash form:
+#   - `$(...)` form (optionally surrounded by " or ' quotes)
+#   - backtick `` `...` `` form (optionally quoted)
+# The substitution body is `_MKTEMP` followed by any non-paren chars (or
+# non-backtick chars in the backtick form).
+_SUBST_DOLLAR = r'\$\(\s*' + _MKTEMP + r'[^()]*\)'
+_SUBST_BACKTICK = r'`\s*' + _MKTEMP + r'[^`]*`'
+_SUBST = r'(?:["\']?(?:' + _SUBST_DOLLAR + r'|' + _SUBST_BACKTICK + r')["\']?)'
+
+# Shape A: a path segment appended to an mktemp substitution. The `/`
+# follows the closing `)` / backtick directly OR a closing quote in between
 # (`"$(mktemp -d)"/co`) — both put the segment outside the guarded value.
-appended = re.compile(r'(?:\$\(\s*mktemp\b[^()]*\)|`\s*mktemp\b[^`]*`)["\']?/')
-# Any assignment that captures mktemp output, quoted or backtick form:
-# `VAR=$(mktemp ...)`, `VAR="$(mktemp ...)"`, `VAR=`mktemp ...``.
-assign = re.compile(
-    r'(?:^|[;\s])([A-Za-z_][A-Za-z0-9_]*)='
-    r'(?:["\']?\$\(\s*mktemp\b|["\']?`\s*mktemp\b)'
+APPENDED = re.compile(
+    r'(?:' + _SUBST_DOLLAR + r'|' + _SUBST_BACKTICK + r')["\']?/'
 )
-# A same-line success guard following the substitution. A REAL guard's `||`
-# branch must actually abort the pin — its branch text must contain `return`
-# or `exit`. A failure-swallowing `|| true` / `|| :` is NOT a guard: it lets
-# execution proceed with an empty VAR, the exact poisoned-path footgun the pin
-# forbids. The branch text is scanned from the `||` to end-of-line so the
-# multi-statement `|| { rm -rf ...; return 1; }` idiom (a `;` before `return`)
-# is still recognized as guarded — `[^;]*` would have stopped at that `;`.
-guard = re.compile(
-    r'(?:\$\(\s*mktemp\b[^()]*\)|`\s*mktemp\b[^`]*`)["\']?'
-    r'\s*(?:/[^\s;]*)?\s*\|\|.*\b(?:return|exit)\b'
+
+# Any assignment that captures mktemp output (quoted or unquoted, $() or
+# backtick, bare-or-path-qualified-or-`command`-prefixed mktemp). Captures
+# the LHS name so the post-assignment `[ -z ]` idiom recognizer can match
+# the same variable later in the file.
+ASSIGN = re.compile(
+    r'(?:^|[;\s&|])([A-Za-z_][A-Za-z0-9_]*)='
+    r'(?:["\']?\$\(\s*' + _MKTEMP + r'|["\']?`\s*' + _MKTEMP + r')'
 )
+
+# A `local`/`declare`/`readonly` prefix may sit between the `;` and the LHS
+# of an assignment. We treat `local foo=$(mktemp ...)` the same as
+# `foo=$(mktemp ...)` for guard purposes.
+_KEYWORD_PREFIXES = ("local", "declare", "readonly", "export", "typeset")
+
+
+def _strip_assign_prefix(segment):
+    """Return the assignment-bearing tail of a segment.
+
+    For `local foo=$(mktemp -d) || return 1` returns `foo=$(mktemp -d) || return 1`.
+    For `foo=$(mktemp -d) || return 1` returns the same string unchanged.
+    For a segment with no leading keyword, returns the input unchanged.
+    """
+    stripped = segment.lstrip()
+    for kw in _KEYWORD_PREFIXES:
+        if stripped.startswith(kw + " ") or stripped.startswith(kw + "\t"):
+            return stripped[len(kw):].lstrip()
+    return segment
+
+
+def _split_top_level_semis(line):
+    """Split a line on TOP-LEVEL `;` (statement-separators).
+
+    A `;` inside single/double quotes, backticks, or a `{ }` / `( )` /
+    `$( )` group is NOT a top-level separator. This is a careful tokenizer
+    (not naive str.split(';')) because shell strings legitimately contain
+    `;`-bearing prose (e.g. `echo "see; comma"`).
+
+    Returns a list of (segment, start_offset_within_line) tuples so a
+    violation in a non-first segment can be reported.
+    """
+    segments = []
+    buf = []
+    start = 0
+    i = 0
+    n = len(line)
+    in_single = False
+    in_double = False
+    in_backtick = False
+    paren_depth = 0
+    brace_depth = 0
+    while i < n:
+        ch = line[i]
+        if in_single:
+            buf.append(ch)
+            if ch == "'":
+                in_single = False
+            i += 1
+            continue
+        if in_double:
+            buf.append(ch)
+            if ch == '\\' and i + 1 < n:
+                # consume the escaped char as part of the string
+                buf.append(line[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_double = False
+            i += 1
+            continue
+        if in_backtick:
+            buf.append(ch)
+            if ch == '`':
+                in_backtick = False
+            i += 1
+            continue
+        if ch == "'":
+            in_single = True
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '"':
+            in_double = True
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '`':
+            in_backtick = True
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '(':
+            paren_depth += 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == ')':
+            if paren_depth > 0:
+                paren_depth -= 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '{':
+            brace_depth += 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '}':
+            if brace_depth > 0:
+                brace_depth -= 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == ';' and paren_depth == 0 and brace_depth == 0:
+            segments.append(("".join(buf), start))
+            buf = []
+            i += 1
+            start = i
+            continue
+        buf.append(ch)
+        i += 1
+    if buf or not segments:
+        segments.append(("".join(buf), start))
+    return segments
+
+
+def _guard_branch_aborts(branch):
+    """Decide whether the text of a `||` branch is a real aborting guard.
+
+    A real guard at branch position 0 is one of:
+      - the keyword `return` (optionally followed by an exit code)
+      - the keyword `exit`   (optionally followed by an exit code)
+      - a brace group `{ ...; return|exit ... ; }` whose FINAL non-empty
+        top-level statement is `return` or `exit`
+    All other forms (`echo return`, `echo "see return"`, `true`, `:`,
+    `echo failed; return 1` with the `return` outside the branch) are NOT
+    aborting guards: they let execution proceed with the assignment's VAR
+    still empty, which is the destructive footgun the pin exists to forbid.
+    """
+    text = branch.strip()
+    if not text:
+        return False
+    # Brace-group form: `{ stmt; ...; stmt; }`
+    if text.startswith('{'):
+        # find the matching close brace honouring nested braces / quotes /
+        # subshells. For our grammar, a careless approach is enough — bash
+        # forbids unescaped `}` inside brace groups except inside strings
+        # or subshells, which our top-level splitter handled before us. So
+        # the matching close is simply the LAST `}` in the branch.
+        close = text.rfind('}')
+        if close == -1:
+            return False
+        inner = text[1:close].strip()
+        # final statement: split inner on top-level `;` and inspect the
+        # last non-empty piece.
+        inner_segs = _split_top_level_semis(inner)
+        # filter out trailing empty pieces (from a trailing `;` before `}`)
+        nonempty = [s for s, _ in inner_segs if s.strip()]
+        if not nonempty:
+            return False
+        final = nonempty[-1].strip()
+        return _starts_with_abort_keyword(final)
+    return _starts_with_abort_keyword(text)
+
+
+_ABORT_KEYWORD = re.compile(r'^(return|exit)\b')
+
+
+def _starts_with_abort_keyword(text):
+    return bool(_ABORT_KEYWORD.match(text.strip()))
+
+
+def _segment_has_real_guard(segment):
+    """Decide whether a segment containing an mktemp assign also has a
+    real `||` guard immediately after the substitution.
+
+    Find the FIRST `||` after the mktemp substitution close and check its
+    branch is an aborting statement (per `_guard_branch_aborts`). If there
+    is no `||` after the substitution, this segment is unguarded.
+    """
+    # Find the substitution close position. We've already verified the
+    # segment matches ASSIGN; find the closing `)` or backtick of the FIRST
+    # mktemp substitution.
+    # Look for `$(...mktemp...)` or `` `mktemp...` ``.
+    m = re.search(r'\$\(\s*' + _MKTEMP + r'[^()]*\)', segment)
+    if not m:
+        m = re.search(r'`\s*' + _MKTEMP + r'[^`]*`', segment)
+    if not m:
+        return False  # no recognizable substitution — caller will treat as
+                      # unguarded; consistent with the assign-but-no-subst
+                      # impossibility for our grammar.
+    after = segment[m.end():]
+    # skip an optional closing quote
+    if after.startswith('"') or after.startswith("'"):
+        after = after[1:]
+    # skip optional `/path` (this is the APPENDED shape — caller flags it
+    # separately, but for guard-checking we still want to find the `||`)
+    pos = 0
+    while pos < len(after) and not after[pos].isspace() and after[pos] not in '|;)':
+        if after[pos] in '"\'':
+            # don't consume into a string; bail
+            break
+        pos += 1
+    after = after[pos:]
+    # find `||` (not `|`)
+    i = 0
+    while i < len(after):
+        if after[i] == '|' and i + 1 < len(after) and after[i + 1] == '|':
+            branch = after[i + 2:]
+            return _guard_branch_aborts(branch)
+        i += 1
+    return False
+
 
 violations = []
 for n, raw in enumerate(lines, start=1):
@@ -7344,12 +7557,29 @@ for n, raw in enumerate(lines, start=1):
     if stripped.startswith("#"):
         continue
     line = raw.rstrip("\n")
-    if appended.search(line):
+    # First: appended-segment is banned outright at the line level (even if
+    # subsequently guarded, the `dirname -> /` footgun is structural). The
+    # APPENDED regex looks for the substitution-close-then-`/` shape across
+    # any segment of the line.
+    if APPENDED.search(line):
         violations.append((n, "appended-segment", line.strip()))
-        # an appended-segment line is banned regardless of any guard.
         continue
-    if assign.search(line) and not guard.search(line):
+    # Per-segment scan: split the line on top-level `;` and re-apply
+    # assign/guard per segment. This rejects the X12 multi-assignment
+    # bypass.
+    for seg, _off in _split_top_level_semis(line):
+        seg_tail = _strip_assign_prefix(seg)
+        m = ASSIGN.search(seg_tail)
+        if not m:
+            continue
+        # This segment has an assign-from-mktemp. Does it have a real
+        # same-line guard?
+        if _segment_has_real_guard(seg_tail):
+            continue
+        # Unguarded.
         violations.append((n, "unguarded", line.strip()))
+        # only one violation per line — break out
+        break
 
 if violations:
     print("UNGUARDED MKTEMP SITE(S) — destructive rm-rf class (X1/X7):")
@@ -7375,17 +7605,25 @@ check_smoke_helpers_mktemp_guarded() {
 }
 
 # behavioral: the mktemp lint's own correctness self-test. A lint pin with no
-# negative case proves nothing (R3/R6) — these synthetic fixture snippets are
-# the exact X9 evading shapes (quoted `"$(mktemp ...)"`, backtick `` `mktemp` ``,
-# the `)"/segment` appended form, and the failure-swallowing `|| true` / `|| :`
-# non-guards) plus a clean control. Each evader MUST make _smoke_mktemp_lint_scan
-# FAIL (exit 1); the control MUST pass. This is what proves the strengthened
-# X9 regexes actually reject the shapes the weak regexes let through.
+# negative case proves nothing (R3/R6). The negative fixtures span two
+# generations of bypass classes:
+#   - X9 (iter-4) evading shapes: quoted/backtick subst, )"/seg appended,
+#     || true / || : non-guards.
+#   - X12 (iter-5) evading shapes: word-substring guard (`|| echo return`,
+#     `|| echo "see return"`, `|| echo failed; rm -rf; return 1` with the
+#     late-return as a separate top-level statement, `|| { echo failed; }`
+#     with no terminal return in the brace group); path-qualified mktemp
+#     (`$(/bin/mktemp -d)`, `$(command mktemp -d)`); multi-assignment-per-
+#     line (first unguarded).
+# Plus positive controls: clean-guarded (X9), guard-brace-group-valid (X12
+# real brace-group guard whose final statement is `return`), multi-
+# assignment-both-guarded (X12 per-segment positive case).
 check_smoke_helpers_mktemp_lint_self_test() {
   local fdir="tests/fixtures/smoke-mktemp-lint"
   test -d "$fdir" || { echo "$fdir fixture dir missing"; return 1; }
   local kind out rc
-  # Negative fixtures: each is an X9 evading shape — must FAIL the lint.
+
+  # X9 negative fixtures.
   for kind in quoted-subst-unguarded backtick-subst-unguarded \
               quoted-appended-segment guard-or-true guard-or-colon; do
     local fx="$fdir/$kind.sh"
@@ -7397,10 +7635,29 @@ check_smoke_helpers_mktemp_lint_self_test() {
     printf '%s' "$out" | grep -qE 'unguarded|appended-segment' \
       || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
   done
-  # Positive control: a correctly-guarded snippet must PASS.
-  local ctl="$fdir/clean-guarded.sh"
-  test -f "$ctl" || { echo "$ctl fixture missing"; return 1; }
-  _smoke_mktemp_lint_scan "$ctl" >/dev/null 2>&1 \
-    || { echo "mktemp lint wrongly flagged a correctly-guarded control snippet"; return 1; }
-  echo "mktemp lint self-test: every X9 evading shape (quoted/backtick subst, )\"/seg, || true, || :) is flagged; clean control passes"
+
+  # X12 negative fixtures.
+  for kind in guard-word-substring-echo guard-word-substring-quoted \
+              guard-word-substring-late-return guard-brace-group-no-return \
+              path-qualified-bin-mktemp path-qualified-command-mktemp \
+              multi-assignment-first-unguarded; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X12 evading shape slipped through"; return 1; }
+    printf '%s' "$out" | grep -qE 'unguarded|appended-segment' \
+      || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
+  done
+
+  # Positive controls.
+  for ctl in clean-guarded guard-brace-group-valid multi-assignment-both-guarded; do
+    local fx="$fdir/$ctl.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    _smoke_mktemp_lint_scan "$fx" >/dev/null 2>&1 \
+      || { echo "mktemp lint wrongly flagged correctly-guarded control '$ctl'"; return 1; }
+  done
+
+  echo "mktemp lint self-test: every X9 + X12 evading shape is flagged; clean controls (X9 same-line guard, X12 brace-group guard, X12 multi-assignment-both-guarded) pass"
 }
