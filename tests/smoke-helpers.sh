@@ -7266,7 +7266,7 @@ PY
   echo "dispatch-response classifier: enum->violation_blocker mapping pinned for all 10 violation classes"
 }
 
-# Static lint: every `mktemp` invocation in tests/smoke-helpers.sh must be
+# Static lint: every `mktemp` invocation in the repo's shell scripts must be
 # guarded and must never have a path segment appended to an unchecked
 # `$(mktemp ...)`.
 #
@@ -7283,6 +7283,10 @@ PY
 #     mktemp (`$(/bin/mktemp -d)` and `$(command mktemp -d)`), and
 #     multi-assignment-per-line (`a=$(mktemp); b=$(mktemp) || return 1`)
 #     bypassed the X9-strengthened regexes.
+#   - X13 (iter-5): pin scope was hardcoded to `tests/smoke-helpers.sh`;
+#     other shell scripts (`tests/smoke.sh`, `hooks/lib/*.sh`) were not
+#     subject to the regression backstop. The X1/X7 class could recur in
+#     any of those files silently.
 #
 # What this lint scans for (the X1/X7 shape) is enumerated below as Shape A
 # (appended-segment) and Shape B (unguarded assign-from-mktemp). The iter-5
@@ -7301,15 +7305,30 @@ PY
 # `|| echo failed; rm -rf "$d"; return 1` (the late `return` is a separate
 # top-level statement, not in the `||` branch).
 #
-# _smoke_mktemp_lint_scan <file> — single source of truth for the mktemp
-# lint. Prints `ok` (exit 0) or the violation list (exit 1). Both the real
-# pin and the lint's own self-test pin drive THIS function, so the negative
-# fixtures exercise the exact grammar the real pin uses (R3/R6).
+# Per-file safe-guard idiom dialect (Strategy A from the iter-5 X13 brief):
+# `tests/smoke.sh` historically uses a two-line post-assignment guard idiom
+#   tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t 'tag')
+#   if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then return 1; fi
+# which is also a real guard for the same destructive class — the variable
+# is checked for empty / non-directory immediately after the assignment and
+# the failure path aborts. The lint accepts this idiom for files registered
+# with the `z_postcheck` dialect. `tests/smoke-helpers.sh` and the
+# `hooks/lib/*.sh` scripts use only the same-line `|| return` /
+# `|| { ...; return; }` form (`same_line` dialect). The dialect is
+# per-file: a future file that switches idioms must update its dialect
+# in `_MKTEMP_LINT_SCOPE` below.
+#
+# _smoke_mktemp_lint_scan <file> [dialect] — single source of truth for the
+# mktemp lint. dialect is `same_line` (default) or `z_postcheck`. Prints
+# `ok` (exit 0) or the violation list (exit 1). Both the real pin and the
+# lint's own self-test pin drive THIS function, so the negative fixtures
+# exercise the exact grammar the real pin uses (R3/R6).
 _smoke_mktemp_lint_scan() {
-  SMOKE_LINT_TARGET="$1" python3 <<'PY'
+  SMOKE_LINT_TARGET="$1" SMOKE_LINT_DIALECT="${2:-same_line}" python3 <<'PY'
 import os, re, sys
 
 target = os.environ["SMOKE_LINT_TARGET"]
+dialect = os.environ["SMOKE_LINT_DIALECT"]
 with open(target, encoding="utf-8") as fh:
     lines = fh.readlines()
 
@@ -7551,6 +7570,51 @@ def _segment_has_real_guard(segment):
     return False
 
 
+# Per-file z_postcheck dialect (X13): a multi-line post-assignment guard.
+#   VAR=$(mktemp -d ...)
+#   if [ -z "$VAR" ] || [ ! -d "$VAR" ]; then ... return 1; fi
+# OR the chained-and form `[ -z "$VAR" ] || [ ! -d "$VAR" ] && return 1`.
+# Recognized only when the dialect is `z_postcheck`; the variable name in
+# the `[ -z ]` test MUST match the assignment's LHS (so an unrelated
+# `[ -z ]` line a few lines down does not accidentally "guard" a different
+# assignment).
+_Z_TEST = re.compile(
+    r'\[\s+-z\s+"?\$\{?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\}?"?\s+\]'
+)
+
+
+def _has_z_postcheck_for(lhs, line_idx, all_lines):
+    """For dialect z_postcheck: scan up to 6 lines forward from line_idx
+    looking for a `[ -z "$lhs" ]` test paired with an abort statement
+    (return/exit) on the same line or within the next 5 lines.
+    Returns True if the variable name in the test matches `lhs` AND an
+    abort is reachable from the test.
+    """
+    if dialect != "z_postcheck":
+        return False
+    end = min(line_idx + 7, len(all_lines))
+    for j in range(line_idx, end):
+        line_j = all_lines[j]
+        m = _Z_TEST.search(line_j)
+        if not m:
+            continue
+        if m.group("name") != lhs:
+            continue
+        # found `[ -z "$lhs" ]`. Look for return/exit reachable from here:
+        #   - `&& return` / `&& exit` on the same line
+        #   - `then` on this line, abort statement on a following line
+        #     (within 5 lines)
+        for k in range(j, min(j + 6, len(all_lines))):
+            line_k = all_lines[k]
+            if re.search(r'&&\s*(return|exit)\b', line_k):
+                return True
+            if k > j:
+                stripped_k = line_k.lstrip()
+                if _ABORT_KEYWORD.match(stripped_k):
+                    return True
+    return False
+
+
 violations = []
 for n, raw in enumerate(lines, start=1):
     stripped = raw.lstrip()
@@ -7576,6 +7640,12 @@ for n, raw in enumerate(lines, start=1):
         # same-line guard?
         if _segment_has_real_guard(seg_tail):
             continue
+        # No same-line guard — under the z_postcheck dialect, also accept a
+        # multi-line `[ -z "$VAR" ]` post-assignment guard whose variable
+        # name matches the assignment LHS.
+        lhs = m.group(1)
+        if _has_z_postcheck_for(lhs, n - 1, lines):
+            continue
         # Unguarded.
         violations.append((n, "unguarded", line.strip()))
         # only one violation per line — break out
@@ -7590,23 +7660,67 @@ print("ok")
 PY
 }
 
-check_smoke_helpers_mktemp_guarded() {
-  local target="tests/smoke-helpers.sh"
-  [ -r "$target" ] || { echo "lint target missing: $target"; return 1; }
-  local report
-  report=$(_smoke_mktemp_lint_scan "$target")
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    echo "$report"
-    echo "lint: $target has an unguarded or path-appended mktemp — see lines above"
+# Per-file scope + dialect map (iter-5 X13). Every shell script in the repo
+# is enumerated EXPLICITLY here (no `find` enumeration — bash 3.2
+# compatible, deterministic, multi-agent-safe) along with the safe-guard
+# idiom dialect its mktemp sites use:
+#   - same_line:    only the same-line `|| return` / `|| { ...; return; }`
+#                   guard form is accepted (smoke-helpers.sh, hooks/lib/*.sh).
+#   - z_postcheck:  ALSO accept the multi-line `[ -z "$VAR" ] || [ ! -d
+#                   "$VAR" ]` post-assignment guard idiom (tests/smoke.sh).
+# To add a new in-scope shell script, append a row here. To switch a file's
+# dialect, update its row (and add a fixture proving the new idiom is
+# recognized).
+_MKTEMP_LINT_SCOPE() {
+  cat <<'EOF'
+tests/smoke.sh z_postcheck
+tests/smoke-helpers.sh same_line
+hooks/lib/build_pr_files.sh same_line
+hooks/lib/codex_audit_dispatch.sh same_line
+hooks/lib/cross_audit_resolve_range.sh same_line
+hooks/lib/dedupe_findings.sh same_line
+hooks/lib/locate_section_outside_fences.sh same_line
+hooks/lib/probe_e.sh same_line
+hooks/lib/probe_f.sh same_line
+hooks/lib/probe_g.sh same_line
+hooks/lib/probe_h.sh same_line
+hooks/lib/receipt_canonicalize.sh same_line
+hooks/lib/render_findings.sh same_line
+hooks/lib/resolve_rule_path.sh same_line
+hooks/lib/synth_probe_failures.sh same_line
+EOF
+}
+
+check_all_shell_scripts_mktemp_guarded() {
+  local fail=0 scanned=0 target dialect
+  while read -r target dialect; do
+    [ -n "$target" ] || continue
+    if [ ! -r "$target" ]; then
+      echo "lint target missing: $target"; fail=1; continue
+    fi
+    scanned=$((scanned + 1))
+    local report
+    report=$(_smoke_mktemp_lint_scan "$target" "$dialect")
+    local rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "$report"
+      echo "lint: $target has an unguarded or path-appended mktemp — see lines above"
+      fail=1
+    fi
+  done <<EOF
+$(_MKTEMP_LINT_SCOPE)
+EOF
+  if [ "$scanned" -lt 2 ]; then
+    echo "lint scope regression: only $scanned files scanned — expected the multi-file enumeration"
     return 1
   fi
-  echo "lint: all mktemp sites in $target are guarded; no path-appended \$(mktemp ...)"
+  [ "$fail" -eq 0 ] || return 1
+  echo "lint: all mktemp sites across $scanned shell scripts are guarded; no path-appended \$(mktemp ...)"
 }
 
 # behavioral: the mktemp lint's own correctness self-test. A lint pin with no
-# negative case proves nothing (R3/R6). The negative fixtures span two
-# generations of bypass classes:
+# negative case proves nothing (R3/R6). The negative fixtures span three
+# generations of bypass classes plus the X13 dialect regression detector:
 #   - X9 (iter-4) evading shapes: quoted/backtick subst, )"/seg appended,
 #     || true / || : non-guards.
 #   - X12 (iter-5) evading shapes: word-substring guard (`|| echo return`,
@@ -7615,20 +7729,27 @@ check_smoke_helpers_mktemp_guarded() {
 #     with no terminal return in the brace group); path-qualified mktemp
 #     (`$(/bin/mktemp -d)`, `$(command mktemp -d)`); multi-assignment-per-
 #     line (first unguarded).
+#   - X13 (iter-5) idiom recognition: the z_postcheck multi-line
+#     `[ -z "$VAR" ]` post-assignment guard MUST be accepted when the
+#     variable name matches the assignment LHS, and REJECTED when the
+#     variable name does not match.
 # Plus positive controls: clean-guarded (X9), guard-brace-group-valid (X12
-# real brace-group guard whose final statement is `return`), multi-
-# assignment-both-guarded (X12 per-segment positive case).
-check_smoke_helpers_mktemp_lint_self_test() {
+# brace-group guard with final return), multi-assignment-both-guarded
+# (X12 per-segment positive case), external-file-safe-z-idiom (X13
+# z_postcheck positive control). Plus a scope regression detector: assert
+# the enumeration includes `tests/smoke.sh` (the canonical external scan
+# target) so a future regression dropping multi-file scope fails the pin.
+check_all_shell_scripts_mktemp_lint_self_test() {
   local fdir="tests/fixtures/smoke-mktemp-lint"
   test -d "$fdir" || { echo "$fdir fixture dir missing"; return 1; }
   local kind out rc
 
-  # X9 negative fixtures.
+  # X9 negative fixtures (same_line dialect).
   for kind in quoted-subst-unguarded backtick-subst-unguarded \
               quoted-appended-segment guard-or-true guard-or-colon; do
     local fx="$fdir/$kind.sh"
     test -f "$fx" || { echo "$fx fixture missing"; return 1; }
-    out=$(_smoke_mktemp_lint_scan "$fx" 2>&1)
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
     rc=$?
     [ "$rc" -eq 1 ] \
       || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X9 evading shape slipped through"; return 1; }
@@ -7636,14 +7757,14 @@ check_smoke_helpers_mktemp_lint_self_test() {
       || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
   done
 
-  # X12 negative fixtures.
+  # X12 negative fixtures (same_line dialect).
   for kind in guard-word-substring-echo guard-word-substring-quoted \
               guard-word-substring-late-return guard-brace-group-no-return \
               path-qualified-bin-mktemp path-qualified-command-mktemp \
               multi-assignment-first-unguarded; do
     local fx="$fdir/$kind.sh"
     test -f "$fx" || { echo "$fx fixture missing"; return 1; }
-    out=$(_smoke_mktemp_lint_scan "$fx" 2>&1)
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
     rc=$?
     [ "$rc" -eq 1 ] \
       || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X12 evading shape slipped through"; return 1; }
@@ -7651,13 +7772,51 @@ check_smoke_helpers_mktemp_lint_self_test() {
       || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
   done
 
-  # Positive controls.
+  # X13 negative fixture (z_postcheck dialect — variable name mismatch).
+  for kind in external-file-z-idiom-wrong-var; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" z_postcheck 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X13 wrong-var idiom slipped through"; return 1; }
+    printf '%s' "$out" | grep -qE 'unguarded' \
+      || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
+  done
+
+  # Positive controls (same_line dialect).
   for ctl in clean-guarded guard-brace-group-valid multi-assignment-both-guarded; do
     local fx="$fdir/$ctl.sh"
     test -f "$fx" || { echo "$fx fixture missing"; return 1; }
-    _smoke_mktemp_lint_scan "$fx" >/dev/null 2>&1 \
+    _smoke_mktemp_lint_scan "$fx" same_line >/dev/null 2>&1 \
       || { echo "mktemp lint wrongly flagged correctly-guarded control '$ctl'"; return 1; }
   done
 
-  echo "mktemp lint self-test: every X9 + X12 evading shape is flagged; clean controls (X9 same-line guard, X12 brace-group guard, X12 multi-assignment-both-guarded) pass"
+  # Positive control (z_postcheck dialect — multi-line idiom must pass).
+  for ctl in external-file-safe-z-idiom; do
+    local fx="$fdir/$ctl.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    _smoke_mktemp_lint_scan "$fx" z_postcheck >/dev/null 2>&1 \
+      || { echo "mktemp lint wrongly flagged z_postcheck control '$ctl'"; return 1; }
+  done
+
+  # X13 scope regression detector: the enumeration MUST include at least
+  # one mktemp site OUTSIDE smoke-helpers.sh. Use tests/smoke.sh as the
+  # canonical external scan target (8 mktemp sites, z_postcheck dialect).
+  local scope_listing scope_outside
+  scope_listing=$(_MKTEMP_LINT_SCOPE)
+  printf '%s\n' "$scope_listing" | grep -qE '^tests/smoke\.sh\s+z_postcheck$' \
+    || { echo "scope regression: tests/smoke.sh not enumerated in _MKTEMP_LINT_SCOPE"; return 1; }
+  scope_outside=$(printf '%s\n' "$scope_listing" | grep -cvE '^(tests/smoke-helpers\.sh\s|$)')
+  if [ "$scope_outside" -lt 1 ]; then
+    echo "scope regression: enumeration contains $scope_outside entries outside tests/smoke-helpers.sh — expected at least 1"
+    return 1
+  fi
+  # Behavioral assertion: re-run the lint against tests/smoke.sh with the
+  # z_postcheck dialect; it MUST pass clean (proving the dialect actually
+  # accepts the in-file multi-line `[ -z "$VAR" ]` post-assignment idiom).
+  _smoke_mktemp_lint_scan tests/smoke.sh z_postcheck >/dev/null 2>&1 \
+    || { echo "scope regression: tests/smoke.sh failed the z_postcheck dialect lint — the multi-line [ -z ] idiom is not being accepted"; return 1; }
+
+  echo "mktemp lint self-test: every X9 + X12 evading shape flagged; clean controls pass; X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
 }

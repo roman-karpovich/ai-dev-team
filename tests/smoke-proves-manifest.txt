@@ -258,11 +258,13 @@ check_r15_present_in_code_quality_rules schema
 check_dispatch_response_classification behavioral
 check_dispatch_response_violation_blocker_mapping behavioral
 
-# smoke-harness self-protection: static lint scanning smoke-helpers.sh for
+# smoke-harness self-protection: static lint scanning ALL shell scripts in
+# the repo (tests/smoke.sh, tests/smoke-helpers.sh, hooks/lib/*.sh) for
 # unguarded / path-appended mktemp (the X1/X7 destructive rm-rf class)
-check_smoke_helpers_mktemp_guarded behavioral
+check_all_shell_scripts_mktemp_guarded behavioral
 # the mktemp lint's own correctness self-test — drives the lint against
-# synthetic X9 + X12 evading-shape fixtures (quoted/backtick subst, )"/seg,
-# || true / || :, word-substring guard, path-qualified mktemp,
-# multi-assignment-per-line) plus positive controls.
-check_smoke_helpers_mktemp_lint_self_test behavioral
+# synthetic X9 + X12 evading-shape fixtures plus the X13 z_postcheck
+# `[ -z "$VAR" ]` multi-line idiom recognition (positive + wrong-var
+# negative) and a scope regression detector asserting the enumeration
+# includes at least one file outside smoke-helpers.sh.
+check_all_shell_scripts_mktemp_lint_self_test behavioral
