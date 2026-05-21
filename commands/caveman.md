@@ -23,7 +23,11 @@ absent.
 
 ```bash
 # Source the shared resolver.
-. "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/hooks/lib/caveman_paths.sh"
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh" ]; then
+  echo "caveman: CLAUDE_PLUGIN_ROOT not set or helper not found at expected path" >&2
+  exit 1
+fi
+. "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh"
 
 flag=$(caveman_flag_path)
 rm -f "$flag"
@@ -39,7 +43,11 @@ flag file is small YAML with five fields: `repo`, `plugin`, `mode`,
 
 ```bash
 # Source the shared resolver.
-. "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/hooks/lib/caveman_paths.sh"
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh" ]; then
+  echo "caveman: CLAUDE_PLUGIN_ROOT not set or helper not found at expected path" >&2
+  exit 1
+fi
+. "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh"
 
 flag=$(caveman_flag_path)
 mkdir -p "$(dirname "$flag")"
@@ -75,7 +83,11 @@ resolved flag path, and the project hash. The branch uses a conditional
 
 ```bash
 # Source the shared resolver.
-. "${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/hooks/lib/caveman_paths.sh"
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh" ]; then
+  echo "caveman: CLAUDE_PLUGIN_ROOT not set or helper not found at expected path" >&2
+  exit 1
+fi
+. "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh"
 
 flag=$(caveman_flag_path)
 hash=$(basename "$flag" .flag)
