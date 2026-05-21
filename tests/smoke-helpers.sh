@@ -8331,14 +8331,35 @@ check_caveman_skill_parser_anchors_literal() {
 }
 
 check_caveman_skill_uncertainty_invariant_present() {
-  local f="skills/caveman/SKILL.md"
+  # X3: section-scope the assertion to ## 3. so that deleting the §3 body
+  # cannot pass via frontmatter / Quick-reference satisfaction.
+  local f="skills/caveman/SKILL.md" section literal
   test -f "$f" || { echo "$f missing"; return 1; }
-  grep -qF 'uncertainty' "$f" || { echo "$f missing 'uncertainty' literal"; return 1; }
-  if ! grep -qE 'modal|hedging|tentative' "$f"; then
-    echo "$f mentions 'uncertainty' but no modal|hedging|tentative qualifier — invariant under-specified"
+  section=$(extract_md_section "$f" '## 3. Uncertainty-preservation invariant')
+  if [ -z "$section" ]; then
+    echo "$f: ## 3. Uncertainty-preservation invariant section missing or empty"
     return 1
   fi
-  echo "SKILL.md uncertainty invariant present (uncertainty + modal/hedging/tentative)"
+  # Load-bearing marker classes (frontmatter + Quick-ref do NOT contain these).
+  for literal in \
+    'Modal verbs' \
+    'hedging adverbs' \
+    'tentative qualifiers' \
+    'explicit confidence markers' \
+    'this might fail under heavy load' \
+    'flat assertion'
+  do
+    if ! printf '%s' "$section" | grep -qF -- "$literal"; then
+      echo "$f §3 missing load-bearing literal: $literal"
+      return 1
+    fi
+  done
+  # Goodhart-proof rule co-occurrence: 'Goodhart' and 'flat assertion' both in §3.
+  if ! printf '%s' "$section" | grep -qF -- 'Goodhart'; then
+    echo "$f §3 missing 'Goodhart' rule sentence"
+    return 1
+  fi
+  echo "SKILL.md §3 uncertainty invariant: marker classes + negative example + Goodhart rule all present"
 }
 
 check_caveman_skill_wire_prefix_present() {
