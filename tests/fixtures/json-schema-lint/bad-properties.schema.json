@@ -1,0 +1,6 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "X8/X10 regression fixture — 'properties' is a string, not an object. The schema-walk value-type check must reject it with exit 2.",
+  "type": "object",
+  "properties": "not-an-object"
+}

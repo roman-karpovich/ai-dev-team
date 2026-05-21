@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "X8/X10 regression fixture — 'type' is the unknown type-name string 'objct' (a typo of 'object'). The schema-walk requires a known type-name and must reject it with exit 2.",
+  "type": "objct",
+  "properties": {
+    "name": { "type": "string" }
+  }
+}

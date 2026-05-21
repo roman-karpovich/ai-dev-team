@@ -1,0 +1,5 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "X5 regression fixture — dict-valued enum. The JSON object {\"x\":true} must NOT match the enum member {\"x\":1}: bool stays distinct from int inside nested object values.",
+  "enum": [{"x": 1}]
+}

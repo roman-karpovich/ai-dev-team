@@ -1,0 +1,6 @@
+{
+  "name": "example",
+  "severity": "HIGH",
+  "count": 3,
+  "tags": ["a", "b"]
+}

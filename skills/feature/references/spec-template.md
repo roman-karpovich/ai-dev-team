@@ -46,6 +46,14 @@ Why this feature is needed. Link to proposal, issue, or discussion.
 
 Populated by the /feature New mode slot-filling step before HARD-GATE approval (see `skills/feature/SKILL.md` Step 2 §Attack-surface profile prompts). Captures security-relevant context for spec-mode cross-audit. When `not_applicable: true`, every other slot field MUST be the literal `null` per §3.3 canonical rule.
 
+<!-- AUTHOR GUARD: the 4-backtick ````markdown wrapper below exists ONLY so this
+     template can DISPLAY the inner ```yaml block. When you transcribe §1.1 into
+     a real spec, copy ONLY the inner block as a single 3-backtick ```yaml
+     fence — drop the outer 4-backtick ````markdown wrapper entirely. The
+     cross-auditor's absent-section check (locate_section_outside_fences.sh)
+     treats the §1.1 heading as present only when it is a real column-0 H2
+     OUTSIDE every fence; a heading left wrapped in a stray fence will NOT be
+     detected. -->
 ````markdown
 ```yaml
 attack_surface:

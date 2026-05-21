@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "X10 regression fixture — 'items' is a Draft-07 tuple-form list of per-position schemas. validate() implements only the single-subschema form and would pass the whole list as the schema for every element, reporting every array element as a violation. _walk_schema must reject the list form outright with exit 2.",
+  "type": "array",
+  "items": [
+    { "type": "string" },
+    { "type": "integer" }
+  ]
+}
