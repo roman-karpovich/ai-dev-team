@@ -7,6 +7,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# Source caveman path helper for compression-mode injection.
+. "${SCRIPT_DIR}/lib/caveman_paths.sh"
+
 detect_ai_dev_team_signal() {
     shopt -u nullglob failglob 2>/dev/null || true
     if [ -f ".ai-dev-team.yml" ] || [ -f ".ai-dev-team.local.yml" ]; then
@@ -45,6 +48,15 @@ escape_for_json() {
 # Others / Copilot CLI — emit additionalContext (SDK standard).
 if detect_ai_dev_team_signal; then
   session_context_raw=$(cat "${SCRIPT_DIR}/session-prompt.md")
+
+  # Caveman compression mode: on-by-default. Inject the marker file when
+  # the project flag is absent. Flag present = suspended.
+  caveman_flag=$(caveman_flag_path 2>/dev/null || true)
+  caveman_injection="${PLUGIN_ROOT}/skills/caveman/SESSION-INJECTION.md"
+  if [ -n "$caveman_flag" ] && [ ! -f "$caveman_flag" ] && [ -f "$caveman_injection" ]; then
+    session_context_raw="${session_context_raw}"$'\n\n'"$(cat "$caveman_injection")"
+  fi
+
   session_context=$(escape_for_json "$session_context_raw")
   if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
     printf '{\n  "additional_context": "%s"\n}\n' "$session_context"
