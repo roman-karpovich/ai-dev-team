@@ -8390,14 +8390,44 @@ PY
 }
 
 check_caveman_skill_artifact_boundary_present() {
-  local f="skills/caveman/SKILL.md"
+  # X4: section-scope the assertion to ## 5. so frontmatter / Quick-reference
+  # cannot satisfy it by themselves. Assert each table row's left-column
+  # literal co-occurs with its YES/NO classification on the same line.
+  local f="skills/caveman/SKILL.md" section pattern
   test -f "$f" || { echo "$f missing"; return 1; }
-  grep -qF 'artifact' "$f" || { echo "$f missing 'artifact' literal"; return 1; }
-  if ! grep -qE 'structure|prose|YAML|frontmatter' "$f"; then
-    echo "$f mentions 'artifact' but no structure|prose|YAML|frontmatter qualifier"
+  section=$(extract_md_section "$f" '## 5. Artifact compression boundary — prose vs structure')
+  if [ -z "$section" ]; then
+    echo "$f: ## 5. Artifact compression boundary section missing or empty"
     return 1
   fi
-  echo "SKILL.md artifact compression boundary documented (artifact + structure/prose/YAML/frontmatter)"
+  # Per-row regex: left-column literal ... pipe ... classification literal.
+  # Patterns are extended-regex; characters that look magic in ERE are escaped
+  # where it matters (parentheses, dot). Each pattern must match on a single line.
+  for pattern in \
+    'Free-prose paragraphs.*\|.*YES' \
+    'YAML frontmatter.*\|.*NO' \
+    'Workdoc Planned-block keys.*\|.*NO' \
+    'Spec .*Implementation Checklist.*\|.*NO' \
+    'Code blocks.*\|.*NO' \
+    'Tables.*\|.*YES on cell prose.*NO on column structure' \
+    'Banner blocks.*\|.*NO' \
+    'EVIDENCE FOOTER.*\|.*NO'
+  do
+    if ! printf '%s' "$section" | grep -qE -- "$pattern"; then
+      echo "$f §5 missing table row matching: $pattern"
+      return 1
+    fi
+  done
+  # Rule-of-thumb sentence: parser/smoke-pin grep-Fs the content → treat as structure.
+  if ! printf '%s' "$section" | grep -qF -- 'rule of thumb'; then
+    echo "$f §5 missing 'rule of thumb' sentence"
+    return 1
+  fi
+  if ! printf '%s' "$section" | grep -qE -- 'parser.*smoke.*grep|smoke.*pin.*grep'; then
+    echo "$f §5 'rule of thumb' missing parser/smoke-pin grep semantics"
+    return 1
+  fi
+  echo "SKILL.md §5 artifact-boundary: 8 table rows (left literal + YES/NO) + rule-of-thumb sentence all present"
 }
 
 check_caveman_command_semantics_documented() {
