@@ -8405,6 +8405,7 @@ check_caveman_skill_artifact_boundary_present() {
   # where it matters (parentheses, dot). Each pattern must match on a single line.
   for pattern in \
     'Free-prose paragraphs.*\|.*YES' \
+    'Bullet-list narrative items.*\|.*YES \(drop articles, shorten clauses\)' \
     'YAML frontmatter.*\|.*NO' \
     'Workdoc Planned-block keys.*\|.*NO' \
     'Spec .*Implementation Checklist.*\|.*NO' \
@@ -8427,7 +8428,7 @@ check_caveman_skill_artifact_boundary_present() {
     echo "$f §5 'rule of thumb' missing parser/smoke-pin grep semantics"
     return 1
   fi
-  echo "SKILL.md §5 artifact-boundary: 8 table rows (left literal + YES/NO) + rule-of-thumb sentence all present"
+  echo "SKILL.md §5 artifact-boundary: 9 table rows (left literal + YES/NO) + rule-of-thumb sentence all present"
 }
 
 check_caveman_command_semantics_documented() {
