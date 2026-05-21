@@ -8402,5 +8402,14 @@ check_caveman_command_semantics_documented() {
     echo "$f missing conditional flag-check idiom ([ -f or test -f)"
     return 1
   fi
-  echo "commands/caveman.md documents on/off/status with shared resolver, mkdir -p, rm -f, 5 YAML fields, conditional flag-check"
+  # X2: enforce strict env-required helper-source form (no target-repo-shadowing fallback).
+  if ! grep -qF '${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh' "$f"; then
+    echo "$f missing strict \${CLAUDE_PLUGIN_ROOT} helper-source prefix"
+    return 1
+  fi
+  if grep -qE 'CLAUDE_PLUGIN_ROOT:-\$\(git rev-parse|CLAUDE_PLUGIN_ROOT:-\$\(pwd' "$f"; then
+    echo "$f uses unsafe \${CLAUDE_PLUGIN_ROOT:-fallback} form (X6 target-repo-shadowing class)"
+    return 1
+  fi
+  echo "commands/caveman.md documents on/off/status with shared resolver, mkdir -p, rm -f, 5 YAML fields, conditional flag-check, strict CLAUDE_PLUGIN_ROOT"
 }
