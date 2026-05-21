@@ -93,5 +93,10 @@ caveman_flag_path() {
         root=$(_caveman_resolve_project_root)
     fi
     hash=$(_caveman_hash_path "$root") || return 1
+    # If HOME is unset / empty, the flag path is undefined — return failure
+    # silently so callers (e.g. session-start) can skip injection cleanly.
+    if [ -z "${HOME:-}" ]; then
+        return 1
+    fi
     printf '%s/.claude/ai-dev-team/caveman/%s.flag\n' "$HOME" "$hash"
 }
