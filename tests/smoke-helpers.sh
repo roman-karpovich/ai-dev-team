@@ -8172,3 +8172,235 @@ check_all_shell_scripts_mktemp_lint_self_test() {
 
   echo "mktemp lint self-test: every X9 + X12 + X14 + X15 + X16 evading shape flagged (X14 = appended-segment structural defense regardless of prefix/guard + extended unguarded prefix vocabulary; X15 = simple-command guard discipline rejecting pipeline/background false guards; X16 = shell-comment stripping rejecting comment-as-guard); clean controls pass (incl. x14-env-guarded and x16-real-guard-with-trailing-comment); X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
 }
+
+# --- Caveman compression skill (spec 2026-05-20-caveman-compression-skill) ---
+# 9 pins. 4 behavioral (helper sourceable + hash correctness + active-default
+# injection + suspended branch), 5 prompt-text (parser-anchor literals,
+# uncertainty invariant proximity, wire-prefix proximity, artifact boundary
+# proximity, slash-command semantics).
+
+check_caveman_paths_helper_sourceable() {
+  local f="hooks/lib/caveman_paths.sh" src_out
+  test -f "$f" || { echo "$f missing"; return 1; }
+  # Source in a subshell so we can capture stdout+stderr and assert silence.
+  src_out=$(bash -c ". $f" 2>&1)
+  [ -z "$src_out" ] || { echo "$f produced output on source: $src_out"; return 1; }
+  # Source in the current shell and assert the function exists.
+  # shellcheck source=/dev/null
+  . "$f" || { echo "$f failed to source"; return 1; }
+  local kind
+  kind=$(type -t caveman_flag_path 2>/dev/null)
+  [ "$kind" = "function" ] || { echo "$f did not define caveman_flag_path as function (got: '$kind')"; return 1; }
+  echo "caveman_paths.sh sourceable + defines caveman_flag_path (silent source)"
+}
+
+check_caveman_paths_hash_correctness() {
+  local f="hooks/lib/caveman_paths.sh"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  # shellcheck source=/dev/null
+  . "$f" || { echo "$f failed to source"; return 1; }
+
+  local d1 d2 p1 p2 h1 h2 exp1 exp2 out1 out2
+  d1=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  d2=$(mktemp -d) || { rm -rf "$d1"; echo "mktemp failed"; return 1; }
+  p1=$(cd "$d1" && pwd -P)
+  p2=$(cd "$d2" && pwd -P)
+  h1=$(printf %s "$p1" | shasum -a 256 | head -c 16)
+  h2=$(printf %s "$p2" | shasum -a 256 | head -c 16)
+  exp1="$HOME/.claude/ai-dev-team/caveman/${h1}.flag"
+  exp2="$HOME/.claude/ai-dev-team/caveman/${h2}.flag"
+  out1=$(caveman_flag_path "$p1")
+  out2=$(caveman_flag_path "$p2")
+  [ "$out1" = "$exp1" ] || { rm -rf "$d1" "$d2"; echo "hash mismatch p1: got=$out1 exp=$exp1"; return 1; }
+  [ "$out2" = "$exp2" ] || { rm -rf "$d1" "$d2"; echo "hash mismatch p2: got=$out2 exp=$exp2"; return 1; }
+  [ "$out1" != "$out2" ] || { rm -rf "$d1" "$d2"; echo "two distinct paths produced same hash"; return 1; }
+  rm -rf "$d1" "$d2"
+
+  # Resolver order: git root anchors.
+  local gr gr_real h_gr out_gr
+  gr=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  ( cd "$gr" && git init -q && mkdir sub && cd sub && touch x ) || { rm -rf "$gr"; echo "git init in $gr failed"; return 1; }
+  gr_real=$(cd "$gr" && pwd -P)
+  h_gr=$(printf %s "$gr_real" | shasum -a 256 | head -c 16)
+  out_gr=$(cd "$gr/sub" && caveman_flag_path)
+  rm -rf "$gr"
+  [ "$out_gr" = "$HOME/.claude/ai-dev-team/caveman/${h_gr}.flag" ] || { echo "git-root resolver order broken: got=$out_gr expected_hash=$h_gr"; return 1; }
+
+  # Resolver order: .ai-dev-team.yml ancestor anchors (non-git dir).
+  local cf cf_real h_cf out_cf
+  cf=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  touch "$cf/.ai-dev-team.yml" || { rm -rf "$cf"; echo "yml touch failed"; return 1; }
+  mkdir "$cf/nested" || { rm -rf "$cf"; echo "nested mkdir failed"; return 1; }
+  cf_real=$(cd "$cf" && pwd -P)
+  h_cf=$(printf %s "$cf_real" | shasum -a 256 | head -c 16)
+  out_cf=$(cd "$cf/nested" && caveman_flag_path)
+  rm -rf "$cf"
+  [ "$out_cf" = "$HOME/.claude/ai-dev-team/caveman/${h_cf}.flag" ] || { echo ".ai-dev-team.yml resolver order broken: got=$out_cf expected_hash=$h_cf"; return 1; }
+
+  # Resolver order: bare $PWD fallback.
+  local bp bp_real h_bp out_bp
+  bp=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  bp_real=$(cd "$bp" && pwd -P)
+  h_bp=$(printf %s "$bp_real" | shasum -a 256 | head -c 16)
+  out_bp=$(cd "$bp" && caveman_flag_path)
+  rm -rf "$bp"
+  [ "$out_bp" = "$HOME/.claude/ai-dev-team/caveman/${h_bp}.flag" ] || { echo "bare-PWD fallback broken: got=$out_bp expected_hash=$h_bp"; return 1; }
+
+  # Symlink resolution — pwd -P / realpath must resolve before hashing.
+  local sl_target sl_target_real sl_link h_sl out_sl
+  sl_target=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  sl_target_real=$(cd "$sl_target" && pwd -P)
+  sl_link="/tmp/caveman-smoke-link-$$"
+  ln -s "$sl_target" "$sl_link" || { rm -rf "$sl_target"; echo "ln -s failed"; return 1; }
+  h_sl=$(printf %s "$sl_target_real" | shasum -a 256 | head -c 16)
+  out_sl=$(cd "$sl_link" && caveman_flag_path)
+  rm -f "$sl_link"
+  rm -rf "$sl_target"
+  [ "$out_sl" = "$HOME/.claude/ai-dev-team/caveman/${h_sl}.flag" ] || { echo "symlink not resolved: got=$out_sl expected_hash=$h_sl"; return 1; }
+
+  echo "caveman_flag_path hash correctness OK (with-arg + git-root + yml + bare-PWD + symlink)"
+}
+
+check_caveman_active_default_emits_marker() {
+  local tmpdir out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  # Arm the ai-dev-team signal so session-start does not bail dormant.
+  touch "$tmpdir/.ai-dev-team.yml" || { rm -rf "$tmpdir"; echo "yml touch failed"; return 1; }
+  out=$(cd "$tmpdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" startup 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+  [ "$status" -eq 0 ] || { echo "session-start exited non-zero ($status); out=$out"; return 1; }
+  printf '%s' "$out" | grep -qF '[CAVEMAN:ACTIVE]' || { echo "session-start did NOT inject caveman marker when flag absent; got: $out"; return 1; }
+  echo "session-start injects [CAVEMAN:ACTIVE] when flag absent (default-active branch)"
+}
+
+check_caveman_suspended_when_flag_present() {
+  local tmpdir flag flag_dir out status
+  tmpdir=$(mktemp -d) || { echo "mktemp failed"; return 1; }
+  touch "$tmpdir/.ai-dev-team.yml" || { rm -rf "$tmpdir"; echo "yml touch failed"; return 1; }
+  # Compute the flag path under the tmpdir HOME, scoped to tmpdir as repo root.
+  # shellcheck source=/dev/null
+  ( . "$PLUGIN_ROOT/hooks/lib/caveman_paths.sh" >/dev/null 2>&1 ) || { rm -rf "$tmpdir"; echo "caveman_paths.sh source failed"; return 1; }
+  flag=$(cd "$tmpdir" && env HOME="$tmpdir" bash -c ". \"$PLUGIN_ROOT/hooks/lib/caveman_paths.sh\" && caveman_flag_path")
+  [ -n "$flag" ] || { rm -rf "$tmpdir"; echo "could not resolve flag path"; return 1; }
+  flag_dir=$(dirname "$flag")
+  mkdir -p "$flag_dir" || { rm -rf "$tmpdir"; echo "mkdir flag dir failed: $flag_dir"; return 1; }
+  : > "$flag" || { rm -rf "$tmpdir"; echo "could not write flag: $flag"; return 1; }
+  out=$(cd "$tmpdir" && env -i CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$PATH" HOME="$tmpdir" bash "$PLUGIN_ROOT/hooks/session-start" startup 2>&1)
+  status=$?
+  rm -rf "$tmpdir"
+  [ "$status" -eq 0 ] || { echo "session-start exited non-zero ($status); out=$out"; return 1; }
+  if printf '%s' "$out" | grep -qF '[CAVEMAN:ACTIVE]'; then
+    echo "session-start STILL injected caveman marker despite flag present at $flag"
+    return 1
+  fi
+  echo "session-start suppresses caveman marker when flag present (suspended branch)"
+}
+
+check_caveman_skill_parser_anchors_literal() {
+  local f="skills/caveman/SKILL.md" missing="" anchor
+  test -f "$f" || { echo "$f missing"; return 1; }
+  for anchor in \
+    'spec audit iteration' \
+    'code audit iteration' \
+    'code audit passed' \
+    'code audit decisions recorded' \
+    'code audit: no auditable files in diff' \
+    '# CROSS-AUDIT EVIDENCE FOOTER' \
+    'evidence_class:' \
+    'evidence_blockers:' \
+    '## ⏸ AWAITING YOUR INPUT' \
+    '## ⏸ APPROVAL REQUIRED' \
+    '@codex' \
+    '@senior' \
+    'X<N>' \
+    '- [ ] Step N:' \
+    'allowed_scope:' \
+    'failing_test_cmd:' \
+    'expected_failure_pattern:' \
+    'expected_pass_pattern:' \
+    'passing_test_cmd:'
+  do
+    grep -qF -- "$anchor" "$f" || missing="$missing|$anchor"
+  done
+  if [ -n "$missing" ]; then
+    echo "$f missing parser-anchor literals: $missing"
+    return 1
+  fi
+  echo "SKILL.md never-compress list cites every spec §2.2 parser-anchor literal"
+}
+
+check_caveman_skill_uncertainty_invariant_present() {
+  local f="skills/caveman/SKILL.md"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'uncertainty' "$f" || { echo "$f missing 'uncertainty' literal"; return 1; }
+  if ! grep -qE 'modal|hedging|tentative' "$f"; then
+    echo "$f mentions 'uncertainty' but no modal|hedging|tentative qualifier — invariant under-specified"
+    return 1
+  fi
+  echo "SKILL.md uncertainty invariant present (uncertainty + modal/hedging/tentative)"
+}
+
+check_caveman_skill_wire_prefix_present() {
+  local f="skills/caveman/SKILL.md" body
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF '[COMPRESSION:terse]' "$f" || { echo "$f missing [COMPRESSION:terse] wire-prefix literal"; return 1; }
+  # Assert co-occurrence with wire|subagent within 200 bytes of the prefix.
+  # Use python3 for robust window scan (Bash-3.2 safe).
+  if ! python3 - "$f" <<'PY'
+import sys, re
+path = sys.argv[1]
+data = open(path, 'rb').read().decode('utf-8', errors='replace')
+needle = '[COMPRESSION:terse]'
+hits = [m.start() for m in re.finditer(re.escape(needle), data)]
+ok = False
+for h in hits:
+    window = data[max(0, h-200):min(len(data), h+200+len(needle))]
+    if re.search(r'wire|subagent', window, flags=re.IGNORECASE):
+        ok = True
+        break
+sys.exit(0 if ok else 1)
+PY
+  then
+    echo "$f: [COMPRESSION:terse] not within 200 bytes of 'wire' or 'subagent'"
+    return 1
+  fi
+  echo "SKILL.md wire prefix [COMPRESSION:terse] documented in wire/subagent context"
+}
+
+check_caveman_skill_artifact_boundary_present() {
+  local f="skills/caveman/SKILL.md"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'artifact' "$f" || { echo "$f missing 'artifact' literal"; return 1; }
+  if ! grep -qE 'structure|prose|YAML|frontmatter' "$f"; then
+    echo "$f mentions 'artifact' but no structure|prose|YAML|frontmatter qualifier"
+    return 1
+  fi
+  echo "SKILL.md artifact compression boundary documented (artifact + structure/prose/YAML/frontmatter)"
+}
+
+check_caveman_command_semantics_documented() {
+  local f="commands/caveman.md" token
+  test -f "$f" || { echo "$f missing"; return 1; }
+  for token in \
+    '/caveman on' \
+    '/caveman off' \
+    '/caveman status' \
+    'hooks/lib/caveman_paths.sh' \
+    'caveman_flag_path' \
+    'mkdir -p' \
+    'rm -f' \
+    'repo:' \
+    'plugin:' \
+    'mode:' \
+    'created_at:' \
+    'updated_at:'
+  do
+    grep -qF -- "$token" "$f" || { echo "$f missing token: $token"; return 1; }
+  done
+  if ! grep -qE '\[ -f|test -f' "$f"; then
+    echo "$f missing conditional flag-check idiom ([ -f or test -f)"
+    return 1
+  fi
+  echo "commands/caveman.md documents on/off/status with shared resolver, mkdir -p, rm -f, 5 YAML fields, conditional flag-check"
+}
