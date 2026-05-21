@@ -5995,10 +5995,24 @@ echo "Attack-surface profile pins:"
 check "skill-attack-surface-slot-prompts" check_skill_attack_surface_slot_prompts
 check "spec-template-attack-surface-section" check_spec_template_attack_surface_section
 check "cross-auditor-consumes-attack-surface-profile" check_cross_auditor_consumes_attack_surface_profile
+check "locate-section-outside-fences-helper" check_locate_section_outside_fences_helper
+check "cross-auditor-mode-focus-names-locate-helper" check_cross_auditor_mode_focus_names_locate_helper
+echo
+
+# --- Probe-envelope JSON-Schema validator self-test ---
+echo "Probe-envelope schema validator:"
+check "json-schema-lint-self-test" check_json_schema_lint_self_test
+echo
+
+# --- Smoke-harness self-protection lint ---
+echo "Smoke-harness lint:"
+check "all-shell-scripts-mktemp-guarded" check_all_shell_scripts_mktemp_guarded
+check "all-shell-scripts-mktemp-lint-self-test" check_all_shell_scripts_mktemp_lint_self_test
 echo
 
 # --- Dependency freshness probe (Probe G — supply-chain layer) ---
 echo "Dependency freshness probe (Probe G):"
+check "probe-g-fixtures-schema-conform" check_probe_g_fixtures_schema_conform
 check "probe-g-corpus-fixture-valid" check_probe_g_corpus_fixture_valid
 check "probe-g-detector-fires-on-major-drift" check_probe_g_detector_fires_on_major_drift
 check "probe-g-detector-clean-at-current-major" check_probe_g_detector_clean_at_current_major
@@ -6026,6 +6040,7 @@ echo
 
 # --- Typosquatting probe (Probe H — supply-chain layer) ---
 echo "Typosquatting probe (Probe H):"
+check "probe-h-fixtures-schema-conform" check_probe_h_fixtures_schema_conform
 check "probe-h-corpus-path-resolution" check_probe_h_corpus_path_resolution
 check "probe-h-detector-fires-on-typosquat" check_probe_h_detector_fires_on_typosquat
 check "probe-h-detector-clean-canonical-name" check_probe_h_detector_clean_canonical_name
@@ -6065,6 +6080,7 @@ check "cross-auditor-emits-degraded-warning-when-project-type-unset" check_cross
 check "cross-auditor-documents-warning-emit-location" check_cross_auditor_documents_warning_emit_location
 check "cross-auditor-replaces-silent-skip-gate" check_cross_auditor_replaces_silent_skip_gate
 check "cross-auditor-r-rule-path-env-first-precedence" check_cross_auditor_r_rule_path_env_first_precedence
+check "cross-auditor-codex-dispatch-names-resolve-helper" check_cross_auditor_codex_dispatch_names_resolve_helper
 check "cross-auditor-blocker-sanitization-truncate-before-escape" check_cross_auditor_blocker_sanitization_truncate_before_escape
 check "cross-auditor-probe-failures-schema-aligned" check_cross_auditor_probe_failures_schema_aligned
 check "spec-mode-footer-sentinel-marker-contract" check_spec_mode_footer_sentinel_marker_contract

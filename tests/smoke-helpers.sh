@@ -2465,7 +2465,7 @@ check_probe_e_merged_receipt_written() {
   # §3.3 receipt_metadata; pick audit_slug matching fixture 06 and an
   # emitted_at deterministic to match on-disk bytes.
   local work
-  work=$(mktemp -d)
+  work=$(mktemp -d) || return 1
   trap "rm -rf '$work'" RETURN
   local kb_root="$work/kb"
   local audit_slug="2026-04-21-fixture-06-merged-receipt"
@@ -2993,7 +2993,7 @@ check_probe_f_merged_receipt_written() {
   local fdir="tests/fixtures/cross-audit-probe-f/06-dedupe-with-llm"
   [ -r "$fdir/input.json" ] || { echo "$fdir/input.json missing"; return 1; }
   local work
-  work=$(mktemp -d)
+  work=$(mktemp -d) || return 1
   trap "rm -rf '$work'" RETURN
   local kb_root="$work/kb"
   local audit_slug="2026-04-21-fixture-06-f-merged-receipt"
@@ -3780,8 +3780,8 @@ check_cross_audit_agent_handles_range_spec() {
 
 check_codex_audit_dispatch_helper_positive() {
   local tmpdir tmpout stdout
-  tmpdir=$(mktemp -d)
-  tmpout=$(mktemp)
+  tmpdir=$(mktemp -d) || return 1
+  tmpout=$(mktemp) || { rm -rf "$tmpdir"; return 1; }
   rm -f "$tmpout"
 
   stdout=$(echo "test prompt" | CODEX_BIN="$PLUGIN_ROOT/tests/fixtures/codex-audit-dispatch/mock_codex.sh" bash hooks/lib/codex_audit_dispatch.sh "$tmpdir" "$tmpout" gpt-5.5 xhigh) \
@@ -3796,7 +3796,7 @@ check_codex_audit_dispatch_helper_positive() {
 
 check_codex_audit_dispatch_helper_propagates_exit_code() {
   local tmpstderr rc
-  tmpstderr=$(mktemp)
+  tmpstderr=$(mktemp) || return 1
   rc=0
   CODEX_BIN="$PLUGIN_ROOT/tests/fixtures/codex-audit-dispatch/mock_codex_fail.sh" bash hooks/lib/codex_audit_dispatch.sh /tmp /tmp/codex-noop.txt gpt-5.5 xhigh < /dev/null 2>"$tmpstderr" || rc=$?
   [ "$rc" = "2" ] || { echo "expected exit code 2, got $rc"; rm -f "$tmpstderr"; return 1; }
@@ -3807,7 +3807,7 @@ check_codex_audit_dispatch_helper_propagates_exit_code() {
 
 check_codex_audit_dispatch_helper_arg_validation() {
   local tmpstderr rc
-  tmpstderr=$(mktemp)
+  tmpstderr=$(mktemp) || return 1
   rc=0
   bash hooks/lib/codex_audit_dispatch.sh 2>"$tmpstderr" || rc=$?
   [ "$rc" -ne 0 ] || { echo "expected non-zero exit"; rm -f "$tmpstderr"; return 1; }
@@ -5401,8 +5401,6 @@ check_cross_auditor_consumes_attack_surface_profile() {
     || { echo "$path spec mode missing 'Spec declares external_input=true' finding-text fingerprint" >&2; return 1; }
   printf '%s\n' "$sec" | grep -qF 'Spec missing required §1.1 Attack-surface profile section' \
     || { echo "$path spec mode missing absent-section finding-text fingerprint" >&2; return 1; }
-  printf '%s\n' "$sec" | grep -qF 'outside fenced code blocks' \
-    || { echo "$path spec mode missing 'outside fenced code blocks' absent-section tightening token" >&2; return 1; }
   printf '%s\n' "$sec" | grep -qF 'missing or carry non-null values' \
     || { echo "$path spec mode missing cross-field consistency finding-text fingerprint" >&2; return 1; }
   printf '%s\n' "$sec" | grep -qF 'violates §3.3 schema' \
@@ -5439,43 +5437,309 @@ check_cross_auditor_consumes_attack_surface_profile() {
   echo "cross-auditor spec mode carries Attack-surface profile consumption rules with all required fingerprints"
 }
 
-# Shared helper: run hooks/lib/probe_g.sh against a fixture dir and byte-diff
-# the full JSON output against expected_stdout.json. The probe is invoked with
-# cwd = $fixture_dir so repo_root paths resolve inside the fixture.
-# PROBE_G_FAKE_NOW is set for determinism so emitted_at byte-matches expected.
-_probe_g_byte_diff() {
-  # $1 = fixture dir (relative to plugin root)
+check_locate_section_outside_fences_helper() {
+  # behavioral: exercises hooks/lib/locate_section_outside_fences.sh against
+  # the 10 §3.3a.1 fixtures plus the arg-error channel. Replaces the former
+  # 'outside fenced code blocks' substring-grep — the fence-aware §1.1
+  # detection logic now lives in a deterministic, fixture-tested helper.
+  # The pin asserts the EXACT exit code per fixture (0 found / 1 not-found),
+  # never merely "non-zero", so an exit-2 arg-error is never accepted as
+  # not-found.
+  local helper="hooks/lib/locate_section_outside_fences.sh"
+  local fdir="tests/fixtures/locate-section-outside-fences"
+  test -x "$helper" || test -f "$helper" || { echo "$helper missing"; return 1; }
+  local s='^## 1\.1 Attack-surface profile$'
+  local b1='^## 1\. Context$'
+  local b2='^## 2\. Current State$'
+
+  # _expect <expected-rc> <expected-stdout> <args...>
+  _lsof_expect() {
+    local want_rc="$1" want_out="$2"; shift 2
+    local out rc
+    out=$(bash "$helper" "$@" 2>/dev/null)
+    rc=$?
+    [ "$rc" -eq "$want_rc" ] \
+      || { echo "locate helper: args [$*] expected exit $want_rc, got $rc"; return 1; }
+    [ "$out" = "$want_out" ] \
+      || { echo "locate helper: args [$*] expected stdout '$want_out', got '$out'"; return 1; }
+    return 0
+  }
+  # _expect_argerr <args...> — exit 2, empty stdout, a ⚠ stderr diagnostic.
+  _lsof_expect_argerr() {
+    local out err rc
+    out=$(bash "$helper" "$@" 2>/tmp/lsof-err.$$)
+    rc=$?
+    err=$(cat /tmp/lsof-err.$$); rm -f /tmp/lsof-err.$$
+    [ "$rc" -eq 2 ] \
+      || { echo "locate helper: args [$*] expected arg-error exit 2, got $rc"; return 1; }
+    [ -z "$out" ] \
+      || { echo "locate helper: args [$*] arg-error should have empty stdout, got '$out'"; return 1; }
+    printf '%s' "$err" | grep -qF '⚠ locate_section_outside_fences:' \
+      || { echo "locate helper: args [$*] arg-error missing ⚠ stderr diagnostic"; return 1; }
+    return 0
+  }
+
+  # Found / not-found fixtures — exact exit code asserted.
+  _lsof_expect 0 found "$fdir/outside/spec.md" "$s" || return 1
+  _lsof_expect 0 found "$fdir/outside/spec.md" "$s" "$b1" "$b2" || return 1
+  _lsof_expect 1 not-found "$fdir/inside-3bt/spec.md" "$s" || return 1
+  _lsof_expect 1 not-found "$fdir/inside-4bt/spec.md" "$s" || return 1
+  _lsof_expect 0 found "$fdir/outside-plus-fenced-dup/spec.md" "$s" || return 1
+  _lsof_expect 1 not-found "$fdir/inside-4bt-markdown-info/spec.md" "$s" || return 1
+  _lsof_expect 1 not-found "$fdir/longer-closer/spec.md" "$s" || return 1
+  _lsof_expect 0 found "$fdir/crlf-outside/spec.md" "$s" || return 1
+  _lsof_expect 1 not-found "$fdir/section-matches-fence-opener/spec.md" '^\x60{3,}' || return 1
+  _lsof_expect 1 not-found "$fdir/misordered-after/spec.md" "$s" "$b1" "$b2" || return 1
+  _lsof_expect 1 not-found "$fdir/misordered-before/spec.md" "$s" "$b1" "$b2" || return 1
+
+  # Arg-error channel — every precedence check.
+  _lsof_expect_argerr || return 1
+  _lsof_expect_argerr onlyonearg || return 1
+  _lsof_expect_argerr "$fdir/outside/spec.md" "$s" b3 b4 b5 || return 1
+  _lsof_expect_argerr /nonexistent/spec.md "$s" || return 1
+  _lsof_expect_argerr "$fdir/outside/spec.md" '' || return 1
+  _lsof_expect_argerr "$fdir/outside/spec.md" '(' || return 1
+  _lsof_expect_argerr /nonexistent/spec.md '(' || return 1
+  _lsof_expect_argerr "$fdir/outside/spec.md" "$s" onlyonebound || return 1
+
+  echo "locate_section_outside_fences.sh: 10 fixtures + arg-error channel match the §3.3a.1 decision table"
+}
+
+check_cross_auditor_mode_focus_names_locate_helper() {
+  # prompt-text: guards the prose↔helper wiring — asserts
+  # agents/references/cross-auditor-mode-focus.md §1.1 prose names the
+  # locate_section_outside_fences.sh helper via the env-anchored ABSOLUTE
+  # path. The cross-auditor's cwd during an audit is the target repo, so a
+  # bare relative `hooks/lib/...` invocation would let an adversarial target
+  # repo shadow the trusted plugin helper (X6) — assert the
+  # ${CLAUDE_PLUGIN_ROOT}/hooks/lib/ prefix, not merely the basename, so a
+  # regression to a relative path fails the smoke run.
+  local f="agents/references/cross-auditor-mode-focus.md"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF '${CLAUDE_PLUGIN_ROOT}/hooks/lib/locate_section_outside_fences.sh' "$f" \
+    || { echo "$f does not invoke locate_section_outside_fences.sh via the \${CLAUDE_PLUGIN_ROOT}/hooks/lib/ absolute prefix — bare-relative path is a target-repo shadowing vector (X6)" >&2; return 1; }
+  echo "cross-auditor-mode-focus.md invokes locate_section_outside_fences.sh via the \${CLAUDE_PLUGIN_ROOT}/hooks/lib/ absolute path"
+}
+
+check_json_schema_lint_self_test() {
+  # behavioral: exercises the pure-stdlib JSON-Schema validator
+  # tests/lib/json_schema_lint.py against a known-VALID instance and one
+  # known-INVALID instance per violation kind (wrong type / missing required /
+  # bad enum / extra property under additionalProperties:false / bad array
+  # item). A self-test with only a positive case proves nothing — each
+  # negative case asserts the validator actually rejects the malformed shape.
+  # Also covers X3 (JSON-type-aware enum equality — true must not match int 1)
+  # and X4 (a misspelled schema keyword fails loud with exit 2).
+  local lint="tests/lib/json_schema_lint.py"
+  local schema="tests/fixtures/json-schema-lint/selftest.schema.json"
+  test -f "$lint" || { echo "$lint missing"; return 1; }
+  test -f "$schema" || { echo "$schema missing"; return 1; }
+
+  # Positive: a valid instance exits 0.
+  python3 "$lint" "$schema" tests/fixtures/json-schema-lint/valid.json >/dev/null 2>&1 \
+    || { echo "validator rejected a known-valid instance"; return 1; }
+
+  # Negative cases: each malformed instance exits 1 with a diagnostic.
+  local kind out rc
+  for kind in bad-type missing-required bad-enum extra-property bad-items; do
+    out=$(python3 "$lint" "$schema" "tests/fixtures/json-schema-lint/$kind.json" 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "validator did not exit 1 on '$kind' instance (got rc=$rc)"; return 1; }
+    [ -n "$out" ] \
+      || { echo "validator emitted no diagnostic on '$kind' instance"; return 1; }
+  done
+
+  # Usage error: wrong arg count exits 2.
+  python3 "$lint" "$schema" >/dev/null 2>&1
+  [ "$?" -eq 2 ] || { echo "validator did not exit 2 on a usage error"; return 1; }
+
+  # X3 — JSON-type-aware enum equality. Python `==` collapses True/1, so an
+  # integer-only enum {"enum":[1]} must still REJECT the JSON instance `true`
+  # (exit 1), and a boolean-only enum {"enum":[true]} must REJECT `1`.
+  local fdir="tests/fixtures/json-schema-lint"
+  python3 "$lint" "$fdir/enum-int.schema.json" "$fdir/enum-int-instance.json" >/dev/null 2>&1
+  [ "$?" -eq 1 ] || { echo "validator accepted JSON true for an integer-only enum [1] (X3 type collision)"; return 1; }
+  python3 "$lint" "$fdir/enum-bool.schema.json" "$fdir/enum-bool-instance.json" >/dev/null 2>&1
+  [ "$?" -eq 1 ] || { echo "validator accepted integer 1 for a boolean-only enum [true] (X3 type collision)"; return 1; }
+
+  # X5 — the bool/int distinction must hold inside container enum members too.
+  # _json_equal must recurse rather than delegate list/dict comparison to bare
+  # Python `==` (which re-collapses True/1 at every nesting level). A list-valued
+  # enum {"enum":[[1]]} must REJECT the JSON instance [true], and a dict-valued
+  # enum {"enum":[{"x":1}]} must REJECT {"x":true}.
+  python3 "$lint" "$fdir/enum-list.schema.json" "$fdir/enum-list-instance.json" >/dev/null 2>&1
+  [ "$?" -eq 1 ] || { echo "validator accepted [true] for a list-valued enum [[1]] (X5 nested type collision)"; return 1; }
+  python3 "$lint" "$fdir/enum-dict.schema.json" "$fdir/enum-dict-instance.json" >/dev/null 2>&1
+  [ "$?" -eq 1 ] || { echo "validator accepted {\"x\":true} for a dict-valued enum [{\"x\":1}] (X5 nested type collision)"; return 1; }
+
+  # X4 — a misspelled/unsupported schema keyword must fail loud (exit 2), not
+  # silently no-op its gate.
+  out=$(python3 "$lint" "$fdir/misspelled-keyword.schema.json" "$fdir/misspelled-keyword-instance.json" 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || { echo "validator did not exit 2 on a misspelled schema keyword (got rc=$rc) — X4 silent no-op"; return 1; }
+  printf '%s' "$out" | grep -qF "addtionalProperties" \
+    || { echo "validator exit-2 diagnostic does not name the offending keyword (X4)"; return 1; }
+
+  # X8 — a malformed VALUE of a supported keyword must fail loud (exit 2), not
+  # silently no-op its gate. additionalProperties:"false" (a string, not a
+  # boolean) is never `is False`, so validate() would silently skip the
+  # extra-property gate and accept an EXTRA key. The schema-walk value-type
+  # check must reject it with exit 2 and the diagnostic must name the keyword.
+  out=$(python3 "$lint" "$fdir/bad-additionalproperties.schema.json" "$fdir/bad-additionalproperties-instance.json" 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || { echo "validator did not exit 2 on a non-boolean additionalProperties (got rc=$rc) — X8 silent gate disable"; return 1; }
+  printf '%s' "$out" | grep -qF "additionalProperties" \
+    || { echo "validator exit-2 diagnostic does not name the offending keyword (X8)"; return 1; }
+
+  # X8/X10 — the schema-walk added six keyword value-type-checks but only
+  # additionalProperties had a negative fixture; the other five were unproven
+  # gates (R3/R6). Each malformed-value schema below must fail loud with exit 2
+  # and a diagnostic naming the offending keyword. The trailing instance file
+  # is irrelevant — _walk_schema exits before instance validation runs.
+  #   bad-required           required is a string, not a list
+  #   bad-properties         properties is a string, not an object
+  #   bad-enum-value         enum is an empty list
+  #   bad-type-keyword       type is an unknown type-name string
+  # X10 — _walk_schema must additionally recurse into properties member
+  # subschemas and reject the Draft-07 tuple-form items list (validate() does
+  # not implement tuple semantics — a malformed member or a tuple list would
+  # otherwise emit zero diagnostics or mis-classify every array element):
+  #   bad-properties-member  a properties member subschema is a non-object
+  #   bad-items-tuple        items is a tuple-form list of per-position schemas
+  local badschema badkw
+  for badschema in bad-required:required bad-properties:properties \
+                   bad-enum-value:enum bad-type-keyword:type \
+                   bad-properties-member:properties bad-items-tuple:items; do
+    badkw="${badschema##*:}"
+    badschema="${badschema%%:*}"
+    out=$(python3 "$lint" "$fdir/$badschema.schema.json" "$fdir/misspelled-keyword-instance.json" 2>&1)
+    rc=$?
+    [ "$rc" -eq 2 ] \
+      || { echo "validator did not exit 2 on '$badschema' malformed-value schema (got rc=$rc) — X8/X10 silent gate disable"; return 1; }
+    printf '%s' "$out" | grep -qF "$badkw" \
+      || { echo "validator exit-2 diagnostic for '$badschema' does not name the offending keyword '$badkw'"; return 1; }
+  done
+
+  echo "json_schema_lint.py self-test: accepts valid, rejects every violation kind + X3 scalar enum type + X5 nested container enum type + X4 misspelled keyword + X8/X10 malformed keyword value (additionalProperties/required/properties/enum/type + nested properties member + tuple-form items)"
+}
+
+# Shared helper: run a cross-audit probe (probe_g.sh / probe_h.sh) against a
+# fixture dir, structurally validate the live stdout against the
+# probe-envelope JSON-Schema, then compare it with expected_stdout.json after
+# stripping the closed non-deterministic field set.
+#
+# This replaces the former _probe_envelope_check / g _probe_envelope_check full h
+# byte-diff helpers (X10): a raw byte-diff broke whenever input.json was
+# reformatted, because receipt_metadata.trigger_input_hash = sha256(stdin)
+# flips on any whitespace change with NO semantic regression. Here the volatile
+# hash is stripped from BOTH sides before the value compare, so cosmetic input
+# drift no longer breaks the pin; a structural regression is caught by the
+# schema gate; a value/detection regression is caught by the hash-stripped
+# compare against the frozen expected_stdout.json snapshot.
+#
+# Non-deterministic strip list — a CLOSED list: { receipt_metadata.trigger_input_hash }.
+# emitted_at is NOT stripped — it is pinned deterministically by *_FAKE_NOW.
+# A future non-deterministic receipt field would be added here with a rationale.
+#
+# Usage: _probe_envelope_check <fixture-dir> <probe>   where <probe> is g or h.
+_probe_envelope_check() {
   local fdir="$1"
+  local probe="$2"
   local input="$fdir/input.json"
   local expected="$fdir/expected_stdout.json"
   [ -r "$input" ] || { echo "$input not readable"; return 1; }
   [ -r "$expected" ] || { echo "$expected not readable"; return 1; }
+  local probe_script fake_now_var
+  case "$probe" in
+    g) probe_script="probe_g.sh"; fake_now_var="PROBE_G_FAKE_NOW" ;;
+    h) probe_script="probe_h.sh"; fake_now_var="PROBE_H_FAKE_NOW" ;;
+    *) echo "_probe_envelope_check: unknown probe '$probe' (expected g or h)"; return 1 ;;
+  esac
   local plugin_root
   plugin_root="$(pwd)"
-  local out_tmp="/tmp/smoke-probe-g-out.$$"
+  local schema="$plugin_root/tests/fixtures/probe-envelope.schema.json"
+  [ -r "$schema" ] || { echo "probe-envelope schema $schema not readable"; return 1; }
+  local out_tmp="/tmp/smoke-probe-${probe}-out.$$"
+  local err_tmp="/tmp/smoke-probe-${probe}-err.$$"
   local exit_code=0
   ( cd "$fdir" \
-    && PROBE_G_FAKE_NOW="2026-05-07T00:00:00Z" \
-    CLAUDE_PLUGIN_ROOT="$plugin_root" \
-    bash "$plugin_root/hooks/lib/probe_g.sh" < input.json ) >"$out_tmp" 2>/tmp/smoke-probe-g-err.$$ || exit_code=$?
+    && env "$fake_now_var=2026-05-07T00:00:00Z" \
+       CLAUDE_PLUGIN_ROOT="$plugin_root" \
+    bash "$plugin_root/hooks/lib/$probe_script" < input.json ) >"$out_tmp" 2>"$err_tmp" || exit_code=$?
   if [ "$exit_code" -ne 0 ]; then
-    echo "probe_g.sh exited $exit_code against $fdir; stderr:"
-    head -5 /tmp/smoke-probe-g-err.$$
-    rm -f "$out_tmp" /tmp/smoke-probe-g-err.$$
+    echo "$probe_script exited $exit_code against $fdir; stderr:"
+    head -5 "$err_tmp"
+    rm -f "$out_tmp" "$err_tmp"
     return 1
   fi
-  rm -f /tmp/smoke-probe-g-err.$$
-  # Canonicalize actual + expected via sort_keys.
+  rm -f "$err_tmp"
+
+  # (2) Structural gate: validate the live stdout against the envelope schema.
+  local schema_err
+  schema_err=$(python3 "$plugin_root/tests/lib/json_schema_lint.py" "$schema" "$out_tmp" 2>&1)
+  if [ "$?" -ne 0 ]; then
+    echo "$probe_script output for $fdir violates probe-envelope.schema.json:"
+    printf '%s\n' "$schema_err" | head -10
+    rm -f "$out_tmp"
+    return 1
+  fi
+
+  # (3) Strip the closed non-deterministic field set, then canonical-compare.
   local actual exp
-  actual=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
-  exp=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected")
+  actual=$(python3 - "$out_tmp" <<'PYEOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d.get("receipt_metadata", {}).pop("trigger_input_hash", None)
+sys.stdout.write(json.dumps(d, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+PYEOF
+)
+  exp=$(python3 - "$expected" <<'PYEOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d.get("receipt_metadata", {}).pop("trigger_input_hash", None)
+sys.stdout.write(json.dumps(d, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+PYEOF
+)
   rm -f "$out_tmp"
   if [ "$actual" != "$exp" ]; then
-    echo "probe_g output mismatch for $fdir:"
+    echo "probe_$probe hash-stripped output mismatch for $fdir:"
     diff <(printf '%s\n' "$actual") <(printf '%s\n' "$exp") | head -20
     return 1
   fi
-  echo "probe_g output byte-matches expected for $fdir"
+  echo "probe_$probe output schema-conforms and hash-stripped-matches expected for $fdir"
+}
+
+# Shared helper: assert every expected_stdout.json under a probe fixture root
+# conforms to the probe-envelope JSON-Schema. This is the structural-contract
+# gate (schema class) — distinct from _probe_envelope_check, which additionally
+# runs the probe and value-compares (behavioral).
+_probe_fixtures_schema_conform() {
+  local froot="$1"
+  local schema="tests/fixtures/probe-envelope.schema.json"
+  test -d "$froot" || { echo "$froot fixture root missing"; return 1; }
+  test -f "$schema" || { echo "$schema missing"; return 1; }
+  local count=0 expected out
+  for expected in "$froot"/*/expected_stdout.json; do
+    [ -f "$expected" ] || continue
+    count=$((count + 1))
+    out=$(python3 tests/lib/json_schema_lint.py "$schema" "$expected" 2>&1)
+    if [ "$?" -ne 0 ]; then
+      echo "$expected does not conform to probe-envelope.schema.json:"
+      printf '%s\n' "$out" | head -10
+      return 1
+    fi
+  done
+  [ "$count" -gt 0 ] || { echo "no expected_stdout.json fixtures found under $froot"; return 1; }
+  echo "all $count expected_stdout.json fixtures under $froot conform to probe-envelope.schema.json"
+}
+
+check_probe_g_fixtures_schema_conform() {
+  _probe_fixtures_schema_conform tests/fixtures/cross-audit-probe-g
+}
+
+check_probe_h_fixtures_schema_conform() {
+  _probe_fixtures_schema_conform tests/fixtures/cross-audit-probe-h
 }
 
 check_probe_g_corpus_fixture_valid() {
@@ -5504,50 +5768,15 @@ PYEOF
 }
 
 check_probe_g_detector_fires_on_major_drift() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/01-positive-major-drift
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/01-positive-major-drift g
 }
 
 check_probe_g_detector_clean_at_current_major() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/02-clean-current-major
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/02-clean-current-major g
 }
 
 check_probe_g_detector_ineligible_no_lockfile() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/03-ineligible-no-lockfile
-}
-
-_probe_h_byte_diff() {
-  # $1 = fixture dir (relative to plugin root)
-  local fdir="$1"
-  local input="$fdir/input.json"
-  local expected="$fdir/expected_stdout.json"
-  [ -r "$input" ] || { echo "$input not readable"; return 1; }
-  [ -r "$expected" ] || { echo "$expected not readable"; return 1; }
-  local plugin_root
-  plugin_root="$(pwd)"
-  local out_tmp="/tmp/smoke-probe-h-out.$$"
-  local exit_code=0
-  ( cd "$fdir" \
-    && PROBE_H_FAKE_NOW="2026-05-07T00:00:00Z" \
-    CLAUDE_PLUGIN_ROOT="$plugin_root" \
-    bash "$plugin_root/hooks/lib/probe_h.sh" < input.json ) >"$out_tmp" 2>/tmp/smoke-probe-h-err.$$ || exit_code=$?
-  if [ "$exit_code" -ne 0 ]; then
-    echo "probe_h.sh exited $exit_code against $fdir; stderr:"
-    head -5 /tmp/smoke-probe-h-err.$$
-    rm -f "$out_tmp" /tmp/smoke-probe-h-err.$$
-    return 1
-  fi
-  rm -f /tmp/smoke-probe-h-err.$$
-  # Canonicalize actual + expected via sort_keys.
-  local actual exp
-  actual=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$out_tmp")
-  exp=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.stdout.write(json.dumps(d,sort_keys=True,separators=(",",":"),ensure_ascii=False))' "$expected")
-  rm -f "$out_tmp"
-  if [ "$actual" != "$exp" ]; then
-    echo "probe_h output mismatch for $fdir:"
-    diff <(printf '%s\n' "$actual") <(printf '%s\n' "$exp") | head -20
-    return 1
-  fi
-  echo "probe_h output byte-matches expected for $fdir"
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/03-ineligible-no-lockfile g
 }
 
 check_probe_h_corpus_path_resolution() {
@@ -5605,155 +5834,155 @@ if not m or int(m.group(1)) <= 0:
 }
 
 check_probe_h_detector_fires_on_typosquat() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/01-positive-typosquat
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/01-positive-typosquat h
 }
 
 check_probe_h_detector_clean_canonical_name() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/02-clean-canonical-name
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/02-clean-canonical-name h
 }
 
 check_probe_h_detector_clean_distant_name() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/03-clean-distant-name
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/03-clean-distant-name h
 }
 
 check_probe_g_detector_fires_on_major_only_no_dot() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/06-major-only-no-dot
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/06-major-only-no-dot g
 }
 
 check_probe_h_detector_fires_on_major_only_no_dot() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/06-major-only-no-dot
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/06-major-only-no-dot h
 }
 
 check_probe_g_detector_fires_on_extras_syntax() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/08-extras-syntax
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/08-extras-syntax g
 }
 
 check_probe_h_detector_fires_on_extras_syntax() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/08-extras-syntax
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/08-extras-syntax h
 }
 
 check_probe_g_detector_fires_on_whitespace_eq() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/09-whitespace-eq
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/09-whitespace-eq g
 }
 
 check_probe_h_detector_fires_on_whitespace_eq() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/09-whitespace-eq
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/09-whitespace-eq h
 }
 
 check_probe_g_detector_rejects_malformed_requirements() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/19-malformed-requirements
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/19-malformed-requirements g
 }
 
 check_probe_g_detector_fires_on_uppercase_name_package_lock() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/07-uppercase-name-package-lock
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/07-uppercase-name-package-lock g
 }
 
 check_probe_g_detector_out_of_diff_lockfile_ignored() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/11-out-of-diff-lockfile-ignored
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/11-out-of-diff-lockfile-ignored g
 }
 
 check_probe_h_detector_out_of_diff_lockfile_ignored() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/11-out-of-diff-lockfile-ignored
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/11-out-of-diff-lockfile-ignored h
 }
 
 check_probe_g_detector_in_diff_lockfile_evaluated() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/11-in-diff-lockfile-evaluated
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/11-in-diff-lockfile-evaluated g
 }
 
 check_probe_h_detector_in_diff_lockfile_evaluated() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/11-in-diff-lockfile-evaluated
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/11-in-diff-lockfile-evaluated h
 }
 
 check_probe_g_yarn_berry_peer_dep() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/12-yarn-berry-peer-dep
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/12-yarn-berry-peer-dep g
 }
 
 check_probe_h_yarn_berry_peer_dep() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/12-yarn-berry-peer-dep
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/12-yarn-berry-peer-dep h
 }
 
 check_probe_g_yarn_scoped_npm_protocol() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/13-yarn-scoped-npm-protocol
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/13-yarn-scoped-npm-protocol g
 }
 
 check_probe_h_yarn_scoped_npm_protocol() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/13-yarn-scoped-npm-protocol
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/13-yarn-scoped-npm-protocol h
 }
 
 check_probe_g_pnpm_v9_format() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/14-pnpm-v9-format
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/14-pnpm-v9-format g
 }
 
 check_probe_h_pnpm_v9_format() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/14-pnpm-v9-format
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/14-pnpm-v9-format h
 }
 
 check_probe_g_pnpm_v9_quoted_scoped() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/20-pnpm-v9-quoted-scoped
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/20-pnpm-v9-quoted-scoped g
 }
 
 check_probe_h_pnpm_v9_quoted_scoped() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/20-pnpm-v9-quoted-scoped
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/20-pnpm-v9-quoted-scoped h
 }
 
 check_probe_g_yarn_scoped_alias_target() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/21-yarn-scoped-alias-target
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/21-yarn-scoped-alias-target g
 }
 
 check_probe_h_yarn_scoped_alias_target() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/21-yarn-scoped-alias-target
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/21-yarn-scoped-alias-target h
 }
 
 check_probe_g_yarn_portal_and_github() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/22-yarn-portal-and-github
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/22-yarn-portal-and-github g
 }
 
 check_probe_h_yarn_portal_and_github() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/22-yarn-portal-and-github
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/22-yarn-portal-and-github h
 }
 
 check_probe_h_levenshtein_length_cap() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/15-levenshtein-length-cap
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/15-levenshtein-length-cap h
 }
 
 check_probe_g_vendored_excluded() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/10-vendored-excluded
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/10-vendored-excluded g
 }
 
 check_probe_h_vendored_excluded() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/10-vendored-excluded
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/10-vendored-excluded h
 }
 
 check_probe_g_boundary_drift_2_suppressed() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/04-boundary-drift-2-suppressed
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/04-boundary-drift-2-suppressed g
 }
 
 check_probe_g_boundary_drift_3_fired() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/05-boundary-drift-3-fired
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/05-boundary-drift-3-fired g
 }
 
 check_probe_g_npm_v7_packages_walk_and_dep_classes() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/16-npm-v7-and-dep-classes
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/16-npm-v7-and-dep-classes g
 }
 
 check_probe_h_npm_v7_packages_walk_and_dep_classes() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/16-npm-v7-and-dep-classes
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/16-npm-v7-and-dep-classes h
 }
 
 check_probe_g_npm_range_vs_resolved_dedup() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/17-range-vs-resolved-dedup
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/17-range-vs-resolved-dedup g
 }
 
 check_probe_h_npm_range_vs_resolved_dedup() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/17-range-vs-resolved-dedup
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/17-range-vs-resolved-dedup h
 }
 
 check_probe_g_pre_1_0_skipped() {
-  _probe_g_byte_diff tests/fixtures/cross-audit-probe-g/18-pre-1-0-skipped
+  _probe_envelope_check tests/fixtures/cross-audit-probe-g/18-pre-1-0-skipped g
 }
 
 check_probe_h_detector_rejects_malformed_requirements() {
-  _probe_h_byte_diff tests/fixtures/cross-audit-probe-h/19-malformed-requirements
+  _probe_envelope_check tests/fixtures/cross-audit-probe-h/19-malformed-requirements h
 }
 
 check_skill_stride_lite_block_gated() {
@@ -6075,50 +6304,161 @@ check_cross_auditor_blocker_sanitization_truncate_before_escape() {
 }
 
 check_cross_auditor_r_rule_path_env_first_precedence() {
-  # §Codex dispatch + §Step 1 moved to agents/references/cross-auditor-codex-dispatch.md per
-  # Spec 2a Step 5 §3.3a row 8 (path-swap-only — both bounds co-located in the destination file
-  # post-Step-5). The L340 surface (the §3.5a L348 directional reference) lives in §Step 2 which
-  # stays in the hub; that literal was rewritten from "§security mode bridge above" to
-  # "agents/references/cross-auditor-mode-focus.md §security mode bridge" per §3.5a Step 5
-  # outbound — l340_post anchor updated to match the post-rewrite form.
+  # behavioral: the path-resolution logic that was 50+ lines of prose-grep on
+  # stale/post-rewrite literals now lives in the deterministic helper
+  # hooks/lib/resolve_rule_path.sh. This pin runs the helper across all nine
+  # §3.3a.2 decision-table rows, asserting the EXACT exit code and the
+  # ⚠ code-quality-rules.md not reachable stderr on each unreachable row.
+  # The C2-closure anti-regression negatives (stale contradictory phrasing
+  # stays removed) are RETAINED below.
+  local plugin_root rel warn helper
+  plugin_root="$(pwd)"
+  # Absolute helper path — the row 6/7/9 sub-checks cd into other dirs.
+  helper="$plugin_root/hooks/lib/resolve_rule_path.sh"
+  test -x "$helper" || test -f "$helper" || { echo "$helper missing"; return 1; }
+  rel='skills/feature/references/code-quality-rules.md'
+  warn='code-quality-rules.md not reachable'
+
+  # _rrp_resolved <expected-stdout-path> <env...> — exit 0, stdout = path, no warn.
+  _rrp_resolved() {
+    local want_path="$1"; shift
+    local out err rc
+    out=$("$@" bash "$helper" 2>/tmp/rrp-err.$$)
+    rc=$?
+    err=$(cat /tmp/rrp-err.$$); rm -f /tmp/rrp-err.$$
+    [ "$rc" -eq 0 ] || { echo "resolver: [$*] expected resolved exit 0, got $rc"; return 1; }
+    [ "$out" = "$want_path" ] || { echo "resolver: [$*] expected stdout '$want_path', got '$out'"; return 1; }
+    printf '%s' "$err" | grep -qF "$warn" \
+      && { echo "resolver: [$*] resolved row must not emit the unreachable warning"; return 1; }
+    return 0
+  }
+  # _rrp_unreachable <env...> — exit 3, empty stdout, ⚠ warning on stderr.
+  _rrp_unreachable() {
+    local out err rc
+    out=$("$@" bash "$helper" 2>/tmp/rrp-err.$$)
+    rc=$?
+    err=$(cat /tmp/rrp-err.$$); rm -f /tmp/rrp-err.$$
+    [ "$rc" -eq 3 ] || { echo "resolver: [$*] expected unreachable exit 3, got $rc"; return 1; }
+    [ -z "$out" ] || { echo "resolver: [$*] unreachable row must have empty stdout, got '$out'"; return 1; }
+    printf '%s' "$err" | grep -qF "$warn" \
+      || { echo "resolver: [$*] unreachable row missing '⚠ $warn' stderr"; return 1; }
+    return 0
+  }
+
+  # Row 1 — env set to an absolute path with a readable regular-file rules file.
+  _rrp_resolved "$plugin_root/$rel" env "CLAUDE_PLUGIN_ROOT=$plugin_root" || return 1
+
+  # Row 2 — env set to an absolute path missing the rules file.
+  local d_missing; d_missing=$(mktemp -d) || return 1
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=$d_missing" || { rm -rf "$d_missing"; return 1; }
+  # Row 2 variant — code-quality-rules.md exists but is a directory (not a regular file).
+  local d_notreg; d_notreg=$(mktemp -d) || { rm -rf "$d_missing"; return 1; }
+  mkdir -p "$d_notreg/$rel"
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=$d_notreg" || { rm -rf "$d_missing" "$d_notreg"; return 1; }
+  rm -rf "$d_missing" "$d_notreg"
+
+  # Row 3 — env set to an absolute path, rules file is a regular file but chmod 000 unreadable.
+  local d_unread; d_unread=$(mktemp -d) || return 1
+  mkdir -p "$d_unread/$(dirname "$rel")"
+  : > "$d_unread/$rel"; chmod 000 "$d_unread/$rel"
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=$d_unread" \
+    || { chmod 644 "$d_unread/$rel"; rm -rf "$d_unread"; return 1; }
+  chmod 644 "$d_unread/$rel"; rm -rf "$d_unread"
+
+  # Row 4 — env set to the empty string.
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=" || return 1
+
+  # Row 5 — env set to a relative path.
+  _rrp_unreachable env "CLAUDE_PLUGIN_ROOT=relative/dir" || return 1
+
+  # Row 6 — env unset, run from inside the plugin checkout (resolves inside + regular file + readable).
+  ( cd "$plugin_root" && _rrp_resolved "$plugin_root/$rel" env -u CLAUDE_PLUGIN_ROOT ) || return 1
+
+  # Row 7a — env unset, relative path resolves to a plain shadow file OUTSIDE the checkout.
+  local d_shadow; d_shadow=$(mktemp -d) || return 1
+  mkdir -p "$d_shadow/$(dirname "$rel")"; : > "$d_shadow/$rel"
+  ( cd "$d_shadow" && _rrp_unreachable env -u CLAUDE_PLUGIN_ROOT ) \
+    || { rm -rf "$d_shadow"; return 1; }
+  rm -rf "$d_shadow"
+  # Row 7b — env unset, sibling <root>-shadow dir whose path string-prefixes the checkout root.
+  # A buggy string-prefix containment test would wrongly accept it; the separator-safe
+  # commonpath guard rejects it. The checkout-root vs sibling-prefix relationship is
+  # synthesized entirely inside a fresh mktemp -d parent — the script is copied into a
+  # temp checkout "$sib_parent/plug" so BASH_SOURCE root computation resolves to it, and
+  # the sibling "$sib_parent/plug-shadow" carries the relative target. NO real filesystem
+  # path outside the temp tree is created or removed (the deterministic real
+  # "<checkout>-shadow" path would clobber a developer's worktree/backup of that name).
+  local sib_parent; sib_parent=$(mktemp -d) || return 1
+  local sib_root="$sib_parent/plug"
+  local sib_shadow="$sib_parent/plug-shadow"
+  mkdir -p "$sib_root/hooks/lib"
+  cp "$helper" "$sib_root/hooks/lib/"
+  mkdir -p "$sib_shadow/$(dirname "$rel")"; : > "$sib_shadow/$rel"
+  local r7b_out r7b_err r7b_rc
+  r7b_out=$( cd "$sib_shadow" && env -u CLAUDE_PLUGIN_ROOT bash "$sib_root/hooks/lib/resolve_rule_path.sh" 2>/tmp/rrp-r7b.$$ )
+  r7b_rc=$?
+  r7b_err=$(cat /tmp/rrp-r7b.$$); rm -f /tmp/rrp-r7b.$$
+  rm -rf "$sib_parent"
+  [ "$r7b_rc" -eq 3 ] || { echo "resolver: row-7b (env-unset, sibling <root>-shadow prefix) expected exit 3, got $r7b_rc"; return 1; }
+  [ -z "$r7b_out" ] || { echo "resolver: row-7b must have empty stdout, got '$r7b_out'"; return 1; }
+  printf '%s' "$r7b_err" | grep -qF "$warn" \
+    || { echo "resolver: row-7b missing '⚠ $warn' stderr"; return 1; }
+
+  # Row 8 — env unset, relative target inside the checkout but chmod 000 unreadable.
+  # The script is copied into a temp checkout so the BASH_SOURCE root computation
+  # still resolves. Run the copied script directly (not via the $helper wrapper).
+  # The temp checkout is a subdir of a guarded mktemp -d parent — the cleanup
+  # rm -rf targets that parent variable directly, never `dirname` of a path
+  # derived from an unchecked mktemp (the X1/X7 destructive class: on mktemp
+  # failure an appended-segment path round-tripped through dirname resolves to
+  # `/`, and a routine `bash tests/smoke.sh` runs `rm -rf /`).
+  local d_co_parent; d_co_parent=$(mktemp -d) || return 1
+  local d_co="$d_co_parent/co"
+  mkdir -p "$d_co/hooks/lib" "$d_co/$(dirname "$rel")"
+  cp "$helper" "$d_co/hooks/lib/"
+  : > "$d_co/$rel"; chmod 000 "$d_co/$rel"
+  local r8_out r8_err r8_rc
+  r8_out=$( cd "$d_co" && env -u CLAUDE_PLUGIN_ROOT bash "$d_co/hooks/lib/resolve_rule_path.sh" 2>/tmp/rrp-r8.$$ )
+  r8_rc=$?
+  r8_err=$(cat /tmp/rrp-r8.$$); rm -f /tmp/rrp-r8.$$
+  chmod 644 "$d_co/$rel"; rm -rf "$d_co_parent"
+  [ "$r8_rc" -eq 3 ] || { echo "resolver: row-8 (env-unset, inside-but-unreadable) expected exit 3, got $r8_rc"; return 1; }
+  [ -z "$r8_out" ] || { echo "resolver: row-8 must have empty stdout, got '$r8_out'"; return 1; }
+  printf '%s' "$r8_err" | grep -qF "$warn" \
+    || { echo "resolver: row-8 missing '⚠ $warn' stderr"; return 1; }
+
+  # Row 9 — env unset, relative path does not resolve to any file.
+  ( cd /tmp && _rrp_unreachable env -u CLAUDE_PLUGIN_ROOT ) || return 1
+
+  # --- C2 closure (RETAINED anti-regression negatives) ---
+  # The pre-rewrite L311 parenthetical claimed the unset-env fallback runs even
+  # when env IS set, contradicting the strict env-first / no-relative-fallback
+  # rule. The rewrite aligned the prose; these negatives guard that the removed
+  # contradiction stays removed and the post-rewrite phrasing stays present.
   local f_ref="agents/references/cross-auditor-codex-dispatch.md"
-  local f_hub="agents/cross-auditor.md"
-  local block uncond realp stale_l296 stale_l303 stale_l340 l303_post l340_post
-  # Stateful awk anchor: open at the new env-first paragraph, close at the next anchor.
-  # Robust to either physical layout (single paragraph or split into multiple physical lines)
-  # because the close pattern is a definite sentinel introduced by the rewrite itself.
-  block=$(awk '/^Path resolution: when/{p=1; print; next} p && /^If both resolutions fail/{print; exit} p{print}' "$f_ref")
-  uncond=$(echo "$block" | grep -cF 'UNCONDITIONALLY to `${CLAUDE_PLUGIN_ROOT}')
-  realp=$(echo "$block" | grep -cF 'realpath')
-  # Stale-prose pre-negatives (locks pre-rewrite literals absent at L296/L303/L340 surfaces).
-  # L296/L303 originals lived in §Step 1 → check ref. L340 original lived in §Step 2 → stays in hub.
-  stale_l296=$(grep -cF "legacy invocations the agent's launch cwd is the ai-dev-team plugin root" "$f_ref")
-  stale_l303=$(grep -cF 'not reachable at the relative path' "$f_ref")
-  stale_l340=$(grep -cF 'relative path from agent cwd' "$f_hub")
-  # Post-rewrite positives (locks the new wording at parallel surfaces L303 + L340 — the L296
-  # awk-bounded range exits before L303, so global grep is the right scope for those parallel sites).
-  l303_post=$(grep -cF 'not reachable at the env-var path' "$f_ref")
-  # L340 post-rewrite literal updated for §3.5a Step 5 outbound directional rewrite — was
-  # "env-first per §security mode bridge above"; rewritten to point at cross-auditor-mode-focus.md.
-  l340_post=$(grep -cF 'env-first per `agents/references/cross-auditor-mode-focus.md` §security mode bridge' "$f_hub")
-  [ "$uncond" -ge 1 ] || { echo "L296 paragraph missing 'UNCONDITIONALLY to \${CLAUDE_PLUGIN_ROOT}' env-first directive"; return 1; }
-  [ "$realp" -ge 1 ] || { echo "L296 paragraph missing 'realpath' fallback safety check"; return 1; }
-  [ "$stale_l296" = "0" ] || { echo "L296 stale pre-rewrite prose still present (legacy-cwd phrasing)"; return 1; }
-  [ "$stale_l303" = "0" ] || { echo "L303 stale 'not reachable at the relative path' wording still present"; return 1; }
-  [ "$stale_l340" = "0" ] || { echo "L340 stale 'relative path from agent cwd' parenthetical still present"; return 1; }
-  [ "$l303_post" -ge 1 ] || { echo "L303 missing post-rewrite 'not reachable at the env-var path' literal"; return 1; }
-  [ "$l340_post" -ge 1 ] || { echo "L340 missing post-rewrite 'env-first per agents/references/cross-auditor-mode-focus.md §security mode bridge' literal in $f_hub"; return 1; }
-  # C2 closure — L311 contradiction with L300 env-first semantics. The pre-rewrite L311
-  # parenthetical claimed the unset-env fallback runs even when env IS set ("env-set + file-
-  # missing AND the unset-env fallback above also fails"), contradicting L300's strict env-set
-  # → no-relative-fallback rule. The rewrite aligns L311 with L300: env-set + file-missing →
-  # warn directly; env-unset + relative-realpath fallback fails → warn. L311 lives in §Step 1
-  # which moved to the codex-dispatch reference per Spec 2a Step 5.
   local stale_l311 l311_post
   stale_l311=$(grep -cF 'unset-env fallback above also fails' "$f_ref")
   l311_post=$(grep -cF 'no relative fallback when env is set' "$f_ref")
   [ "$stale_l311" = "0" ] || { echo "L311 stale 'unset-env fallback above also fails' contradictory phrasing still present"; return 1; }
   [ "$l311_post" -ge 1 ] || { echo "L311 missing post-rewrite 'no relative fallback when env is set' literal"; return 1; }
+
+  echo "resolve_rule_path.sh: nine §3.3a.2 rows + retained C2-closure negatives all hold"
+}
+
+check_cross_auditor_codex_dispatch_names_resolve_helper() {
+  # prompt-text: guards the prose↔helper wiring — asserts
+  # agents/references/cross-auditor-codex-dispatch.md invokes the
+  # resolve_rule_path.sh helper via the env-anchored ABSOLUTE path. The
+  # cross-auditor's cwd during an audit is the target repo, so a bare
+  # relative `hooks/lib/...` invocation would let an adversarial target repo
+  # shadow the trusted plugin helper (X6) — assert the
+  # ${CLAUDE_PLUGIN_ROOT}/hooks/lib/ prefix, not merely the basename, so a
+  # regression to a relative path fails the smoke run.
+  local f="agents/references/cross-auditor-codex-dispatch.md"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF '${CLAUDE_PLUGIN_ROOT}/hooks/lib/resolve_rule_path.sh' "$f" \
+    || { echo "$f does not invoke resolve_rule_path.sh via the \${CLAUDE_PLUGIN_ROOT}/hooks/lib/ absolute prefix — bare-relative path is a target-repo shadowing vector (X6)" >&2; return 1; }
+  echo "cross-auditor-codex-dispatch.md invokes resolve_rule_path.sh via the \${CLAUDE_PLUGIN_ROOT}/hooks/lib/ absolute path"
 }
 
 # Step 1 — SKILL.md §3.5 Pass 2 re-spawn loop monotonic numbering invariant.
@@ -6715,7 +7055,7 @@ check_dispatch_response_classification() {
   fi
   local d meta mode expected_class expected_exit project
   local out_file rc got_class checked=0
-  out_file=$(mktemp)
+  out_file=$(mktemp) || return 1
   for d in "$fixture_root"/*/*/; do
     meta="$d/meta.yml"
     if [ ! -f "$meta" ] || [ ! -f "$d/raw-response.txt" ]; then
@@ -6863,7 +7203,7 @@ evidence-class-disallowed/spec|EVIDENCE_CLASS_DISALLOWED|cross-auditor emitted d
 dual-model-with-blockers/spec|DUAL_MODEL_WITH_BLOCKERS|cross-auditor emitted dual_model with non-empty evidence_blockers: ['"'"''"'"'something'"'"''"'"']
 single-model-without-blockers/spec|SINGLE_MODEL_WITHOUT_BLOCKERS|cross-auditor emitted single_model with empty evidence_blockers'
   local out_file count=0 line slug mode expect_class expect_blocker
-  out_file=$(mktemp)
+  out_file=$(mktemp) || return 1
   while IFS='|' read -r slug expect_class expect_blocker; do
     [ -z "$slug" ] && continue
     mode="${slug##*/}"
@@ -6924,4 +7264,911 @@ PY
     return 1
   fi
   echo "dispatch-response classifier: enum->violation_blocker mapping pinned for all 10 violation classes"
+}
+
+# Static lint: every `mktemp` invocation in the repo's shell scripts must be
+# guarded and must never have a path segment appended to an unchecked
+# `$(mktemp ...)`.
+#
+# This pin closes the destructive `rm -rf` class found multiple times in
+# this file's lineage:
+#   - X1 (iter-1): a deterministic real-path `rm -rf` triggered by `bash tests/smoke.sh`.
+#   - X7 (iter-3): `d_co=$(mktemp -d)/co` with no success guard — on `mktemp`
+#     failure `d_co` becomes the literal `/co`, and a downstream
+#     `rm -rf "$(dirname "$d_co")"` resolves to `rm -rf /` during a routine
+#     smoke run.
+#   - X9 (iter-4): quoted/backtick assign forms + `|| true` non-guard bypassed
+#     the original regex-cascade pin.
+#   - X12 (iter-5): word-substring guard (`|| echo return`), path-qualified
+#     mktemp (`$(/bin/mktemp -d)` and `$(command mktemp -d)`), and
+#     multi-assignment-per-line (`a=$(mktemp); b=$(mktemp) || return 1`)
+#     bypassed the X9-strengthened regexes.
+#   - X13 (iter-5): pin scope was hardcoded to `tests/smoke-helpers.sh`;
+#     other shell scripts (`tests/smoke.sh`, `hooks/lib/*.sh`) were not
+#     subject to the regression backstop. The X1/X7 class could recur in
+#     any of those files silently.
+#
+# What this lint scans for (the X1/X7 shape) is enumerated below as Shape A
+# (appended-segment) and Shape B (unguarded assign-from-mktemp). The iter-5
+# grammar redesign replaces the previous line-level regex-cascade with a
+# per-segment scan: each line is split on top-level `;` (statement-
+# separators, careful tokenizer honouring quotes / brace groups / parens
+# so a `;` inside an `echo "see;comma"` string is NOT a separator) and each
+# segment is independently checked for assign + guard. This rejects the
+# X12 multi-assignment-per-line bypass. A shared `_MKTEMP` pattern matches
+# bare `mktemp`, path-prefixed (`/usr/bin/mktemp`), and `command mktemp` —
+# rejecting the X12 path-qualified bypass. The `||` guard is tokenized:
+# a real guard's branch must be `return`/`exit` at branch position 0 (with
+# an optional exit code) OR a brace group `{ ...; return|exit ...; }` whose
+# FINAL statement is `return`/`exit` — rejecting the X12 word-substring
+# bypass `|| echo return`, `|| echo "see return"`, and
+# `|| echo failed; rm -rf "$d"; return 1` (the late `return` is a separate
+# top-level statement, not in the `||` branch).
+#
+# Per-file safe-guard idiom dialect (Strategy A from the iter-5 X13 brief):
+# `tests/smoke.sh` historically uses a two-line post-assignment guard idiom
+#   tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t 'tag')
+#   if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then return 1; fi
+# which is also a real guard for the same destructive class — the variable
+# is checked for empty / non-directory immediately after the assignment and
+# the failure path aborts. The lint accepts this idiom for files registered
+# with the `z_postcheck` dialect. `tests/smoke-helpers.sh` and the
+# `hooks/lib/*.sh` scripts use only the same-line `|| return` /
+# `|| { ...; return; }` form (`same_line` dialect). The dialect is
+# per-file: a future file that switches idioms must update its dialect
+# in `_MKTEMP_LINT_SCOPE` below.
+#
+# _smoke_mktemp_lint_scan <file> [dialect] — single source of truth for the
+# mktemp lint. dialect is `same_line` (default) or `z_postcheck`. Prints
+# `ok` (exit 0) or the violation list (exit 1). Both the real pin and the
+# lint's own self-test pin drive THIS function, so the negative fixtures
+# exercise the exact grammar the real pin uses (R3/R6).
+_smoke_mktemp_lint_scan() {
+  SMOKE_LINT_TARGET="$1" SMOKE_LINT_DIALECT="${2:-same_line}" python3 <<'PY'
+import os, re, sys
+
+target = os.environ["SMOKE_LINT_TARGET"]
+dialect = os.environ["SMOKE_LINT_DIALECT"]
+with open(target, encoding="utf-8") as fh:
+    lines = fh.readlines()
+
+# Shared mktemp invocation pattern. Matches the bare `mktemp` token,
+# optionally preceded by a run of bash command-prefix tokens that all
+# legitimately execute mktemp:
+#   - `env mktemp`, `eval mktemp`, `time mktemp`, `exec mktemp`,
+#     `builtin mktemp`, `command mktemp`
+#   - inline env-var assignments: `TMPDIR=/tmp mktemp`, `LC_ALL=C mktemp`,
+#     and combinations (`env TMPDIR=/tmp mktemp`)
+#   - alias-suppressing backslash: `\mktemp`
+#   - explicit path: `/bin/mktemp`, `/usr/bin/mktemp`
+# All these forms collapse to the same destructive poisoned-path shape on
+# mktemp failure; the prefix vocabulary is admitted at the assignment
+# recognizer level so the UNGUARDED-MKTEMP check (`VAR=$(<form>)` without
+# a guard) catches each form. The APPENDED-SEGMENT check uses a DIFFERENT
+# strategy (structural ban on `mktemp anywhere in subst body` + `/seg`
+# after close) because the prefix vocabulary is unbounded in the wild;
+# the structural anchor is the appended segment itself, not the prefix.
+_MKTEMP_PREFIX_TOKEN = (
+    r'(?:[A-Za-z_][A-Za-z0-9_]*=\S*|env|eval|time|exec|builtin|command)'
+)
+_MKTEMP_PREFIX = r'(?:' + _MKTEMP_PREFIX_TOKEN + r'\s+)*'
+# `_MKTEMP_BODY` admits an optional path prefix (`/bin/mktemp`) AND an
+# optional alias-suppressing backslash directly before `mktemp` (no
+# whitespace between `\` and `mktemp` — bash treats `\mktemp` as one
+# token).
+_MKTEMP_BODY = r'(?:/[\w./-]+/)?\\?mktemp\b'
+_MKTEMP = _MKTEMP_PREFIX + _MKTEMP_BODY
+
+# A mktemp command substitution in either legal bash form:
+#   - `$(...)` form (optionally surrounded by " or ' quotes)
+#   - backtick `` `...` `` form (optionally quoted)
+# The substitution body is `_MKTEMP` followed by any non-paren chars (or
+# non-backtick chars in the backtick form).
+_SUBST_DOLLAR = r'\$\(\s*' + _MKTEMP + r'[^()]*\)'
+_SUBST_BACKTICK = r'`\s*' + _MKTEMP + r'[^`]*`'
+_SUBST = r'(?:["\']?(?:' + _SUBST_DOLLAR + r'|' + _SUBST_BACKTICK + r')["\']?)'
+
+# Shape A (iter-6 X14 structural defense): a path segment appended to a
+# command substitution whose body contains the bare `mktemp` token
+# ANYWHERE — regardless of preceding command-prefix tokens, regardless of
+# any trailing `||` guard. The destructive class structurally requires
+# (a) a substitution producing the mktemp output, (b) a `/seg` appended at
+# substitution-close time; the prefix vocabulary the substitution body
+# uses is irrelevant. The iter-5 `APPENDED` pattern required the body
+# match `_MKTEMP` exactly, which the iter-6 X14 prefix-form bypass class
+# evaded. The new shape: `$(...mktemp...)` or `` `...mktemp...` `` with
+# `mktemp` as a whitespace-delimited token (also allowing a `/path/`
+# prefix) followed (after the substitution close + optional quote) by
+# `/`. A real `|| return` guard does NOT rescue this shape — the
+# downstream `rm -rf "$(dirname "$VAR")"` still resolves to `/` because
+# the appended segment poisons the LHS value regardless of whether the
+# assignment was guarded.
+# Inside the substitution body, the bare `mktemp` token may appear at the
+# very start (`$(mktemp ...)`, `$(\mktemp ...)`) or after any
+# whitespace-delimited prefix token run (`env mktemp`, `TMPDIR=/tmp
+# mktemp`, etc). The simple, robust rule per the iter-6 structural-defense
+# brief: a non-paren body that contains the `mktemp` token at a word
+# boundary qualifies. The leading `(?:[^()]*?[\s/(])?` (lazy, optional)
+# admits a prefix-token run or absence; the `mktemp\b` end-anchor ensures
+# we don't accept identifier suffixes like `_mktemp`. The optional `\\?`
+# absorbs the alias-suppression backslash.
+_BARE_MKTEMP_IN_SUBST = r'(?:[^()]*?[\s/(])?\\?mktemp\b'
+_APPENDED_SUBST_DOLLAR = (
+    r'\$\(' + _BARE_MKTEMP_IN_SUBST + r'[^()]*\)'
+)
+# Backtick form: equivalent rule, but the open delimiter is a backtick
+# (not `(`) and the body forbids backticks.
+_BARE_MKTEMP_IN_BACKTICK = r'(?:[^`]*?[\s/`])?\\?mktemp\b'
+_APPENDED_SUBST_BACKTICK = (
+    r'`' + _BARE_MKTEMP_IN_BACKTICK + r'[^`]*`'
+)
+APPENDED = re.compile(
+    r'(?:' + _APPENDED_SUBST_DOLLAR + r'|' + _APPENDED_SUBST_BACKTICK + r')["\']?/'
+)
+
+# Any assignment that captures mktemp output (quoted or unquoted, $() or
+# backtick, with any prefix-vocabulary token admitted by `_MKTEMP`).
+# Captures the LHS name so the post-assignment `[ -z ]` idiom recognizer
+# can match the same variable later in the file.
+ASSIGN = re.compile(
+    r'(?:^|[;\s&|])([A-Za-z_][A-Za-z0-9_]*)='
+    r'(?:["\']?\$\(\s*' + _MKTEMP + r'|["\']?`\s*' + _MKTEMP + r')'
+)
+
+# A `local`/`declare`/`readonly` prefix may sit between the `;` and the LHS
+# of an assignment. We treat `local foo=$(mktemp ...)` the same as
+# `foo=$(mktemp ...)` for guard purposes.
+_KEYWORD_PREFIXES = ("local", "declare", "readonly", "export", "typeset")
+
+
+def _strip_assign_prefix(segment):
+    """Return the assignment-bearing tail of a segment.
+
+    For `local foo=$(mktemp -d) || return 1` returns `foo=$(mktemp -d) || return 1`.
+    For `foo=$(mktemp -d) || return 1` returns the same string unchanged.
+    For a segment with no leading keyword, returns the input unchanged.
+    """
+    stripped = segment.lstrip()
+    for kw in _KEYWORD_PREFIXES:
+        if stripped.startswith(kw + " ") or stripped.startswith(kw + "\t"):
+            return stripped[len(kw):].lstrip()
+    return segment
+
+
+def _strip_inline_comment(line):
+    """Return `line` with any trailing `#`-introduced shell comment removed.
+
+    iter-6 X16: a `#` outside single/double quotes AND outside `$(...)` /
+    `` `...` `` / brace groups, when at line-start OR preceded by
+    whitespace OR preceded by a shell metacharacter (`;`, `|`, `&`, `(`,
+    `)`, `{`, `}`), starts a comment that runs to end-of-line. The lint
+    parses each line for assign / guard; an unstripped `#` lets the
+    literal `||` and `return` inside a comment falsely satisfy the abort
+    check, even though bash never sees them.
+
+    A `#` inside an unquoted word (`foo#bar`) is NOT a comment delimiter:
+    it's part of the word. So the predicate is "previous char is none /
+    whitespace / metachar".
+
+    Heredoc bodies and `$'...'` ANSI-C strings are out of scope (X16
+    finding tail flags them as latent risks; the current corpus does not
+    exercise them).
+    """
+    n = len(line)
+    i = 0
+    prev = None  # the previous non-skipped character (None at line start)
+    in_single = False
+    in_double = False
+    in_backtick = False
+    paren_depth = 0
+    brace_depth = 0
+    metachars = ';|&(){}'
+    while i < n:
+        ch = line[i]
+        if in_single:
+            if ch == "'":
+                in_single = False
+            prev = ch
+            i += 1
+            continue
+        if in_double:
+            if ch == '\\' and i + 1 < n:
+                # escaped char inside double quotes
+                prev = line[i + 1]
+                i += 2
+                continue
+            if ch == '"':
+                in_double = False
+            prev = ch
+            i += 1
+            continue
+        if in_backtick:
+            if ch == '`':
+                in_backtick = False
+            prev = ch
+            i += 1
+            continue
+        if ch == "'":
+            in_single = True
+            prev = ch
+            i += 1
+            continue
+        if ch == '"':
+            in_double = True
+            prev = ch
+            i += 1
+            continue
+        if ch == '`':
+            in_backtick = True
+            prev = ch
+            i += 1
+            continue
+        if ch == '\\' and i + 1 < n:
+            # escaped char (e.g. `\#` is a literal `#`, not a comment start)
+            prev = line[i + 1]
+            i += 2
+            continue
+        if ch == '(':
+            paren_depth += 1
+            prev = ch
+            i += 1
+            continue
+        if ch == ')':
+            if paren_depth > 0:
+                paren_depth -= 1
+            prev = ch
+            i += 1
+            continue
+        if ch == '{':
+            brace_depth += 1
+            prev = ch
+            i += 1
+            continue
+        if ch == '}':
+            if brace_depth > 0:
+                brace_depth -= 1
+            prev = ch
+            i += 1
+            continue
+        if ch == '#' and paren_depth == 0 and brace_depth == 0:
+            # word-boundary check: comment starts only at line-start, after
+            # whitespace, or after a shell metacharacter.
+            if prev is None or prev.isspace() or prev in metachars:
+                return line[:i]
+        prev = ch
+        i += 1
+    return line
+
+
+def _split_top_level_semis(line):
+    """Split a line on TOP-LEVEL `;` (statement-separators).
+
+    A `;` inside single/double quotes, backticks, or a `{ }` / `( )` /
+    `$( )` group is NOT a top-level separator. This is a careful tokenizer
+    (not naive str.split(';')) because shell strings legitimately contain
+    `;`-bearing prose (e.g. `echo "see; comma"`).
+
+    Returns a list of (segment, start_offset_within_line) tuples so a
+    violation in a non-first segment can be reported.
+    """
+    segments = []
+    buf = []
+    start = 0
+    i = 0
+    n = len(line)
+    in_single = False
+    in_double = False
+    in_backtick = False
+    paren_depth = 0
+    brace_depth = 0
+    while i < n:
+        ch = line[i]
+        if in_single:
+            buf.append(ch)
+            if ch == "'":
+                in_single = False
+            i += 1
+            continue
+        if in_double:
+            buf.append(ch)
+            if ch == '\\' and i + 1 < n:
+                # consume the escaped char as part of the string
+                buf.append(line[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_double = False
+            i += 1
+            continue
+        if in_backtick:
+            buf.append(ch)
+            if ch == '`':
+                in_backtick = False
+            i += 1
+            continue
+        if ch == "'":
+            in_single = True
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '"':
+            in_double = True
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '`':
+            in_backtick = True
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '(':
+            paren_depth += 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == ')':
+            if paren_depth > 0:
+                paren_depth -= 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '{':
+            brace_depth += 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '}':
+            if brace_depth > 0:
+                brace_depth -= 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == ';' and paren_depth == 0 and brace_depth == 0:
+            segments.append(("".join(buf), start))
+            buf = []
+            i += 1
+            start = i
+            continue
+        buf.append(ch)
+        i += 1
+    if buf or not segments:
+        segments.append(("".join(buf), start))
+    return segments
+
+
+def _branch_has_pipeline_or_background(text):
+    """Quote/brace-aware scan for an unquoted pipeline (`|` not `||`) or
+    background (`&` not `&&`) operator before the first top-level `;` or
+    end-of-text. Returns True if found.
+
+    iter-6 X15: bash runs `return`/`exit` placed in a pipeline tail in a
+    subshell and a `&`-background command asynchronously — in both cases
+    the abort does NOT propagate to the outer function. A `||` branch
+    that LOOKS like an abort (begins with `return`/`exit`) but contains
+    `| <cmd>` or trails with `&` is therefore NOT a real guard. This
+    check is the "simple-command position" gate: after `_guard_branch_aborts`
+    confirms the abort keyword (or terminal-abort brace group), this
+    scan must also pass.
+    """
+    n = len(text)
+    i = 0
+    in_single = False
+    in_double = False
+    in_backtick = False
+    paren_depth = 0
+    brace_depth = 0
+    while i < n:
+        ch = text[i]
+        if in_single:
+            if ch == "'":
+                in_single = False
+            i += 1
+            continue
+        if in_double:
+            if ch == '\\' and i + 1 < n:
+                i += 2
+                continue
+            if ch == '"':
+                in_double = False
+            i += 1
+            continue
+        if in_backtick:
+            if ch == '`':
+                in_backtick = False
+            i += 1
+            continue
+        if ch == "'":
+            in_single = True
+            i += 1
+            continue
+        if ch == '"':
+            in_double = True
+            i += 1
+            continue
+        if ch == '`':
+            in_backtick = True
+            i += 1
+            continue
+        if ch == '\\' and i + 1 < n:
+            # escaped char (e.g. `\|`, `\&`) — consume both, no metachar
+            i += 2
+            continue
+        if ch == '(':
+            paren_depth += 1
+            i += 1
+            continue
+        if ch == ')':
+            if paren_depth > 0:
+                paren_depth -= 1
+            i += 1
+            continue
+        if ch == '{':
+            brace_depth += 1
+            i += 1
+            continue
+        if ch == '}':
+            if brace_depth > 0:
+                brace_depth -= 1
+            i += 1
+            continue
+        if paren_depth == 0 and brace_depth == 0:
+            if ch == ';':
+                # top-level `;` ends the current statement; no
+                # pipeline/background found in the abort statement.
+                return False
+            if ch == '|':
+                # `||` is two chars — not a pipeline. Otherwise single
+                # `|` is a pipeline operator.
+                if i + 1 < n and text[i + 1] == '|':
+                    i += 2
+                    continue
+                return True
+            if ch == '&':
+                # `&&` is two chars — short-circuit AND, not background.
+                if i + 1 < n and text[i + 1] == '&':
+                    i += 2
+                    continue
+                return True
+        i += 1
+    return False
+
+
+def _guard_branch_aborts(branch):
+    """Decide whether the text of a `||` branch is a real aborting guard.
+
+    A real guard at branch position 0 is one of:
+      - the keyword `return` (optionally followed by an exit code)
+      - the keyword `exit`   (optionally followed by an exit code)
+      - a brace group `{ ...; return|exit ... ; }` whose FINAL non-empty
+        top-level statement is `return` or `exit`
+    AND the abort statement must be in SIMPLE-COMMAND position — no
+    unquoted `|` (pipeline) or `&` (background) before the next top-level
+    `;` / end-of-branch (iter-6 X15: bash runs pipeline-tail/background
+    statements in a subshell, so the abort does NOT reach the caller).
+
+    All other forms (`echo return`, `echo "see return"`, `true`, `:`,
+    `echo failed; return 1` with the `return` outside the branch,
+    `return 1 | cat`, `return 1 &`) are NOT aborting guards: they let
+    execution proceed with the assignment's VAR still empty, which is
+    the destructive footgun the pin exists to forbid.
+    """
+    text = branch.strip()
+    if not text:
+        return False
+    # iter-6 X15: pipeline or background in the branch defeats the abort
+    # regardless of the keyword shape. Run this check first.
+    if _branch_has_pipeline_or_background(text):
+        return False
+    # Brace-group form: `{ stmt; ...; stmt; }`
+    if text.startswith('{'):
+        # find the matching close brace honouring nested braces / quotes /
+        # subshells. For our grammar, a careless approach is enough — bash
+        # forbids unescaped `}` inside brace groups except inside strings
+        # or subshells, which our top-level splitter handled before us. So
+        # the matching close is simply the LAST `}` in the branch.
+        close = text.rfind('}')
+        if close == -1:
+            return False
+        inner = text[1:close].strip()
+        # final statement: split inner on top-level `;` and inspect the
+        # last non-empty piece.
+        inner_segs = _split_top_level_semis(inner)
+        # filter out trailing empty pieces (from a trailing `;` before `}`)
+        nonempty = [s for s, _ in inner_segs if s.strip()]
+        if not nonempty:
+            return False
+        final = nonempty[-1].strip()
+        return _starts_with_abort_keyword(final)
+    return _starts_with_abort_keyword(text)
+
+
+_ABORT_KEYWORD = re.compile(r'^(return|exit)\b')
+
+
+def _starts_with_abort_keyword(text):
+    return bool(_ABORT_KEYWORD.match(text.strip()))
+
+
+def _segment_has_real_guard(segment):
+    """Decide whether a segment containing an mktemp assign also has a
+    real `||` guard immediately after the substitution.
+
+    Find the FIRST `||` after the mktemp substitution close and check its
+    branch is an aborting statement (per `_guard_branch_aborts`). If there
+    is no `||` after the substitution, this segment is unguarded.
+    """
+    # Find the substitution close position. We've already verified the
+    # segment matches ASSIGN; find the closing `)` or backtick of the FIRST
+    # mktemp substitution.
+    # Look for `$(...mktemp...)` or `` `mktemp...` ``.
+    m = re.search(r'\$\(\s*' + _MKTEMP + r'[^()]*\)', segment)
+    if not m:
+        m = re.search(r'`\s*' + _MKTEMP + r'[^`]*`', segment)
+    if not m:
+        return False  # no recognizable substitution — caller will treat as
+                      # unguarded; consistent with the assign-but-no-subst
+                      # impossibility for our grammar.
+    after = segment[m.end():]
+    # skip an optional closing quote
+    if after.startswith('"') or after.startswith("'"):
+        after = after[1:]
+    # skip optional `/path` (this is the APPENDED shape — caller flags it
+    # separately, but for guard-checking we still want to find the `||`)
+    pos = 0
+    while pos < len(after) and not after[pos].isspace() and after[pos] not in '|;)':
+        if after[pos] in '"\'':
+            # don't consume into a string; bail
+            break
+        pos += 1
+    after = after[pos:]
+    # find `||` (not `|`)
+    i = 0
+    while i < len(after):
+        if after[i] == '|' and i + 1 < len(after) and after[i + 1] == '|':
+            branch = after[i + 2:]
+            return _guard_branch_aborts(branch)
+        i += 1
+    return False
+
+
+# Per-file z_postcheck dialect (X13): a multi-line post-assignment guard.
+#   VAR=$(mktemp -d ...)
+#   if [ -z "$VAR" ] || [ ! -d "$VAR" ]; then ... return 1; fi
+# OR the chained-and form `[ -z "$VAR" ] || [ ! -d "$VAR" ] && return 1`.
+# Recognized only when the dialect is `z_postcheck`; the variable name in
+# the `[ -z ]` test MUST match the assignment's LHS (so an unrelated
+# `[ -z ]` line a few lines down does not accidentally "guard" a different
+# assignment).
+_Z_TEST = re.compile(
+    r'\[\s+-z\s+"?\$\{?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\}?"?\s+\]'
+)
+
+
+def _has_z_postcheck_for(lhs, line_idx, all_lines):
+    """For dialect z_postcheck: scan up to 6 lines forward from line_idx
+    looking for a `[ -z "$lhs" ]` test paired with an abort statement
+    (return/exit) on the same line or within the next 5 lines.
+    Returns True if the variable name in the test matches `lhs` AND an
+    abort is reachable from the test.
+    """
+    if dialect != "z_postcheck":
+        return False
+    end = min(line_idx + 7, len(all_lines))
+    for j in range(line_idx, end):
+        line_j = all_lines[j]
+        m = _Z_TEST.search(line_j)
+        if not m:
+            continue
+        if m.group("name") != lhs:
+            continue
+        # found `[ -z "$lhs" ]`. Look for return/exit reachable from here:
+        #   - `&& return` / `&& exit` on the same line
+        #   - `then` on this line, abort statement on a following line
+        #     (within 5 lines)
+        for k in range(j, min(j + 6, len(all_lines))):
+            line_k = all_lines[k]
+            if re.search(r'&&\s*(return|exit)\b', line_k):
+                return True
+            if k > j:
+                stripped_k = line_k.lstrip()
+                if _ABORT_KEYWORD.match(stripped_k):
+                    return True
+    return False
+
+
+violations = []
+for n, raw in enumerate(lines, start=1):
+    stripped = raw.lstrip()
+    if stripped.startswith("#"):
+        continue
+    line = raw.rstrip("\n")
+    # iter-6 X16: strip any trailing `#`-introduced shell comment before
+    # tokenizing. A `# || return` inside a comment is NOT a real guard —
+    # bash never sees it. Apply at the line level so both the APPENDED
+    # check and the per-segment scan run on the comment-stripped line.
+    line = _strip_inline_comment(line)
+    # First: appended-segment is banned outright at the line level (even if
+    # subsequently guarded, the `dirname -> /` footgun is structural). The
+    # APPENDED regex looks for the substitution-close-then-`/` shape across
+    # any segment of the line.
+    if APPENDED.search(line):
+        violations.append((n, "appended-segment", line.strip()))
+        continue
+    # Per-segment scan: split the line on top-level `;` and re-apply
+    # assign/guard per segment. This rejects the X12 multi-assignment
+    # bypass.
+    for seg, _off in _split_top_level_semis(line):
+        # iter-6 X16: also strip inline comments at the segment level
+        # for defense-in-depth (a `#` inside a segment that survived the
+        # line-level strip — e.g. a future heredoc-bypass shape — would
+        # be caught here too).
+        seg = _strip_inline_comment(seg)
+        seg_tail = _strip_assign_prefix(seg)
+        m = ASSIGN.search(seg_tail)
+        if not m:
+            continue
+        # This segment has an assign-from-mktemp. Does it have a real
+        # same-line guard?
+        if _segment_has_real_guard(seg_tail):
+            continue
+        # No same-line guard — under the z_postcheck dialect, also accept a
+        # multi-line `[ -z "$VAR" ]` post-assignment guard whose variable
+        # name matches the assignment LHS.
+        lhs = m.group(1)
+        if _has_z_postcheck_for(lhs, n - 1, lines):
+            continue
+        # Unguarded.
+        violations.append((n, "unguarded", line.strip()))
+        # only one violation per line — break out
+        break
+
+if violations:
+    print("UNGUARDED MKTEMP SITE(S) — destructive rm-rf class (X1/X7):")
+    for n, kind, text in violations:
+        print(f"  L{n} [{kind}]: {text}")
+    sys.exit(1)
+print("ok")
+PY
+}
+
+# Per-file scope + dialect map (iter-5 X13). Every shell script in the repo
+# is enumerated EXPLICITLY here (no `find` enumeration — bash 3.2
+# compatible, deterministic, multi-agent-safe) along with the safe-guard
+# idiom dialect its mktemp sites use:
+#   - same_line:    only the same-line `|| return` / `|| { ...; return; }`
+#                   guard form is accepted (smoke-helpers.sh, hooks/lib/*.sh).
+#   - z_postcheck:  ALSO accept the multi-line `[ -z "$VAR" ] || [ ! -d
+#                   "$VAR" ]` post-assignment guard idiom (tests/smoke.sh).
+# To add a new in-scope shell script, append a row here. To switch a file's
+# dialect, update its row (and add a fixture proving the new idiom is
+# recognized).
+_MKTEMP_LINT_SCOPE() {
+  cat <<'EOF'
+tests/smoke.sh z_postcheck
+tests/smoke-helpers.sh same_line
+tests/smoke-helpers-check-phase0-wiring.sh same_line
+tests/smoke-helpers-check-wiring.sh same_line
+hooks/lib/build_pr_files.sh same_line
+hooks/lib/codex_audit_dispatch.sh same_line
+hooks/lib/cross_audit_resolve_range.sh same_line
+hooks/lib/dedupe_findings.sh same_line
+hooks/lib/locate_section_outside_fences.sh same_line
+hooks/lib/probe_e.sh same_line
+hooks/lib/probe_f.sh same_line
+hooks/lib/probe_g.sh same_line
+hooks/lib/probe_h.sh same_line
+hooks/lib/receipt_canonicalize.sh same_line
+hooks/lib/render_findings.sh same_line
+hooks/lib/resolve_rule_path.sh same_line
+hooks/lib/synth_probe_failures.sh same_line
+EOF
+}
+
+check_all_shell_scripts_mktemp_guarded() {
+  local fail=0 scanned=0 target dialect
+  while read -r target dialect; do
+    [ -n "$target" ] || continue
+    if [ ! -r "$target" ]; then
+      echo "lint target missing: $target"; fail=1; continue
+    fi
+    scanned=$((scanned + 1))
+    local report
+    report=$(_smoke_mktemp_lint_scan "$target" "$dialect")
+    local rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "$report"
+      echo "lint: $target has an unguarded or path-appended mktemp — see lines above"
+      fail=1
+    fi
+  done <<EOF
+$(_MKTEMP_LINT_SCOPE)
+EOF
+  if [ "$scanned" -lt 2 ]; then
+    echo "lint scope regression: only $scanned files scanned — expected the multi-file enumeration"
+    return 1
+  fi
+  [ "$fail" -eq 0 ] || return 1
+  echo "lint: all mktemp sites across $scanned shell scripts are guarded; no path-appended \$(mktemp ...)"
+}
+
+# behavioral: the mktemp lint's own correctness self-test. A lint pin with no
+# negative case proves nothing (R3/R6). The negative fixtures span three
+# generations of bypass classes plus the X13 dialect regression detector:
+#   - X9 (iter-4) evading shapes: quoted/backtick subst, )"/seg appended,
+#     || true / || : non-guards.
+#   - X12 (iter-5) evading shapes: word-substring guard (`|| echo return`,
+#     `|| echo "see return"`, `|| echo failed; rm -rf; return 1` with the
+#     late-return as a separate top-level statement, `|| { echo failed; }`
+#     with no terminal return in the brace group); path-qualified mktemp
+#     (`$(/bin/mktemp -d)`, `$(command mktemp -d)`); multi-assignment-per-
+#     line (first unguarded).
+#   - X13 (iter-5) idiom recognition: the z_postcheck multi-line
+#     `[ -z "$VAR" ]` post-assignment guard MUST be accepted when the
+#     variable name matches the assignment LHS, and REJECTED when the
+#     variable name does not match.
+# Plus positive controls: clean-guarded (X9), guard-brace-group-valid (X12
+# brace-group guard with final return), multi-assignment-both-guarded
+# (X12 per-segment positive case), external-file-safe-z-idiom (X13
+# z_postcheck positive control). Plus a scope regression detector: assert
+# the enumeration includes `tests/smoke.sh` (the canonical external scan
+# target) so a future regression dropping multi-file scope fails the pin.
+check_all_shell_scripts_mktemp_lint_self_test() {
+  local fdir="tests/fixtures/smoke-mktemp-lint"
+  test -d "$fdir" || { echo "$fdir fixture dir missing"; return 1; }
+  local kind out rc
+
+  # X9 negative fixtures (same_line dialect).
+  for kind in quoted-subst-unguarded backtick-subst-unguarded \
+              quoted-appended-segment guard-or-true guard-or-colon; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X9 evading shape slipped through"; return 1; }
+    printf '%s' "$out" | grep -qE 'unguarded|appended-segment' \
+      || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
+  done
+
+  # X12 negative fixtures (same_line dialect).
+  for kind in guard-word-substring-echo guard-word-substring-quoted \
+              guard-word-substring-late-return guard-brace-group-no-return \
+              path-qualified-bin-mktemp path-qualified-command-mktemp \
+              multi-assignment-first-unguarded; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X12 evading shape slipped through"; return 1; }
+    printf '%s' "$out" | grep -qE 'unguarded|appended-segment' \
+      || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
+  done
+
+  # X14 negative fixtures (iter-6, same_line dialect) — appended-segment
+  # structural defense MUST flag the mktemp-inside-subst-body + appended-
+  # `/seg` shape regardless of preceding prefix tokens (env / TMPDIR= /
+  # eval / time / `\mktemp` / LC_ALL= / combined) and regardless of any
+  # trailing `||` guard (the structural shape destroys the LHS value
+  # before the downstream `rm -rf "$(dirname "$VAR")"` ever runs).
+  for kind in x14-env-prefix-appended x14-tmpdir-prefix-appended \
+              x14-eval-prefix-appended x14-time-prefix-appended \
+              x14-backslash-prefix-appended x14-lcall-prefix-appended \
+              x14-env-tmpdir-combined-appended \
+              x14-with-real-guard-still-fails; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X14 appended-segment structural defense slipped through"; return 1; }
+    printf '%s' "$out" | grep -q 'appended-segment' \
+      || { echo "mktemp lint did not emit appended-segment violation kind for '$kind'"; return 1; }
+  done
+
+  # X14 negative fixtures (iter-6, same_line dialect) — unguarded-mktemp
+  # check MUST recognize the extended command-prefix vocabulary (env /
+  # TMPDIR= / `\mktemp`) when the assignment is unguarded with no
+  # appended segment.
+  for kind in x14-env-unguarded x14-tmpdir-unguarded x14-backslash-unguarded; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X14 prefix-vocabulary unguarded shape slipped through"; return 1; }
+    printf '%s' "$out" | grep -q 'unguarded' \
+      || { echo "mktemp lint did not emit unguarded violation kind for '$kind'"; return 1; }
+  done
+
+  # X15 negative fixtures (iter-6, same_line dialect) — simple-command
+  # guard discipline. Bash runs `return`/`exit` in a pipeline tail in a
+  # subshell and a `&`-background command asynchronously; in both cases
+  # the abort does NOT reach the caller. The `||` branch must be a simple
+  # command with no unquoted `|` (pipeline) / `&` (background) before
+  # the next top-level `;` / end-of-branch.
+  for kind in x15-guard-pipeline-cat x15-guard-pipeline-exit \
+              x15-guard-brace-pipeline x15-guard-background \
+              x15-guard-background-then-fake-return; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X15 pipeline/background subshell evasion slipped through"; return 1; }
+    printf '%s' "$out" | grep -q 'unguarded' \
+      || { echo "mktemp lint did not emit unguarded violation kind for '$kind'"; return 1; }
+  done
+
+  # X16 negative fixtures (iter-6, same_line dialect) — shell-comment
+  # stripping. A `#` outside quotes at a word boundary starts a comment
+  # that runs to end-of-line; bash never sees the `||`/`return` tokens
+  # inside it, so the lint's tokenizer must strip the comment before
+  # parsing for guards.
+  for kind in x16-comment-or-return x16-comment-todo-return \
+              x16-comment-or-exit; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" same_line 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X16 comment-as-guard slipped through"; return 1; }
+    printf '%s' "$out" | grep -q 'unguarded' \
+      || { echo "mktemp lint did not emit unguarded violation kind for '$kind'"; return 1; }
+  done
+
+  # X13 negative fixture (z_postcheck dialect — variable name mismatch).
+  for kind in external-file-z-idiom-wrong-var; do
+    local fx="$fdir/$kind.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    out=$(_smoke_mktemp_lint_scan "$fx" z_postcheck 2>&1)
+    rc=$?
+    [ "$rc" -eq 1 ] \
+      || { echo "mktemp lint did NOT flag '$kind' (got rc=$rc) — X13 wrong-var idiom slipped through"; return 1; }
+    printf '%s' "$out" | grep -qE 'unguarded' \
+      || { echo "mktemp lint emitted no violation kind for '$kind'"; return 1; }
+  done
+
+  # Positive controls (same_line dialect). x14-env-guarded is the iter-6
+  # control proving the extended prefix vocabulary still recognizes a
+  # CORRECTLY-guarded prefixed mktemp (`env mktemp -d) || return 1`) as
+  # guarded (no false positive on real guards).
+  # x16-real-guard-with-trailing-comment is the iter-6 X16 positive
+  # control proving the comment-strip does NOT remove a real `||` guard
+  # that is BEFORE the trailing `#` comment.
+  for ctl in clean-guarded guard-brace-group-valid multi-assignment-both-guarded \
+             x14-env-guarded x16-real-guard-with-trailing-comment; do
+    local fx="$fdir/$ctl.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    _smoke_mktemp_lint_scan "$fx" same_line >/dev/null 2>&1 \
+      || { echo "mktemp lint wrongly flagged correctly-guarded control '$ctl'"; return 1; }
+  done
+
+  # Positive control (z_postcheck dialect — multi-line idiom must pass).
+  for ctl in external-file-safe-z-idiom; do
+    local fx="$fdir/$ctl.sh"
+    test -f "$fx" || { echo "$fx fixture missing"; return 1; }
+    _smoke_mktemp_lint_scan "$fx" z_postcheck >/dev/null 2>&1 \
+      || { echo "mktemp lint wrongly flagged z_postcheck control '$ctl'"; return 1; }
+  done
+
+  # X13 scope regression detector: the enumeration MUST include at least
+  # one mktemp site OUTSIDE smoke-helpers.sh. Use tests/smoke.sh as the
+  # canonical external scan target (8 mktemp sites, z_postcheck dialect).
+  local scope_listing scope_outside
+  scope_listing=$(_MKTEMP_LINT_SCOPE)
+  printf '%s\n' "$scope_listing" | grep -qE '^tests/smoke\.sh\s+z_postcheck$' \
+    || { echo "scope regression: tests/smoke.sh not enumerated in _MKTEMP_LINT_SCOPE"; return 1; }
+  scope_outside=$(printf '%s\n' "$scope_listing" | grep -cvE '^(tests/smoke-helpers\.sh\s|$)')
+  if [ "$scope_outside" -lt 1 ]; then
+    echo "scope regression: enumeration contains $scope_outside entries outside tests/smoke-helpers.sh — expected at least 1"
+    return 1
+  fi
+  # Behavioral assertion: re-run the lint against tests/smoke.sh with the
+  # z_postcheck dialect; it MUST pass clean (proving the dialect actually
+  # accepts the in-file multi-line `[ -z "$VAR" ]` post-assignment idiom).
+  _smoke_mktemp_lint_scan tests/smoke.sh z_postcheck >/dev/null 2>&1 \
+    || { echo "scope regression: tests/smoke.sh failed the z_postcheck dialect lint — the multi-line [ -z ] idiom is not being accepted"; return 1; }
+
+  echo "mktemp lint self-test: every X9 + X12 + X14 + X15 + X16 evading shape flagged (X14 = appended-segment structural defense regardless of prefix/guard + extended unguarded prefix vocabulary; X15 = simple-command guard discipline rejecting pipeline/background false guards; X16 = shell-comment stripping rejecting comment-as-guard); clean controls pass (incl. x14-env-guarded and x16-real-guard-with-trailing-comment); X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
 }

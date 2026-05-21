@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "X4 regression fixture — 'addtionalProperties' is a typo of 'additionalProperties'. The schema-walk pass must reject it with exit 2, not silently no-op the gate.",
+  "type": "object",
+  "addtionalProperties": false,
+  "properties": {
+    "name": { "type": "string" }
+  }
+}

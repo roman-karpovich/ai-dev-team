@@ -1,0 +1,5 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "X5 regression fixture — list-valued enum. The JSON array [true] must NOT match the enum member [1]: bool stays distinct from int at every nesting level.",
+  "enum": [[1]]
+}

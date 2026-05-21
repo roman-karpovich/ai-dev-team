@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "X10 regression fixture — the 'properties' VALUE is a dict, but the member subschema for key 'a' is the string \"NOT-A-SCHEMA\", not an object. _walk_schema must recurse into member subschemas and reject the non-object with exit 2; otherwise validate() emits zero diagnostics when the instance lacks 'a'.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "a": "NOT-A-SCHEMA"
+  }
+}

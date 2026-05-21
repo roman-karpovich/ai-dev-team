@@ -1,0 +1,6 @@
+{
+  "name": "example",
+  "severity": "LOW",
+  "tags": ["a"],
+  "unexpected": true
+}
