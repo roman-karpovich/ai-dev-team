@@ -8454,28 +8454,44 @@ check_caveman_command_semantics_documented() {
     echo "$f missing conditional flag-check idiom ([ -f or test -f)"
     return 1
   fi
-  # X5: per-subcommand strict-env binding. Extract each `## /caveman <sub>`
-  # section and assert the guard + source + negative-fallback shape WITHIN
-  # that section, so a partial regression in one of three blocks fails the
-  # pin (file-global form admitted this class — see X5 in iter-2 findings).
+  # Per-subcommand plugin-manifest lookup binding. Extract each
+  # `## /caveman <sub>` section and assert the lookup-via-installed_plugins.json
+  # shape WITHIN that section, so a partial regression in one of three blocks
+  # fails the pin (X5-class file-global form is rejected). The lookup approach
+  # replaces the CLAUDE_PLUGIN_ROOT env-var dependency that failed in practice
+  # because the var is not propagated to slash-command bash subprocesses.
   for sub in on off status; do
     section=$(extract_md_section "$f" "## /caveman $sub")
     if [ -z "$section" ]; then
       echo "$f missing ## /caveman $sub section"
       return 1
     fi
-    if ! printf '%s' "$section" | grep -qF -- 'if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh" ]; then'; then
-      echo "$f ## /caveman $sub missing strict CLAUDE_PLUGIN_ROOT guard line"
+    if ! printf '%s' "$section" | grep -qF -- 'installed_plugins.json'; then
+      echo "$f ## /caveman $sub missing installed_plugins.json manifest lookup"
       return 1
     fi
-    if ! printf '%s' "$section" | grep -qF -- '. "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh"'; then
-      echo "$f ## /caveman $sub missing strict CLAUDE_PLUGIN_ROOT source line"
+    if ! printf '%s' "$section" | grep -qF -- 'ai-dev-team@ai-dev-team'; then
+      echo "$f ## /caveman $sub missing plugin key ai-dev-team@ai-dev-team in manifest lookup"
       return 1
     fi
-    if printf '%s' "$section" | grep -qE -- 'CLAUDE_PLUGIN_ROOT:-\$\(git rev-parse|CLAUDE_PLUGIN_ROOT:-\$\(pwd'; then
-      echo "$f ## /caveman $sub uses unsafe \${CLAUDE_PLUGIN_ROOT:-fallback} form (X6 target-repo-shadowing class)"
+    if ! printf '%s' "$section" | grep -qF -- '. "$plugin_root/hooks/lib/caveman_paths.sh"'; then
+      echo "$f ## /caveman $sub missing source line . \"\$plugin_root/hooks/lib/caveman_paths.sh\""
+      return 1
+    fi
+    if printf '%s' "$section" | grep -qE -- '\$\{CLAUDE_PLUGIN_ROOT[:}]|\$CLAUDE_PLUGIN_ROOT'; then
+      echo "$f ## /caveman $sub still expands \${CLAUDE_PLUGIN_ROOT} (env var unreliable in slash-command bash subprocess; use manifest lookup). Mentioning the name in a comment is fine; only variable expansion is rejected."
+      return 1
+    fi
+    # Per-line check: any line that mentions caveman_paths.sh AND contains a
+    # $(git rev-parse ...) or $(pwd ...) command substitution is the X6
+    # target-repo-shadowing defect (helper path built from git-root or pwd).
+    # Legitimate uses of git rev-parse / pwd elsewhere in the block (e.g.
+    # `repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)` for
+    # the YAML repo: field) do not mention caveman_paths.sh and are not caught.
+    if printf '%s\n' "$section" | grep -F -- 'caveman_paths.sh' | grep -qE -- '\$\(git rev-parse|\$\(pwd'; then
+      echo "$f ## /caveman $sub uses git/pwd substitution in helper-source path (X6 target-repo-shadowing class)"
       return 1
     fi
   done
-  echo "commands/caveman.md documents on/off/status with shared resolver, mkdir -p, rm -f, 5 YAML fields, conditional flag-check, per-subcommand strict CLAUDE_PLUGIN_ROOT guard+source"
+  echo "commands/caveman.md documents on/off/status with shared resolver, mkdir -p, rm -f, 5 YAML fields, conditional flag-check, per-subcommand plugin-manifest lookup"
 }

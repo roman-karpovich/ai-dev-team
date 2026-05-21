@@ -22,12 +22,31 @@ project-scoped flag file. Idempotent — succeeds when the flag is already
 absent.
 
 ```bash
-# Source the shared resolver.
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh" ]; then
-  echo "caveman: CLAUDE_PLUGIN_ROOT not set or helper not found at expected path" >&2
+# Locate the plugin install via Claude Code's plugin manifest. CLAUDE_PLUGIN_ROOT
+# is not reliably exported to slash-command bash subprocesses, so we resolve via
+# ~/.claude/plugins/installed_plugins.json instead. Scoped to a known plugin key
+# (`ai-dev-team@ai-dev-team`) — no git-root fallback, no pwd fallback, defeats
+# X6 target-repo-shadowing class without requiring the env var.
+plugin_root=$(python3 - <<'PY' 2>/dev/null
+import json, os, sys
+manifest = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+try:
+    with open(manifest) as f:
+        d = json.load(f)
+    for e in d.get("plugins", {}).get("ai-dev-team@ai-dev-team", []):
+        path = e.get("installPath")
+        if path and os.path.isfile(os.path.join(path, "hooks/lib/caveman_paths.sh")):
+            print(path); sys.exit(0)
+    sys.exit(1)
+except Exception:
+    sys.exit(1)
+PY
+)
+if [ -z "$plugin_root" ]; then
+  echo "caveman: could not locate plugin install (looked up ai-dev-team@ai-dev-team in ~/.claude/plugins/installed_plugins.json)" >&2
   exit 1
 fi
-. "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh"
+. "$plugin_root/hooks/lib/caveman_paths.sh"
 
 flag=$(caveman_flag_path)
 rm -f "$flag"
@@ -42,12 +61,31 @@ flag file is small YAML with five fields: `repo`, `plugin`, `mode`,
 `created_at`, `updated_at`.
 
 ```bash
-# Source the shared resolver.
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh" ]; then
-  echo "caveman: CLAUDE_PLUGIN_ROOT not set or helper not found at expected path" >&2
+# Locate the plugin install via Claude Code's plugin manifest. CLAUDE_PLUGIN_ROOT
+# is not reliably exported to slash-command bash subprocesses, so we resolve via
+# ~/.claude/plugins/installed_plugins.json instead. Scoped to a known plugin key
+# (`ai-dev-team@ai-dev-team`) — no git-root fallback, no pwd fallback, defeats
+# X6 target-repo-shadowing class without requiring the env var.
+plugin_root=$(python3 - <<'PY' 2>/dev/null
+import json, os, sys
+manifest = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+try:
+    with open(manifest) as f:
+        d = json.load(f)
+    for e in d.get("plugins", {}).get("ai-dev-team@ai-dev-team", []):
+        path = e.get("installPath")
+        if path and os.path.isfile(os.path.join(path, "hooks/lib/caveman_paths.sh")):
+            print(path); sys.exit(0)
+    sys.exit(1)
+except Exception:
+    sys.exit(1)
+PY
+)
+if [ -z "$plugin_root" ]; then
+  echo "caveman: could not locate plugin install (looked up ai-dev-team@ai-dev-team in ~/.claude/plugins/installed_plugins.json)" >&2
   exit 1
 fi
-. "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh"
+. "$plugin_root/hooks/lib/caveman_paths.sh"
 
 flag=$(caveman_flag_path)
 mkdir -p "$(dirname "$flag")"
@@ -82,12 +120,31 @@ resolved flag path, and the project hash. The branch uses a conditional
 `[ -f "$flag" ]` flag-presence check to decide the report.
 
 ```bash
-# Source the shared resolver.
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh" ]; then
-  echo "caveman: CLAUDE_PLUGIN_ROOT not set or helper not found at expected path" >&2
+# Locate the plugin install via Claude Code's plugin manifest. CLAUDE_PLUGIN_ROOT
+# is not reliably exported to slash-command bash subprocesses, so we resolve via
+# ~/.claude/plugins/installed_plugins.json instead. Scoped to a known plugin key
+# (`ai-dev-team@ai-dev-team`) — no git-root fallback, no pwd fallback, defeats
+# X6 target-repo-shadowing class without requiring the env var.
+plugin_root=$(python3 - <<'PY' 2>/dev/null
+import json, os, sys
+manifest = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+try:
+    with open(manifest) as f:
+        d = json.load(f)
+    for e in d.get("plugins", {}).get("ai-dev-team@ai-dev-team", []):
+        path = e.get("installPath")
+        if path and os.path.isfile(os.path.join(path, "hooks/lib/caveman_paths.sh")):
+            print(path); sys.exit(0)
+    sys.exit(1)
+except Exception:
+    sys.exit(1)
+PY
+)
+if [ -z "$plugin_root" ]; then
+  echo "caveman: could not locate plugin install (looked up ai-dev-team@ai-dev-team in ~/.claude/plugins/installed_plugins.json)" >&2
   exit 1
 fi
-. "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh"
+. "$plugin_root/hooks/lib/caveman_paths.sh"
 
 flag=$(caveman_flag_path)
 hash=$(basename "$flag" .flag)
