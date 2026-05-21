@@ -8432,7 +8432,7 @@ check_caveman_skill_artifact_boundary_present() {
 }
 
 check_caveman_command_semantics_documented() {
-  local f="commands/caveman.md" token
+  local f="commands/caveman.md" token sub section
   test -f "$f" || { echo "$f missing"; return 1; }
   for token in \
     '/caveman on' \
@@ -8454,14 +8454,28 @@ check_caveman_command_semantics_documented() {
     echo "$f missing conditional flag-check idiom ([ -f or test -f)"
     return 1
   fi
-  # X2: enforce strict env-required helper-source form (no target-repo-shadowing fallback).
-  if ! grep -qF '${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh' "$f"; then
-    echo "$f missing strict \${CLAUDE_PLUGIN_ROOT} helper-source prefix"
-    return 1
-  fi
-  if grep -qE 'CLAUDE_PLUGIN_ROOT:-\$\(git rev-parse|CLAUDE_PLUGIN_ROOT:-\$\(pwd' "$f"; then
-    echo "$f uses unsafe \${CLAUDE_PLUGIN_ROOT:-fallback} form (X6 target-repo-shadowing class)"
-    return 1
-  fi
-  echo "commands/caveman.md documents on/off/status with shared resolver, mkdir -p, rm -f, 5 YAML fields, conditional flag-check, strict CLAUDE_PLUGIN_ROOT"
+  # X5: per-subcommand strict-env binding. Extract each `## /caveman <sub>`
+  # section and assert the guard + source + negative-fallback shape WITHIN
+  # that section, so a partial regression in one of three blocks fails the
+  # pin (file-global form admitted this class — see X5 in iter-2 findings).
+  for sub in on off status; do
+    section=$(extract_md_section "$f" "## /caveman $sub")
+    if [ -z "$section" ]; then
+      echo "$f missing ## /caveman $sub section"
+      return 1
+    fi
+    if ! printf '%s' "$section" | grep -qF -- 'if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -f "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh" ]; then'; then
+      echo "$f ## /caveman $sub missing strict CLAUDE_PLUGIN_ROOT guard line"
+      return 1
+    fi
+    if ! printf '%s' "$section" | grep -qF -- '. "${CLAUDE_PLUGIN_ROOT}/hooks/lib/caveman_paths.sh"'; then
+      echo "$f ## /caveman $sub missing strict CLAUDE_PLUGIN_ROOT source line"
+      return 1
+    fi
+    if printf '%s' "$section" | grep -qE -- 'CLAUDE_PLUGIN_ROOT:-\$\(git rev-parse|CLAUDE_PLUGIN_ROOT:-\$\(pwd'; then
+      echo "$f ## /caveman $sub uses unsafe \${CLAUDE_PLUGIN_ROOT:-fallback} form (X6 target-repo-shadowing class)"
+      return 1
+    fi
+  done
+  echo "commands/caveman.md documents on/off/status with shared resolver, mkdir -p, rm -f, 5 YAML fields, conditional flag-check, per-subcommand strict CLAUDE_PLUGIN_ROOT guard+source"
 }
