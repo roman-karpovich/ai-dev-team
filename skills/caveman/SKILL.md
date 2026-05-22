@@ -39,18 +39,27 @@ in verbose mode. Do NOT rewrite, abbreviate, or paraphrase them.
 
 ### 2.1 Log markers — the Continue-mode dispatch keys
 
+The 6 canonical Log-marker templates emitted by the feature skill and parsed
+by the Continue-mode dispatcher (each appears on a single physical line, no
+wrapping):
+
 ```
-- YYYY-MM-DD: spec audit iteration <N> attempt-<M> ...
-- YYYY-MM-DD: code audit iteration <N> attempt-<M> ...
-- YYYY-MM-DD: code audit passed
-- YYYY-MM-DD: code audit decisions recorded
-- YYYY-MM-DD: code audit: no auditable files in diff
+- YYYY-MM-DD: spec_audit_iteration=N
+- YYYY-MM-DD: code audit iteration=N; fixed_ids=[...]; accepted_ids=[...]
+- YYYY-MM-DD: code audit decisions recorded; iteration=N; pending_fixed=[...]; pending_accepted=[...]; pending_deferred=[...]
+- YYYY-MM-DD: code audit passed; iteration=N; verified=[...], accepted=[...], deferred=[...]; evidence=<value>; blockers=[...]
+- YYYY-MM-DD: code audit: no auditable files in diff; skipping
+- YYYY-MM-DD: (spec|code) audit iteration > 5 justified — <reason>
 ```
 
-The literal event strings `spec audit iteration`, `code audit iteration`,
-`code audit passed`, `code audit decisions recorded`, and
-`code audit: no auditable files in diff` MUST survive compression unchanged
-— they are Continue-mode dispatch keys parsed by the feature skill.
+Each template MUST survive compression byte-exact. Placeholders are `N`
+(decimal integer), `[...]` (bracketed list contents), `<value>` (free-form
+token), and `<reason>` (free-form prose). Mandatory punctuation: segments
+within a marker are separated by semicolons (`; `), with one exception —
+the `verified=[...], accepted=[...], deferred=[...]` triple inside template
+#4 uses comma separators between its three sub-fields, then a semicolon
+before `evidence=`. The `; skipping` suffix on template #5 and the
+`> 5 justified — ` separator on template #6 are also mandatory byte-exact.
 
 ### 2.2 Cross-audit evidence footer
 
