@@ -17,7 +17,7 @@ banner.
 
 ### Caveman activation in this flow
 
-Caveman compression is mandatory in this flow regardless of the per-project `/caveman off` suspend flag (per `skills/caveman/SKILL.md` §1 imperative #8). The wire prefix `[COMPRESSION:terse]` MUST be prepended to every subagent Task description and to every Codex MCP `developer-instructions:` field within this flow. Machine-output payloads (haiku scorer JSON, `render_findings` / `dedupe_findings` IO, parser inputs) are exempt per `skills/caveman/SKILL.md` §8.
+Caveman compression is mandatory in this flow regardless of the per-project `/caveman off` suspend flag (per `skills/caveman/SKILL.md` §1, imperative #8). The wire prefix `[COMPRESSION:terse]` MUST be prepended to every subagent Task description and to every Codex MCP `developer-instructions:` field within this flow. Machine-output payloads (haiku scorer JSON, `render_findings` / `dedupe_findings` IO, parser inputs) are exempt per `skills/caveman/SKILL.md` §8.
 
 ## When to use
 
