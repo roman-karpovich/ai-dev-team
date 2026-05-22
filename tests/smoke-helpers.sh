@@ -8330,6 +8330,61 @@ check_caveman_skill_parser_anchors_literal() {
   echo "SKILL.md never-compress list cites every spec §2.2 parser-anchor literal"
 }
 
+check_caveman_log_marker_canonical_form() {
+  # Scope strictly to §2.1 — the §2.x neighbours (banner blocks at §2.3,
+  # cross-audit footer at §2.2, etc.) legitimately contain other byte
+  # literals that would confuse the assertions below. The standard
+  # `extract_md_section` helper at smoke.sh:113 terminates only on `^## `
+  # (H2) and would over-extract §2.1 through §2.6; we need an H3-aware
+  # terminator, hence the inline awk extractor.
+  local f="skills/caveman/SKILL.md" section literal neg
+  test -f "$f" || { echo "$f missing"; return 1; }
+  section=$(awk -v hdr="### 2.1 Log markers — the Continue-mode dispatch keys" '
+    !in_s && $0 == hdr { in_s = 1; print; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$f")
+  if [ -z "$section" ]; then
+    echo "$f: §2.1 Log markers section missing or empty"
+    return 1
+  fi
+  # Positive assertions — each of the 12 distinguishing byte-literal
+  # sequences from the 6 canonical templates (spec §3.3 / §3.4 #1-#8)
+  # MUST appear within §2.1.
+  for literal in \
+    'spec_audit_iteration=' \
+    'code audit iteration=' \
+    'code audit decisions recorded; iteration=' \
+    'code audit passed; iteration=' \
+    'code audit: no auditable files in diff; skipping' \
+    'audit iteration > 5 justified' \
+    'verified=[...], accepted=[...], deferred=[...]' \
+    '; evidence=' \
+    '; blockers=[' \
+    'pending_fixed=[' \
+    'pending_accepted=[' \
+    'pending_deferred=['
+  do
+    if ! printf "%s" "$section" | grep -qF -- "$literal"; then
+      echo "FAIL_MISSING_CANONICAL:$literal"
+      return 1
+    fi
+  done
+  # Negative assertions — obsolete drift forms MUST NOT appear in §2.1.
+  # Note: `audit iteration > 5` (cap-escape) is explicitly allowed via the
+  # positive list above; the forbidden form is the literal `<N>` / `<M>`
+  # placeholder shape that no current producer or consumer uses.
+  if printf "%s" "$section" | grep -qF -- 'audit iteration <N>'; then
+    echo "FAIL_DRIFT_SPACE_FORM:audit iteration <N>"
+    return 1
+  fi
+  if printf "%s" "$section" | grep -qF -- 'attempt-<M>'; then
+    echo "FAIL_DRIFT_ATTEMPT_FORM:attempt-<M>"
+    return 1
+  fi
+  echo "SKILL.md §2.1 lists all 6 canonical Log-marker templates byte-exact"
+}
+
 check_caveman_skill_uncertainty_invariant_present() {
   # X3: section-scope the assertion to ## 3. so that deleting the §3 body
   # cannot pass via frontmatter / Quick-reference satisfaction.
