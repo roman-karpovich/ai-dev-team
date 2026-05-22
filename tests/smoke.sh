@@ -6122,6 +6122,7 @@ check "caveman-skill-uncertainty-invariant-present" check_caveman_skill_uncertai
 check "caveman-skill-wire-prefix-present"        check_caveman_skill_wire_prefix_present
 check "caveman-skill-artifact-boundary-present"  check_caveman_skill_artifact_boundary_present
 check "caveman-command-semantics-documented"     check_caveman_command_semantics_documented
+check "caveman-in-flow-activation-documented"    check_caveman_in_flow_activation_documented
 echo
 
 

@@ -269,6 +269,7 @@ check_caveman_skill_uncertainty_invariant_present prompt-text
 check_caveman_skill_wire_prefix_present prompt-text
 check_caveman_skill_artifact_boundary_present prompt-text
 check_caveman_command_semantics_documented prompt-text
+check_caveman_in_flow_activation_documented prompt-text
 
 # smoke-harness self-protection: static lint scanning ALL shell scripts in
 # the repo (tests/smoke.sh, tests/smoke-helpers.sh, hooks/lib/*.sh) for

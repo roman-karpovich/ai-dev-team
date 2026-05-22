@@ -8550,3 +8550,97 @@ check_caveman_command_semantics_documented() {
   done
   echo "commands/caveman.md documents on/off/status with shared resolver, mkdir -p, rm -f, 5 YAML fields, conditional flag-check, per-subcommand plugin-manifest lookup"
 }
+
+# --- Caveman in-flow mandatory activation + machine-output precedence ---
+# (spec 2026-05-22-caveman-in-flow-mandatory-activation)
+# 9 assertions / 23 named FAIL tokens per spec §3.10 contract.
+
+check_caveman_in_flow_activation_documented() {
+  local skill="skills/caveman/SKILL.md"
+  local inj="skills/caveman/SESSION-INJECTION.md"
+  local inv="agents/investigator.md"
+  local cmd="commands/caveman.md"
+  local f section6 section7
+
+  for f in "$skill" "$inj" "$inv" "$cmd" \
+           skills/feature/SKILL.md skills/cross-audit/SKILL.md \
+           skills/investigate/SKILL.md skills/research/SKILL.md; do
+    test -f "$f" || { echo "$f missing"; return 1; }
+  done
+
+  # Assertion #1 — §1 imperative #8 + /research exempt literal
+  grep -qF "mandatory regardless of the per-project suspend flag" "$skill" \
+    || { echo "FAIL_MISSING_S1_IMPERATIVE_8"; return 1; }
+  grep -qF "/research is exempt" "$skill" \
+    || { echo "FAIL_MISSING_S1_RESEARCH_EXEMPT"; return 1; }
+
+  # Assertion #2 — §6 positive literals (extract §6 body to scope assertions)
+  section6=$(extract_md_section "$skill" '## 6. Suspend toggle — `/caveman off`')
+  printf '%s' "$section6" | grep -qF "Flow skills override the suspend flag." \
+    || { echo "FAIL_MISSING_S6_OVERRIDE_LITERAL"; return 1; }
+  printf '%s' "$section6" | grep -qF "ad-hoc session needs verbose output" \
+    || { echo "FAIL_MISSING_S6_AD_HOC_QUALIFIER"; return 1; }
+
+  # Assertion #3 — §7 cross-reference to §8 (scoped to §7 body)
+  section7=$(extract_md_section "$skill" '## 7. Quick reference')
+  printf '%s' "$section7" | grep -qF "see §8" \
+    || { echo "FAIL_MISSING_S7_CROSSREF"; return 1; }
+
+  # Assertion #4 — §8 heading + key literals
+  grep -qF "## 8. Machine-output precedence — payloads exempt" "$skill" \
+    || { echo "FAIL_MISSING_S8_HEADING"; return 1; }
+  grep -qF "hooks/lib/render_findings.sh" "$skill" \
+    || { echo "FAIL_MISSING_S8_RENDER_FINDINGS"; return 1; }
+  grep -qF "hooks/lib/dedupe_findings.sh" "$skill" \
+    || { echo "FAIL_MISSING_S8_DEDUPE_FINDINGS"; return 1; }
+  grep -qF "haiku-finding-scorer" "$skill" \
+    || { echo "FAIL_MISSING_S8_HAIKU_SCORER"; return 1; }
+  grep -qF "check_dispatch_response.py" "$skill" \
+    || { echo "FAIL_MISSING_S8_DISPATCH_PARSER"; return 1; }
+
+  # Assertion #5 — SESSION-INJECTION.md new paragraph + machine-output literal
+  grep -qF "Inside \`/feature\`, \`/cross-audit\`, \`/investigate\` flows, compression is **mandatory**" "$inj" \
+    || { echo "FAIL_SESSION_INJECTION_MISSING_PARAGRAPH"; return 1; }
+  grep -qF "Machine-output payloads" "$inj" \
+    || { echo "FAIL_SESSION_INJECTION_MISSING_MACHINE_OUTPUT"; return 1; }
+
+  # Assertion #6 — 3 flow skills carry the heading + literals
+  local fs
+  for fs in skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/investigate/SKILL.md; do
+    grep -qF "### Caveman activation in this flow" "$fs" \
+      || { echo "FAIL_FLOW_SKILL_MISSING_HEADING:$fs"; return 1; }
+    grep -qF "mandatory in this flow regardless" "$fs" \
+      || { echo "FAIL_FLOW_SKILL_MISSING_MANDATORY_LITERAL:$fs"; return 1; }
+    grep -qF "[COMPRESSION:terse]" "$fs" \
+      || { echo "FAIL_FLOW_SKILL_MISSING_WIRE_PREFIX_LITERAL:$fs"; return 1; }
+  done
+
+  # Assertion #7 — /research carve-out: heading must NOT appear
+  if grep -qF "### Caveman activation in this flow" skills/research/SKILL.md; then
+    echo "FAIL_RESEARCH_LEAKED_CAVEMAN_BLOCK"
+    return 1
+  fi
+
+  # Assertion #8 — investigator MCP unconditional wire-prefix block;
+  # obsolete flag-conditional draft language must be absent.
+  grep -qF "invoked from \`/investigate\` flow context" "$inv" \
+    || { echo "FAIL_INVESTIGATOR_MISSING_FLOW_CONTEXT"; return 1; }
+  grep -qF "unconditionally" "$inv" \
+    || { echo "FAIL_INVESTIGATOR_MISSING_UNCONDITIONAL"; return 1; }
+  grep -qF "Apply ai-dev-team caveman compression rules to your output" "$inv" \
+    || { echo "FAIL_INVESTIGATOR_MISSING_WIRE_PREFIX_BODY"; return 1; }
+  grep -qF "[COMPRESSION:terse]" "$inv" \
+    || { echo "FAIL_INVESTIGATOR_MISSING_WIRE_PREFIX_LITERAL"; return 1; }
+  if grep -qF "When caveman is active for the session" "$inv"; then
+    echo "FAIL_INVESTIGATOR_OBSOLETE_CONDITIONAL_BLOCK"
+    return 1
+  fi
+
+  # Assertion #9 — /caveman status ACTIVE + SUSPENDED wording
+  grep -qF "/feature, /cross-audit, /investigate flows ALWAYS apply compression" "$cmd" \
+    || { echo "FAIL_STATUS_ACTIVE_WORDING_MISSING"; return 1; }
+  grep -qF "still apply compression (flag override)" "$cmd" \
+    || { echo "FAIL_STATUS_SUSPENDED_WORDING_MISSING"; return 1; }
+
+  echo "caveman in-flow mandatory activation + machine-output precedence documented across SKILL.md / SESSION-INJECTION.md / 3 flow skills / investigator.md / commands/caveman.md (research carve-out enforced)"
+}
