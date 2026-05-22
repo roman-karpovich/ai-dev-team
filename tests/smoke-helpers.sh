@@ -8560,7 +8560,7 @@ check_caveman_in_flow_activation_documented() {
   local inj="skills/caveman/SESSION-INJECTION.md"
   local inv="agents/investigator.md"
   local cmd="commands/caveman.md"
-  local f section6 section7
+  local f section6 section7 section8
 
   for f in "$skill" "$inj" "$inv" "$cmd" \
            skills/feature/SKILL.md skills/cross-audit/SKILL.md \
@@ -8586,16 +8586,17 @@ check_caveman_in_flow_activation_documented() {
   printf '%s' "$section7" | grep -qF "see §8" \
     || { echo "FAIL_MISSING_S7_CROSSREF"; return 1; }
 
-  # Assertion #4 — §8 heading + key literals
-  grep -qF "## 8. Machine-output precedence — payloads exempt" "$skill" \
+  # Assertion #4 — §8 heading + key literals (scoped to §8 body)
+  section8=$(extract_md_section "$skill" '## 8. Machine-output precedence — payloads exempt')
+  test -n "$section8" \
     || { echo "FAIL_MISSING_S8_HEADING"; return 1; }
-  grep -qF "hooks/lib/render_findings.sh" "$skill" \
+  printf '%s' "$section8" | grep -qF "hooks/lib/render_findings.sh" \
     || { echo "FAIL_MISSING_S8_RENDER_FINDINGS"; return 1; }
-  grep -qF "hooks/lib/dedupe_findings.sh" "$skill" \
+  printf '%s' "$section8" | grep -qF "hooks/lib/dedupe_findings.sh" \
     || { echo "FAIL_MISSING_S8_DEDUPE_FINDINGS"; return 1; }
-  grep -qF "haiku-finding-scorer" "$skill" \
+  printf '%s' "$section8" | grep -qF "haiku-finding-scorer" \
     || { echo "FAIL_MISSING_S8_HAIKU_SCORER"; return 1; }
-  grep -qF "check_dispatch_response.py" "$skill" \
+  printf '%s' "$section8" | grep -qF "check_dispatch_response.py" \
     || { echo "FAIL_MISSING_S8_DISPATCH_PARSER"; return 1; }
 
   # Assertion #5 — SESSION-INJECTION.md new paragraph + machine-output literal
