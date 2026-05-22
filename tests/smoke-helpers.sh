@@ -8301,8 +8301,8 @@ check_caveman_skill_parser_anchors_literal() {
   local f="skills/caveman/SKILL.md" missing="" anchor
   test -f "$f" || { echo "$f missing"; return 1; }
   for anchor in \
-    'spec audit iteration' \
-    'code audit iteration' \
+    'spec_audit_iteration=' \
+    'code audit iteration=' \
     'code audit passed' \
     'code audit decisions recorded' \
     'code audit: no auditable files in diff' \
