@@ -54,8 +54,21 @@ Generate a thorough position on the topic:
 Call Codex via MCP. **Preserve threadId across rounds** for conversation continuity.
 
 **Round 1** — use `mcp__codex__codex`:
+
+The investigator agent is invoked from `/investigate` flow context (mandatory-in-flow per `skills/caveman/SKILL.md` §1 imperative #8). Prepend the `[COMPRESSION:terse]` wire-prefix block to `developer-instructions:` **unconditionally** — the per-project `/caveman off` flag does not apply within flow context. The Round-1 `mcp__codex__codex` `developer-instructions:` payload becomes:
+
+```
+[COMPRESSION:terse]
+Apply ai-dev-team caveman compression rules to your output.
+See: skills/caveman/SKILL.md
+
+You are participating in an adversarial technical debate. Your role is CRITIC and CHALLENGER. Find flaws, challenge assumptions, propose alternatives, identify missed risks. Be specific. Acknowledge good points. Structure response as: AGREEMENTS, CHALLENGES, ALTERNATIVES, RISKS, QUESTIONS.
+```
+
+The flag-conditional branches that an earlier draft contemplated are removed — the flow-mandatory rule supersedes flag-state for investigator-spawned MCP calls.
+
 - **prompt**: Include your full position and ask Codex to critique it
-- **developer-instructions**: "You are participating in an adversarial technical debate. Your role is CRITIC and CHALLENGER. Find flaws, challenge assumptions, propose alternatives, identify missed risks. Be specific. Acknowledge good points. Structure response as: AGREEMENTS, CHALLENGES, ALTERNATIVES, RISKS, QUESTIONS."
+- **developer-instructions**: the wire-prefix block above prepended to the adversarial-critic instructions
 - **model**: omit — uses default from `~/.codex/config.toml`
 - **sandbox**: "read-only"
 - **cwd**: current working directory (if codebase_context)

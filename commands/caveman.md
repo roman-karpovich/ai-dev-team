@@ -150,13 +150,16 @@ flag=$(caveman_flag_path)
 hash=$(basename "$flag" .flag)
 
 if [ -f "$flag" ]; then
-  echo "caveman: SUSPENDED"
+  echo "caveman: SUSPENDED for ad-hoc and /research sessions"
+  echo "  scope: /feature, /cross-audit, /investigate flows still apply compression (flag override)"
   echo "  flag : $flag"
   echo "  hash : $hash"
   echo "  meta :"
   sed 's/^/    /' "$flag"
 else
-  echo "caveman: ACTIVE (default — no flag file present)"
+  echo "caveman: ACTIVE (project default — no flag file present)"
+  echo "  scope: /feature, /cross-audit, /investigate flows ALWAYS apply compression"
+  echo "  scope: /research and ad-hoc sessions honor this flag"
   echo "  flag : $flag"
   echo "  hash : $hash"
 fi
