@@ -143,10 +143,10 @@ Anything matching a §2 anchor literal MUST survive byte-exact. File-path format
 Caveman §3 invariant: hedging is load-bearing, NOT decoration. Non-decreasing count against pre-edit baseline. Canonical command (per spec §3.6a — bare `|` under `-E`, NOT `\|`; `\|` under ERE is a literal pipe character + the regex never matches):
 
 ```bash
-grep -Eow 'may|might|could|should|possibly|likely|probably|apparently|approximate|roughly|around|uncertain|unclear|unconfirmed' "$file" | wc -l
+grep -Eowi 'may|might|could|should|possibly|likely|probably|apparently|approximate|roughly|around|uncertain|unclear|unconfirmed' "$file" | wc -l
 ```
 
-`wc -l` counts OCCURRENCES — two markers on one line count as 2, not 1. A sentence like "this might fail under heavy load" MUST NOT compress to "this fails under heavy load" — the hedging is the load-bearing content.
+Case-insensitive (`-i`) deliberate — sentence-initial capitalization (`Probably`, `Should`, `Likely`, `Apparently`, `Could`) is normal compression outcome and MUST count. `wc -l` counts OCCURRENCES — two markers on one line count as 2, not 1. A sentence like "this might fail under heavy load" MUST NOT compress to "this fails under heavy load" — the hedging is the load-bearing content.
 
 ### 3. Structure untouched
 
