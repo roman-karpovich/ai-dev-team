@@ -8441,3 +8441,11 @@ check_caveman_in_flow_activation_documented() {
 
   echo "caveman in-flow mandatory activation + machine-output precedence documented across SKILL.md / SESSION-INJECTION.md / 4 flow skills / investigator.md (always-on, no toggle)"
 }
+
+check_kb_authoring_convention_wired() {
+  grep -qE '^## 8\. ' "$PLUGIN_ROOT/skills/caveman/SKILL.md" \
+    && [ -s "$PLUGIN_ROOT/skills/feature/references/kb-authoring-style.md" ] \
+    && [ "$(wc -l < "$PLUGIN_ROOT/skills/feature/references/kb-authoring-style.md")" -ge 30 ] \
+    && awk '/^### Step 3 — Create/,/^### Step 4/' "$PLUGIN_ROOT/skills/research/SKILL.md" | grep -qF 'kb-authoring-style.md' \
+    && awk '/^You \(the feature skill orchestrator\) write both/,/^\*\*Spec\*\*: create at/' "$PLUGIN_ROOT/skills/feature/SKILL.md" | grep -qF 'kb-authoring-style.md'
+}
