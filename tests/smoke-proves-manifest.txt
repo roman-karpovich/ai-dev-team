@@ -258,6 +258,14 @@ check_r15_present_in_code_quality_rules schema
 check_dispatch_response_classification behavioral
 check_dispatch_response_violation_blocker_mapping behavioral
 
+# Caveman compression skill (spec 2026-05-20-caveman-compression-skill)
+check_caveman_skill_parser_anchors_literal prompt-text
+check_caveman_log_marker_canonical_form prompt-text
+check_caveman_skill_uncertainty_invariant_present prompt-text
+check_caveman_skill_wire_prefix_present prompt-text
+check_caveman_skill_artifact_boundary_present prompt-text
+check_caveman_in_flow_activation_documented prompt-text
+
 # smoke-harness self-protection: static lint scanning ALL shell scripts in
 # the repo (tests/smoke.sh, tests/smoke-helpers.sh, hooks/lib/*.sh) for
 # unguarded / path-appended mktemp (the X1/X7 destructive rm-rf class)

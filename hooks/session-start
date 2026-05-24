@@ -45,6 +45,13 @@ escape_for_json() {
 # Others / Copilot CLI — emit additionalContext (SDK standard).
 if detect_ai_dev_team_signal; then
   session_context_raw=$(cat "${SCRIPT_DIR}/session-prompt.md")
+
+  # Caveman compression: always-inject for ai-dev-team-signalled projects.
+  caveman_injection="${PLUGIN_ROOT}/skills/caveman/SESSION-INJECTION.md"
+  if [ -f "$caveman_injection" ]; then
+    session_context_raw="${session_context_raw}"$'\n\n'"$(cat "$caveman_injection")"
+  fi
+
   session_context=$(escape_for_json "$session_context_raw")
   if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
     printf '{\n  "additional_context": "%s"\n}\n' "$session_context"

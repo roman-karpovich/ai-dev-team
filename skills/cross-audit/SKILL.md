@@ -14,6 +14,10 @@ User-input prompt presentation in this skill follows the banner
 convention in `docs/user-input-banner-convention.md` — the per-finding
 decision fork in Phase 3 carries the `AWAITING YOUR INPUT` banner.
 
+### Caveman activation in this flow
+
+Caveman compression is mandatory in this flow. The wire prefix `[COMPRESSION:terse]` MUST be prepended to every subagent Task description and to every Codex MCP `developer-instructions:` field within this flow. Machine-output payloads (haiku scorer JSON, `render_findings` / `dedupe_findings` IO, parser inputs) are exempt per `skills/caveman/SKILL.md` §7.
+
 ## Argument Parsing
 
 **Re-audit detection**: if `$ARGUMENTS` matches `*-findings.md` AND the file exists on disk → **re-audit iteration**. If it looks like a path but doesn't exist → error out and ask the user. Otherwise → **new audit**.
