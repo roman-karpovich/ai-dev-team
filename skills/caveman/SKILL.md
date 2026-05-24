@@ -144,6 +144,7 @@ structure. Specifically:
 |------------------|-----------|
 | Free-prose paragraphs in §Context, §Design, §Log, §Notes | YES |
 | Bullet-list narrative items | YES (drop articles, shorten clauses) |
+| Commit-message titles (git) | YES on subject prose; NO on conventional-commit prefix `<type>(<scope>):` structure |
 | YAML frontmatter keys + values | NO — structure-preserved |
 | Workdoc Planned-block keys (`allowed_scope:` etc.) | NO |
 | Spec §5 Implementation Checklist line literals | NO |
@@ -156,6 +157,13 @@ The rule of thumb: if a parser, smoke pin, or downstream skill grep-Fs the
 content, treat it as structure and leave it alone. If a human reads it
 narratively, compress the prose while preserving the YAML / markdown
 frontmatter scaffolding and bullet-list shape.
+
+Commit-message subjects are agent-authored free prose — under caveman they
+drop articles + filler like any other narrative bullet. The conventional-
+commit prefix `<type>(<scope>): ` is parser-anchored (consumed by
+`.github/release.yml` + the `pr-auto-label` workflow per CLAUDE.md §Contribution
+flow) and stays byte-exact — `feat:`, `feat(scope):`, `fix:`, `chore:` etc.
+keep their colon, parentheses, and surrounding whitespace.
 
 ## 6. Quick reference
 
