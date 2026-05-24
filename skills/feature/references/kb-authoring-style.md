@@ -32,28 +32,28 @@ Three good/bad pairs. Same content. Prose-heavy form vs caveman-style form. Anch
 Bad (prose-heavy):
 
 ```markdown
-On 2026-04-20 we ran into an issue where the developer-middle agent was
-still being referenced by some operational tokens in the codebase even
-though the file itself had been deleted. The cross-auditor agent flagged
-this as a HIGH finding (X10) because the grep for `developer-middle` was
-using `\|` under `-E` which, as it turns out, is a literal pipe character
-under ERE rather than the alternation operator. This means the regex
-probably never matched anything at all, so the check was effectively a
-no-op. We should probably treat this as a class regression and add an
-institutional-memory comment near the fix.
+On 2026-04-20 we ran into an issue where one of the legacy helper greps
+was still being referenced by some operational tokens in the codebase
+even though the file itself had been deleted. The cross-auditor agent
+flagged this as a HIGH finding (X10) because the grep was using a
+backslash-pipe under `-E` which, as it turns out, is a literal pipe
+character under ERE rather than the alternation operator. This means
+the regex probably never matched anything at all, so the check was
+effectively a no-op. We should probably treat this as a class regression
+and add an institutional-memory comment near the fix.
 ```
 
 Good (caveman-style, same content):
 
 ```markdown
-2026-04-20 — developer-middle still referenced by operational tokens
-post file deletion. Cross-auditor flagged HIGH (X10): grep used `\|`
-under `-E` — literal pipe under ERE, not alternation. Regex probably
-never matched; check effectively no-op. Should treat as class regression;
-add institutional-memory comment near fix.
+2026-04-20 — legacy helper grep still referenced by operational tokens
+post file deletion. Cross-auditor flagged HIGH (X10): grep used
+backslash-pipe under `-E` — literal pipe under ERE, not alternation.
+Regex probably never matched; check effectively no-op. Should treat as
+class regression; add institutional-memory comment near fix.
 ```
 
-Anchors preserved: `developer-middle`, `X10`, `\|`, `-E`, `ERE`, `2026-04-20`. Hedging preserved: `probably`, `should`, `effectively`.
+Anchors preserved: `X10`, `-E`, `ERE`, `2026-04-20`. Hedging preserved: `probably`, `should`, `effectively`.
 
 ### Example 2 — spec Design subsection
 
