@@ -8172,3 +8172,272 @@ check_all_shell_scripts_mktemp_lint_self_test() {
 
   echo "mktemp lint self-test: every X9 + X12 + X14 + X15 + X16 evading shape flagged (X14 = appended-segment structural defense regardless of prefix/guard + extended unguarded prefix vocabulary; X15 = simple-command guard discipline rejecting pipeline/background false guards; X16 = shell-comment stripping rejecting comment-as-guard); clean controls pass (incl. x14-env-guarded and x16-real-guard-with-trailing-comment); X13 z_postcheck dialect accepts the multi-line [ -z ] idiom only when the variable name matches the assign LHS; scope enumeration includes tests/smoke.sh"
 }
+
+# --- Caveman compression skill (spec 2026-05-20-caveman-compression-skill) ---
+# 9 pins. 4 behavioral (helper sourceable + hash correctness + active-default
+# injection + suspended branch), 5 prompt-text (parser-anchor literals,
+# uncertainty invariant proximity, wire-prefix proximity, artifact boundary
+# proximity, slash-command semantics).
+
+check_caveman_skill_parser_anchors_literal() {
+  local f="skills/caveman/SKILL.md" missing="" anchor
+  test -f "$f" || { echo "$f missing"; return 1; }
+  for anchor in \
+    'spec_audit_iteration=' \
+    'code audit iteration=' \
+    'code audit passed' \
+    'code audit decisions recorded' \
+    'code audit: no auditable files in diff' \
+    '# CROSS-AUDIT EVIDENCE FOOTER' \
+    'evidence_class:' \
+    'evidence_blockers:' \
+    '## ⏸ AWAITING YOUR INPUT' \
+    '## ⏸ APPROVAL REQUIRED' \
+    '@codex' \
+    '@senior' \
+    'X<N>' \
+    '- [ ] Step N:' \
+    'allowed_scope:' \
+    'failing_test_cmd:' \
+    'expected_failure_pattern:' \
+    'expected_pass_pattern:' \
+    'passing_test_cmd:'
+  do
+    grep -qF -- "$anchor" "$f" || missing="$missing|$anchor"
+  done
+  if [ -n "$missing" ]; then
+    echo "$f missing parser-anchor literals: $missing"
+    return 1
+  fi
+  echo "SKILL.md never-compress list cites every spec §2.2 parser-anchor literal"
+}
+
+check_caveman_log_marker_canonical_form() {
+  # Scope strictly to §2.1 — the §2.x neighbours (banner blocks at §2.3,
+  # cross-audit footer at §2.2, etc.) legitimately contain other byte
+  # literals that would confuse the assertions below. The standard
+  # `extract_md_section` helper at smoke.sh:113 terminates only on `^## `
+  # (H2) and would over-extract §2.1 through §2.6; we need an H3-aware
+  # terminator, hence the inline awk extractor.
+  local f="skills/caveman/SKILL.md" section literal neg
+  test -f "$f" || { echo "$f missing"; return 1; }
+  section=$(awk -v hdr="### 2.1 Log markers — the Continue-mode dispatch keys" '
+    !in_s && $0 == hdr { in_s = 1; print; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$f")
+  if [ -z "$section" ]; then
+    echo "$f: §2.1 Log markers section missing or empty"
+    return 1
+  fi
+  # Positive assertions — each of the 12 distinguishing byte-literal
+  # sequences from the 6 canonical templates (spec §3.3 / §3.4 #1-#8)
+  # MUST appear within §2.1.
+  for literal in \
+    'spec_audit_iteration=' \
+    'code audit iteration=' \
+    'code audit decisions recorded; iteration=' \
+    'code audit passed; iteration=' \
+    'code audit: no auditable files in diff; skipping' \
+    'audit iteration > 5 justified' \
+    'verified=[...], accepted=[...], deferred=[...]' \
+    '; evidence=' \
+    '; blockers=[' \
+    'pending_fixed=[' \
+    'pending_accepted=[' \
+    'pending_deferred=['
+  do
+    if ! printf "%s" "$section" | grep -qF -- "$literal"; then
+      echo "FAIL_MISSING_CANONICAL:$literal"
+      return 1
+    fi
+  done
+  # Negative assertions — obsolete drift forms MUST NOT appear in §2.1.
+  # Note: `audit iteration > 5` (cap-escape) is explicitly allowed via the
+  # positive list above; the forbidden form is the literal `<N>` / `<M>`
+  # placeholder shape that no current producer or consumer uses.
+  if printf "%s" "$section" | grep -qF -- 'audit iteration <N>'; then
+    echo "FAIL_DRIFT_SPACE_FORM:audit iteration <N>"
+    return 1
+  fi
+  if printf "%s" "$section" | grep -qF -- 'attempt-<M>'; then
+    echo "FAIL_DRIFT_ATTEMPT_FORM:attempt-<M>"
+    return 1
+  fi
+  echo "SKILL.md §2.1 lists all 6 canonical Log-marker templates byte-exact"
+}
+
+check_caveman_skill_uncertainty_invariant_present() {
+  # X3: section-scope the assertion to ## 3. so that deleting the §3 body
+  # cannot pass via frontmatter / Quick-reference satisfaction.
+  local f="skills/caveman/SKILL.md" section literal
+  test -f "$f" || { echo "$f missing"; return 1; }
+  section=$(extract_md_section "$f" '## 3. Uncertainty-preservation invariant')
+  if [ -z "$section" ]; then
+    echo "$f: ## 3. Uncertainty-preservation invariant section missing or empty"
+    return 1
+  fi
+  # Load-bearing marker classes (frontmatter + Quick-ref do NOT contain these).
+  for literal in \
+    'Modal verbs' \
+    'hedging adverbs' \
+    'tentative qualifiers' \
+    'explicit confidence markers' \
+    'this might fail under heavy load' \
+    'flat assertion'
+  do
+    if ! printf '%s' "$section" | grep -qF -- "$literal"; then
+      echo "$f §3 missing load-bearing literal: $literal"
+      return 1
+    fi
+  done
+  # Goodhart-proof rule co-occurrence: 'Goodhart' and 'flat assertion' both in §3.
+  if ! printf '%s' "$section" | grep -qF -- 'Goodhart'; then
+    echo "$f §3 missing 'Goodhart' rule sentence"
+    return 1
+  fi
+  echo "SKILL.md §3 uncertainty invariant: marker classes + negative example + Goodhart rule all present"
+}
+
+check_caveman_skill_wire_prefix_present() {
+  local f="skills/caveman/SKILL.md" body
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF '[COMPRESSION:terse]' "$f" || { echo "$f missing [COMPRESSION:terse] wire-prefix literal"; return 1; }
+  # Assert co-occurrence with wire|subagent within 200 bytes of the prefix.
+  # Use python3 for robust window scan (Bash-3.2 safe).
+  if ! python3 - "$f" <<'PY'
+import sys, re
+path = sys.argv[1]
+data = open(path, 'rb').read().decode('utf-8', errors='replace')
+needle = '[COMPRESSION:terse]'
+hits = [m.start() for m in re.finditer(re.escape(needle), data)]
+ok = False
+for h in hits:
+    window = data[max(0, h-200):min(len(data), h+200+len(needle))]
+    if re.search(r'wire|subagent', window, flags=re.IGNORECASE):
+        ok = True
+        break
+sys.exit(0 if ok else 1)
+PY
+  then
+    echo "$f: [COMPRESSION:terse] not within 200 bytes of 'wire' or 'subagent'"
+    return 1
+  fi
+  echo "SKILL.md wire prefix [COMPRESSION:terse] documented in wire/subagent context"
+}
+
+check_caveman_skill_artifact_boundary_present() {
+  # X4: section-scope the assertion to ## 5. so frontmatter / Quick-reference
+  # cannot satisfy it by themselves. Assert each table row's left-column
+  # literal co-occurs with its YES/NO classification on the same line.
+  local f="skills/caveman/SKILL.md" section pattern
+  test -f "$f" || { echo "$f missing"; return 1; }
+  section=$(extract_md_section "$f" '## 5. Artifact compression boundary — prose vs structure')
+  if [ -z "$section" ]; then
+    echo "$f: ## 5. Artifact compression boundary section missing or empty"
+    return 1
+  fi
+  # Per-row regex: left-column literal ... pipe ... classification literal.
+  # Patterns are extended-regex; characters that look magic in ERE are escaped
+  # where it matters (parentheses, dot). Each pattern must match on a single line.
+  for pattern in \
+    'Free-prose paragraphs.*\|.*YES' \
+    'Bullet-list narrative items.*\|.*YES \(drop articles, shorten clauses\)' \
+    'YAML frontmatter.*\|.*NO' \
+    'Workdoc Planned-block keys.*\|.*NO' \
+    'Spec .*Implementation Checklist.*\|.*NO' \
+    'Code blocks.*\|.*NO' \
+    'Tables.*\|.*YES on cell prose.*NO on column structure' \
+    'Banner blocks.*\|.*NO' \
+    'EVIDENCE FOOTER.*\|.*NO'
+  do
+    if ! printf '%s' "$section" | grep -qE -- "$pattern"; then
+      echo "$f §5 missing table row matching: $pattern"
+      return 1
+    fi
+  done
+  # Rule-of-thumb sentence: parser/smoke-pin grep-Fs the content → treat as structure.
+  if ! printf '%s' "$section" | grep -qF -- 'rule of thumb'; then
+    echo "$f §5 missing 'rule of thumb' sentence"
+    return 1
+  fi
+  if ! printf '%s' "$section" | grep -qE -- 'parser.*smoke.*grep|smoke.*pin.*grep'; then
+    echo "$f §5 'rule of thumb' missing parser/smoke-pin grep semantics"
+    return 1
+  fi
+  echo "SKILL.md §5 artifact-boundary: 9 table rows (left literal + YES/NO) + rule-of-thumb sentence all present"
+}
+
+# --- Caveman in-flow mandatory activation + machine-output precedence ---
+# (spec 2026-05-22-caveman-in-flow-mandatory-activation)
+# Post-strip 2026-05-24: toggle infrastructure removed; helper enforces always-on
+# semantics across SKILL.md / SESSION-INJECTION.md / 4 flow skills / investigator.md.
+
+check_caveman_in_flow_activation_documented() {
+  local skill="skills/caveman/SKILL.md"
+  local inj="skills/caveman/SESSION-INJECTION.md"
+  local inv="agents/investigator.md"
+  local f section6 section7
+
+  for f in "$skill" "$inj" "$inv" \
+           skills/feature/SKILL.md skills/cross-audit/SKILL.md \
+           skills/investigate/SKILL.md skills/research/SKILL.md; do
+    test -f "$f" || { echo "$f missing"; return 1; }
+  done
+
+  # Assertion #1 — §1 imperative #8 simplified (always-active language)
+  grep -qF "Caveman compression is always active." "$skill" \
+    || { echo "FAIL_MISSING_S1_IMPERATIVE_8"; return 1; }
+
+  # Assertion #2 — §6 Quick reference (renumbered from §7) carries the see §7 cross-ref
+  section6=$(extract_md_section "$skill" '## 6. Quick reference')
+  printf '%s' "$section6" | grep -qF "see §7" \
+    || { echo "FAIL_MISSING_S6_CROSSREF"; return 1; }
+
+  # Assertion #3 — §7 Machine-output precedence heading + key literals (scoped to §7 body)
+  section7=$(extract_md_section "$skill" '## 7. Machine-output precedence — payloads exempt')
+  test -n "$section7" \
+    || { echo "FAIL_MISSING_S7_HEADING"; return 1; }
+  printf '%s' "$section7" | grep -qF "hooks/lib/render_findings.sh" \
+    || { echo "FAIL_MISSING_S7_RENDER_FINDINGS"; return 1; }
+  printf '%s' "$section7" | grep -qF "hooks/lib/dedupe_findings.sh" \
+    || { echo "FAIL_MISSING_S7_DEDUPE_FINDINGS"; return 1; }
+  printf '%s' "$section7" | grep -qF "haiku-finding-scorer" \
+    || { echo "FAIL_MISSING_S7_HAIKU_SCORER"; return 1; }
+  printf '%s' "$section7" | grep -qF "check_dispatch_response.py" \
+    || { echo "FAIL_MISSING_S7_DISPATCH_PARSER"; return 1; }
+
+  # Assertion #4 — SESSION-INJECTION.md mid-body paragraph + machine-output literal
+  grep -qF "Inside \`/feature\`, \`/cross-audit\`, \`/investigate\`, \`/research\` flows, compression is **mandatory**" "$inj" \
+    || { echo "FAIL_SESSION_INJECTION_MISSING_PARAGRAPH"; return 1; }
+  grep -qF "Machine-output payloads" "$inj" \
+    || { echo "FAIL_SESSION_INJECTION_MISSING_MACHINE_OUTPUT"; return 1; }
+
+  # Assertion #5 — 4 flow skills (now includes /research) carry the heading + literals
+  local fs
+  for fs in skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/investigate/SKILL.md skills/research/SKILL.md; do
+    grep -qF "### Caveman activation in this flow" "$fs" \
+      || { echo "FAIL_FLOW_SKILL_MISSING_HEADING:$fs"; return 1; }
+    grep -qF "Caveman compression is mandatory in this flow." "$fs" \
+      || { echo "FAIL_FLOW_SKILL_MISSING_MANDATORY_LITERAL:$fs"; return 1; }
+    grep -qF "[COMPRESSION:terse]" "$fs" \
+      || { echo "FAIL_FLOW_SKILL_MISSING_WIRE_PREFIX_LITERAL:$fs"; return 1; }
+  done
+
+  # Assertion #6 — investigator MCP unconditional wire-prefix block;
+  # obsolete flag-conditional draft language must be absent.
+  grep -qF "invoked from \`/investigate\` flow context" "$inv" \
+    || { echo "FAIL_INVESTIGATOR_MISSING_FLOW_CONTEXT"; return 1; }
+  grep -qF "unconditionally" "$inv" \
+    || { echo "FAIL_INVESTIGATOR_MISSING_UNCONDITIONAL"; return 1; }
+  grep -qF "Apply ai-dev-team caveman compression rules to your output" "$inv" \
+    || { echo "FAIL_INVESTIGATOR_MISSING_WIRE_PREFIX_BODY"; return 1; }
+  grep -qF "[COMPRESSION:terse]" "$inv" \
+    || { echo "FAIL_INVESTIGATOR_MISSING_WIRE_PREFIX_LITERAL"; return 1; }
+  if grep -qF "When caveman is active for the session" "$inv"; then
+    echo "FAIL_INVESTIGATOR_OBSOLETE_CONDITIONAL_BLOCK"
+    return 1
+  fi
+
+  echo "caveman in-flow mandatory activation + machine-output precedence documented across SKILL.md / SESSION-INJECTION.md / 4 flow skills / investigator.md (always-on, no toggle)"
+}

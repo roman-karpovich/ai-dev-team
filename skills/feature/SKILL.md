@@ -21,6 +21,10 @@ skill uses the generic `AWAITING YOUR INPUT` banner (or the
 `APPROVAL REQUIRED` variant for the HARD GATE); status updates do not
 carry the banner.
 
+### Caveman activation in this flow
+
+Caveman compression is mandatory in this flow. The wire prefix `[COMPRESSION:terse]` MUST be prepended to every subagent Task description and to every Codex MCP `developer-instructions:` field within this flow. Machine-output payloads (haiku scorer JSON, `render_findings` / `dedupe_findings` IO, parser inputs) are exempt per `skills/caveman/SKILL.md` §7.
+
 ## Modes
 
 Parse `$ARGUMENTS` to determine the mode:
