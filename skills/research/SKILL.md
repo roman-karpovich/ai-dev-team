@@ -76,6 +76,8 @@ Truncate the title portion to ~50 chars. If the resulting file already exists, a
 
 Target path: `<kb_path>/repos/<project>/research/<slug>.md`. Create the `research/` directory if missing.
 
+Authoring style: caveman-style per skills/caveman/SKILL.md §8 — see skills/feature/references/kb-authoring-style.md.
+
 Use the template from `references/research-template.md`. Frontmatter:
 
 ```yaml

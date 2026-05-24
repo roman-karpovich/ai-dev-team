@@ -110,6 +110,8 @@ Read both KB and codebase before writing anything:
 
 You (the feature skill orchestrator) write both artifacts directly.
 
+Authoring style: caveman-style per skills/caveman/SKILL.md §8 — see skills/feature/references/kb-authoring-style.md.
+
 **Spec**: create at `<kb_path>/repos/<project>/design/YYYY-MM-DD-<slug>.md`. Create the directory if it doesn't exist. Use the template from `references/spec-template.md`. Key sections:
 - **Context** — why this feature exists
 - **Current State** — how the system works today (reference KB pages and source files)

@@ -125,6 +125,17 @@ Before **every** `git commit`, run `git branch --show-current` and validate:
 
 Put this check into muscle memory: it is cheaper to switch branches than to rewrite history.
 
+### Commit-message style
+
+Commit titles are caveman-compressed per `skills/caveman/SKILL.md` §5 (artifact-compression boundary, "Commit-message titles" row). Drop articles + filler in the subject prose — `a`, `an`, `the`, `with`, `by`, `to`-purpose. Keep verbs, scope tags, anchor literals, finding IDs (`X<N>`), file basenames.
+
+The conventional-commit prefix `<type>(<scope>): ` stays byte-exact — `feat:` / `feat(scope):` / `fix:` / `chore:` etc. It is parser-anchored by `.github/release.yml` + the `pr-auto-label` workflow (CLAUDE.md §Contribution flow) and by R8 hygiene rules in `code-quality-rules.md`. Do not compress, abbreviate, or drop the colon / parentheses / leading space.
+
+Worked examples (verbose → caveman):
+
+- `feat(caveman): add §8 KB authoring convention reusing §2/§3 by reference` → `feat(caveman): §8 KB authoring convention; reuse §2/§3`
+- `fix(smoke): correct the failing_test_cmd to use a positive grep so RED is established` → `fix(smoke): failing_test_cmd positive grep; establish RED`
+
 ### Post-merge bug flow
 
 A bug found after a feature was merged to `main` does **not** authorise direct commits on `main`. Classify the situation and branch accordingly:

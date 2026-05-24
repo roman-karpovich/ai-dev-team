@@ -266,6 +266,9 @@ check_caveman_skill_wire_prefix_present prompt-text
 check_caveman_skill_artifact_boundary_present prompt-text
 check_caveman_in_flow_activation_documented prompt-text
 
+# KB authoring caveman convention (spec 2026-05-24-kb-authoring-caveman-convention)
+check_kb_authoring_convention_wired schema
+
 # smoke-harness self-protection: static lint scanning ALL shell scripts in
 # the repo (tests/smoke.sh, tests/smoke-helpers.sh, hooks/lib/*.sh) for
 # unguarded / path-appended mktemp (the X1/X7 destructive rm-rf class)
