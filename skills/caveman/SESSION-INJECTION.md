@@ -16,7 +16,4 @@ Apply the compression contract documented in `skills/caveman/SKILL.md`:
 - Compress artifact prose only; never touch artifact structure (YAML
   frontmatter, workdoc keys, checklist literals, code blocks).
 
-Inside `/feature`, `/cross-audit`, `/investigate` flows, compression is **mandatory** regardless of any `/caveman off` toggle (per SKILL.md §1 imperative #8). `/research` and ad-hoc sessions honor the toggle. Machine-output payloads (haiku scorer JSON, `render_findings` / `dedupe_findings` IO, parser inputs) are exempt per SKILL.md §8.
-
-To suspend caveman for this project, run `/caveman off`. To re-enable,
-run `/caveman on`. To inspect state, run `/caveman status`.
+Inside `/feature`, `/cross-audit`, `/investigate`, `/research` flows, compression is **mandatory**. Machine-output payloads (haiku scorer JSON, `render_findings` / `dedupe_findings` IO, parser inputs) are exempt per SKILL.md §7.

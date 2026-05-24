@@ -55,7 +55,7 @@ Call Codex via MCP. **Preserve threadId across rounds** for conversation continu
 
 **Round 1** — use `mcp__codex__codex`:
 
-The investigator agent is invoked from `/investigate` flow context (mandatory-in-flow per `skills/caveman/SKILL.md` §1 imperative #8). Prepend the `[COMPRESSION:terse]` wire-prefix block to `developer-instructions:` **unconditionally** — the per-project `/caveman off` flag does not apply within flow context. The Round-1 `mcp__codex__codex` `developer-instructions:` payload becomes:
+The investigator agent is invoked from `/investigate` flow context (mandatory-in-flow per `skills/caveman/SKILL.md` §1 imperative #8). Prepend the `[COMPRESSION:terse]` wire-prefix block to `developer-instructions:` **unconditionally** — caveman compression is always active per `skills/caveman/SKILL.md`. The Round-1 `mcp__codex__codex` `developer-instructions:` payload becomes:
 
 ```
 [COMPRESSION:terse]
@@ -65,7 +65,7 @@ See: skills/caveman/SKILL.md
 You are participating in an adversarial technical debate. Your role is CRITIC and CHALLENGER. Find flaws, challenge assumptions, propose alternatives, identify missed risks. Be specific. Acknowledge good points. Structure response as: AGREEMENTS, CHALLENGES, ALTERNATIVES, RISKS, QUESTIONS.
 ```
 
-The flag-conditional branches that an earlier draft contemplated are removed — the flow-mandatory rule supersedes flag-state for investigator-spawned MCP calls.
+The wire-prefix block is prepended on every investigator-spawned MCP call.
 
 - **prompt**: Include your full position and ask Codex to critique it
 - **developer-instructions**: the wire-prefix block above prepended to the adversarial-critic instructions
