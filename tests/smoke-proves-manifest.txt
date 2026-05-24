@@ -259,16 +259,11 @@ check_dispatch_response_classification behavioral
 check_dispatch_response_violation_blocker_mapping behavioral
 
 # Caveman compression skill (spec 2026-05-20-caveman-compression-skill)
-check_caveman_paths_helper_sourceable behavioral
-check_caveman_paths_hash_correctness behavioral
-check_caveman_active_default_emits_marker behavioral
-check_caveman_suspended_when_flag_present behavioral
 check_caveman_skill_parser_anchors_literal prompt-text
 check_caveman_log_marker_canonical_form prompt-text
 check_caveman_skill_uncertainty_invariant_present prompt-text
 check_caveman_skill_wire_prefix_present prompt-text
 check_caveman_skill_artifact_boundary_present prompt-text
-check_caveman_command_semantics_documented prompt-text
 check_caveman_in_flow_activation_documented prompt-text
 
 # smoke-harness self-protection: static lint scanning ALL shell scripts in

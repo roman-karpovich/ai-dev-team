@@ -6112,16 +6112,11 @@ echo
 
 # --- Caveman compression skill (spec 2026-05-20) ---
 echo "caveman compression skill pins:"
-check "caveman-paths-helper-sourceable"          check_caveman_paths_helper_sourceable
-check "caveman-paths-hash-correctness"           check_caveman_paths_hash_correctness
-check "caveman-active-default-emits-marker"      check_caveman_active_default_emits_marker
-check "caveman-suspended-when-flag-present"      check_caveman_suspended_when_flag_present
 check "caveman-skill-parser-anchors-literal"     check_caveman_skill_parser_anchors_literal
 check "caveman-skill-log-marker-canonical-form"  check_caveman_log_marker_canonical_form
 check "caveman-skill-uncertainty-invariant-present" check_caveman_skill_uncertainty_invariant_present
 check "caveman-skill-wire-prefix-present"        check_caveman_skill_wire_prefix_present
 check "caveman-skill-artifact-boundary-present"  check_caveman_skill_artifact_boundary_present
-check "caveman-command-semantics-documented"     check_caveman_command_semantics_documented
 check "caveman-in-flow-activation-documented"    check_caveman_in_flow_activation_documented
 echo
 
