@@ -1,4 +1,5 @@
 .ai-dev-team.local.yml
 .claude/
+.skill-bench/
 __pycache__/
 *.pyc

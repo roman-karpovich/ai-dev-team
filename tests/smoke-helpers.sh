@@ -1475,6 +1475,85 @@ check_haiku_scorer_mock_seam_declared() {
   echo "$path declares CROSS_AUDIT_SCORER_MOCK_JSON mock seam for test injection"
 }
 
+check_parse_scorer_response_helper() {
+  # hooks/lib/parse_scorer_response.py — resilient extraction + validation of
+  # haiku-finding-scorer responses. Behavioral test: invoke the helper across
+  # extraction tiers (raw / fenced / first-brace) and validation rejection
+  # cases (missing ID, stray top-level key, bad confidence, empty rationale,
+  # unparseable garbage). Each case asserts on the exit code and stderr line.
+  local helper="hooks/lib/parse_scorer_response.py"
+  [ -x "$helper" ] || { echo "$helper not executable"; return 1; }
+
+  local ok='{"scores":{"F1":{"confidence":42,"rationale":"ok"}}}'
+
+  # Tier 1 — raw JSON parses, exit 0
+  out=$(printf '%s' "$ok" | python3 "$helper" F1 2>/dev/null)
+  rc=$?
+  [ "$rc" = "0" ] && [ -n "$out" ] \
+    || { echo "$helper: tier-1 raw JSON expected rc=0, got rc=$rc out='$out'"; return 1; }
+
+  # Tier 2 — preamble + ```json fence, exit 0
+  fenced=$'Now let me analyze each finding:\n\n**F1**: long analysis here\n\n```json\n'"$ok"$'\n```\n'
+  rc=$(printf '%s' "$fenced" | python3 "$helper" F1 >/dev/null 2>&1; echo $?)
+  [ "$rc" = "0" ] \
+    || { echo "$helper: tier-2 fenced-with-preamble expected rc=0, got rc=$rc"; return 1; }
+
+  # Tier 3 — first-{ to last-} fallback (no fences), exit 0
+  brace="some preamble $ok trailing text"
+  rc=$(printf '%s' "$brace" | python3 "$helper" F1 >/dev/null 2>&1; echo $?)
+  [ "$rc" = "0" ] \
+    || { echo "$helper: tier-3 first-brace fallback expected rc=0, got rc=$rc"; return 1; }
+
+  # Validation — missing ID, exit 1, reason "missing IDs"
+  err=$(printf '%s' "$ok" | python3 "$helper" F1 F2 2>&1 >/dev/null)
+  rc=$?
+  [ "$rc" = "1" ] && printf '%s' "$err" | grep -qF 'missing IDs' \
+    || { echo "$helper: missing-ID expected rc=1 + 'missing IDs', got rc=$rc err='$err'"; return 1; }
+
+  # Validation — stray top-level key, exit 1, reason "stray top-level keys"
+  extra='{"scores":{"F1":{"confidence":42,"rationale":"ok"}},"extra":1}'
+  err=$(printf '%s' "$extra" | python3 "$helper" F1 2>&1 >/dev/null)
+  rc=$?
+  [ "$rc" = "1" ] && printf '%s' "$err" | grep -qF 'stray top-level keys' \
+    || { echo "$helper: stray-key expected rc=1 + 'stray top-level keys', got rc=$rc err='$err'"; return 1; }
+
+  # Validation — bad confidence, exit 1, reason "integer in 0..100"
+  badconf='{"scores":{"F1":{"confidence":200,"rationale":"ok"}}}'
+  err=$(printf '%s' "$badconf" | python3 "$helper" F1 2>&1 >/dev/null)
+  rc=$?
+  [ "$rc" = "1" ] && printf '%s' "$err" | grep -qF 'integer in 0..100' \
+    || { echo "$helper: bad-confidence expected rc=1 + 'integer in 0..100', got rc=$rc err='$err'"; return 1; }
+
+  # Validation — empty rationale, exit 1, reason "rationale missing or empty"
+  empty='{"scores":{"F1":{"confidence":42,"rationale":""}}}'
+  err=$(printf '%s' "$empty" | python3 "$helper" F1 2>&1 >/dev/null)
+  rc=$?
+  [ "$rc" = "1" ] && printf '%s' "$err" | grep -qF 'rationale missing or empty' \
+    || { echo "$helper: empty-rationale expected rc=1 + 'rationale missing or empty', got rc=$rc err='$err'"; return 1; }
+
+  # Extraction — unparseable garbage, exit 1, reason "not parseable as JSON"
+  err=$(printf '%s' 'just plain text no json anywhere' | python3 "$helper" F1 2>&1 >/dev/null)
+  rc=$?
+  [ "$rc" = "1" ] && printf '%s' "$err" | grep -qF 'not parseable as JSON' \
+    || { echo "$helper: garbage expected rc=1 + 'not parseable as JSON', got rc=$rc err='$err'"; return 1; }
+
+  echo "$helper: 3 extraction tiers + 5 validation rejections pass"
+}
+
+check_step3_pipeline_references_parse_scorer_response_helper() {
+  # The Step 3 step 4 prose must reference parse_scorer_response.py as the
+  # validation seam so the contract is single-sourced (helper enforces; prose
+  # documents). Anchor regex matches the helper path AND the three-tier
+  # description.
+  local path="agents/references/cross-auditor-step-3-pipeline.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'parse_scorer_response.py' "$path" \
+    || { echo "$path Step 3 missing parse_scorer_response.py helper reference"; return 1; }
+  grep -qiE 'tier|raw.*fenced|fenced.*first[- ]brace|three.*extraction' "$path" \
+    || { echo "$path Step 3 missing tier-extraction prose"; return 1; }
+  echo "$path Step 3 step 4 delegates parsing to parse_scorer_response.py helper"
+}
+
 check_cross_auditor_step3_scorer_integration() {
   # agents/cross-auditor.md Step 3 declares the 5-stage pipeline with the
   # scorer call between dedupe (§3.5) and renderer (Step 4). Probe-sourced
