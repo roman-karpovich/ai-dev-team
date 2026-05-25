@@ -85,6 +85,26 @@ A finding with `len(sources) >= 2` (both Claude and Codex found it) does NOT aut
 
 If you see any `sources[]` element starting with `probe:*`, the orchestrator made a routing error — probe-sourced findings are pinned at confidence 100 upstream and skip your call. In that case return that finding's score as 100 with rationale `"probe-sourced — pinned by orchestrator contract; scorer should not have received this entry"` and continue. This is belt-and-braces; the orchestrator's filter should prevent it.
 
-## Output only JSON
+## Output only JSON (hard rule — enforced by helper)
 
-Your response content MUST be the JSON object shown above and nothing else — no markdown fences, no commentary, no preamble. The orchestrator parses your response with `json.loads()`.
+Your **entire** response content MUST be exactly the JSON object shown above. The orchestrator pipes your response to `python3 hooks/lib/parse_scorer_response.py` which tries `json.loads()` on the raw text first, then attempts a Markdown-fence / first-brace fallback, and finally hard-fails the whole iteration if no valid parse is reachable. A whole-iteration fail-open collapses the 5-band rubric to legacy {60, 90} pseudo-confidence — the anti-hallucination cap is **completely bypassed**, defeating the reason this agent exists.
+
+Wrong (any of these break parsing or the fail-open path):
+
+```
+Now let me analyze each finding:
+**F1**: ...long analysis paragraphs...
+**F2**: ...
+
+\`\`\`json
+{"scores": { ... }}
+\`\`\`
+```
+
+Right:
+
+```
+{"scores": { ... }}
+```
+
+Concretely: no preamble like "Now let me analyze...", no per-finding analysis paragraphs before the JSON, no Markdown fences around the JSON, no trailing commentary. Reason about each finding internally; emit only the final JSON.
