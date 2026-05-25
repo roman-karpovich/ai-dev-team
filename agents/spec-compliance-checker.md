@@ -3,7 +3,7 @@ name: spec-compliance-checker
 # 40k: Officio Prefectus Commissar — see docs/wh40k-cast.md
 description: >
   Compliance reviewer for R1, R2, R3, R8, the workdoc DONE rule, branch convention, and git workflow.
-  R4-R7 are convention-text references in `code-quality-rules.md`, not gated here.
+  R5-R7 are convention-text references in `code-quality-rules.md`, not gated here.
   Runs after each task-level step during implementation. Has authority to BLOCK step completion.
   Fresh context per invocation — never inherits session history.
 model: sonnet

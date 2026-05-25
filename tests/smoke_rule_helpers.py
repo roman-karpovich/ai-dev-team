@@ -19,7 +19,6 @@ R_RULE_GOLDEN_TABLE = {
     "R1":  ("quality",  ["all"],     ["spec-compliance-checker"]),
     "R2":  ("quality",  ["all"],     ["spec-compliance-checker"]),
     "R3":  ("quality",  ["all"],     ["spec-compliance-checker"]),
-    "R4":  ("process",  ["all"],     ["none"]),
     "R5":  ("quality",  ["all"],     ["none"]),
     "R6":  ("quality",  ["all"],     ["none"]),
     "R7":  ("quality",  ["all"],     ["none"]),

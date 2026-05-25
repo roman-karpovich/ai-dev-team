@@ -1997,75 +1997,6 @@ check_stop_check_docstring_mentions_all_eight_prefixes() {
   echo "hooks/stop-check docstring mentions all eight prefixes"
 }
 
-# (#15-k) code-quality-rules.md has R4 heading (C6) AND three subheading markers in R4 body
-check_code_quality_rule_r4_present() {
-  grep -qF '## R4 — Branch prefix matches change nature' "$CQR_BP" \
-    || { echo "code-quality-rules.md missing '## R4 — Branch prefix matches change nature' heading (C6)"; return 1; }
-  R4=$(extract_md_section "$CQR_BP" '## R4 — Branch prefix matches change nature')
-  printf '%s\n' "$R4" | grep -qF '**Rule**' || { echo "R4 section missing '**Rule**' subheading"; return 1; }
-  printf '%s\n' "$R4" | grep -qF '**Why**' || { echo "R4 section missing '**Why**' subheading"; return 1; }
-  printf '%s\n' "$R4" | grep -qF '**How to apply**' || { echo "R4 section missing '**How to apply**' subheading"; return 1; }
-  echo "R4 heading + Rule/Why/How-to-apply subheadings present"
-}
-
-# (#15-l) R4 content floor: three canonical substrings + ≥3 numbered items under How-to-apply
-check_code_quality_rule_r4_content_complete() {
-  python3 - <<'PY'
-import re, sys
-path = 'skills/feature/references/code-quality-rules.md'
-text = open(path).read()
-hdr = '## R4 — Branch prefix matches change nature'
-if hdr not in text:
-    print('R4 heading missing')
-    sys.exit(1)
-start = text.index(hdr)
-rest = text[start + len(hdr):]
-m = re.search(r'\n## ', rest)
-body = rest[: m.start()] if m else rest
-
-def subsection(body, marker, next_markers):
-    if marker not in body:
-        return None
-    s = body.index(marker)
-    rest = body[s + len(marker):]
-    # cut at whichever next marker appears first
-    cuts = [rest.index(n) for n in next_markers if n in rest]
-    end = min(cuts) if cuts else len(rest)
-    return rest[:end]
-
-rule_body = subsection(body, '**Rule**', ['**Why**', '**How to apply**'])
-why_body = subsection(body, '**Why**', ['**How to apply**'])
-how_body = subsection(body, '**How to apply**', [])
-
-errs = []
-if rule_body is None:
-    errs.append('missing **Rule** subsection')
-else:
-    need_rule = 'branch prefix MUST equal the resolved `change_type`'
-    if need_rule not in rule_body:
-        errs.append(f'Rule body missing substring: {need_rule!r}')
-if why_body is None:
-    errs.append('missing **Why** subsection')
-else:
-    if 'release-note categorisation' not in why_body:
-        errs.append("Why body missing 'release-note categorisation' substring")
-if how_body is None:
-    errs.append('missing **How to apply** subsection')
-else:
-    if '<change_type>/YYYY-MM-DD-<slug>' not in how_body:
-        errs.append("How-to-apply body missing '<change_type>/YYYY-MM-DD-<slug>' substring")
-    # count numbered bullets: lines matching ^[[:space:]]*[1-9]\.
-    nums = re.findall(r'(?m)^[\t ]*[1-9]\.', how_body)
-    if len(nums) < 3:
-        errs.append(f'How-to-apply has <3 numbered items ({len(nums)})')
-
-if errs:
-    print('; '.join(errs))
-    sys.exit(1)
-print('R4 content floor satisfied (3 canonical substrings + >=3 numbered items)')
-PY
-}
-
 check "spec-template-has-change-type"                     check_spec_template_has_change_type
 check "skill-change-type-prompt-present"                  check_skill_change_type_prompt_present
 check "skill-inline-frontmatter-lists-change-type"        check_skill_inline_frontmatter_lists_change_type
@@ -2076,8 +2007,6 @@ check "developer-workflow-no-non-dated-feature-ref"       check_developer_workfl
 check "stop-check-regex-widened"                          check_stop_check_regex_widened
 check "stop-check-matches-all-eight-prefixes"             check_stop_check_matches_all_eight_prefixes
 check "stop-check-docstring-mentions-all-eight-prefixes"  check_stop_check_docstring_mentions_all_eight_prefixes
-check "code-quality-rule-r4-present"                      check_code_quality_rule_r4_present
-check "code-quality-rule-r4-content-complete"             check_code_quality_rule_r4_content_complete
 echo
 
 # --- R5 test-file-location rule (2026-04-18) ---
@@ -6100,16 +6029,15 @@ check "eof-adjacency-parser-single-source" check_eof_adjacency_parser_single_sou
 echo
 
 # --- cap-banner + empirical-verification (spec 2026-05-13) Step 5 pins ---
-# Pins A/B/C are prompt-text (byte-exact anchors on prose); Pin D is schema
-# (R15 frontmatter + body heading + structural placement). Pin C reaches into
+# Pins A/B/C are prompt-text (byte-exact anchors on prose). Pin C reaches into
 # the KB-resident MISSION.md via cross-repo path resolution (KB_PATH env var,
 # sibling finance-learning checkout, or plugin-root fallback) — same pattern
-# as check_mission_r_enforcement_claim_narrow.
+# as check_mission_r_enforcement_claim_narrow. (Pin D — R15 frontmatter/body
+# placement — retired 2026-05-25 alongside the R15 rule body itself.)
 echo "cap-banner + empirical-verification pins (spec 2026-05-13):"
 check "cross-auditor-empirical-verification-step-present" check_cross_auditor_empirical_verification_step_present
 check "skill-md-cap-banner-present"                       check_skill_md_cap_banner_present
 check "mission-rule-11-amended-and-audit-claims-rule-present" check_mission_rule_11_amended_and_audit_claims_rule_present
-check "r15-present-in-code-quality-rules"                 check_r15_present_in_code_quality_rules
 echo
 
 # --- Caveman compression skill (spec 2026-05-20) ---

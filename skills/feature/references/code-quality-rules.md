@@ -17,11 +17,6 @@ rules:
     category: quality
     applies_to: [all]
     enforced_by: [spec-compliance-checker]
-  - id: R4
-    short: branch-prefix-matches-change-type
-    category: process
-    applies_to: [all]
-    enforced_by: [none]
   - id: R5
     short: tests-in-dedicated-file
     category: quality
@@ -72,11 +67,6 @@ rules:
     category: security
     applies_to: [backend]
     enforced_by: [cross-auditor:security]
-  - id: R15
-    short: fix-application-verifies-audit-claims
-    category: process
-    applies_to: [all]
-    enforced_by: [none]
 ---
 
 # Code Quality Rules
@@ -242,21 +232,6 @@ tautological/shape-only assertions before they accumulate as green-CI ballast.
 
 ---
 
-## R4 — Branch prefix matches change nature
-
-**Rule**: the feature-branch prefix MUST equal the resolved `change_type` in the spec frontmatter. Concretely, branch name is `<change_type>/YYYY-MM-DD-<slug>` where `<change_type>` is one of the seven conventional prefixes (`feat / fix / refactor / ci / docs / test / chore`). Legacy `feature/…` is preserved only by the `stop-check` hook's eight-alternative regex for specs pre-dating this rule; it is NOT a valid value for new specs' `change_type`.
-
-**Why**: the repo's PR-auto-label workflow keys off the PR title's Conventional Commits prefix and `.github/release.yml` drives release-note categorisation from those labels. When a pure bug-fix lives on a `feature/…` branch the title-label link still works, but the branch name undermines the category at a glance during review — mis-routing categorisation signals, confusing reviewers, and hurting release-note quality. A real case (soroban-amm, cited in BACKLOG #15) made this concrete: a `fix`-labelled commit on a `feature/…` branch produced correct release-note copy but wrong visual grouping in the PR list. R4 removes the drift at its source by binding the branch prefix to the same `change_type` scalar the spec review already validates.
-
-**How to apply**:
-
-1. During `/feature new`, let the orchestrator infer `change_type` from the description (keyword buckets documented in `skills/feature/SKILL.md` §New/Step 2; default `feat`) and confirm it via the `AWAITING YOUR INPUT` banner. The resolved value goes into spec frontmatter as `change_type:` and is substituted into `branch:` to produce the canonical `<change_type>/YYYY-MM-DD-<slug>` form (e.g. `branch: fix/2026-04-18-my-slug`).
-2. Before every `git commit`, run `git branch --show-current` and validate the current branch name matches `^(feat|fix|refactor|ci|docs|test|chore)/\d{4}-\d{2}-\d{2}-`. If it matches `^feature/` instead, the spec was written under the old convention — stop and either update the spec's `change_type` field (new work) or leave the legacy `feature/` branch alone (in-flight spec pre-dating this rule).
-3. When a spec's scope shifts mid-flight (e.g. what started as a `feat` becomes a pure `fix` after scoping), open the spec, update `change_type:` in frontmatter, rename the branch (`git branch -m <new-prefix>/YYYY-MM-DD-<slug>`), and append a Log entry: `- YYYY-MM-DD: change_type: <old> → <new> (scope change)`. Do NOT silently keep the old branch prefix.
-4. Reviewers verify `change_type` and the branch name agree in spec-review Pass 1. A mismatch is a review block, not a warning — fix it before APPROVED.
-
----
-
 ## R5 — Tests live in a dedicated file, not inline in the implementation
 
 **Rule**: tests must live in a separate file from the code they cover; mirror the repo's existing test layout, and default to a dedicated test file when no convention exists or the repo is mixed.
@@ -331,7 +306,7 @@ R7 refines R5 — R5 says "mirror the repo convention, including an inline-is-co
 
 4. Extracting from existing inline to sibling is a pure-refactor commit: no test behaviour changes, no assertion edits. Commit title follows conventional format: `refactor(tests): extract <module> tests to sibling file`. This keeps `git blame` on the production file clean for subsequent behaviour-change commits and matches the `refactor` label in `.github/release.yml`.
 
-5. Reviewers verify: a new source file landing with inline tests >40 lines is a review block, not a warning — fix before APPROVED. Trivial single-test inline blocks are fine per the exception. When extracting opportunistically during a feature spec, the extraction commit is separate from the behaviour-change commits per R4-style single-responsibility.
+5. Reviewers verify: a new source file landing with inline tests >40 lines is a review block, not a warning — fix before APPROVED. Trivial single-test inline blocks are fine per the exception. When extracting opportunistically during a feature spec, the extraction commit is separate from the behaviour-change commits per single-responsibility commit discipline.
 
 ---
 
@@ -834,26 +809,6 @@ def get_order(request, order_id):
 
 ---
 
-## R15 — Fix-application verifies audit's file:line claims empirically before edit
-
-**Rule**: when applying a fix to a finding that names a specific `file:line` target, verify the claim with `grep -nF '<expected literal>' <file>` (or `Read <file>` at the named line range) BEFORE editing. On mismatch — actual content differs, line number is off by ≥ 1, or named literal is absent — halt and surface the mismatch to the orchestrator. Do NOT apply the edit blindly. Do NOT "fix" the edit target by adjusting the literal to whatever is present at the named line.
-
-**Why**: the cross-auditor agent is fallible on `file:line` claims. The 2026-05-13 audit-cycle pollution incident (pointer-integrity spec iter-1/iter-2 cascade) demonstrated this empirically: iter-1 audit emitted confidently-wrong claims about referring-site counts (claimed 6, actual 4), smoke-pin line numbers (claimed `smoke.sh:4241`, actual `smoke.sh:4248-4249`), and §1.1 schema sibling keys (claimed `user_input`/`network_boundary`, actual `caller_identity`/`external_input`). The pointer-integrity DRAFT spec copy-pasted those numbers verbatim. Iter-1 senior dispatch trusted the line-anchored sed/grep targets and applied them blindly to wrong lines — the fix amplified the upstream error rather than catching it. ~4-6h consumed on audit cycles closed 0 findings before scope-cut to direct empirical fix. Without R15, the failure mode is structural: every downstream consumer that trusts cross-auditor claims as ground truth amplifies upstream errors through line-anchored edits to wrong lines.
-
-This is Khorikov's "test asserts state, not behaviour" anti-pattern (*Unit Testing* ch. 5, 7 — concept of observable behaviour vs implementation detail) applied at the audit layer: an audit finding that names file:line + literal is asserting a specific shape of production state. Acting on the finding requires verifying the asserted state is actually present, not just that the assertion exists. Pillar (1) regression-protection collapses when the asserted shape doesn't match reality — the fix introduces a NEW regression instead of catching one.
-
-**How to apply**:
-
-1. Before editing a file in response to a cross-auditor finding (Claude side OR Codex side, code/full/spec mode): re-grep the named `<file>` for the claimed `<literal>` and confirm the line number matches.
-2. If the literal is absent OR the line number is off by ≥ 1: STOP. Do not apply the edit. Surface the mismatch to the orchestrator with the finding ID and the actual file state. The orchestrator decides whether to re-spawn the auditor with corrected scope, downgrade the finding, or accept the mismatch with rationale.
-3. Verification applies to BOTH dev-agents (`developer-codex`, `developer-senior`) processing audit findings during a code-audit fix-application pass AND to spec authors copy-pasting finding details into §5 Implementation Checklist Step targets at spec-draft time.
-4. The cross-auditor agent itself runs an analogous verification at audit-emit time per `agents/cross-auditor.md` §Step 2.5 Empirical claim verification — R15 enforces the consumer-side mirror of that producer-side discipline.
-5. R15 is paired with the producer-side rule baked into `agents/cross-auditor.md` §Step 2.5. Both rules target the same defect class — unverified-file:line-claim amplification — at different layers (producer vs consumer).
-
-Source: 2026-05-13 audit-cycle pollution incident. Anchor: `research/release-retrospective/2026-05-13-1.19.0-audit-cycle-pollution.md`. Memory: none yet (codified directly via R15 + MISSION rule #13).
-
----
-
 ## Taxonomy
 
 The frontmatter `rules:` block at the top of this file is the source of truth for rule metadata. Consumers (dev-agents, `spec-compliance-checker`, `cross-auditor`) parse the index, filter by the active spec's `project_type`, and only process rules whose `applies_to` list matches.
@@ -864,7 +819,7 @@ The frontmatter `rules:` block at the top of this file is the source of truth fo
 - `short` — slug `[a-z0-9][a-z0-9-]*` for grep / log usage; not user-facing.
 - `category` ∈ `{quality, security, style, process}`. Closed set; new categories require a spec.
 - `applies_to` — non-empty list whose elements are from `{all, smart_contract, backend, frontend, data_pipeline}`. `all` is mutually exclusive with named project_types — i.e. `[all]` OR a list of named types, never both. The named-type set mirrors `cross-auditor` `project_type` enum verbatim.
-- `enforced_by` — list whose elements are from `{spec-compliance-checker, cross-auditor:logic, cross-auditor:security, none}`. `[none]` means convention-text-only (current state of R4–R7) and is mutually exclusive with every other enforcer (i.e. `[none]` is a singleton; never `[none, spec-compliance-checker]`). Multiple non-`none` enforcers are allowed (e.g. a future rule checked by both compliance-checker and cross-auditor).
+- `enforced_by` — list whose elements are from `{spec-compliance-checker, cross-auditor:logic, cross-auditor:security, none}`. `[none]` means convention-text-only (current state of R5–R7) and is mutually exclusive with every other enforcer (i.e. `[none]` is a singleton; never `[none, spec-compliance-checker]`). Multiple non-`none` enforcers are allowed (e.g. a future rule checked by both compliance-checker and cross-auditor).
 
 ### Cross-auditor mode-matching contract
 
@@ -888,8 +843,15 @@ read_body_sections_for(applicable)
 
 There are two distinct degrade paths with two distinct triggers and **opposite** outcomes. The contract names them explicitly so consumer agents do not converge on different defaults.
 
-**Trigger A — `project_type` is missing or unknown**. Consumer was invoked without an orchestrator-threaded `project_type` value (legacy invocation, ad-hoc use, configuration drift). Set `project_type` internally to the literal string `"all"` and run the filter normally. Result: rules with `applies_to: [all]` load (R1–R8 plus any cluster rules currently flipped to `[all]`, e.g. R11 and R13); rules with `applies_to: [backend]` (or any audience-restricted list that does not contain `"all"`) do NOT load. Worked example: `filter(rules, "all")` returns the `[all]`-audience set — at present R1–R8 plus R11 and R13 (10 rules). The audience-restricted cluster members (R9, R10, R12, R14 are `[backend]`) do NOT load under Trigger A — that is the intended backwards-compat semantics ("`[all]`-audience rules always load", not "every rule always loads"). The asymmetry is deliberate.
+**Trigger A — `project_type` is missing or unknown**. Consumer was invoked without an orchestrator-threaded `project_type` value (legacy invocation, ad-hoc use, configuration drift). Set `project_type` internally to the literal string `"all"` and run the filter normally. Result: rules with `applies_to: [all]` load (R1–R3 and R5–R8 plus any cluster rules currently flipped to `[all]`, e.g. R11 and R13); rules with `applies_to: [backend]` (or any audience-restricted list that does not contain `"all"`) do NOT load. Worked example: `filter(rules, "all")` returns the `[all]`-audience set — at present R1–R3 + R5–R8 plus R11 and R13 (9 rules). The audience-restricted cluster members (R9, R10, R12, R14 are `[backend]`) do NOT load under Trigger A — that is the intended backwards-compat semantics ("`[all]`-audience rules always load", not "every rule always loads"). The asymmetry is deliberate.
 
 **Trigger B — frontmatter `rules:` block fails to parse**. The YAML is malformed, the `rules:` field is missing, or `parse_frontmatter` raises. Consumer cannot determine `applies_to` for any rule. In this path, emit a one-line warning to stderr (`⚠️ code-quality-rules.md frontmatter rules block failed to parse — loading all body sections regardless of applies_to`) and load every `## R<N>` body section verbatim, ignoring the filter entirely. Worked example: a future contributor accidentally introduces a YAML indentation error in the `rules:` block — Trigger B fires, every rule body section loads (including audience-restricted rules that should NOT have loaded for the active project_type) until the parse error is fixed.
 
 **Triggers must not collapse**. A consumer that defaults to Trigger B's load-all behavior under Trigger A's "project_type missing" condition silently disables audience filtering forever. A consumer that defaults to Trigger A's `"all"`-filter behavior under Trigger B's parse-failure condition silently de-cards every rule (because no `applies_to` value is parseable). Both wrong outcomes are precisely what the explicit-labelling rule prevents. Consumer prose in `developer-workflow.md` / `spec-compliance-checker.md` / `cross-auditor.md` quotes this section by reference (NOT paraphrase) so the contract stays single-source.
+
+## Retired rules
+
+Retired 2026-05-25 to reduce cognitive load on the rule cluster. Numbering preserved (R5–R14 unchanged); future rules use R16+.
+
+- **R4 — Branch prefix matches change nature** — canonical content lives in `CLAUDE.md` §Contribution flow and `skills/feature/references/developer-workflow.md` §Git Workflow (branch-name pattern, pre-commit assertion, post-merge bug flow).
+- **R15 — Fix-application verifies audit's file:line claims empirically before edit** — canonical content migrated to `skills/feature/references/developer-workflow.md` §Fix application discipline. Producer-side counterpart at `agents/cross-auditor.md` §Step 2.5 Empirical claim verification.
