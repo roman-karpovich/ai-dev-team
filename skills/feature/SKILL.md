@@ -116,7 +116,7 @@ Authoring style: caveman-style per skills/caveman/SKILL.md §8 — see skills/fe
 - **Context** — why this feature exists
 - **Current State** — how the system works today (reference KB pages and source files)
 - **Design** — changes table, data model, API, configuration
-- **Branch** — `<type>/YYYY-MM-DD-<slug>` where `<type>` is the resolved `change_type` (see §3.6 R4 and the change-type prompt below — one of `feat / fix / refactor / ci / docs / test / chore`) (or specify different base if needed)
+- **Branch** — `<type>/YYYY-MM-DD-<slug>` where `<type>` is the resolved `change_type` (see CLAUDE.md §Contribution flow + `skills/feature/references/developer-workflow.md` §Git Workflow and the change-type prompt below — one of `feat / fix / refactor / ci / docs / test / chore`) (or specify different base if needed)
 - **Implementation Checklist** — ordered, concrete steps (each is a reviewable behavioral unit)
 - **Verification** — how to test end-to-end
 - **Log** — append-only decisions and progress

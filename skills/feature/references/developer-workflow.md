@@ -122,6 +122,7 @@ Before **every** `git commit`, run `git branch --show-current` and validate:
 1. **Never on `main` or `master`.** If HEAD is on either, stop immediately. Do not commit. The main branch is for merges only; direct commits pollute release notes and tag history.
 2. **Spec is authoritative.** If there is an active spec (`status: IN_PROGRESS` or `AUDIT_PASSED` in the KB), the `branch:` field in that spec's frontmatter is the only branch this work commits to. If HEAD does not match, `git checkout <spec.branch>` first — or if the branch is gone, recreate it (`git checkout -b <spec.branch> <base>`). Do not commit "just this once" on a different branch.
 3. **No spec → still no main.** Even for ad-hoc fixes, branch first: `fix/<short-name>`, `chore/<short-name>`, etc. The only exception is explicit user override ("just commit to master" / "just push") — and then the override must be in the same turn, not inferred from an earlier message.
+4. **Branch prefix MUST equal the spec's resolved `change_type`.** Validate `^(feat|fix|refactor|ci|docs|test|chore)/\d{4}-\d{2}-\d{2}-` against the current branch. If the spec's `change_type` shifts mid-flight, update the frontmatter, rename the branch (`git branch -m <new>/YYYY-MM-DD-<slug>`), and append a Log entry. Spec-review Pass 1 blocks on `branch:` ↔ `change_type:` mismatch — fix before APPROVED. (Legacy `feature/…` branches are tolerated only for specs pre-dating the seven-prefix convention; not valid for new specs.)
 
 Put this check into muscle memory: it is cheaper to switch branches than to rewrite history.
 
@@ -160,9 +161,21 @@ The checker enforces this: any commit whose HEAD-at-time-of-commit is `main` / `
 
 ---
 
+## Fix application discipline (verify audit's file:line claims before edit)
+
+When applying a fix to a cross-auditor finding that names a `file:line` target — OR when copy-pasting finding details into a §5 Implementation Checklist step at spec-draft time — verify the claim empirically BEFORE editing:
+
+1. `grep -nF '<expected literal>' <file>` (or `Read <file>` at the named line range) to confirm the literal sits at the claimed line.
+2. On mismatch — actual content differs, line number is off by ≥ 1, or named literal is absent — STOP. Do not apply the edit. Do not "fix" the edit target by adjusting the literal to whatever is present at the named line. Surface the mismatch to the orchestrator with the finding ID and the actual file state; the orchestrator decides whether to re-spawn the auditor, downgrade the finding, or accept with rationale.
+3. Verification applies to BOTH `developer-codex` and `developer-senior` processing audit findings during a code-audit fix-application pass AND to spec authors drafting §5 steps.
+
+The cross-auditor agent runs the analogous producer-side verification at audit-emit time per `agents/cross-auditor.md` §Step 2.5 Empirical claim verification; this consumer-side rule mirrors that discipline. Source incident: 2026-05-13 audit-cycle pollution (line-anchored fixes applied to wrong lines amplified upstream errors).
+
+---
+
 ## Code Quality Rules
 
-Read `skills/feature/references/code-quality-rules.md` before the first step and re-check it whenever a step removes behaviour or rewrites tests. It is append-only; new rules land there. Loading is conditional: parse the file's frontmatter `rules:` index, resolve `project_type` (orchestrator-threaded; defaults to the literal string `"all"` when missing — see §Taxonomy / Trigger A in `code-quality-rules.md`), and read body sections only for rules whose `applies_to` list contains `"all"` or the resolved `project_type`. Today every R1–R8 is `applies_to: [all]` so the filter is a no-op and every rule loads — the short-form summaries below cover the universal set. Trigger B (frontmatter parse failure) is a separate degrade path with the opposite outcome (load every body section verbatim, emit a stderr warning); see §Taxonomy in `code-quality-rules.md` for the canonical contract — do not paraphrase.
+Read `skills/feature/references/code-quality-rules.md` before the first step and re-check it whenever a step removes behaviour or rewrites tests. It is append-only; new rules land there. Loading is conditional: parse the file's frontmatter `rules:` index, resolve `project_type` (orchestrator-threaded; defaults to the literal string `"all"` when missing — see §Taxonomy / Trigger A in `code-quality-rules.md`), and read body sections only for rules whose `applies_to` list contains `"all"` or the resolved `project_type`. Today every R1–R3 and R5–R8 is `applies_to: [all]` so the filter is a no-op for the universal cluster and every rule loads — the short-form summaries below cover that set. Trigger B (frontmatter parse failure) is a separate degrade path with the opposite outcome (load every body section verbatim, emit a stderr warning); see §Taxonomy in `code-quality-rules.md` for the canonical contract — do not paraphrase.
 
 Short-form summary — the full reasoning and application steps live in the reference:
 

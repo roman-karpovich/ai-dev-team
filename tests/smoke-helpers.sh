@@ -4087,8 +4087,8 @@ check_spec_compliance_checker_description_narrow() {
   # Positive: must contain narrow scope markers
   grep -qF 'R1, R2, R3' "$agent" \
     || { echo "$agent missing 'R1, R2, R3' in description"; return 1; }
-  grep -qF 'R4-R7 are convention-text' "$agent" \
-    || { echo "$agent missing 'R4-R7 are convention-text' in description"; return 1; }
+  grep -qF 'R5-R7 are convention-text' "$agent" \
+    || { echo "$agent missing 'R5-R7 are convention-text' in description"; return 1; }
   # Negative: must NOT contain legacy broad phrasing (anti-regression)
   if grep -qF 'reasons about whether observed matches planned intent' "$agent"; then
     echo "$agent still contains legacy broad phrasing 'reasons about whether observed matches planned intent'"
@@ -4119,14 +4119,10 @@ check_mission_r_enforcement_claim_narrow() {
     return 1
   fi
 
-  # Assert R4-R7 queued (various phrasings)
-  if ! grep -qF 'enforcement queued' "$mission_path" && \
-     ! { grep -qF 'R4-R7 enforcement' "$mission_path" && grep -qE 'queued|pending|TODO' "$mission_path"; }; then
-    echo "MISSION.md missing R4-R7 enforcement queued claim"
-    return 1
-  fi
+  # (R4-R7 enforcement-queued sub-check retired 2026-05-25 alongside R4 retirement.
+  # The MISSION.md claim itself is now stale — flagged as KB-side follow-up.)
 
-  echo "MISSION.md R-enforcement claims are narrow and R4-R7 queued present"
+  echo "MISSION.md R-enforcement claim is narrow"
 }
 
 check_probe_downgrade_flag_absent() {
@@ -4321,8 +4317,8 @@ rules = fm.get("rules") if isinstance(fm, dict) else None
 if not isinstance(rules, list):
     print(f"{path}: frontmatter `rules:` is not a list (assertion a)", file=sys.stderr)
     sys.exit(1)
-if len(rules) != 15:
-    print(f"{path}: rules length={len(rules)}, expected 15 (assertion a)", file=sys.stderr)
+if len(rules) != 13:
+    print(f"{path}: rules length={len(rules)}, expected 13 (assertion a)", file=sys.stderr)
     sys.exit(1)
 
 required_fields = {"id", "short", "category", "applies_to", "enforced_by"}
@@ -4391,16 +4387,16 @@ for entry in rules:
         sys.exit(1)
 
 # (i) Trigger A worked example: filter(rules, project_type="all") returns
-# R1..R8 [all] + any R-rule with [all] audience. Was 8 before any cluster
-# audience flips; 9 after PR-D Step 3 flipped R11 to [all]; 10 after
-# PR-D Step 4 flipped R13 to [all]; 11 after R15 (process category, [all]
-# audience) was added by 2026-05-13-cap-banner-and-empirical-verification.
+# the [all]-audience set. Was 8 before any cluster audience flips; 9 after
+# PR-D Step 3 flipped R11 to [all]; 10 after PR-D Step 4 flipped R13 to [all];
+# 11 after R15 added by 2026-05-13-cap-banner-and-empirical-verification;
+# back to 9 after 2026-05-25 retirement of R4 and R15 (both were [all]).
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_all = trigger_a_filter(rules, "all")
-if len(filtered_all) != 11:
-    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 11 (assertion i)", file=sys.stderr)
+if len(filtered_all) != 9:
+    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 9 (assertion i)", file=sys.stderr)
     sys.exit(1)
 
 # (j) per-rule golden mapping — imported from shared module so the same dict is
@@ -4607,22 +4603,24 @@ for rid in cluster_ids:
         print(f"{path}: {rid} body missing Radaro AND/OR POL-ENG-AIDEV-001 anchor (both required) (assertion e)", file=sys.stderr)
         sys.exit(1)
 
-# (f) backend filter returns 15 (R1..R8 [all] + R9..R14 [backend] + R15 [all])
+# (f) backend filter returns 13 (R1..R3 + R5..R8 [all] + R9..R14 [backend]).
+# Was 15 before 2026-05-25 retirement of R4 ([all]) and R15 ([all]).
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_backend = trigger_a_filter(rules, "backend")
-if len(filtered_backend) != 15:
-    print(f"{path}: backend filter returned {len(filtered_backend)}, expected 15 (assertion f)", file=sys.stderr)
+if len(filtered_backend) != 13:
+    print(f"{path}: backend filter returned {len(filtered_backend)}, expected 13 (assertion f)", file=sys.stderr)
     sys.exit(1)
 
-# (g) smart_contract filter returns R1..R8 + any R-rule with [all] audience.
-# Was 8 before any cluster audience flips; 9 after PR-D Step 3 flipped R11
-# to [all]; 10 after PR-D Step 4 flipped R13 to [all]; 11 after R15 (process
-# category, [all] audience) was added by 2026-05-13-cap-banner-and-empirical-verification.
+# (g) smart_contract filter returns the [all]-audience set. Was 8 before any
+# cluster audience flips; 9 after PR-D Step 3 flipped R11 to [all]; 10 after
+# PR-D Step 4 flipped R13 to [all]; 11 after R15 was added by
+# 2026-05-13-cap-banner-and-empirical-verification; back to 9 after
+# 2026-05-25 retirement of R4 and R15.
 filtered_sc = trigger_a_filter(rules, "smart_contract")
-if len(filtered_sc) != 11:
-    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 11 (assertion g)", file=sys.stderr)
+if len(filtered_sc) != 9:
+    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 9 (assertion g)", file=sys.stderr)
     sys.exit(1)
 
 # (h) Per-rule canonical-pattern presence — Good code block ONLY (block-level
@@ -6881,14 +6879,13 @@ check_eof_adjacency_parser_single_source() {
 }
 
 # --- cap-banner + empirical-verification (spec 2026-05-13) Step 5 pins ---
-# 4 pins anchoring the 4 prose surfaces from Steps 1-4 of
+# 3 pins anchoring the prose surfaces from Steps 1-3 of
 # design/2026-05-13-cap-banner-and-empirical-verification.md:
 #   Pin A — agents/cross-auditor.md + agents/references/cross-auditor-codex-dispatch.md
 #           (Step 2.5 H2 + load-bearing invariant + 2 Codex prompt templates).
 #   Pin B — skills/feature/SKILL.md §3.5c AWAITING-YOUR-INPUT cap-banner block.
 #   Pin C — <kb>/repos/ai-dev-team/MISSION.md rule #11 amendment + new rule #13.
-#   Pin D — skills/feature/references/code-quality-rules.md R15 frontmatter +
-#           body section + structural placement (after R14, before §Taxonomy).
+#   (Pin D — R15 frontmatter/body placement — retired 2026-05-25 alongside R15 itself.)
 
 check_cross_auditor_empirical_verification_step_present() {
   local hub="agents/cross-auditor.md"
@@ -7014,98 +7011,6 @@ check_mission_rule_11_amended_and_audit_claims_rule_present() {
   fi
 
   echo "MISSION rule #11 amended + rule #13 + 2026-05-13 entry (count=$n) OK"
-}
-
-check_r15_present_in_code_quality_rules() {
-  # Schema-shape pin parallel to check_r_rules_taxonomy_schema (smoke-helpers.sh
-  # ~L4092) — narrower scope: assert R15-specific frontmatter shape + body
-  # section + structural placement (after R14, before §Taxonomy).
-  local path="skills/feature/references/code-quality-rules.md"
-  test -f "$path" || { echo "$path missing"; return 1; }
-  python3 - "$path" <<'PY' || return 1
-import re
-import sys
-
-path = sys.argv[1]
-try:
-    import yaml
-except ImportError:
-    print("PyYAML not available (required by check_r15_present_in_code_quality_rules)", file=sys.stderr)
-    sys.exit(1)
-
-text = open(path, encoding="utf-8").read()
-m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
-if not m:
-    print(f"{path}: missing YAML frontmatter", file=sys.stderr)
-    sys.exit(1)
-try:
-    fm = yaml.safe_load(m.group(1))
-except yaml.YAMLError as exc:
-    print(f"{path}: frontmatter YAML parse failed: {exc}", file=sys.stderr)
-    sys.exit(1)
-
-rules = fm.get("rules") if isinstance(fm, dict) else None
-if not isinstance(rules, list):
-    print(f"{path}: frontmatter `rules:` is not a list", file=sys.stderr)
-    sys.exit(1)
-
-by_id = {r.get("id"): r for r in rules if isinstance(r, dict)}
-r15 = by_id.get("R15")
-if r15 is None:
-    print(f"{path}: R15 entry absent from rules list", file=sys.stderr)
-    sys.exit(1)
-
-expected = {
-    "short": "fix-application-verifies-audit-claims",
-    "category": "process",
-    "applies_to": ["all"],
-    "enforced_by": ["none"],
-}
-for key, want in expected.items():
-    got = r15.get(key)
-    if got != want:
-        print(f"{path}: R15.{key}={got!r}, expected {want!r}", file=sys.stderr)
-        sys.exit(1)
-
-# Body section heading — column-0 H2 with the exact title.
-body_heading = "## R15 — Fix-application verifies audit's file:line claims empirically before edit"
-lines = text.splitlines()
-heading_line_idx = None
-for i, ln in enumerate(lines):
-    if ln == body_heading:
-        heading_line_idx = i
-        break
-if heading_line_idx is None:
-    print(f"{path}: missing R15 body H2 heading {body_heading!r}", file=sys.stderr)
-    sys.exit(1)
-
-# Structural anchor: R15 body appears AFTER R14 body AND BEFORE `## Taxonomy`.
-r14_heading_re = re.compile(r"^## R14 — ")
-taxonomy_heading = "## Taxonomy"
-r14_idx = None
-taxonomy_idx = None
-for i, ln in enumerate(lines):
-    if r14_idx is None and r14_heading_re.match(ln):
-        r14_idx = i
-    if ln == taxonomy_heading:
-        taxonomy_idx = i
-        break
-if r14_idx is None:
-    print(f"{path}: R14 body heading not found (structural anchor)", file=sys.stderr)
-    sys.exit(1)
-if taxonomy_idx is None:
-    print(f"{path}: `## Taxonomy` heading not found (structural anchor)", file=sys.stderr)
-    sys.exit(1)
-if not (r14_idx < heading_line_idx < taxonomy_idx):
-    print(
-        f"{path}: R15 body at line {heading_line_idx+1} is not strictly between "
-        f"R14 at line {r14_idx+1} and Taxonomy at line {taxonomy_idx+1}",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-print(f"R15 frontmatter + body section + placement OK (line {heading_line_idx+1}, between R14 and Taxonomy)")
-PY
 }
 
 # Behavioral pin for the cross-auditor return-contract classifier
