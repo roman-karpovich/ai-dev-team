@@ -230,6 +230,8 @@ tautological/shape-only assertions before they accumulate as green-CI ballast.
    wild, append it here with a one-line pillar-grounded rationale; do not mutate existing
    entries.
 
+**Automated enforcement is partial.** The `enforced_by: [spec-compliance-checker]` frontmatter tag means the rule has a checker hook, NOT full anti-pattern coverage. The checker regex-detects only the two highest-signal shapes above — the `assertIsNotNone` family and the mock-call-counter family; the tautological, setter-getter, and type-checker-duplication shapes need deeper analysis and are LLM-side / manual review, not deterministically gated (see `agents/spec-compliance-checker.md` §R3).
+
 ---
 
 ## R5 — Tests live in a dedicated file, not inline in the implementation
