@@ -56,10 +56,10 @@ Cross-audit reads `codex.model` and `codex.reasoning_effort` from the resolved c
 
 #### `cross_audit.probes.<id>.mode` read (probes kill-switch)
 
-Phase 0 also reads the optional `cross_audit.probes` block from the resolved config. Each probe id (`e`, `f`, `g`, and any future id) carries a four-mode kill-switch — `off | shadow | warn | block`. The resolved `probe_modes` dict (probe id → effective mode) is threaded into the cross-auditor dispatch in Phase 1-2.
+Phase 0 also reads the optional `cross_audit.probes` block from the resolved config. Each probe id (`e`, `f`, `g`, `h`, and any future id) carries a four-mode kill-switch — `off | shadow | warn | block`. The resolved `probe_modes` dict (probe id → effective mode) is threaded into the cross-auditor dispatch in Phase 1-2.
 
 - **Default off**: when `cross_audit.probes` is absent from the resolved config, OR a given probe id is missing under `cross_audit.probes`, the effective mode defaults to `off`. Absence is a user-declared floor, not a synthesized gap (per §3.4 X9 resolution).
-- **Unknown probe id → warning, not hard-stop**: when the YAML names a probe id the plugin does not recognize (e.g. `h: { mode: shadow }`), emit a one-line warning `cross_audit.probes.<id>: unknown probe id, treated as off — ignored for this run` and continue. Probes are a forward-looking enum; new ids arrive in follow-up specs without needing a Foundation re-release. Unknown-id emissions never hard-stop Phase 0.
+- **Unknown probe id → warning, not hard-stop**: when the YAML names a probe id the plugin does not ship a `probe_<id>.sh` for (e.g. `z: { mode: shadow }`), emit a one-line warning `cross_audit.probes.<id>: unknown probe id, treated as off — ignored for this run` and continue. Probes are a forward-looking enum; new ids arrive in follow-up specs without needing a Foundation re-release. Unknown-id emissions never hard-stop Phase 0.
 - **Mode enumeration**: the four allowed values are `off|shadow|warn|block`. Any other string emits the same one-line warning and falls back to `off`.
 
 See `docs/kb-discovery.md` for the canonical YAML schema and `docs/kb-discovery.md` → "cross_audit.probes.<id>.mode kill-switch" for the full mode semantics (shadow section routing, blocking semantics, Phase 3 presentation).
@@ -191,7 +191,7 @@ probe_modes: [dict mapping probe id → effective mode resolved from the cross_a
 
 When cross-auditor completes:
 
-0. **Apply the §3.4 recovery algorithm** to the agent's raw return before step 1 — this is callsite 5 of the 6 §3.4 recovery callsites (the standalone `/cross-audit` Phase 1-2 initial dispatch). The recovery algorithm body is canonical in `skills/feature/SKILL.md` §3.5b-2; the standalone-mode specifics are in the §Cross-auditor return-contract gate subsection below. Classifier output gates whether the findings.md read in step 1 proceeds, or the §3.4d standalone terminal banner fires.
+0. **Apply the §3.5b-2 recovery algorithm** to the agent's raw return before step 1 — this is callsite 5 of the 6 §3.5b-2 recovery callsites (the standalone `/cross-audit` Phase 1-2 initial dispatch). The recovery algorithm body is canonical in `skills/feature/SKILL.md` §3.5b-2; the standalone-mode specifics are in the §Cross-auditor return-contract gate subsection below. Classifier output gates whether the findings.md read in step 1 proceeds, or the §3.4d standalone terminal banner fires.
 1. Read the findings doc from KB
 2. Present to user:
    - Count by severity and confidence
@@ -330,7 +330,7 @@ When user invokes `/cross-audit <findings-doc-path>`:
    - `fixed_ids`: IDs with status `FIXED` (whether previously OPEN or REOPENED) — the auditor will verify these and flip to VERIFIED if confirmed
    - `accepted_ids`: IDs with status `ACCEPTED` or `DEFERRED` — skip re-reporting, preserve their status (do NOT flip to FIXED)
 3. Launch cross-auditor with both lists: `previously_fixed: <fixed_ids>`, `accepted_ids: <accepted_ids>`
-3a. **Apply the §3.4 recovery algorithm** to the re-spawn's classifier output before step 4 — this is callsite 6 of the 6 §3.4 recovery callsites (the standalone Phase 5 re-audit re-spawn). Per the §Cross-auditor return-contract gate subsection above: capture the raw return, invoke `hooks/lib/check_dispatch_response.py`, write the sidecar JSON, and branch on the classifier exit code. Classifier output gates whether fix-verification in step 4 proceeds, or the §3.4d standalone terminal banner fires.
+3a. **Apply the §3.5b-2 recovery algorithm** to the re-spawn's classifier output before step 4 — this is callsite 6 of the 6 §3.5b-2 recovery callsites (the standalone Phase 5 re-audit re-spawn). Per the §Cross-auditor return-contract gate subsection above: capture the raw return, invoke `hooks/lib/check_dispatch_response.py`, write the sidecar JSON, and branch on the classifier exit code. Classifier output gates whether fix-verification in step 4 proceeds, or the §3.4d standalone terminal banner fires.
 4. Agent **verifies each fix** (reads file:line, confirms fix is present) and looks for new issues
    - Confirmed fixes → VERIFIED
    - Absent or broken fixes → REOPENED

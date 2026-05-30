@@ -29,8 +29,10 @@ Skip when:
 `$ARGUMENTS` selects what to narrate. First positional argument:
 
 - empty / `session` — the current conversation transcript.
-- `--spec <slug>` — read `<kb>/repos/<project>/specs/<slug>/spec.md` and the
-  matching execution workdoc(s).
+- `--spec <slug>` — read the spec matching `<slug>` under
+  `<kb>/repos/<project>/design/` (canonical `YYYY-MM-DD-<slug>.md`; glob by slug
+  since the date prefix is unknown) and the matching execution workdoc at
+  `<kb>/repos/<project>/design/workdocs/<slug>/exec.md`.
 - `--investigation <path>` — read an investigation transcript file (typically
   `<kb>/repos/<project>/research/<slug>.md` or a paste).
 - `--retro` — current session, framed as a retrospective scene rather than a
