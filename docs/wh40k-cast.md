@@ -80,7 +80,7 @@ in: *"не то делаешь, переделай по R3."*
 ## Why this exists
 
 Pure flavor. The plugin already takes itself seriously enough — MISSION.md, Probes
-E/F, four-axis constraint set, code-quality rules R1-R7. The cast list is the
+E/F, four-axis constraint set, code-quality rules R1-R14. The cast list is the
 counterweight: the same federation can be told as a 40K story without changing
 a single line of behavior. It also gives `/lore` a stable cast to draw from when
 turning a finished session into a vignette.

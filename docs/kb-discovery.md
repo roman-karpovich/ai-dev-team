@@ -107,6 +107,8 @@ Semantics (per spec 2026-04-21-cross-audit-probes-foundation §3.4):
 |----------|---------------|---------|-------------|---------------|
 | e | same-file allowlist leak | changed `.py` files in diff with string additions (test files skipped) | changed `.py` file full content at HEAD (same-file only) | Python only; same-file consumer detection only |
 | f | missing-cursor pagination | changed `.py` files in diff with paging-method-call additions (test files skipped) | changed `.py` file full content at HEAD (same-file only) | Python only; single failure_kind (`missing_cursor`); no spec or test-fixture analysis; enclosing function required (no module-level) |
+| g | dependency freshness (major-version drift) | a changed lockfile/manifest (`requirements.txt`, `Pipfile.lock`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `go.sum`) among changed `.py`/`.yaml` files | added dependency lines in the changed manifest | heuristic version-drift detection; no live registry lookup |
+| h | typosquatting detector | a changed lockfile/manifest (same set as `g`) among changed `.py`/`.yaml` files | added dependency lines in the changed manifest | name-similarity heuristic; no live registry lookup |
 
 See `skills/cross-audit/SKILL.md` Phase 0 for the read sequence.
 

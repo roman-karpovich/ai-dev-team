@@ -38,10 +38,10 @@ exceptions noted above.
 | Agent | Claim (verbatim quote) | Location | Class | Backing |
 |-------|------------------------|----------|-------|---------|
 | cross-auditor.md | "`off`-mode probes MUST NOT be dispatched and MUST NOT produce receipts" | `agents/cross-auditor.md:43` | enforced | `check_cross_auditor_step05_probe_dispatch` smoke pin covers Step 0.5 dispatch behavior |
-| cross-auditor.md | "Step 0.5 MUST emit fully-populated string triples" | `agents/cross-auditor.md:263` | enforced | `hooks/lib/render_findings.sh` hard-stops on malformed `probe_failures[]`; renderer smoke pins cover malformed input |
-| cross-auditor.md | "orchestrator MUST emit all three required fields as non-empty strings" | `agents/cross-auditor.md:380` | enforced | `hooks/lib/render_findings.sh` schema hard-stop plus `check_probe_failures_schema_hard_stop` |
-| cross-auditor.md | "do NOT lower `codex_reasoning_effort`" | `agents/cross-auditor.md:273` | enforced | smoke pins keep `effort: xhigh` and the `Defaults to xhigh` prompt text |
-| cross-auditor.md | "`spec` mode exception: do NOT write files" | `agents/cross-auditor.md:386` | convention | none — convention only |
+| cross-auditor.md | "Step 0.5 MUST emit fully-populated string triples" | `agents/references/cross-auditor-pr-and-probes.md:124` | enforced | `hooks/lib/render_findings.sh` hard-stops on malformed `probe_failures[]`; renderer smoke pins cover malformed input |
+| cross-auditor.md | "orchestrator MUST emit all three required fields as non-empty strings" | `agents/references/cross-auditor-step-3-pipeline.md:58` | enforced | `hooks/lib/render_findings.sh` schema hard-stop plus `check_probe_failures_schema_hard_stop` |
+| cross-auditor.md | "do NOT lower `codex_reasoning_effort`" | `agents/references/cross-auditor-codex-dispatch.md:13` | enforced | smoke pins keep `effort: xhigh` and the `Defaults to xhigh` prompt text |
+| cross-auditor.md | "`spec` mode exception: do NOT write files" | `agents/references/cross-auditor-output-format.md:7` | convention | none — convention only |
 | developer-codex.md | "Rust: `cargo fmt` always" | `agents/developer-codex.md:75` | convention | none — convention only |
 | developer-codex.md | "stage only files directly related to this step — never `git add -A`" | `agents/developer-codex.md:82` | convention | none — convention only |
 | developer-codex.md | "Never call Codex with a vague prompt" | `agents/developer-codex.md:109` | self-policed | none — agent self-policed |
