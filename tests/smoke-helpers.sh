@@ -8433,3 +8433,155 @@ check_kb_authoring_convention_wired() {
     && awk '/^### Step 3 — Create/,/^### Step 4/' "$PLUGIN_ROOT/skills/research/SKILL.md" | grep -qF 'kb-authoring-style.md' \
     && awk '/^You \(the feature skill orchestrator\) write both/,/^\*\*Spec\*\*: create at/' "$PLUGIN_ROOT/skills/feature/SKILL.md" | grep -qF 'kb-authoring-style.md'
 }
+
+# --- KB-drift scanner pins (spec 2026-05-31-librarian-kb-actualization) ---
+
+# Behavioral: tests/kb_drift_scan.py against the clean + drift fixtures.
+# Clean → exit 0 / no findings. Drift → exit 1 / each class token (C1/C2/C3)
+# present, with the autonomy-boundary invariants the curator relies on
+# (C2/C3 never auto_safe; C1 carries both an auto_safe:true and auto_safe:false).
+check_kb_drift_scan_behavioral() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  local clean="$PLUGIN_ROOT/tests/fixtures/kb-drift/clean"
+  local drift="$PLUGIN_ROOT/tests/fixtures/kb-drift/drift"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  [ -d "$clean" ] || { echo "$clean fixture dir missing"; return 1; }
+  [ -d "$drift" ] || { echo "$drift fixture dir missing"; return 1; }
+  python3 - "$scanner" "$clean" "$drift" <<'PYEOF'
+import json, subprocess, sys
+scanner, clean, drift = sys.argv[1], sys.argv[2], sys.argv[3]
+
+c = subprocess.run([sys.executable, scanner, clean], capture_output=True, text=True)
+if c.returncode != 0:
+    print(f"clean fixture: expected exit 0, got {c.returncode}")
+    sys.exit(1)
+cf = json.loads(c.stdout)["findings"]
+if cf != []:
+    print(f"clean fixture: expected no findings, got {cf}")
+    sys.exit(1)
+
+d = subprocess.run([sys.executable, scanner, drift], capture_output=True, text=True)
+if d.returncode != 1:
+    print(f"drift fixture: expected exit 1, got {d.returncode}")
+    sys.exit(1)
+F = json.loads(d.stdout)["findings"]
+classes = {f["class"] for f in F}
+want = {"C1_broken_wikilink", "C2_dangling_section_pointer", "C3_status_enum_violation"}
+if classes != want:
+    print(f"drift fixture: expected class set {want}, got {classes}")
+    sys.exit(1)
+for f in F:
+    if not ({"class", "file", "line", "detail", "auto_safe"} <= set(f)):
+        print(f"finding missing required keys: {f}")
+        sys.exit(1)
+# Autonomy boundary: C2/C3 are never auto_safe.
+for f in F:
+    if f["class"] in ("C2_dangling_section_pointer", "C3_status_enum_violation") and f["auto_safe"] is not False:
+        print(f"C2/C3 finding wrongly auto_safe: {f}")
+        sys.exit(1)
+# C1 correction-candidacy: both a unique (auto_safe:true) and a 0/multi (false).
+c1 = [f["auto_safe"] for f in F if f["class"] == "C1_broken_wikilink"]
+if True not in c1 or False not in c1:
+    print(f"C1 findings must include both auto_safe true and false, got {c1}")
+    sys.exit(1)
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3, autonomy boundary intact")
+PYEOF
+}
+
+# Non-drift: the 8-status canonical enum line (NO DONE) lives in
+# docs/kb-layout.md, is NOT re-declared in spec-template.md, and equals the
+# scanner's CANONICAL_SPEC_STATUSES constant. DONE is a separate read-compat
+# synonym (ACCEPTED_SPEC_STATUSES) — assert it is accepted by C3 (a status:DONE
+# spec is NOT flagged) and is NOT folded into the enum line.
+check_kb_layout_status_enum_single_source() {
+  local layout="$PLUGIN_ROOT/docs/kb-layout.md"
+  local template="$PLUGIN_ROOT/skills/feature/references/spec-template.md"
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  local enum_line='status: DRAFT | APPROVED | AUDIT_PASSED | IN_PROGRESS | BLOCKED | SHIPPED | VERIFIED | DISCARDED'
+  [ -f "$layout" ] || { echo "$layout missing"; return 1; }
+  [ -f "$template" ] || { echo "$template missing"; return 1; }
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+
+  # Positive: enum line present in kb-layout.md.
+  grep -qF "$enum_line" "$layout" \
+    || { echo "$layout missing canonical 8-status enum line"; return 1; }
+
+  # Negative: NOT re-declared in spec-template.md (canonical/template split).
+  if grep -qF "$enum_line" "$template"; then
+    echo "$template re-declares the status enum line — must only point at docs/kb-layout.md §Feature Spec frontmatter"
+    return 1
+  fi
+
+  # Equality: kb-layout enum line == scanner CANONICAL_SPEC_STATUSES; DONE
+  # excluded from canonical but accepted by ACCEPTED; status:DONE not flagged.
+  python3 - "$layout" "$scanner" <<'PYEOF'
+import importlib.util, re, sys
+from pathlib import Path
+
+layout, scanner = sys.argv[1], sys.argv[2]
+
+# Load the scanner module to read its enum constants.
+sys.path.insert(0, str(Path(scanner).resolve().parent))
+spec = importlib.util.spec_from_file_location("kb_drift_scan", scanner)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+canonical = list(mod.CANONICAL_SPEC_STATUSES)
+accepted = set(mod.ACCEPTED_SPEC_STATUSES)
+
+# Parse the enum line tokens from kb-layout.md.
+m = None
+for line in Path(layout).read_text(encoding="utf-8").splitlines():
+    if line.strip().startswith("status: DRAFT |"):
+        m = line
+        break
+if m is None:
+    print("could not find the status enum line in kb-layout.md")
+    sys.exit(1)
+tokens = [t.strip() for t in m.split("status:", 1)[1].split("|")]
+
+if tokens != canonical:
+    print(f"enum line tokens {tokens} != CANONICAL_SPEC_STATUSES {canonical}")
+    sys.exit(1)
+if "DONE" in tokens:
+    print("DONE must NOT appear in the canonical enum line")
+    sys.exit(1)
+if accepted != set(canonical) | {"DONE"}:
+    print(f"ACCEPTED_SPEC_STATUSES {accepted} != canonical ∪ {{DONE}}")
+    sys.exit(1)
+if "DONE" not in accepted:
+    print("DONE must be in ACCEPTED_SPEC_STATUSES (legacy read-compat)")
+    sys.exit(1)
+print("enum single-source: kb-layout 8-status line == CANONICAL (no DONE); DONE accepted only via ACCEPTED")
+PYEOF
+  [ "$?" -eq 0 ] || return 1
+
+  # Behavioral: a status:DONE spec is NOT flagged by C3.
+  local tmpd
+  tmpd="$(mktemp -d)" || { echo "mktemp failed"; return 1; }
+  cat > "$tmpd/legacy-done.md" <<'SPECEOF'
+---
+title: Legacy Done Spec
+project: fixture
+type: spec
+status: DONE
+created: 2026-04-16
+tags: [spec, fixture]
+---
+
+Legacy DONE spec — read-compat synonym of VERIFIED; must NOT be flagged.
+SPECEOF
+  local out
+  out="$(python3 "$scanner" "$tmpd" 2>/dev/null)"
+  local rc=$?
+  rm -rf "$tmpd"
+  if printf '%s' "$out" | grep -qF 'C3_status_enum_violation'; then
+    echo "status:DONE spec was wrongly flagged C3 (DONE is legacy read-compat, must be accepted)"
+    return 1
+  fi
+  if [ "$rc" -ne 0 ]; then
+    echo "scanner exited non-zero on a clean status:DONE-only vault (rc=$rc)"
+    return 1
+  fi
+  echo "kb-layout enum single-source intact; status:DONE accepted (not C3-flagged)"
+}

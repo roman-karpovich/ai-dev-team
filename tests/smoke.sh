@@ -6051,6 +6051,12 @@ check "caveman-in-flow-activation-documented"    check_caveman_in_flow_activatio
 check "kb-authoring-convention-wired"            check_kb_authoring_convention_wired
 echo
 
+# --- KB-drift scanner (spec 2026-05-31-librarian-kb-actualization) ---
+echo "KB-drift scanner pins:"
+check "kb-drift-scan-behavioral"                 check_kb_drift_scan_behavioral
+check "kb-layout-status-enum-single-source"      check_kb_layout_status_enum_single_source
+echo
+
 
 echo
 echo "Passed: $PASS"
