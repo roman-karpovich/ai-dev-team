@@ -51,8 +51,8 @@ exceptions noted above.
 | spec-compliance-checker.md | "DONE without a green capture file is always FAIL" | `agents/spec-compliance-checker.md:183` | self-policed | none — agent self-policed |
 | spec-compliance-checker.md | "A green capture that doesn't match `expected_pass_pattern` is always FAIL" | `agents/spec-compliance-checker.md:184` | self-policed | none — agent self-policed |
 | spec-compliance-checker.md | "never soften this, never waive" | `agents/spec-compliance-checker.md:185` | self-policed | none — agent self-policed |
-| librarian.md | "Never modify source code or files outside the KB" | `agents/librarian.md:135` | self-policed | none — agent self-policed |
-| librarian.md | "never overwrite a previous iter" | `agents/librarian.md:138` | convention | none — convention only |
-| librarian.md | "Always confirm the KB root path before writing" | `agents/librarian.md:140` | self-policed | none — agent self-policed |
+| librarian.md | "Never modify source code or files outside the KB" | `agents/librarian.md` §Rules → "Never modify source code or files outside the KB" | self-policed | none — agent self-policed |
+| librarian.md | "never overwrite a previous iter" | `agents/librarian.md` §Rules → "workdoc-iterN.md is created as a NEW file per iteration — never overwrite a previous iter" | convention | none — convention only |
+| librarian.md | "Always confirm the KB root path before writing" | `agents/librarian.md` §Rules → "Always confirm the KB root path before writing" | self-policed | none — agent self-policed |
 | verifier.md | "You never write or modify source code" | `agents/verifier.md:13` | self-policed | no Write/Edit tools, but Bash remains available; no external write gate |
 | investigator.md | "Use it for ALL subsequent rounds" | `agents/investigator.md:67` | self-policed | none — agent self-policed |
