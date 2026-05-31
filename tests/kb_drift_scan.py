@@ -309,8 +309,11 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
         # Scope strictly to the leading `--- ... ---` frontmatter block — a body
         # that merely QUOTES `type: spec` (e.g. a research note documenting the
         # schema in a fenced ```yaml block) is NOT a spec and must not be flagged.
+        # A doc with no leading frontmatter (plain note) is not a spec → skip.
         frontmatter = leading_frontmatter(text)
-        type_match = FM_TYPE_RE.search(frontmatter) if frontmatter is not None else None
+        if frontmatter is None:
+            continue
+        type_match = FM_TYPE_RE.search(frontmatter)
         if type_match is not None and type_match.group(1) == "spec":
             status_match = FM_STATUS_RE.search(frontmatter)
             if status_match is None:
