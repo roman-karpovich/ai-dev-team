@@ -8440,6 +8440,10 @@ check_kb_authoring_convention_wired() {
 # Clean → exit 0 / no findings. Drift → exit 1 / each class token (C1/C2/C3)
 # present, with the autonomy-boundary invariants the curator relies on
 # (C2/C3 never auto_safe; C1 carries both an auto_safe:true and auto_safe:false).
+# Also pins two false-result regressions: C3 frontmatter-scoping (a research
+# note quoting the spec schema in a ```yaml block is NOT flagged — clean
+# fixture's research-quotes-spec-schema.md) and the --project-typo false-clean
+# (a nonexistent project subtree errors to stderr / exit 2, never exit 0).
 check_kb_drift_scan_behavioral() {
   local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
   local clean="$PLUGIN_ROOT/tests/fixtures/kb-drift/clean"
@@ -8448,7 +8452,8 @@ check_kb_drift_scan_behavioral() {
   [ -d "$clean" ] || { echo "$clean fixture dir missing"; return 1; }
   [ -d "$drift" ] || { echo "$drift fixture dir missing"; return 1; }
   python3 - "$scanner" "$clean" "$drift" <<'PYEOF'
-import json, subprocess, sys
+import json, subprocess, sys, tempfile
+from pathlib import Path
 scanner, clean, drift = sys.argv[1], sys.argv[2], sys.argv[3]
 
 c = subprocess.run([sys.executable, scanner, clean], capture_output=True, text=True)
@@ -8458,6 +8463,14 @@ if c.returncode != 0:
 cf = json.loads(c.stdout)["findings"]
 if cf != []:
     print(f"clean fixture: expected no findings, got {cf}")
+    sys.exit(1)
+# X1 regression: the clean fixture's research note quotes `type: spec` /
+# `status: DRAFT` inside a fenced ```yaml block. C3 must scope to the LEADING
+# frontmatter only — that body quote must not yield a C3 finding (covered by
+# findings == [] above, but assert the fixture is present so the proof can't
+# silently vanish).
+if not (Path(clean) / "research-quotes-spec-schema.md").is_file():
+    print("clean fixture missing research-quotes-spec-schema.md (X1 frontmatter-scoping proof)")
     sys.exit(1)
 
 d = subprocess.run([sys.executable, scanner, drift], capture_output=True, text=True)
@@ -8484,7 +8497,32 @@ c1 = [f["auto_safe"] for f in F if f["class"] == "C1_broken_wikilink"]
 if True not in c1 or False not in c1:
     print(f"C1 findings must include both auto_safe true and false, got {c1}")
     sys.exit(1)
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3, autonomy boundary intact")
+
+# X2 regression: a typo'd / nonexistent --project must error (exit 2), never a
+# silent false-clean ({"scanned": 0, "findings": []} exit 0).
+with tempfile.TemporaryDirectory() as td:
+    (Path(td) / "repos" / "realproj").mkdir(parents=True)
+    (Path(td) / "repos" / "realproj" / "a.md").write_text("# a\n", encoding="utf-8")
+    p = subprocess.run(
+        [sys.executable, scanner, td, "--project", "realprojj"],
+        capture_output=True, text=True,
+    )
+    if p.returncode != 2:
+        print(f"--project nonexistent: expected exit 2 (not false-clean), got {p.returncode}; stdout={p.stdout!r}")
+        sys.exit(1)
+    if "error" not in p.stderr.lower():
+        print(f"--project nonexistent: expected an error on stderr, got {p.stderr!r}")
+        sys.exit(1)
+    # Control: an EXISTING project still scans (exit 0, no findings here).
+    ok = subprocess.run(
+        [sys.executable, scanner, td, "--project", "realproj"],
+        capture_output=True, text=True,
+    )
+    if ok.returncode != 0 or json.loads(ok.stdout)["findings"] != []:
+        print(f"--project existing: expected exit 0 / no findings, got rc={ok.returncode} out={ok.stdout!r}")
+        sys.exit(1)
+
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3, autonomy boundary intact; C3 frontmatter-scoped (X1); --project-typo errors exit2 (X2)")
 PYEOF
 }
 

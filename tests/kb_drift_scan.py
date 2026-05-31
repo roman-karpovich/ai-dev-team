@@ -32,9 +32,10 @@ CLI:
     python3 tests/kb_drift_scan.py <kb_root> [--project <name>] [--json]
 
 `<kb_root>` is the vault root. `--project <name>` restricts the scan to
-`<kb_root>/repos/<name>/` (path-prefix filter); default scans
-`<kb_root>/repos/*/`. When neither `<kb_root>/repos/` nor a `--project` subtree
-exists, the scanner walks `<kb_root>` directly (covers a flat fixture vault).
+`<kb_root>/repos/<name>/` (path-prefix filter) and is an error (exit 2) when
+that subtree does not exist — never a silent zero-scan. Without `--project`,
+the scan covers `<kb_root>/repos/*/`; when `<kb_root>/repos/` does not exist the
+scanner walks `<kb_root>` directly (covers a flat fixture vault).
 
 Output: JSON
     {"scanned": <int>, "findings": [{"class", "file", "line", "detail", "auto_safe"}]}
@@ -85,9 +86,12 @@ ACCEPTED_SPEC_STATUSES = frozenset(CANONICAL_SPEC_STATUSES) | {"DONE"}
 # Obsidian wikilink: [[target]] with optional #heading / |alias / ^block-id.
 WIKILINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 
-# Frontmatter status: line (first match wins).
-STATUS_RE = re.compile(r"^status:\s*(\S+)\s*$", re.MULTILINE)
-TYPE_SPEC_RE = re.compile(r"^type:\s*spec\s*$", re.MULTILINE)
+# C3 reads `type` / `status` from the LEADING `--- ... ---` YAML frontmatter
+# block ONLY — never from the body (a body that QUOTES `type: spec` inside a
+# fenced ```yaml block must not be misclassified as a spec). These match a
+# `key: value` line WITHIN the already-isolated frontmatter block.
+FM_TYPE_RE = re.compile(r"^type:\s*(\S+)\s*$", re.MULTILINE)
+FM_STATUS_RE = re.compile(r"^status:\s*(\S+)\s*$", re.MULTILINE)
 
 
 def scan_roots(kb_root: Path, project: Optional[str]) -> List[Path]:
@@ -209,6 +213,23 @@ def kb_relative(path: Path, kb_root: Path) -> str:
         return str(path)
 
 
+def leading_frontmatter(text: str) -> Optional[str]:
+    """Return the leading `--- ... ---` YAML frontmatter block, or None.
+
+    A frontmatter block exists only when the document's first line is a bare
+    `---` fence and a closing `---` fence follows. Returns the body BETWEEN the
+    fences (exclusive). None means no leading frontmatter — the doc is not a
+    spec for C3 purposes regardless of what its body quotes.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() == "---":
+            return "\n".join(lines[1:idx])
+    return None
+
+
 def scan(kb_root: Path, project: Optional[str]) -> Dict:
     roots = scan_roots(kb_root, project)
     files = md_files(roots)
@@ -285,22 +306,29 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                     )
 
         # --- C3 status-enum violation ---
-        if TYPE_SPEC_RE.search(text):
-            status_match = STATUS_RE.search(text)
+        # Scope strictly to the leading `--- ... ---` frontmatter block — a body
+        # that merely QUOTES `type: spec` (e.g. a research note documenting the
+        # schema in a fenced ```yaml block) is NOT a spec and must not be flagged.
+        frontmatter = leading_frontmatter(text)
+        type_match = FM_TYPE_RE.search(frontmatter) if frontmatter is not None else None
+        if type_match is not None and type_match.group(1) == "spec":
+            status_match = FM_STATUS_RE.search(frontmatter)
             if status_match is None:
                 findings.append(
                     {
                         "class": "C3_status_enum_violation",
                         "file": rel,
                         "line": None,
-                        "detail": "unparseable frontmatter",
+                        "detail": "type: spec doc has no frontmatter status:",
                         "auto_safe": False,
                     }
                 )
             else:
                 status = status_match.group(1)
                 if status not in ACCEPTED_SPEC_STATUSES:
-                    line_num = text[: status_match.start()].count("\n") + 1
+                    # Frontmatter body starts at file line 2 (line 1 is the
+                    # opening `---` fence).
+                    line_num = frontmatter[: status_match.start()].count("\n") + 2
                     findings.append(
                         {
                             "class": "C3_status_enum_violation",
@@ -335,6 +363,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             f"error: KB root not found or not a directory: {kb_root}", file=sys.stderr
         )
         return 2
+
+    # A typo'd / missing --project must NOT yield a silent false-clean scan
+    # ({"scanned": 0, "findings": []} exit 0). Fail loud like the kb_root check.
+    if args.project is not None:
+        project_root = kb_root / "repos" / args.project
+        if not project_root.is_dir():
+            print(
+                f"error: project subtree not found or not a directory: {project_root}",
+                file=sys.stderr,
+            )
+            return 2
 
     try:
         report = scan(kb_root, args.project)
