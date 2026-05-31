@@ -8437,9 +8437,11 @@ check_kb_authoring_convention_wired() {
 # --- KB-drift scanner pins (spec 2026-05-31-librarian-kb-actualization) ---
 
 # Behavioral: tests/kb_drift_scan.py against the clean + drift fixtures.
-# Clean → exit 0 / no findings. Drift → exit 1 / each class token (C1/C2/C3)
+# Clean → exit 0 / no findings. Drift → exit 1 / each class token (C1/C2/C3/C4)
 # present, with the autonomy-boundary invariants the curator relies on
-# (C2/C3 never auto_safe; C1 carries both an auto_safe:true and auto_safe:false).
+# (C2/C3/C4 never auto_safe; C1 carries both an auto_safe:true and auto_safe:false).
+# C4 status-drift: 2 drift fixtures (structured + Log-marker paths) flag, the 5
+# clean status fixtures (incl. the IN_PROGRESS awaiting-hand-off case) stay clean.
 # Also pins false-result regressions: C3 frontmatter-scoping (a research
 # note quoting the spec schema in a ```yaml block is NOT flagged — clean
 # fixture's research-quotes-spec-schema.md); the --project-typo false-clean
@@ -8505,13 +8507,44 @@ for fname, why in code_aware_fixtures.items():
             print(f"{fname}: expected zero findings ({why}), got {ff}")
             sys.exit(1)
 
+# C4 anti-false-positive boundary (§3.2a). The five clean status fixtures each
+# stay clean (already covered by the global findings == [] above, but each is
+# re-scanned in isolation so a per-file C4 regression can't be masked by a
+# global zero; the load-bearing cases c2/c3/c5 are the genuine FP traps). c5
+# (IN_PROGRESS + null evidence + 'code audit passed' Log) is the awaiting-hand-
+# off state — it differs from the drift Log-marker fixture ONLY in status, so
+# its silence proves the status-gate distinguishes drift from awaiting-hand-off
+# on the Log-marker path (X1).
+c4_clean_fixtures = {
+    "spec-draft-no-evidence.md": "DRAFT, no evidence, no terminal Log → no C4 (c1)",
+    "spec-verified-with-evidence.md": "VERIFIED + evidence → terminal, no C4 (c2)",
+    "spec-approved-null-evidence.md": "APPROVED + null evidence → pre-impl, no C4 (c3)",
+    "spec-blocked-with-evidence.md": "BLOCKED + evidence → intentional hold, no C4 (c4)",
+    "spec-in-progress-awaiting-handoff.md": "IN_PROGRESS + null evidence + 'code audit passed' Log → awaiting hand-off, no C4 (c5, the X1 fix)",
+}
+for fname, why in c4_clean_fixtures.items():
+    fp = Path(clean) / fname
+    if not fp.is_file():
+        print(f"clean fixture missing {fname} ({why})")
+        sys.exit(1)
+    with tempfile.TemporaryDirectory() as td:
+        (Path(td) / fname).write_text(fp.read_text(encoding="utf-8"), encoding="utf-8")
+        r = subprocess.run([sys.executable, scanner, td], capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"{fname}: expected exit 0 ({why}), got {r.returncode}; out={r.stdout!r}")
+            sys.exit(1)
+        ff = json.loads(r.stdout)["findings"]
+        if ff != []:
+            print(f"{fname}: expected zero findings ({why}), got {ff}")
+            sys.exit(1)
+
 d = subprocess.run([sys.executable, scanner, drift], capture_output=True, text=True)
 if d.returncode != 1:
     print(f"drift fixture: expected exit 1, got {d.returncode}")
     sys.exit(1)
 F = json.loads(d.stdout)["findings"]
 classes = {f["class"] for f in F}
-want = {"C1_broken_wikilink", "C2_dangling_section_pointer", "C3_status_enum_violation"}
+want = {"C1_broken_wikilink", "C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift"}
 if classes != want:
     print(f"drift fixture: expected class set {want}, got {classes}")
     sys.exit(1)
@@ -8519,15 +8552,35 @@ for f in F:
     if not ({"class", "file", "line", "detail", "auto_safe"} <= set(f)):
         print(f"finding missing required keys: {f}")
         sys.exit(1)
-# Autonomy boundary: C2/C3 are never auto_safe.
+# Autonomy boundary: C2/C3/C4 are never auto_safe (a fix/flip is a human call).
 for f in F:
-    if f["class"] in ("C2_dangling_section_pointer", "C3_status_enum_violation") and f["auto_safe"] is not False:
-        print(f"C2/C3 finding wrongly auto_safe: {f}")
+    if f["class"] in ("C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift") and f["auto_safe"] is not False:
+        print(f"C2/C3/C4 finding wrongly auto_safe: {f}")
         sys.exit(1)
 # C1 correction-candidacy: both a unique (auto_safe:true) and a 0/multi (false).
 c1 = [f["auto_safe"] for f in F if f["class"] == "C1_broken_wikilink"]
 if True not in c1 or False not in c1:
     print(f"C1 findings must include both auto_safe true and false, got {c1}")
+    sys.exit(1)
+
+# C4 status-drift: TWO drift fixtures, one per signal path (total C4 == 2). d1
+# (spec-status-drift-structured.md) fires via the structured frontmatter
+# code_audit_evidence path; d2 (spec-status-drift-logmarker.md) fires via the
+# legacy column-0 'code audit passed' Log marker (its evidence is null, so the
+# structured path cannot fire — d2 positively pins TERMINAL_LOG_MARKER_RE, X3).
+# d2 vs the clean c5 fixture differ ONLY in status (AUDIT_PASSED vs
+# IN_PROGRESS), so the pair proves the status-gate distinguishes drift from
+# awaiting-hand-off on the Log-marker path.
+c4 = [f for f in F if f["class"] == "C4_status_drift"]
+if len(c4) != 2:
+    print(f"drift fixture: expected exactly 2 C4_status_drift findings (one per signal path), got {len(c4)}: {c4}")
+    sys.exit(1)
+c4_files = {f["file"] for f in c4}
+if c4_files != {"spec-status-drift-structured.md", "spec-status-drift-logmarker.md"}:
+    print(f"C4 findings must be on the structured + Log-marker drift fixtures, got {c4_files}")
+    sys.exit(1)
+if any(f["auto_safe"] is not False for f in c4):
+    print(f"C4 findings must all be auto_safe:false, got {[f['auto_safe'] for f in c4]}")
     sys.exit(1)
 
 # X5 regression (path containment — out-of-vault target): the drift fixture's
@@ -8585,7 +8638,7 @@ with tempfile.TemporaryDirectory() as td:
         print(f"--project existing: expected exit 0 / no findings, got rc={ok.returncode} out={ok.stdout!r}")
         sys.exit(1)
 
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3, autonomy boundary intact; C3 frontmatter-scoped (X1); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4)")
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4)")
 PYEOF
 }
 
