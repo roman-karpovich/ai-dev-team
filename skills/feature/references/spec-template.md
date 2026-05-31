@@ -2,6 +2,8 @@
 title: {Feature Title}
 project: {project-name}
 type: spec
+# Author template only — for the canonical status enum + transitions + per-status
+# meaning, see docs/kb-layout.md §Feature Spec frontmatter (do not re-declare here).
 status: DRAFT
 branch: {change_type}/YYYY-MM-DD-{slug}
 change_type: {change_type}

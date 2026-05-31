@@ -282,3 +282,12 @@ check_all_shell_scripts_mktemp_guarded behavioral
 # negative) and a scope regression detector asserting the enumeration
 # includes at least one file outside smoke-helpers.sh.
 check_all_shell_scripts_mktemp_lint_self_test behavioral
+
+# KB-drift scanner pins (spec 2026-05-31-librarian-kb-actualization):
+#   kb_drift_scan_behavioral runs tests/kb_drift_scan.py against the clean +
+#   drift fixtures and checks runtime behavior (exit codes, class set, auto_safe
+#   autonomy boundary). kb_layout_status_enum_single_source loads the scanner
+#   module + reads docs/kb-layout.md / spec-template.md and runs the scanner on
+#   a synthesized status:DONE vault — both execute code/fixtures → behavioral.
+check_kb_drift_scan_behavioral behavioral
+check_kb_layout_status_enum_single_source behavioral

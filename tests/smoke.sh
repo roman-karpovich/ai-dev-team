@@ -1689,7 +1689,7 @@ check_smoke_helper_developer_workflow_rejects_stale() {
 }
 
 # 4 positive: helper against real plugin file
-check "check_librarian_status_block_canonical" check_librarian_status_block_canonical agents/librarian.md
+check "check_librarian_status_block_canonical" check_librarian_status_block_canonical docs/kb-layout.md
 check "check_discard_mode_refuses_verified_shipped" check_discard_mode_refuses_verified_shipped skills/feature/SKILL.md
 check "check_feature_skill_no_active_done_writes" check_feature_skill_no_active_done_writes skills/feature/SKILL.md
 check "check_developer_workflow_no_active_done_writes" check_developer_workflow_no_active_done_writes skills/feature/references/developer-workflow.md
@@ -6049,6 +6049,12 @@ check "caveman-skill-wire-prefix-present"        check_caveman_skill_wire_prefix
 check "caveman-skill-artifact-boundary-present"  check_caveman_skill_artifact_boundary_present
 check "caveman-in-flow-activation-documented"    check_caveman_in_flow_activation_documented
 check "kb-authoring-convention-wired"            check_kb_authoring_convention_wired
+echo
+
+# --- KB-drift scanner (spec 2026-05-31-librarian-kb-actualization) ---
+echo "KB-drift scanner pins:"
+check "kb-drift-scan-behavioral"                 check_kb_drift_scan_behavioral
+check "kb-layout-status-enum-single-source"      check_kb_layout_status_enum_single_source
 echo
 
 
