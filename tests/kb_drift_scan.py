@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3).
+"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3/C4).
 
 Sibling of the existing offline checkers `check_dangling_anchors.py` /
 `check_finding_claims.py`, but scoped to the KB Obsidian vault (NOT the plugin
@@ -19,6 +19,15 @@ Check set (narrow first slice):
                               `check_dangling_anchors.py`.
   C3 status-enum violation  — a `type: spec` doc whose frontmatter `status:` is
                               not in the accepted enum (legacy `DONE` accepted).
+  C4 status-drift           — a `type: spec` doc whose `status:` is pre-code-
+                              audit (APPROVED/AUDIT_PASSED — NOT IN_PROGRESS) yet
+                              carries a code-audit COMPLETION record: a non-null
+                              frontmatter `code_audit_evidence:` (structured) OR
+                              a canonical column-0 terminal Log marker (legacy
+                              fallback). The record implies the work shipped while
+                              the status was left stale. Offline / git-free — reads
+                              only the spec file. `auto_safe: false` (a status flip
+                              is a human decision).
 
 Known limitations (heuristic, like the existing checkers):
   - C1 vault-wide bare-name resolution can false-positive on intentional stub
@@ -40,8 +49,17 @@ Known limitations (heuristic, like the existing checkers):
     containment (a `../`-escape) is still flagged — that false-clean trap is
     preserved.
   - No git/network reads.
-  - First slice covers C1/C2/C3 only (no git-status-drift, no concluded-but-not-
-    ARCHIVED research check — those are follow-ups).
+  - C4 is offline status-drift via the spec's own frontmatter
+    `code_audit_evidence:` + column-0 `code audit passed`/zero-diff Log markers.
+    Git merge-state is NOT used (the git approach is squash-blind — a squash-
+    merge leaves no main-ancestor branch commit). Residual: a squash-merged spec
+    that carries NEITHER a non-null `code_audit_evidence` NOR a terminal Log
+    marker is not caught. Further residuals (consistent with the scanner's
+    case-sensitive, column-0-anchored heuristics): a lowercase `status:` is
+    C3-flagged and not pre-terminal anyway; an indented Log marker won't match
+    TERMINAL_LOG_MARKER_RE.
+  - First slice covers C1/C2/C3/C4 only (no git-status-drift, no concluded-but-
+    not-ARCHIVED research check — those are follow-ups).
 
 CLI:
     python3 tests/kb_drift_scan.py <kb_root> [--project <name>] [--json]
@@ -55,8 +73,8 @@ scanner walks `<kb_root>` directly (covers a flat fixture vault).
 Output: JSON
     {"scanned": <int>, "findings": [{"class", "file", "line", "detail", "auto_safe"}]}
 `class` is one of {C1_broken_wikilink, C2_dangling_section_pointer,
-C3_status_enum_violation}. `file` is KB-relative. `--json` is accepted for
-explicitness; JSON is always emitted.
+C3_status_enum_violation, C4_status_drift}. `file` is KB-relative. `--json` is
+accepted for explicitness; JSON is always emitted.
 
 Exit codes: 0 = no findings; 1 = >=1 finding; 2 = usage/IO error.
 """
@@ -116,6 +134,35 @@ _FENCE_CHARS = ("`", "~")
 # `key: value` line WITHIN the already-isolated frontmatter block.
 FM_TYPE_RE = re.compile(r"^type:\s*(\S+)\s*$", re.MULTILINE)
 FM_STATUS_RE = re.compile(r"^status:\s*(\S+)\s*$", re.MULTILINE)
+
+# C4 status-drift source-of-truth.
+# PRE_TERMINAL_SPEC_STATUSES — the two statuses that PRECEDE the code-audit
+# phase. A code-audit completion record at one of them is anomalous (the work
+# shipped but the status was left stale). IN_PROGRESS is deliberately EXCLUDED:
+# per skills/feature/SKILL.md §Verify/§3.4a the code-audit phase writes
+# code_audit_evidence (and the `code audit passed` Log marker) WITHOUT changing
+# status — status stays IN_PROGRESS until hand-off. So IN_PROGRESS + evidence is
+# the normal awaiting-hand-off state, NOT drift.
+PRE_TERMINAL_SPEC_STATUSES = frozenset({"APPROVED", "AUDIT_PASSED"})
+# CODE_AUDIT_EVIDENCE_VALUES — the five non-null values code_audit_evidence
+# resolves to ONLY when the code-audit phase completes (per
+# 2026-04-27-audit-evidence-enum.md §2.2 / SKILL.md §3.5b). The literal token
+# `null` is deliberately NOT in this set — `null`/empty/absent → no evidence.
+CODE_AUDIT_EVIDENCE_VALUES = frozenset(
+    {"dual_model", "single_model", "self_fallback", "contract_violated", "skipped"}
+)
+# C4 reads the frontmatter `code_audit_evidence:` scalar (structured signal).
+FM_CODE_AUDIT_EVIDENCE_RE = re.compile(
+    r"^code_audit_evidence:\s*(\S+)\s*$", re.MULTILINE
+)
+# C4 legacy fallback: a canonical terminal code-audit Log marker. LINE-ANCHORED
+# at column 0 (NOT a free substring) to match the canonical Log-item shape and
+# avoid matching narrative prose that merely mentions "code audit passed".
+TERMINAL_LOG_MARKER_RE = re.compile(
+    r"^- \d{4}-\d{2}-\d{2}: code audit passed\b"
+    r"|^- \d{4}-\d{2}-\d{2}: code audit: no auditable files in diff",
+    re.MULTILINE,
+)
 
 
 def is_contained(path: Path, root: Path) -> bool:
@@ -462,6 +509,49 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                             "auto_safe": False,
                         }
                     )
+
+                # --- C4 status-drift (offline, git-free) ---
+                # Fire iff a pre-code-audit status (APPROVED/AUDIT_PASSED — NOT
+                # IN_PROGRESS) carries a code-audit COMPLETION record: a non-null
+                # frontmatter `code_audit_evidence:` (structured, primary) OR a
+                # canonical column-0 terminal Log marker (legacy fallback). Reads
+                # the spec file only. C4 recomputes its own status/line rather
+                # than reusing the C3 locals (those bind only inside the narrower
+                # enum-violation sub-branch). C4 is independent of C3's validity
+                # check — every PRE_TERMINAL status is a valid enum value, so no
+                # double-flag in practice.
+                c4_status = status_match.group(1)
+                if c4_status in PRE_TERMINAL_SPEC_STATUSES:
+                    c4_line = frontmatter[: status_match.start()].count("\n") + 2
+                    ev_match = FM_CODE_AUDIT_EVIDENCE_RE.search(frontmatter)
+                    ev = ev_match.group(1) if ev_match else None
+                    # `null`/empty/absent → no evidence (the literal token `null`
+                    # is not in CODE_AUDIT_EVIDENCE_VALUES).
+                    structured = ev in CODE_AUDIT_EVIDENCE_VALUES
+                    marker = bool(TERMINAL_LOG_MARKER_RE.search(text))
+                    if structured or marker:
+                        if structured:
+                            detail = (
+                                f"status: {c4_status} precedes the code-audit phase "
+                                f"but code_audit_evidence: {ev} is set (code audit "
+                                f"completed → status likely stale; should be "
+                                f"SHIPPED/VERIFIED)"
+                            )
+                        else:
+                            detail = (
+                                f"status: {c4_status} precedes the code-audit phase "
+                                f"but Log records a 'code audit passed' terminal "
+                                f"marker (status likely stale)"
+                            )
+                        findings.append(
+                            {
+                                "class": "C4_status_drift",
+                                "file": rel,
+                                "line": c4_line,
+                                "detail": detail,
+                                "auto_safe": False,
+                            }
+                        )
 
     return {"scanned": len(files), "findings": findings}
 
