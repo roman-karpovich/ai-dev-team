@@ -94,6 +94,24 @@ FM_TYPE_RE = re.compile(r"^type:\s*(\S+)\s*$", re.MULTILINE)
 FM_STATUS_RE = re.compile(r"^status:\s*(\S+)\s*$", re.MULTILINE)
 
 
+def is_contained(path: Path, root: Path) -> bool:
+    """True iff `path`, fully resolved, stays at or under `root` (resolved).
+
+    Containment guard for every site where a user-controlled string (a
+    `--project` value, a wikilink target, a `§`-pointer relpath) becomes a
+    filesystem path. `Path.resolve()` collapses `../` and follows symlinks, so
+    an escaping value (`../outside`, an absolute path, a symlink out of tree)
+    is rejected here BEFORE any `is_dir()` / `is_file()` / `headings_in()` read.
+    An out-of-tree resolution is never a valid target — a `../`-escaping link is
+    reported broken/dangling, never silently treated as clean.
+    """
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def scan_roots(kb_root: Path, project: Optional[str]) -> List[Path]:
     """Resolve the directory subtree(s) to walk.
 
@@ -179,11 +197,15 @@ def wikilink_resolves_as_written(
     candidate = target
     if candidate.lower().endswith(".md"):
         candidate = candidate[: -len(".md")]
+    # Each KB-relative candidate must stay inside the vault: a `../`-escaping or
+    # absolute target that happens to resolve to a real out-of-vault `.md` is
+    # NOT a working link (it would be a silent false-clean), so guard with
+    # is_contained before is_file().
     rel_md = kb_root / (candidate + ".md")
-    if rel_md.is_file():
+    if is_contained(rel_md, kb_root) and rel_md.is_file():
         return True
     rel_exact = kb_root / target
-    if rel_exact.is_file():
+    if is_contained(rel_exact, kb_root) and rel_exact.is_file():
         return True
     # Bare note-name form (last path component, case-insensitive stem).
     stem = Path(candidate).name.lower()
@@ -278,11 +300,15 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                 anchor = trim_anchor(m.group("rest"))
                 if not anchor:
                     continue
+                # A `../`-escaping or absolute pointer relpath can .resolve() to
+                # a real `.md` OUTSIDE the vault; that is NOT a working pointer
+                # (it would be a silent false-clean), so require containment
+                # under kb_root before treating a resolved target as a file.
                 target_path = (path.parent / pointer_target).resolve()
-                if not target_path.is_file():
+                if not (is_contained(target_path, kb_root) and target_path.is_file()):
                     # Try KB-relative resolution.
                     target_path = (kb_root / pointer_target).resolve()
-                if not target_path.is_file():
+                if not (is_contained(target_path, kb_root) and target_path.is_file()):
                     findings.append(
                         {
                             "class": "C2_dangling_section_pointer",
@@ -371,6 +397,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     # ({"scanned": 0, "findings": []} exit 0). Fail loud like the kb_root check.
     if args.project is not None:
         project_root = kb_root / "repos" / args.project
+        # A `--project ../foo` (or absolute) value can resolve to a real dir
+        # OUTSIDE repos/ and pass is_dir(), scanning an unintended subtree in
+        # violation of the documented <kb_root>/repos/<name>/ path-prefix. Reject
+        # any value that escapes repos/ before the existence check.
+        repos_root = kb_root / "repos"
+        if not is_contained(project_root, repos_root):
+            print(
+                f"error: --project must stay under {repos_root}; "
+                f"traversing value rejected: {args.project!r}",
+                file=sys.stderr,
+            )
+            return 2
         if not project_root.is_dir():
             print(
                 f"error: project subtree not found or not a directory: {project_root}",

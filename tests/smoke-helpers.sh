@@ -8440,10 +8440,14 @@ check_kb_authoring_convention_wired() {
 # Clean → exit 0 / no findings. Drift → exit 1 / each class token (C1/C2/C3)
 # present, with the autonomy-boundary invariants the curator relies on
 # (C2/C3 never auto_safe; C1 carries both an auto_safe:true and auto_safe:false).
-# Also pins two false-result regressions: C3 frontmatter-scoping (a research
+# Also pins false-result regressions: C3 frontmatter-scoping (a research
 # note quoting the spec schema in a ```yaml block is NOT flagged — clean
-# fixture's research-quotes-spec-schema.md) and the --project-typo false-clean
-# (a nonexistent project subtree errors to stderr / exit 2, never exit 0).
+# fixture's research-quotes-spec-schema.md); the --project-typo false-clean
+# (a nonexistent project subtree errors to stderr / exit 2, never exit 0); and
+# the path-containment class — a `../`-escaping wikilink AND `../`-escaping
+# §-pointer (drift fixture's escaping-refs.md, resolving to a real out-of-vault
+# note) are REPORTED, not silently clean; and a `--project ../<x>` traversal
+# errors to stderr / exit 2 (never an out-of-tree scan).
 check_kb_drift_scan_behavioral() {
   local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
   local clean="$PLUGIN_ROOT/tests/fixtures/kb-drift/clean"
@@ -8498,6 +8502,21 @@ if True not in c1 or False not in c1:
     print(f"C1 findings must include both auto_safe true and false, got {c1}")
     sys.exit(1)
 
+# X5 regression (path containment — out-of-vault target): the drift fixture's
+# escaping-refs.md carries a `../`-escaping wikilink AND `../`-escaping
+# §-pointer whose targets resolve to a REAL note in the sibling clean/ fixture
+# (out of the scanned vault). Without a kb_root containment guard both would
+# resolve out-of-vault and be silently clean (false-clean). They MUST be
+# reported as C1 broken + C2 dangling on escaping-refs.md.
+if not (Path(drift) / "escaping-refs.md").is_file():
+    print("drift fixture missing escaping-refs.md (X5 path-containment proof)")
+    sys.exit(1)
+esc = {f["class"] for f in F if f["file"] == "escaping-refs.md"}
+if esc != {"C1_broken_wikilink", "C2_dangling_section_pointer"}:
+    print(f"escaping-refs.md must yield BOTH C1 (escaping wikilink) and C2 "
+          f"(escaping pointer) — out-of-vault targets must not be silently clean; got {esc}")
+    sys.exit(1)
+
 # X2 regression: a typo'd / nonexistent --project must error (exit 2), never a
 # silent false-clean ({"scanned": 0, "findings": []} exit 0).
 with tempfile.TemporaryDirectory() as td:
@@ -8513,6 +8532,22 @@ with tempfile.TemporaryDirectory() as td:
     if "error" not in p.stderr.lower():
         print(f"--project nonexistent: expected an error on stderr, got {p.stderr!r}")
         sys.exit(1)
+    # X4 regression (path containment — --project traversal): a `--project`
+    # value that `../`-escapes <kb_root>/repos/ must error (exit 2) + stderr,
+    # NEVER scan the out-of-tree subtree. Plant a real dir outside repos/ so a
+    # bare is_dir() check (the iter-1 validation) would otherwise pass.
+    (Path(td) / "secret").mkdir()
+    (Path(td) / "secret" / "x.md").write_text("# x\n", encoding="utf-8")
+    trav = subprocess.run(
+        [sys.executable, scanner, td, "--project", "../secret"],
+        capture_output=True, text=True,
+    )
+    if trav.returncode != 2:
+        print(f"--project ../traversal: expected exit 2 (not an out-of-tree scan), got {trav.returncode}; stdout={trav.stdout!r}")
+        sys.exit(1)
+    if "error" not in trav.stderr.lower():
+        print(f"--project ../traversal: expected an error on stderr, got {trav.stderr!r}")
+        sys.exit(1)
     # Control: an EXISTING project still scans (exit 0, no findings here).
     ok = subprocess.run(
         [sys.executable, scanner, td, "--project", "realproj"],
@@ -8522,7 +8557,7 @@ with tempfile.TemporaryDirectory() as td:
         print(f"--project existing: expected exit 0 / no findings, got rc={ok.returncode} out={ok.stdout!r}")
         sys.exit(1)
 
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3, autonomy boundary intact; C3 frontmatter-scoped (X1); --project-typo errors exit2 (X2)")
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3, autonomy boundary intact; C3 frontmatter-scoped (X1); --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4)")
 PYEOF
 }
 
