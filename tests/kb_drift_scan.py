@@ -24,6 +24,21 @@ Known limitations (heuristic, like the existing checkers):
   - C1 vault-wide bare-name resolution can false-positive on intentional stub
     links (hence `auto_safe: false` on ambiguity — the curator surfaces, never
     auto-fixes those).
+  - Code is skipped: lines inside (or delimiting) a fenced ```code block``` are
+    masked for both C1 and C2, and single-backtick inline-code spans are
+    stripped before the C1 wikilink scan. Double-/multi-backtick inline spans
+    and prose-example wikilinks written outside code (an illustrative
+    `[[future-note]]` in body prose) remain a residual minority false-positive —
+    distinguishing illustrative-from-real `[[...]]` outside code is deferred.
+  - C2 resolution: a §-pointer whose target resolves to NO file at any candidate
+    (out-of-scope cross-repo reference, e.g. `skills/...md`, or a target that
+    resolves nowhere) is skipped — NOT flagged. The cost: a genuine intra-KB
+    pointer to a deleted/renamed `.md` that now resolves nowhere is also
+    silently skipped (dangling-FILE detection is dominated by cross-repo noise
+    on the real vault; re-adding a cross-repo predicate to recover it is a
+    deferred follow-up). A target that resolves to a REAL file OUTSIDE vault
+    containment (a `../`-escape) is still flagged — that false-clean trap is
+    preserved.
   - No git/network reads.
   - First slice covers C1/C2/C3 only (no git-status-drift, no concluded-but-not-
     ARCHIVED research check — those are follow-ups).
@@ -85,6 +100,15 @@ ACCEPTED_SPEC_STATUSES = frozenset(CANONICAL_SPEC_STATUSES) | {"DONE"}
 
 # Obsidian wikilink: [[target]] with optional #heading / |alias / ^block-id.
 WIKILINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
+
+# Single-backtick inline-code span. Stripped from a NON-fenced line before the
+# C1 wikilink scan (C1 ONLY — the C2 §-pointer path is backtick-wrapped by
+# syntax, so stripping inline code there would destroy a legitimate pointer).
+# Double-/multi-backtick inline spans are a documented residual (rare in prose).
+INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
+
+# Fence delimiter chars Obsidian/CommonMark recognise for code blocks.
+_FENCE_CHARS = ("`", "~")
 
 # C3 reads `type` / `status` from the LEADING `--- ... ---` YAML frontmatter
 # block ONLY — never from the body (a body that QUOTES `type: spec` inside a
@@ -252,6 +276,52 @@ def leading_frontmatter(text: str) -> Optional[str]:
     return None
 
 
+def fenced_line_mask(lines: List[str]) -> List[bool]:
+    """Per-line mask: True iff a line is inside (or delimits) a fenced code block.
+
+    Obsidian does not render wikilinks / §-pointers inside fenced code, so a
+    masked line is skipped by both the C1 and C2 per-line loops. Fence-
+    recognition contract (§3.2a of the spec):
+
+    - A fence char is `` ` `` or `~`. A fence OPENS (when not already inside one)
+      when the stripped line begins with ≥3 of a single fence char; the run
+      length and char are recorded. An info string may follow the run. The
+      opening delimiter line is itself masked.
+    - A fence CLOSES (when inside one) when the stripped line consists solely of
+      ≥`run_length` of the SAME char (trailing whitespace allowed, nothing
+      else). The closing delimiter line is itself masked. Any other line while
+      inside a fence stays masked.
+    - `---` / `***` / `___` are thematic-break / frontmatter markers, NOT fences
+      — they never toggle.
+    - An unclosed fence at EOF leaves every line from the opener onward masked
+      (conservative: under-reports inside an unterminated block, never
+      false-positives outside one).
+    """
+    mask = [False] * len(lines)
+    fence_char: Optional[str] = None
+    fence_len = 0
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if fence_char is None:
+            char = stripped[0] if stripped else ""
+            if char in _FENCE_CHARS:
+                run = len(stripped) - len(stripped.lstrip(char))
+                if run >= 3:
+                    fence_char = char
+                    fence_len = run
+                    mask[idx] = True
+        else:
+            mask[idx] = True
+            if (
+                stripped
+                and set(stripped) == {fence_char}
+                and len(stripped) >= fence_len
+            ):
+                fence_char = None
+                fence_len = 0
+    return mask
+
+
 def scan(kb_root: Path, project: Optional[str]) -> Dict:
     roots = scan_roots(kb_root, project)
     files = md_files(roots)
@@ -270,9 +340,18 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
         except OSError:
             continue
         lines = text.splitlines()
+        # Single shared fenced-code mask, computed ONCE per file and consulted
+        # by BOTH the C1 and C2 per-line loops below — Obsidian does not render
+        # wikilinks / §-pointers inside fenced code.
+        mask = fenced_line_mask(lines)
 
         # --- C1 broken wikilink ---
         for line_num, line in enumerate(lines, 1):
+            if mask[line_num - 1]:
+                continue  # inside a fenced code block — not a rendered link
+            # Strip single-backtick inline-code spans before the wikilink scan
+            # (C1 ONLY): an inline `code [[x]]` span is not a rendered link.
+            line = INLINE_CODE_RE.sub("", line)
             for m in WIKILINK_RE.finditer(line):
                 target = bare_target(m.group(1))
                 if not target:
@@ -294,30 +373,46 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                 )
 
         # --- C2 dangling section pointer ---
+        # Shares the single `mask` above. NO inline-code strip here: the
+        # §-pointer path is backtick-wrapped by syntax (`` `path.md` §heading ``),
+        # so stripping inline code would destroy a legitimate pointer.
         for line_num, line in enumerate(lines, 1):
+            if mask[line_num - 1]:
+                continue  # inside a fenced code block — not a rendered pointer
             for m in POINTER_RE.finditer(line):
                 pointer_target = m.group("file")
                 anchor = trim_anchor(m.group("rest"))
                 if not anchor:
                     continue
-                # A `../`-escaping or absolute pointer relpath can .resolve() to
-                # a real `.md` OUTSIDE the vault; that is NOT a working pointer
-                # (it would be a silent false-clean), so require containment
-                # under kb_root before treating a resolved target as a file.
-                target_path = (path.parent / pointer_target).resolve()
-                if not (is_contained(target_path, kb_root) and target_path.is_file()):
-                    # Try KB-relative resolution.
-                    target_path = (kb_root / pointer_target).resolve()
-                if not (is_contained(target_path, kb_root) and target_path.is_file()):
-                    findings.append(
-                        {
-                            "class": "C2_dangling_section_pointer",
-                            "file": rel,
-                            "line": line_num,
-                            "detail": f"pointer `{pointer_target}` §{anchor} → target file not found",
-                            "auto_safe": False,
-                        }
-                    )
+                # Build BOTH candidate resolutions: relative to the source
+                # file's directory, and relative to the vault root.
+                cand_rel = (path.parent / pointer_target).resolve()
+                cand_root = (kb_root / pointer_target).resolve()
+                # In-KB target: either candidate is a real file contained under
+                # the vault → this is the resolved pointer; do the heading check.
+                target_path: Optional[Path] = None
+                for c in (cand_rel, cand_root):
+                    if is_contained(c, kb_root) and c.is_file():
+                        target_path = c
+                        break
+                if target_path is None:
+                    # Not an in-KB file. Split the not-found case:
+                    #   - resolves to a REAL file OUT of vault containment (a
+                    #     `../`-escape to a real note) → still a false-clean trap
+                    #     → flag (preserves the X5 escaping-refs lock);
+                    #   - resolves to NO file at any candidate (out-of-scope
+                    #     cross-repo reference, e.g. `skills/...md`, or simply
+                    #     unresolvable) → skip, NOT a finding (f).
+                    if cand_rel.is_file() or cand_root.is_file():
+                        findings.append(
+                            {
+                                "class": "C2_dangling_section_pointer",
+                                "file": rel,
+                                "line": line_num,
+                                "detail": f"pointer `{pointer_target}` §{anchor} → target escapes vault containment",
+                                "auto_safe": False,
+                            }
+                        )
                     continue
                 heads = headings_in(target_path)
                 if not anchor_resolves(anchor, heads):

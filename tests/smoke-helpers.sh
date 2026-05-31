@@ -8477,6 +8477,34 @@ if not (Path(clean) / "research-quotes-spec-schema.md").is_file():
     print("clean fixture missing research-quotes-spec-schema.md (X1 frontmatter-scoping proof)")
     sys.exit(1)
 
+# (e)+(f) code-awareness + cross-repo clean fixtures. The clean dir asserts
+# findings == [] globally above; assert each new fixture is present so the
+# code-awareness / C2-fence-skip / cross-repo proofs can't silently vanish, and
+# re-scan each in isolation to pin that it alone yields ZERO findings (a global
+# zero could otherwise mask a per-file regression that another file offsets).
+code_aware_fixtures = {
+    "code-blocks.md": "fenced bash [[ ]] / [[:space:]] / =~ — zero C1 (e1)",
+    "inline-code.md": "inline `code [[x]]` span — zero C1 (e2)",
+    "c2-pointer-in-fence.md": "backtick-wrapped `Missing.md` §Nope inside a fence — zero C2 (X2)",
+    "fence-shapes.md": "tilde + longer-backtick fences with [[x]] — zero C1 (X4)",
+    "cross-repo-pointer.md": "cross-repo `skills/...md` §heading pointer — not flagged (f)",
+}
+for fname, why in code_aware_fixtures.items():
+    fp = Path(clean) / fname
+    if not fp.is_file():
+        print(f"clean fixture missing {fname} ({why})")
+        sys.exit(1)
+    with tempfile.TemporaryDirectory() as td:
+        (Path(td) / fname).write_text(fp.read_text(encoding="utf-8"), encoding="utf-8")
+        r = subprocess.run([sys.executable, scanner, td], capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"{fname}: expected exit 0 ({why}), got {r.returncode}; out={r.stdout!r}")
+            sys.exit(1)
+        ff = json.loads(r.stdout)["findings"]
+        if ff != []:
+            print(f"{fname}: expected zero findings ({why}), got {ff}")
+            sys.exit(1)
+
 d = subprocess.run([sys.executable, scanner, drift], capture_output=True, text=True)
 if d.returncode != 1:
     print(f"drift fixture: expected exit 1, got {d.returncode}")
@@ -8557,7 +8585,7 @@ with tempfile.TemporaryDirectory() as td:
         print(f"--project existing: expected exit 0 / no findings, got rc={ok.returncode} out={ok.stdout!r}")
         sys.exit(1)
 
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3, autonomy boundary intact; C3 frontmatter-scoped (X1); --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4)")
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3, autonomy boundary intact; C3 frontmatter-scoped (X1); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4)")
 PYEOF
 }
 
