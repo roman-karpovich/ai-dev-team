@@ -8642,6 +8642,293 @@ print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4, aut
 PYEOF
 }
 
+# Behavioral: `kb_drift_scan.py --summary` renders the human digest contract
+# (§3.2) — a stable line-1 headline + per-class grouped detail with the correct
+# auto_safe boundary tag — WITHOUT altering scan results. Mirrors
+# check_kb_drift_scan_behavioral: imports the module and asserts exit via
+# main() (status-explicit, never pipes the CLI's intentional nonzero exit
+# through head). Catches a regression where the headline format drifts (the
+# status fold reads line 1), a per-class count diverges from the --json tally
+# (render altered the scan), the boundary tag is wrong, the null-line C3 finding
+# renders the literal `:None`, or --summary stops winning over --json.
+check_kb_drift_summary_behavioral() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  local clean="$PLUGIN_ROOT/tests/fixtures/kb-drift/clean"
+  local drift="$PLUGIN_ROOT/tests/fixtures/kb-drift/drift"
+  local nullline="$PLUGIN_ROOT/tests/fixtures/kb-drift/null-line"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  [ -d "$clean" ] || { echo "$clean fixture dir missing"; return 1; }
+  [ -d "$drift" ] || { echo "$drift fixture dir missing"; return 1; }
+  [ -d "$nullline" ] || { echo "$nullline fixture dir missing"; return 1; }
+  python3 - "$scanner" "$clean" "$drift" "$nullline" <<'PYEOF'
+import importlib.util, io, sys
+from contextlib import redirect_stdout
+from pathlib import Path
+
+scanner, clean, drift, nullline = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+
+# Import the scanner module (status-explicit: call main()/render_summary
+# directly rather than piping the CLI through head, which would mask the
+# intentional nonzero exit — the X5 fix).
+spec = importlib.util.spec_from_file_location("kb_drift_scan", scanner)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+
+def run(argv):
+    """Call main(argv); capture stdout + exit code (status BEFORE the pipe)."""
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = mod.main(argv)
+    return rc, buf.getvalue()
+
+
+# (a) clean fixture → exact clean headline + exit 0.
+rc, out = run([clean, "--summary"])
+if rc != 0:
+    print(f"(a) clean --summary: expected exit 0, got {rc}")
+    sys.exit(1)
+line1 = out.splitlines()[0]
+scanned_clean = mod.scan(Path(clean), None)["scanned"]
+want_clean = f"✓ KB clean — 0 drift findings (scanned {scanned_clean})"
+if line1 != want_clean:
+    print(f"(a) clean headline mismatch:\n  want: {want_clean!r}\n  got:  {line1!r}")
+    sys.exit(1)
+
+# (b) drift fixture → ⚠ headline WITH per-class counts in canonical C1<C2<C3<C4
+# order AND trailing (scanned <N>) + exit 1. Per-class counts MUST match the
+# --json finding tally (proves render didn't alter the scan).
+rc, out = run([drift, "--summary"])
+if rc != 1:
+    print(f"(b) drift --summary: expected exit 1, got {rc}")
+    sys.exit(1)
+report = mod.scan(Path(drift), None)
+findings = report["findings"]
+counts = {}
+for f in findings:
+    short = f["class"].split("_", 1)[0]
+    counts[short] = counts.get(short, 0) + 1
+present = [s for s in ("C1", "C2", "C3", "C4") if s in counts]
+want_counts = " ".join(f"{s}:{counts[s]}" for s in present)
+want_drift = (
+    f"⚠ KB drift — {len(findings)} findings: {want_counts} "
+    f"(scanned {report['scanned']})"
+)
+line1 = out.splitlines()[0]
+if line1 != want_drift:
+    print(f"(b) drift headline mismatch:\n  want: {want_drift!r}\n  got:  {line1!r}")
+    sys.exit(1)
+
+# (c) detail block group headers `<full-class> (<count>) [<boundary>]` must
+# EXACTLY match — in canonical C1<C2<C3<C4 order — the set of classes the
+# --json tally proves present. A regressed render_summary that emits the right
+# headline (computed independently in block (b)) but DROPS a detail group (e.g.
+# C2/C4) or empties one would slip past a tally-only check; here every expected
+# property is derived from the parsed findings and asserted against the rendered
+# detail block: (1) the group-header sequence equals the expected canonical set
+# AND order (a dropped/extra/reordered group → FAIL); (2) each header carries
+# the boundary tag computed from THAT group's findings — `needs human decision`
+# iff any finding in the group is auto_safe:false, else `auto-safe` — for ALL
+# classes INCLUDING C1 (so a C1 group wrongly tagged [auto-safe] also fails);
+# (3) each group renders exactly the expected number of indented finding lines
+# (a group present-but-empty → FAIL).
+import re
+
+# Expected per-group facts derived from the already-parsed --json findings,
+# grouped by CLASS_SHORT preserving scan order (mirrors render_summary's group).
+groups = {}
+for f in findings:
+    short = f["class"].split("_", 1)[0]
+    groups.setdefault(short, []).append(f)
+expected_headers = []  # (full_class, count, boundary, finding_line_count) in canonical order
+for short in present:
+    grp = groups[short]
+    full_class = grp[0]["class"]
+    boundary = "needs human decision" if any(not g["auto_safe"] for g in grp) else "auto-safe"
+    expected_headers.append((full_class, len(grp), boundary, len(grp)))
+
+# Parse the rendered detail block: a header line opens a group; the indented
+# `  ` lines that follow are its finding lines (until the next header).
+detail = out.splitlines()[1:]
+header_re = re.compile(r"^(\S+) \((\d+)\) \[(needs human decision|auto-safe)\]$")
+rendered = []  # (full_class, count, boundary, finding_line_count) in render order
+for d in detail:
+    m = header_re.match(d)
+    if m:
+        rendered.append([m.group(1), int(m.group(2)), m.group(3), 0])
+    elif d.startswith("  "):
+        if not rendered:
+            print(f"(c) indented finding line before any group header:\n{out}")
+            sys.exit(1)
+        rendered[-1][3] += 1
+    elif d.strip():
+        print(f"(c) unexpected non-header, non-indented detail line {d!r}:\n{out}")
+        sys.exit(1)
+rendered = [tuple(r) for r in rendered]
+
+if rendered != expected_headers:
+    print(
+        "(c) detail group headers/order/boundary/finding-line-count mismatch:\n"
+        f"  want (canonical, from json tally): {expected_headers}\n"
+        f"  got  (rendered):                   {rendered}\n{out}"
+    )
+    sys.exit(1)
+
+# (d) NEW null-line fixture (type:spec doc, NO status: line → C3 line:None)
+# renders `  <file> — <detail>` with NO literal `:None` (X2).
+nl_report = mod.scan(Path(nullline), None)
+nl_findings = nl_report["findings"]
+if not any(f["class"] == "C3_status_enum_violation" and f["line"] is None for f in nl_findings):
+    print(f"(d) null-line fixture must produce a C3 finding with line:None, got {nl_findings}")
+    sys.exit(1)
+rc, out = run([nullline, "--summary"])
+if rc != 1:
+    print(f"(d) null-line --summary: expected exit 1, got {rc}")
+    sys.exit(1)
+finding_lines = [d for d in out.splitlines() if d.startswith("  ")]
+if not finding_lines:
+    print(f"(d) null-line --summary produced no finding lines:\n{out}")
+    sys.exit(1)
+if any(":None" in d for d in out.splitlines()):
+    print(f"(d) null-line render must NOT contain the literal ':None':\n{out}")
+    sys.exit(1)
+want_nl = "  spec-no-status.md — type: spec doc has no frontmatter status:"
+if want_nl not in out.splitlines():
+    print(f"(d) null-line finding line missing; want {want_nl!r} in:\n{out}")
+    sys.exit(1)
+
+# (e) error path (bad kb_root) still exit 2.
+rc, _ = run(["/nonexistent/kb/root/xyz", "--summary"])
+if rc != 2:
+    print(f"(e) bad kb_root --summary: expected exit 2, got {rc}")
+    sys.exit(1)
+
+# (f) --summary --json together → summary output wins (line 1 is the headline,
+# not a JSON brace).
+rc, out = run([drift, "--summary", "--json"])
+if rc != 1:
+    print(f"(f) --summary --json: expected exit 1, got {rc}")
+    sys.exit(1)
+line1 = out.splitlines()[0]
+if line1 != want_drift:
+    print(f"(f) --summary --json must render the summary headline, got {line1!r}")
+    sys.exit(1)
+
+print("kb_drift_scan --summary: clean headline exact + exit0; drift headline per-class counts canonical-order matching json tally + exit1; group header boundary tags correct (C2/C3/C4 human-decision); null-line C3 renders <file> — <detail> with NO :None (X2); bad kb_root exit2; --summary --json → summary wins (X3)")
+PYEOF
+}
+
+# Prompt-text: the /kb-audit skill (skills/kb-audit/SKILL.md) carries the
+# load-bearing prose contracts (X4 — not just file existence): name=kb-audit
+# frontmatter; Phase-0 discovery; the scanner invocation at
+# ${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py with --project + --summary; the
+# REPORT-only autonomy boundary (auto_safe:false = human decision, never
+# auto-edit); the exit-code branch table with exit 1 = findings = SUCCESS (NOT
+# an error); and silent-degrade limited to exit 2 / unavailable. Catches a
+# regression where the skill drops the exit-1-is-success contract (and starts
+# treating findings as a failure) or loses the REPORT-only autonomy boundary.
+check_kb_audit_skill_contract() {
+  local skill="$PLUGIN_ROOT/skills/kb-audit/SKILL.md"
+  [ -f "$skill" ] || { echo "$skill missing"; return 1; }
+  grep -q '^name: kb-audit$' "$skill" \
+    || { echo "$skill missing 'name: kb-audit' frontmatter"; return 1; }
+  grep -qi 'discovery' "$skill" \
+    || { echo "$skill missing Phase-0 KB-discovery reference"; return 1; }
+  grep -qF 'docs/kb-discovery.md' "$skill" \
+    || { echo "$skill missing the docs/kb-discovery.md pointer"; return 1; }
+  grep -qF '${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py' "$skill" \
+    || { echo "$skill missing the \${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py invocation"; return 1; }
+  grep -qF -- '--summary' "$skill" \
+    || { echo "$skill missing the --summary flag on the scanner invocation"; return 1; }
+  grep -qF -- '--project' "$skill" \
+    || { echo "$skill missing the --project flag"; return 1; }
+  # REPORT-only autonomy boundary: auto_safe + a never-edit assertion.
+  grep -qF 'auto_safe' "$skill" \
+    || { echo "$skill missing the auto_safe autonomy-boundary reference"; return 1; }
+  grep -qiE 'never.*(auto-?edit|edit)|report.*only|reports only' "$skill" \
+    || { echo "$skill missing the REPORT-only / never-auto-edit autonomy boundary"; return 1; }
+  # X1: exit 1 = findings = SUCCESS, never a failure.
+  grep -qiE 'exit .?1.?.*(success|findings)|findings.*success|never treat exit 1 as a failure' "$skill" \
+    || { echo "$skill missing the exit-1-is-success (X1) contract"; return 1; }
+  # Silent-degrade limited to exit 2 / unavailable (never crash / fabricate).
+  grep -qiE 'degrade|unavailable' "$skill" \
+    || { echo "$skill missing the silent-degrade-on-exit-2/unavailable contract"; return 1; }
+  echo "$skill: name=kb-audit; Phase-0 discovery (docs/kb-discovery.md); \${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py --project --summary; REPORT-only autonomy boundary (auto_safe:false=human, never auto-edit); exit 1=findings=SUCCESS (X1); silent-degrade only on exit 2/unavailable"
+}
+
+# Prompt-text: the /feature Status mode KB-drift fold (feature SKILL.md §"##
+# Status mode") carries the load-bearing prose anchors (X4 + X6): the
+# project-LABELED header `### KB drift — <project>` (X6 — single-project fold
+# inside an all-project surface MUST be labeled so a one-project count is never
+# mistaken for global); the `(run /kb-audit for detail)` pointer (one headline
+# line, detail lives in /kb-audit); the omit-when-0-findings rule; the
+# omit-when-unavailable / non-blocking / never-block rule; and the
+# single-project scope note. Catches a regression where the fold drops the
+# project label (X6), starts expanding grouped detail inline, or stops being
+# non-blocking / omit-on-zero.
+check_feature_status_kb_drift_fold() {
+  local skill="$PLUGIN_ROOT/skills/feature/SKILL.md"
+  [ -f "$skill" ] || { echo "$skill missing"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "## Status mode" { in_s = 1 }
+    in_s && /^## Checklist mode/ { exit }
+    in_s { print }
+  ' "$skill")
+  [ -n "$section" ] || { echo "$skill missing '## Status mode' section"; return 1; }
+  # X6: project-LABELED header.
+  printf '%s\n' "$section" | grep -qF '### KB drift — <project>' \
+    || { echo "$skill §Status mode missing the labeled '### KB drift — <project>' header (X6)"; return 1; }
+  # One-line headline + detail pointer to /kb-audit.
+  printf '%s\n' "$section" | grep -qF '(run /kb-audit for detail)' \
+    || { echo "$skill §Status mode KB-drift fold missing the '(run /kb-audit for detail)' pointer"; return 1; }
+  # Best-effort scanner invocation with --summary.
+  printf '%s\n' "$section" | grep -qF -- '--summary' \
+    || { echo "$skill §Status mode KB-drift fold missing the scanner --summary invocation"; return 1; }
+  # Omit-when-0-findings.
+  printf '%s\n' "$section" | grep -qi 'omit' \
+    || { echo "$skill §Status mode KB-drift fold missing the omit-when-empty rule"; return 1; }
+  # Omit-when-unavailable / non-blocking.
+  printf '%s\n' "$section" | grep -qiE 'non-blocking|never block' \
+    || { echo "$skill §Status mode KB-drift fold missing the non-blocking / never-block guarantee"; return 1; }
+  printf '%s\n' "$section" | grep -qiE 'unavailable|exit 2' \
+    || { echo "$skill §Status mode KB-drift fold missing the scanner-unavailable degrade path"; return 1; }
+  # X6: single-project scope note (vs the all-project spec tables).
+  printf '%s\n' "$section" | grep -qiE 'single-project|all-project|resolved .?project' \
+    || { echo "$skill §Status mode KB-drift fold missing the single-project scope note (X6)"; return 1; }
+  echo "$skill §Status mode KB-drift fold: labeled '### KB drift — <project>' header (X6); '(run /kb-audit for detail)' one-line pointer; --summary best-effort run; omit-when-0; non-blocking + unavailable-degrade; single-project scope note"
+}
+
+# Prompt-text: /kb-audit is wired into the intent→skill trigger map in BOTH
+# the runtime-injected copy (hooks/session-prompt.md) AND the portable paste
+# copy (docs/claude-md-snippet.md), each carrying the literal KB-hygiene intent
+# phrase "check KB drift", AND is listed in the README §Usage core-trigger
+# surface (X4 — README is a permanent pin target, not red-test-only). Catches a
+# regression where the trigger row is dropped from one copy (so the two copies
+# drift) or the /kb-audit entry vanishes from the README.
+check_kb_audit_trigger_map_wired() {
+  local sp="$PLUGIN_ROOT/hooks/session-prompt.md"
+  local snippet="$PLUGIN_ROOT/docs/claude-md-snippet.md"
+  local readme="$PLUGIN_ROOT/README.md"
+  [ -f "$sp" ] || { echo "$sp missing"; return 1; }
+  [ -f "$snippet" ] || { echo "$snippet missing"; return 1; }
+  [ -f "$readme" ] || { echo "$readme missing"; return 1; }
+  # session-prompt.md trigger row: /kb-audit + the literal intent phrase.
+  grep -qF '/kb-audit' "$sp" \
+    || { echo "$sp missing the /kb-audit trigger row"; return 1; }
+  grep -qF 'check KB drift' "$sp" \
+    || { echo "$sp missing the literal 'check KB drift' KB-hygiene intent phrase"; return 1; }
+  # claude-md-snippet.md portable copy: same row + phrase.
+  grep -qF '/kb-audit' "$snippet" \
+    || { echo "$snippet missing the portable /kb-audit trigger row"; return 1; }
+  grep -qF 'check KB drift' "$snippet" \
+    || { echo "$snippet missing the literal 'check KB drift' KB-hygiene intent phrase"; return 1; }
+  # README core-trigger surface (X4 — permanent pin target).
+  grep -qF '/kb-audit' "$readme" \
+    || { echo "$readme missing /kb-audit in the Usage core-trigger surface (X4)"; return 1; }
+  echo "/kb-audit trigger row wired in hooks/session-prompt.md + docs/claude-md-snippet.md (both with literal 'check KB drift') + README core-trigger surface (X4)"
+}
+
 # Non-drift: the 8-status canonical enum line (NO DONE) lives in
 # docs/kb-layout.md, is NOT re-declared in spec-template.md, and equals the
 # scanner's CANONICAL_SPEC_STATUSES constant. DONE is a separate read-compat

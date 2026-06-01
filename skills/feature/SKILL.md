@@ -1302,6 +1302,24 @@ Omit any section that has no rows. If a SHIPPED spec has mixed pending types, pl
 
 To move a spec to `BLOCKED` during development, append `- YYYY-MM-DD: BLOCKED — waiting on <condition>` to the spec Log and flip `status: BLOCKED`. Continue mode reads the most recent such Log entry and asks whether the condition is satisfied on resume. (Do not confuse this with a `blocker` *item* in the post-merge checklist — those belong to SHIPPED specs that are already merged.)
 
+### KB drift — <project>
+
+After the spec-section render, fold in a single non-blocking KB-drift headline. Phase-0 discovery (step 1) already resolved `kb_path` + `project`; **best-effort** run the offline KB-drift scanner against that ONE project and take line 1 of its `--summary` output:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py" "<kb_path>" --project <project> --summary
+```
+
+**Scope/label**: the spec tables above span specs **all-project** (`repos/*`), but this drift fold is **single-project** — it covers only the Phase-0-resolved `<project>` (matching `/kb-audit`'s single-project default). The header MUST carry the project qualifier `### KB drift — <project>` so the reader never mistakes a one-project drift count for a global one.
+
+Render rules:
+
+- **Findings present (scanner exit 1)**: render the `### KB drift — <project>` header, then ONE line — the `--summary` headline (line 1) — then `(run /kb-audit for detail)`. Do not expand the grouped detail here; `/kb-audit` is the detailed surface.
+- **0 findings (exit 0)**: **omit** the `### KB drift — <project>` section entirely (consistent with the omit-empty-section rule used by the other Status sections).
+- **Scanner/vault unavailable (exit 2, `python3` absent, `kb_path`/`project` unresolved)**: omit the section silently — **never block or error** the status render.
+
+Non-blocking, single-line, single-project-scoped + labeled. No `--all` interaction (the fold always covers only the resolved project, regardless of `status --all`).
+
 ---
 
 ## Checklist mode

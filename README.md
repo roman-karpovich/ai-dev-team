@@ -84,7 +84,7 @@ An example file is included with the plugin at `.ai-dev-team.yml.example`.
 
 ## Ambient workflow
 
-After install, Claude knows when to use which skill automatically — no slash commands required. Core triggers: `/feature new` (add/implement/build), `/feature continue` (resume/where-were-we), `/cross-audit` (review/audit/check-for-bugs), `/investigate` (compare/tradeoffs/which-is-better).
+After install, Claude knows when to use which skill automatically — no slash commands required. Core triggers: `/feature new` (add/implement/build), `/feature continue` (resume/where-were-we), `/cross-audit` (review/audit/check-for-bugs), `/investigate` (compare/tradeoffs/which-is-better), `/kb-audit` (check KB drift / kb hygiene).
 
 The full trigger map — including Russian variants, scope-addition handling, `/feature status`, `/feature verify`, and `/feature checklist` — lives in two places. The authoritative copy is [`hooks/session-start`](hooks/session-start), injected into every session at runtime. The portable paste-ready copy for your project's `CLAUDE.md` is in [`docs/claude-md-snippet.md`](docs/claude-md-snippet.md).
 
@@ -253,6 +253,7 @@ developer-senior ← wide codebase exploration needed, or genuinely ambiguous sc
 | `cross-audit` | `/cross-audit <scope> [--mode] [--diff]` | Background dual-model audit, findings saved to KB |
 | `cross-audit` | `/cross-audit <findings-path>` | Re-audit iteration: verify fixes, look for new issues |
 | `investigate` | `/investigate <question>` | Background Claude vs Codex debate, returns convergence report |
+| `kb-audit` | `/kb-audit [--project <name>]` | Report KB-vault drift (broken wikilinks, dangling §-pointers, status-enum/drift); reports only, never auto-edits |
 
 ---
 

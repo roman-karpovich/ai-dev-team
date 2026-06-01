@@ -45,6 +45,7 @@ Recognise these intents and invoke the matching skill automatically:
 | "also need X", "one more thing", "нужно ещё Y" (while inside an active spec) | Prompt: extend (`/feature extend`) or split (`/feature new --follows-up`). No silent absorption. |
 | "feature X is stable in prod", "verify feature X", "закрой чеклист" | `/feature verify <spec>` |
 | "blocker N done", "deployed to mainnet", "soak started" | `/feature checklist <done\|start-soak> <spec> <n>` |
+| "audit the KB", "check KB drift", "kb hygiene", "проверь КБ на дрейф" | `/kb-audit [--project <name>]` |
 
 Disambiguation: "compare / which is better / tradeoffs" → `/investigate` (adversarial Claude+Codex debate, single-session, convergence report with a recommendation). Use `/research new competitive-analysis` only when the user wants free-form notes accumulated over multiple sessions, not a decision.
 
