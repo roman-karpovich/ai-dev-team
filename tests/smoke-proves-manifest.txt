@@ -293,4 +293,5 @@ check_kb_drift_scan_behavioral behavioral
 check_kb_drift_summary_behavioral behavioral
 check_kb_audit_skill_contract prompt-text
 check_feature_status_kb_drift_fold prompt-text
+check_kb_audit_trigger_map_wired prompt-text
 check_kb_layout_status_enum_single_source behavioral

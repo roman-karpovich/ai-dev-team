@@ -8867,6 +8867,36 @@ check_feature_status_kb_drift_fold() {
   echo "$skill §Status mode KB-drift fold: labeled '### KB drift — <project>' header (X6); '(run /kb-audit for detail)' one-line pointer; --summary best-effort run; omit-when-0; non-blocking + unavailable-degrade; single-project scope note"
 }
 
+# Prompt-text: /kb-audit is wired into the intent→skill trigger map in BOTH
+# the runtime-injected copy (hooks/session-prompt.md) AND the portable paste
+# copy (docs/claude-md-snippet.md), each carrying the literal KB-hygiene intent
+# phrase "check KB drift", AND is listed in the README §Usage core-trigger
+# surface (X4 — README is a permanent pin target, not red-test-only). Catches a
+# regression where the trigger row is dropped from one copy (so the two copies
+# drift) or the /kb-audit entry vanishes from the README.
+check_kb_audit_trigger_map_wired() {
+  local sp="$PLUGIN_ROOT/hooks/session-prompt.md"
+  local snippet="$PLUGIN_ROOT/docs/claude-md-snippet.md"
+  local readme="$PLUGIN_ROOT/README.md"
+  [ -f "$sp" ] || { echo "$sp missing"; return 1; }
+  [ -f "$snippet" ] || { echo "$snippet missing"; return 1; }
+  [ -f "$readme" ] || { echo "$readme missing"; return 1; }
+  # session-prompt.md trigger row: /kb-audit + the literal intent phrase.
+  grep -qF '/kb-audit' "$sp" \
+    || { echo "$sp missing the /kb-audit trigger row"; return 1; }
+  grep -qF 'check KB drift' "$sp" \
+    || { echo "$sp missing the literal 'check KB drift' KB-hygiene intent phrase"; return 1; }
+  # claude-md-snippet.md portable copy: same row + phrase.
+  grep -qF '/kb-audit' "$snippet" \
+    || { echo "$snippet missing the portable /kb-audit trigger row"; return 1; }
+  grep -qF 'check KB drift' "$snippet" \
+    || { echo "$snippet missing the literal 'check KB drift' KB-hygiene intent phrase"; return 1; }
+  # README core-trigger surface (X4 — permanent pin target).
+  grep -qF '/kb-audit' "$readme" \
+    || { echo "$readme missing /kb-audit in the Usage core-trigger surface (X4)"; return 1; }
+  echo "/kb-audit trigger row wired in hooks/session-prompt.md + docs/claude-md-snippet.md (both with literal 'check KB drift') + README core-trigger surface (X4)"
+}
+
 # Non-drift: the 8-status canonical enum line (NO DONE) lives in
 # docs/kb-layout.md, is NOT re-declared in spec-template.md, and equals the
 # scanner's CANONICAL_SPEC_STATUSES constant. DONE is a separate read-compat
