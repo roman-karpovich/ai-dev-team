@@ -8454,13 +8454,15 @@ check_kb_drift_scan_behavioral() {
   local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
   local clean="$PLUGIN_ROOT/tests/fixtures/kb-drift/clean"
   local drift="$PLUGIN_ROOT/tests/fixtures/kb-drift/drift"
+  local nested="$PLUGIN_ROOT/tests/fixtures/kb-drift/nested"
   [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
   [ -d "$clean" ] || { echo "$clean fixture dir missing"; return 1; }
   [ -d "$drift" ] || { echo "$drift fixture dir missing"; return 1; }
-  python3 - "$scanner" "$clean" "$drift" <<'PYEOF'
+  [ -d "$nested" ] || { echo "$nested fixture dir missing"; return 1; }
+  python3 - "$scanner" "$clean" "$drift" "$nested" <<'PYEOF'
 import json, subprocess, sys, tempfile
 from pathlib import Path
-scanner, clean, drift = sys.argv[1], sys.argv[2], sys.argv[3]
+scanner, clean, drift, nested = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
 c = subprocess.run([sys.executable, scanner, clean], capture_output=True, text=True)
 if c.returncode != 0:
@@ -8638,7 +8640,64 @@ with tempfile.TemporaryDirectory() as td:
         print(f"--project existing: expected exit 0 / no findings, got rc={ok.returncode} out={ok.stdout!r}")
         sys.exit(1)
 
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4)")
+# C2 cross-repo basename-collision resolver (nested/ repos/-layout vault). The
+# flat clean/+drift/ fixtures can't exercise nested-source resolution, so scan
+# nested/ in ISOLATION and assert PER-SOURCE-FILE (the single scanned root
+# aggregates N1-N6, so an aggregate-only count could mask a per-file regression
+# another file offsets, X6). The new target-class dispatch resolver:
+#   N1 src.md  `CLAUDE.md` §X            → bare → SOURCE-relative only → absent
+#              → skip → 0 C2 (THE regression witness: the bait nested/CLAUDE.md
+#              exists, so the OLD cand_root=kb_root/CLAUDE.md would heading-
+#              mismatch false-flag it).
+#   N2 src2.md `NOPE-ROOT.md` §X         → bare absent everywhere → skip → 0 C2
+#              (escape branch NOT tripped on a resolves-nowhere bare name; a
+#              DISTINCT absent basename so it coexists with N1's present bait).
+#   N5 src5.md `repos/projB/design/t.md` §Present → repos/-prefix → vault-root-
+#              relative only → REAL projB t.md (Present present) → 0 C2 (NOT the
+#              local shadow projA/design/repos/projB/design/t.md; the OLD
+#              cand_rel-first resolver hit the shadow → false C2).
+#   N3 src3.md `sib.md` §Gone            → source-relative → sib.md present,
+#              heading gone → exactly 1 C2 "no matching heading" (genuine same-
+#              dir dangling stays flagged — no over-suppression).
+#   N4 src4.md `repos/projB/design/t.md` §Gone → repos/-prefix → REAL t.md,
+#              heading gone → exactly 1 C2 "no matching heading".
+#   N6 src6.md `../../../../escape-target/Note.md` §H → ..-traversal → escape-
+#              only candidate is a REAL committed file OUT of the nested/ vault
+#              → exactly 1 C2 "escapes vault containment" (X2 target-must-exist +
+#              X5 depth-pinned; the explicit is_file() and not is_contained()
+#              escape test).
+# Aggregate nested/ C2 total = 3 (N3 + N4 + N6).
+n = subprocess.run([sys.executable, scanner, nested], capture_output=True, text=True)
+if n.returncode != 1:
+    print(f"nested fixture: expected exit 1 (N3+N4+N6 drift), got {n.returncode}; stdout={n.stdout!r}")
+    sys.exit(1)
+NF = json.loads(n.stdout)["findings"]
+nc2 = [f for f in NF if f["class"] == "C2_dangling_section_pointer"]
+# Per-source-file expectations: (count, substring-in-detail-or-None).
+nested_expect = {
+    "repos/projA/design/src.md": (0, None),    # N1 collision bait present → still 0
+    "repos/projA/design/src2.md": (0, None),   # N2 resolves nowhere → skip
+    "repos/projA/design/src5.md": (0, None),   # N5 repos/-prefix → real file, no shadow
+    "repos/projA/design/src3.md": (1, "no matching heading"),   # N3 genuine same-dir
+    "repos/projA/design/src4.md": (1, "no matching heading"),   # N4 explicit repos/ xrepo
+    "repos/projA/design/src6.md": (1, "escapes vault containment"),  # N6 nested escape
+}
+for src, (want_n, want_sub) in nested_expect.items():
+    hits = [f for f in nc2 if f["file"] == src]
+    if len(hits) != want_n:
+        print(f"nested {src}: expected {want_n} C2 finding(s), got {len(hits)}: {hits}")
+        sys.exit(1)
+    if want_sub is not None and want_sub not in hits[0]["detail"]:
+        print(f"nested {src}: expected C2 detail to contain {want_sub!r}, got {hits[0]['detail']!r}")
+        sys.exit(1)
+if len(nc2) != 3:
+    print(f"nested fixture: expected exactly 3 C2 findings (N3+N4+N6), got {len(nc2)}: {nc2}")
+    sys.exit(1)
+if any(f["auto_safe"] is not False for f in nc2):
+    print(f"nested C2 findings must all be auto_safe:false, got {[f['auto_safe'] for f in nc2]}")
+    sys.exit(1)
+
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment (aggregate C2=3, X6)")
 PYEOF
 }
 
