@@ -8786,6 +8786,44 @@ print("kb_drift_scan --summary: clean headline exact + exit0; drift headline per
 PYEOF
 }
 
+# Prompt-text: the /kb-audit skill (skills/kb-audit/SKILL.md) carries the
+# load-bearing prose contracts (X4 — not just file existence): name=kb-audit
+# frontmatter; Phase-0 discovery; the scanner invocation at
+# ${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py with --project + --summary; the
+# REPORT-only autonomy boundary (auto_safe:false = human decision, never
+# auto-edit); the exit-code branch table with exit 1 = findings = SUCCESS (NOT
+# an error); and silent-degrade limited to exit 2 / unavailable. Catches a
+# regression where the skill drops the exit-1-is-success contract (and starts
+# treating findings as a failure) or loses the REPORT-only autonomy boundary.
+check_kb_audit_skill_contract() {
+  local skill="$PLUGIN_ROOT/skills/kb-audit/SKILL.md"
+  [ -f "$skill" ] || { echo "$skill missing"; return 1; }
+  grep -q '^name: kb-audit$' "$skill" \
+    || { echo "$skill missing 'name: kb-audit' frontmatter"; return 1; }
+  grep -qi 'discovery' "$skill" \
+    || { echo "$skill missing Phase-0 KB-discovery reference"; return 1; }
+  grep -qF 'docs/kb-discovery.md' "$skill" \
+    || { echo "$skill missing the docs/kb-discovery.md pointer"; return 1; }
+  grep -qF '${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py' "$skill" \
+    || { echo "$skill missing the \${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py invocation"; return 1; }
+  grep -qF -- '--summary' "$skill" \
+    || { echo "$skill missing the --summary flag on the scanner invocation"; return 1; }
+  grep -qF -- '--project' "$skill" \
+    || { echo "$skill missing the --project flag"; return 1; }
+  # REPORT-only autonomy boundary: auto_safe + a never-edit assertion.
+  grep -qF 'auto_safe' "$skill" \
+    || { echo "$skill missing the auto_safe autonomy-boundary reference"; return 1; }
+  grep -qiE 'never.*(auto-?edit|edit)|report.*only|reports only' "$skill" \
+    || { echo "$skill missing the REPORT-only / never-auto-edit autonomy boundary"; return 1; }
+  # X1: exit 1 = findings = SUCCESS, never a failure.
+  grep -qiE 'exit .?1.?.*(success|findings)|findings.*success|never treat exit 1 as a failure' "$skill" \
+    || { echo "$skill missing the exit-1-is-success (X1) contract"; return 1; }
+  # Silent-degrade limited to exit 2 / unavailable (never crash / fabricate).
+  grep -qiE 'degrade|unavailable' "$skill" \
+    || { echo "$skill missing the silent-degrade-on-exit-2/unavailable contract"; return 1; }
+  echo "$skill: name=kb-audit; Phase-0 discovery (docs/kb-discovery.md); \${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py --project --summary; REPORT-only autonomy boundary (auto_safe:false=human, never auto-edit); exit 1=findings=SUCCESS (X1); silent-degrade only on exit 2/unavailable"
+}
+
 # Non-drift: the 8-status canonical enum line (NO DONE) lives in
 # docs/kb-layout.md, is NOT re-declared in spec-template.md, and equals the
 # scanner's CANONICAL_SPEC_STATUSES constant. DONE is a separate read-compat
