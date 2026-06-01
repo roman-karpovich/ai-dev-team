@@ -8824,6 +8824,49 @@ check_kb_audit_skill_contract() {
   echo "$skill: name=kb-audit; Phase-0 discovery (docs/kb-discovery.md); \${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py --project --summary; REPORT-only autonomy boundary (auto_safe:false=human, never auto-edit); exit 1=findings=SUCCESS (X1); silent-degrade only on exit 2/unavailable"
 }
 
+# Prompt-text: the /feature Status mode KB-drift fold (feature SKILL.md §"##
+# Status mode") carries the load-bearing prose anchors (X4 + X6): the
+# project-LABELED header `### KB drift — <project>` (X6 — single-project fold
+# inside an all-project surface MUST be labeled so a one-project count is never
+# mistaken for global); the `(run /kb-audit for detail)` pointer (one headline
+# line, detail lives in /kb-audit); the omit-when-0-findings rule; the
+# omit-when-unavailable / non-blocking / never-block rule; and the
+# single-project scope note. Catches a regression where the fold drops the
+# project label (X6), starts expanding grouped detail inline, or stops being
+# non-blocking / omit-on-zero.
+check_feature_status_kb_drift_fold() {
+  local skill="$PLUGIN_ROOT/skills/feature/SKILL.md"
+  [ -f "$skill" ] || { echo "$skill missing"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "## Status mode" { in_s = 1 }
+    in_s && /^## Checklist mode/ { exit }
+    in_s { print }
+  ' "$skill")
+  [ -n "$section" ] || { echo "$skill missing '## Status mode' section"; return 1; }
+  # X6: project-LABELED header.
+  printf '%s\n' "$section" | grep -qF '### KB drift — <project>' \
+    || { echo "$skill §Status mode missing the labeled '### KB drift — <project>' header (X6)"; return 1; }
+  # One-line headline + detail pointer to /kb-audit.
+  printf '%s\n' "$section" | grep -qF '(run /kb-audit for detail)' \
+    || { echo "$skill §Status mode KB-drift fold missing the '(run /kb-audit for detail)' pointer"; return 1; }
+  # Best-effort scanner invocation with --summary.
+  printf '%s\n' "$section" | grep -qF -- '--summary' \
+    || { echo "$skill §Status mode KB-drift fold missing the scanner --summary invocation"; return 1; }
+  # Omit-when-0-findings.
+  printf '%s\n' "$section" | grep -qi 'omit' \
+    || { echo "$skill §Status mode KB-drift fold missing the omit-when-empty rule"; return 1; }
+  # Omit-when-unavailable / non-blocking.
+  printf '%s\n' "$section" | grep -qiE 'non-blocking|never block' \
+    || { echo "$skill §Status mode KB-drift fold missing the non-blocking / never-block guarantee"; return 1; }
+  printf '%s\n' "$section" | grep -qiE 'unavailable|exit 2' \
+    || { echo "$skill §Status mode KB-drift fold missing the scanner-unavailable degrade path"; return 1; }
+  # X6: single-project scope note (vs the all-project spec tables).
+  printf '%s\n' "$section" | grep -qiE 'single-project|all-project|resolved .?project' \
+    || { echo "$skill §Status mode KB-drift fold missing the single-project scope note (X6)"; return 1; }
+  echo "$skill §Status mode KB-drift fold: labeled '### KB drift — <project>' header (X6); '(run /kb-audit for detail)' one-line pointer; --summary best-effort run; omit-when-0; non-blocking + unavailable-degrade; single-project scope note"
+}
+
 # Non-drift: the 8-status canonical enum line (NO DONE) lives in
 # docs/kb-layout.md, is NOT re-declared in spec-template.md, and equals the
 # scanner's CANONICAL_SPEC_STATUSES constant. DONE is a separate read-compat
