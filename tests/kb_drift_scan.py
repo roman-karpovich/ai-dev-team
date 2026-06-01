@@ -62,7 +62,7 @@ Known limitations (heuristic, like the existing checkers):
     not-ARCHIVED research check — those are follow-ups).
 
 CLI:
-    python3 tests/kb_drift_scan.py <kb_root> [--project <name>] [--json]
+    python3 tests/kb_drift_scan.py <kb_root> [--project <name>] [--json] [--summary]
 
 `<kb_root>` is the vault root. `--project <name>` restricts the scan to
 `<kb_root>/repos/<name>/` (path-prefix filter) and is an error (exit 2) when
@@ -556,6 +556,67 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
     return {"scanned": len(files), "findings": findings}
 
 
+# Canonical class order for the --summary render (C1<C2<C3<C4). Keyed by the
+# leading CLASS_SHORT token (the class up to the first `_`).
+_CLASS_ORDER = ("C1", "C2", "C3", "C4")
+
+
+def class_short(cls: str) -> str:
+    """Leading CLASS_SHORT token of a finding class (up to the first `_`).
+
+    `C4_status_drift` → `C4`. Used for the headline per-class counts and to
+    order/group the detail block in canonical C1<C2<C3<C4 order.
+    """
+    return cls.split("_", 1)[0]
+
+
+def render_summary(report: Dict) -> str:
+    """Human digest of a scan `report` — pure presentation, no scan logic.
+
+    Line 1 (headline) is stable + machine-reusable (the status fold reads it):
+      clean    → `✓ KB clean — 0 drift findings (scanned <N>)`
+      findings → `⚠ KB drift — <M> findings: <C?:n ...> (scanned <N>)` where the
+                 per-class counts list ONLY classes with count >0, in canonical
+                 C1<C2<C3<C4 order, space-joined.
+    Detail block (findings only): one group per class present, canonical order.
+    Group header: `<full-class> (<count>) [<boundary>]` — boundary is
+    `needs human decision` if ANY finding in the group is `auto_safe:false`,
+    else `auto-safe`. Then one indented line per finding (scan order preserved):
+    `  <file>:<line> — <detail>`, or `  <file> — <detail>` when `line is None`.
+    """
+    scanned = report["scanned"]
+    findings = report["findings"]
+    if not findings:
+        return f"✓ KB clean — 0 drift findings (scanned {scanned})"
+
+    # Group findings by CLASS_SHORT, preserving scan order within each group.
+    groups: Dict[str, List[Dict]] = {}
+    for f in findings:
+        groups.setdefault(class_short(f["class"]), []).append(f)
+
+    present = [short for short in _CLASS_ORDER if short in groups]
+
+    counts = " ".join(f"{short}:{len(groups[short])}" for short in present)
+    headline = f"⚠ KB drift — {len(findings)} findings: {counts} (scanned {scanned})"
+
+    blocks = [headline]
+    for short in present:
+        group = groups[short]
+        full_class = group[0]["class"]
+        boundary = (
+            "needs human decision"
+            if any(not f["auto_safe"] for f in group)
+            else "auto-safe"
+        )
+        blocks.append(f"{full_class} ({len(group)}) [{boundary}]")
+        for f in group:
+            if f["line"] is None:
+                blocks.append(f"  {f['file']} — {f['detail']}")
+            else:
+                blocks.append(f"  {f['file']}:{f['line']} — {f['detail']}")
+    return "\n".join(blocks)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kb_root", help="KB vault root directory")
@@ -568,6 +629,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--json",
         action="store_true",
         help="emit JSON (always emitted; flag kept for explicitness)",
+    )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="print a human digest (stable headline + grouped detail) instead "
+        "of JSON; wins over --json when both are set",
     )
     args = parser.parse_args(argv)
 
@@ -607,7 +674,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    print(json.dumps(report, indent=2))
+    if args.summary:
+        print(render_summary(report))
+    else:
+        print(json.dumps(report, indent=2))
     return 1 if report["findings"] else 0
 
 

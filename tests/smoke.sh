@@ -6054,6 +6054,10 @@ echo
 # --- KB-drift scanner (spec 2026-05-31-librarian-kb-actualization) ---
 echo "KB-drift scanner pins:"
 check "kb-drift-scan-behavioral"                 check_kb_drift_scan_behavioral
+check "kb-drift-summary-behavioral"              check_kb_drift_summary_behavioral
+check "kb-audit-skill-contract"                  check_kb_audit_skill_contract
+check "feature-status-kb-drift-fold"             check_feature_status_kb_drift_fold
+check "kb-audit-trigger-map-wired"               check_kb_audit_trigger_map_wired
 check "kb-layout-status-enum-single-source"      check_kb_layout_status_enum_single_source
 echo
 

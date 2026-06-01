@@ -16,6 +16,7 @@ Recognise these intents and invoke the matching skill automatically — do not w
 | "also need X", "нужно ещё Y", "кстати, забыли про Z", "one more thing", "by the way", "ещё одна доработка" (while inside an active spec) | Prompt: extend current spec (`/feature extend <desc>`) or split into follow-up (`/feature new <desc> --follows-up <spec>`). Never silently absorb. |
 | "фича X стабильна в проде", "закрой чеклист по X", "verify feature X" | `/feature verify <spec>` |
 | "blocker N выполнен", "деплой залит", "action item done", "soak started" | `/feature checklist <done\|start-soak> <spec> <n>` |
+| "audit the KB", "check KB drift", "kb hygiene", "broken wikilinks", "проверь КБ на дрейф" | `/kb-audit [--project <name>]` |
 
 Disambiguation: "compare / which is better / tradeoffs" → `/investigate` (adversarial Claude+Codex debate, single-session, convergence report with a recommendation). Use `/research new competitive-analysis` only when the user wants free-form notes accumulated over multiple sessions, not a decision.
 
