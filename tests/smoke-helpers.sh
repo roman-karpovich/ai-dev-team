@@ -8719,28 +8719,60 @@ if line1 != want_drift:
     print(f"(b) drift headline mismatch:\n  want: {want_drift!r}\n  got:  {line1!r}")
     sys.exit(1)
 
-# (c) ≥1 detail group header `<full-class> (<count>) [<boundary>]` with the
-# CORRECT boundary tag — C2/C3/C4 groups are never auto_safe so they MUST read
-# [needs human decision].
-detail = out.splitlines()[1:]
+# (c) detail block group headers `<full-class> (<count>) [<boundary>]` must
+# EXACTLY match — in canonical C1<C2<C3<C4 order — the set of classes the
+# --json tally proves present. A regressed render_summary that emits the right
+# headline (computed independently in block (b)) but DROPS a detail group (e.g.
+# C2/C4) or empties one would slip past a tally-only check; here every expected
+# property is derived from the parsed findings and asserted against the rendered
+# detail block: (1) the group-header sequence equals the expected canonical set
+# AND order (a dropped/extra/reordered group → FAIL); (2) each header carries
+# the boundary tag computed from THAT group's findings — `needs human decision`
+# iff any finding in the group is auto_safe:false, else `auto-safe` — for ALL
+# classes INCLUDING C1 (so a C1 group wrongly tagged [auto-safe] also fails);
+# (3) each group renders exactly the expected number of indented finding lines
+# (a group present-but-empty → FAIL).
 import re
+
+# Expected per-group facts derived from the already-parsed --json findings,
+# grouped by CLASS_SHORT preserving scan order (mirrors render_summary's group).
+groups = {}
+for f in findings:
+    short = f["class"].split("_", 1)[0]
+    groups.setdefault(short, []).append(f)
+expected_headers = []  # (full_class, count, boundary, finding_line_count) in canonical order
+for short in present:
+    grp = groups[short]
+    full_class = grp[0]["class"]
+    boundary = "needs human decision" if any(not g["auto_safe"] for g in grp) else "auto-safe"
+    expected_headers.append((full_class, len(grp), boundary, len(grp)))
+
+# Parse the rendered detail block: a header line opens a group; the indented
+# `  ` lines that follow are its finding lines (until the next header).
+detail = out.splitlines()[1:]
 header_re = re.compile(r"^(\S+) \((\d+)\) \[(needs human decision|auto-safe)\]$")
-headers = {}
+rendered = []  # (full_class, count, boundary, finding_line_count) in render order
 for d in detail:
     m = header_re.match(d)
     if m:
-        headers[m.group(1)] = (int(m.group(2)), m.group(3))
-if not headers:
-    print(f"(c) no group header matched in detail:\n{out}")
+        rendered.append([m.group(1), int(m.group(2)), m.group(3), 0])
+    elif d.startswith("  "):
+        if not rendered:
+            print(f"(c) indented finding line before any group header:\n{out}")
+            sys.exit(1)
+        rendered[-1][3] += 1
+    elif d.strip():
+        print(f"(c) unexpected non-header, non-indented detail line {d!r}:\n{out}")
+        sys.exit(1)
+rendered = [tuple(r) for r in rendered]
+
+if rendered != expected_headers:
+    print(
+        "(c) detail group headers/order/boundary/finding-line-count mismatch:\n"
+        f"  want (canonical, from json tally): {expected_headers}\n"
+        f"  got  (rendered):                   {rendered}\n{out}"
+    )
     sys.exit(1)
-for cls, (cnt, boundary) in headers.items():
-    short = cls.split("_", 1)[0]
-    if short in ("C2", "C3", "C4") and boundary != "needs human decision":
-        print(f"(c) {cls} group must read [needs human decision], got [{boundary}]")
-        sys.exit(1)
-    if cnt != counts.get(short):
-        print(f"(c) {cls} group count {cnt} != json tally {counts.get(short)}")
-        sys.exit(1)
 
 # (d) NEW null-line fixture (type:spec doc, NO status: line → C3 line:None)
 # renders `  <file> — <detail>` with NO literal `:None` (X2).
