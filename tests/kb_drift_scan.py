@@ -39,15 +39,29 @@ Known limitations (heuristic, like the existing checkers):
     and prose-example wikilinks written outside code (an illustrative
     `[[future-note]]` in body prose) remain a residual minority false-positive —
     distinguishing illustrative-from-real `[[...]]` outside code is deferred.
-  - C2 resolution: a §-pointer whose target resolves to NO file at any candidate
-    (out-of-scope cross-repo reference, e.g. `skills/...md`, or a target that
-    resolves nowhere) is skipped — NOT flagged. The cost: a genuine intra-KB
-    pointer to a deleted/renamed `.md` that now resolves nowhere is also
-    silently skipped (dangling-FILE detection is dominated by cross-repo noise
-    on the real vault; re-adding a cross-repo predicate to recover it is a
-    deferred follow-up). A target that resolves to a REAL file OUTSIDE vault
-    containment (a `../`-escape) is still flagged — that false-clean trap is
-    preserved.
+  - C2 resolution: target-class dispatch — the pointer target is classified by
+    its parsed parts and resolved against the SINGLE correct candidate (drops the
+    old `kb_root/target` candidate for bare / non-`repos/` targets, which killed
+    the cross-repo basename-collision FP class — a deep `CLAUDE.md` resolving to
+    the vault-root `CLAUDE.md`):
+      * `..`-traversal       → escape-detection only (source-relative resolve);
+      * `repos/`-prefixed    → vault-root-relative only (no local-alias shadow);
+      * bare / non-`repos/`  → source-relative only.
+    A candidate that is a real file OUTSIDE vault containment (a `../`- or
+    absolute-path escape) is still flagged via the explicit
+    `is_file() and not is_contained()` escape test — that false-clean trap is
+    preserved. Accepted conservative false-negatives (all auto_safe-safe;
+    under-report is preferred over false-positive per the scanner's posture):
+      * FN-1: a deep source's bare-name pointing at a GENUINE vault-root note →
+        source-relative resolve misses it → skipped (0 cases on the real vault).
+      * FN-2: a project-root-relative `design/foo.md` from a DEEPER dir than the
+        project root → the `cand_proj` candidate is deferred → skipped (0 usage).
+      * FN-3: a flat deep-source path-qualified `Note.md` → `flat/Note.md` →
+        skipped (0 usage).
+      * Pre-existing #76f: a genuine intra-KB pointer to a deleted/renamed `.md`
+        that now resolves nowhere is silently skipped (dangling-FILE detection is
+        dominated by cross-repo noise on the real vault; re-adding a cross-repo
+        predicate to recover it is a deferred follow-up).
   - No git/network reads.
   - C4 is offline status-drift via the spec's own frontmatter
     `code_audit_evidence:` + column-0 `code audit passed`/zero-diff Log markers.
@@ -85,7 +99,7 @@ import argparse
 import json
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional
 
 # C2 reuses the heading-resolution machinery from check_dangling_anchors.py.
@@ -431,26 +445,51 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                 anchor = trim_anchor(m.group("rest"))
                 if not anchor:
                     continue
-                # Build BOTH candidate resolutions: relative to the source
-                # file's directory, and relative to the vault root.
-                cand_rel = (path.parent / pointer_target).resolve()
-                cand_root = (kb_root / pointer_target).resolve()
-                # In-KB target: either candidate is a real file contained under
+                # Target-class dispatch: classify the pointer target by its
+                # parsed parts FIRST, then build the SINGLE correct candidate.
+                # Dropping the old `kb_root/target` candidate for bare / path-
+                # qualified-non-`repos/` targets kills the cross-repo basename
+                # collision at source (a deep `CLAUDE.md` no longer resolves to
+                # the vault-root `CLAUDE.md`).
+                parts = PurePosixPath(pointer_target).parts
+                if ".." in parts:
+                    # `..`-traversal → escape-detection ONLY; routed BEFORE any
+                    # kb_root resolution so `repos/../CLAUDE.md` cannot collapse
+                    # back to `kb_root/CLAUDE.md`.
+                    cands = [(path.parent / pointer_target).resolve()]
+                elif parts and parts[0] == "repos":
+                    # Explicit cross-project → vault-root-relative ONLY (no
+                    # source-relative cand, so a local `repos/...` shadow under
+                    # the source dir never wins over the intended vault file).
+                    cands = [(kb_root / pointer_target).resolve()]
+                else:
+                    # Bare basename OR path-qualified-non-`repos/` → SOURCE-
+                    # relative ONLY. Absolute targets (`parts[0] == '/'`) land
+                    # here too: `(path.parent / "/abs").resolve()` discards the
+                    # left operand and yields the real out-of-vault file, caught
+                    # by the explicit escape test below.
+                    cands = [(path.parent / pointer_target).resolve()]
+                # In-KB target: a candidate that is a real file contained under
                 # the vault → this is the resolved pointer; do the heading check.
-                target_path: Optional[Path] = None
-                for c in (cand_rel, cand_root):
-                    if is_contained(c, kb_root) and c.is_file():
-                        target_path = c
-                        break
+                target_path: Optional[Path] = next(
+                    (c for c in cands if is_contained(c, kb_root) and c.is_file()),
+                    None,
+                )
                 if target_path is None:
                     # Not an in-KB file. Split the not-found case:
-                    #   - resolves to a REAL file OUT of vault containment (a
-                    #     `../`-escape to a real note) → still a false-clean trap
-                    #     → flag (preserves the X5 escaping-refs lock);
-                    #   - resolves to NO file at any candidate (out-of-scope
-                    #     cross-repo reference, e.g. `skills/...md`, or simply
-                    #     unresolvable) → skip, NOT a finding (f).
-                    if cand_rel.is_file() or cand_root.is_file():
+                    #   - a candidate is a REAL file OUT of vault containment (a
+                    #     `../`- or absolute-path escape to a real note) → still
+                    #     a false-clean trap → flag (preserves the X5 lock). The
+                    #     test MUST be `is_file() and not is_contained()` — NOT a
+                    #     bare `is_file()` — so a rejected IN-vault candidate is
+                    #     not mis-flagged as an escape;
+                    #   - resolves to NO file (out-of-scope cross-repo reference,
+                    #     e.g. `skills/...md`, or simply unresolvable) → skip, NOT
+                    #     a finding (#76f).
+                    escaped = any(
+                        c.is_file() and not is_contained(c, kb_root) for c in cands
+                    )
+                    if escaped:
                         findings.append(
                             {
                                 "class": "C2_dangling_section_pointer",
