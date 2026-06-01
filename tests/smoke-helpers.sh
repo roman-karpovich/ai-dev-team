@@ -8642,6 +8642,150 @@ print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4, aut
 PYEOF
 }
 
+# Behavioral: `kb_drift_scan.py --summary` renders the human digest contract
+# (§3.2) — a stable line-1 headline + per-class grouped detail with the correct
+# auto_safe boundary tag — WITHOUT altering scan results. Mirrors
+# check_kb_drift_scan_behavioral: imports the module and asserts exit via
+# main() (status-explicit, never pipes the CLI's intentional nonzero exit
+# through head). Catches a regression where the headline format drifts (the
+# status fold reads line 1), a per-class count diverges from the --json tally
+# (render altered the scan), the boundary tag is wrong, the null-line C3 finding
+# renders the literal `:None`, or --summary stops winning over --json.
+check_kb_drift_summary_behavioral() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  local clean="$PLUGIN_ROOT/tests/fixtures/kb-drift/clean"
+  local drift="$PLUGIN_ROOT/tests/fixtures/kb-drift/drift"
+  local nullline="$PLUGIN_ROOT/tests/fixtures/kb-drift/null-line"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  [ -d "$clean" ] || { echo "$clean fixture dir missing"; return 1; }
+  [ -d "$drift" ] || { echo "$drift fixture dir missing"; return 1; }
+  [ -d "$nullline" ] || { echo "$nullline fixture dir missing"; return 1; }
+  python3 - "$scanner" "$clean" "$drift" "$nullline" <<'PYEOF'
+import importlib.util, io, sys
+from contextlib import redirect_stdout
+from pathlib import Path
+
+scanner, clean, drift, nullline = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+
+# Import the scanner module (status-explicit: call main()/render_summary
+# directly rather than piping the CLI through head, which would mask the
+# intentional nonzero exit — the X5 fix).
+spec = importlib.util.spec_from_file_location("kb_drift_scan", scanner)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+
+def run(argv):
+    """Call main(argv); capture stdout + exit code (status BEFORE the pipe)."""
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = mod.main(argv)
+    return rc, buf.getvalue()
+
+
+# (a) clean fixture → exact clean headline + exit 0.
+rc, out = run([clean, "--summary"])
+if rc != 0:
+    print(f"(a) clean --summary: expected exit 0, got {rc}")
+    sys.exit(1)
+line1 = out.splitlines()[0]
+scanned_clean = mod.scan(Path(clean), None)["scanned"]
+want_clean = f"✓ KB clean — 0 drift findings (scanned {scanned_clean})"
+if line1 != want_clean:
+    print(f"(a) clean headline mismatch:\n  want: {want_clean!r}\n  got:  {line1!r}")
+    sys.exit(1)
+
+# (b) drift fixture → ⚠ headline WITH per-class counts in canonical C1<C2<C3<C4
+# order AND trailing (scanned <N>) + exit 1. Per-class counts MUST match the
+# --json finding tally (proves render didn't alter the scan).
+rc, out = run([drift, "--summary"])
+if rc != 1:
+    print(f"(b) drift --summary: expected exit 1, got {rc}")
+    sys.exit(1)
+report = mod.scan(Path(drift), None)
+findings = report["findings"]
+counts = {}
+for f in findings:
+    short = f["class"].split("_", 1)[0]
+    counts[short] = counts.get(short, 0) + 1
+present = [s for s in ("C1", "C2", "C3", "C4") if s in counts]
+want_counts = " ".join(f"{s}:{counts[s]}" for s in present)
+want_drift = (
+    f"⚠ KB drift — {len(findings)} findings: {want_counts} "
+    f"(scanned {report['scanned']})"
+)
+line1 = out.splitlines()[0]
+if line1 != want_drift:
+    print(f"(b) drift headline mismatch:\n  want: {want_drift!r}\n  got:  {line1!r}")
+    sys.exit(1)
+
+# (c) ≥1 detail group header `<full-class> (<count>) [<boundary>]` with the
+# CORRECT boundary tag — C2/C3/C4 groups are never auto_safe so they MUST read
+# [needs human decision].
+detail = out.splitlines()[1:]
+import re
+header_re = re.compile(r"^(\S+) \((\d+)\) \[(needs human decision|auto-safe)\]$")
+headers = {}
+for d in detail:
+    m = header_re.match(d)
+    if m:
+        headers[m.group(1)] = (int(m.group(2)), m.group(3))
+if not headers:
+    print(f"(c) no group header matched in detail:\n{out}")
+    sys.exit(1)
+for cls, (cnt, boundary) in headers.items():
+    short = cls.split("_", 1)[0]
+    if short in ("C2", "C3", "C4") and boundary != "needs human decision":
+        print(f"(c) {cls} group must read [needs human decision], got [{boundary}]")
+        sys.exit(1)
+    if cnt != counts.get(short):
+        print(f"(c) {cls} group count {cnt} != json tally {counts.get(short)}")
+        sys.exit(1)
+
+# (d) NEW null-line fixture (type:spec doc, NO status: line → C3 line:None)
+# renders `  <file> — <detail>` with NO literal `:None` (X2).
+nl_report = mod.scan(Path(nullline), None)
+nl_findings = nl_report["findings"]
+if not any(f["class"] == "C3_status_enum_violation" and f["line"] is None for f in nl_findings):
+    print(f"(d) null-line fixture must produce a C3 finding with line:None, got {nl_findings}")
+    sys.exit(1)
+rc, out = run([nullline, "--summary"])
+if rc != 1:
+    print(f"(d) null-line --summary: expected exit 1, got {rc}")
+    sys.exit(1)
+finding_lines = [d for d in out.splitlines() if d.startswith("  ")]
+if not finding_lines:
+    print(f"(d) null-line --summary produced no finding lines:\n{out}")
+    sys.exit(1)
+if any(":None" in d for d in out.splitlines()):
+    print(f"(d) null-line render must NOT contain the literal ':None':\n{out}")
+    sys.exit(1)
+want_nl = "  spec-no-status.md — type: spec doc has no frontmatter status:"
+if want_nl not in out.splitlines():
+    print(f"(d) null-line finding line missing; want {want_nl!r} in:\n{out}")
+    sys.exit(1)
+
+# (e) error path (bad kb_root) still exit 2.
+rc, _ = run(["/nonexistent/kb/root/xyz", "--summary"])
+if rc != 2:
+    print(f"(e) bad kb_root --summary: expected exit 2, got {rc}")
+    sys.exit(1)
+
+# (f) --summary --json together → summary output wins (line 1 is the headline,
+# not a JSON brace).
+rc, out = run([drift, "--summary", "--json"])
+if rc != 1:
+    print(f"(f) --summary --json: expected exit 1, got {rc}")
+    sys.exit(1)
+line1 = out.splitlines()[0]
+if line1 != want_drift:
+    print(f"(f) --summary --json must render the summary headline, got {line1!r}")
+    sys.exit(1)
+
+print("kb_drift_scan --summary: clean headline exact + exit0; drift headline per-class counts canonical-order matching json tally + exit1; group header boundary tags correct (C2/C3/C4 human-decision); null-line C3 renders <file> — <detail> with NO :None (X2); bad kb_root exit2; --summary --json → summary wins (X3)")
+PYEOF
+}
+
 # Non-drift: the 8-status canonical enum line (NO DONE) lives in
 # docs/kb-layout.md, is NOT re-declared in spec-template.md, and equals the
 # scanner's CANONICAL_SPEC_STATUSES constant. DONE is a separate read-compat

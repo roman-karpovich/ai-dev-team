@@ -290,4 +290,5 @@ check_all_shell_scripts_mktemp_lint_self_test behavioral
 #   module + reads docs/kb-layout.md / spec-template.md and runs the scanner on
 #   a synthesized status:DONE vault — both execute code/fixtures → behavioral.
 check_kb_drift_scan_behavioral behavioral
+check_kb_drift_summary_behavioral behavioral
 check_kb_layout_status_enum_single_source behavioral
