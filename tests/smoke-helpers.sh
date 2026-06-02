@@ -8455,14 +8455,18 @@ check_kb_drift_scan_behavioral() {
   local clean="$PLUGIN_ROOT/tests/fixtures/kb-drift/clean"
   local drift="$PLUGIN_ROOT/tests/fixtures/kb-drift/drift"
   local nested="$PLUGIN_ROOT/tests/fixtures/kb-drift/nested"
+  local pathqual="$PLUGIN_ROOT/tests/fixtures/kb-drift/pathqual"
   [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
   [ -d "$clean" ] || { echo "$clean fixture dir missing"; return 1; }
   [ -d "$drift" ] || { echo "$drift fixture dir missing"; return 1; }
   [ -d "$nested" ] || { echo "$nested fixture dir missing"; return 1; }
-  python3 - "$scanner" "$clean" "$drift" "$nested" <<'PYEOF'
+  [ -d "$pathqual" ] || { echo "$pathqual fixture dir missing"; return 1; }
+  python3 - "$scanner" "$clean" "$drift" "$nested" "$pathqual" <<'PYEOF'
 import json, subprocess, sys, tempfile
 from pathlib import Path
-scanner, clean, drift, nested = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+scanner, clean, drift, nested, pathqual = (
+    sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+)
 
 c = subprocess.run([sys.executable, scanner, clean], capture_output=True, text=True)
 if c.returncode != 0:
@@ -8697,7 +8701,100 @@ if any(f["auto_safe"] is not False for f in nc2):
     print(f"nested C2 findings must all be auto_safe:false, got {[f['auto_safe'] for f in nc2]}")
     sys.exit(1)
 
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment (aggregate C2=3, X6)")
+# C1 path-qualified wikilink suffix-match resolution (#76d FN-closer). The flat
+# clean/+drift/ fixtures can't exercise path-qualified targets, so scan the
+# pathqual/ vault in ISOLATION and assert PER-SOURCE-FILE C1 (a single scanned
+# root aggregates all sources, so an aggregate-only count could mask a per-file
+# regression another file offsets). Obsidian resolves `[[a/Note]]` by COMPONENT-
+# SUFFIX, so the CLEAN witnesses MUST stay clean; the 2 BROKEN witnesses MUST
+# each flag exactly 1 C1 (the old unconditional bare-stem fallback false-
+# NEGATIVE'd them because the bare stem exists elsewhere).
+#   src/suffix.md   `[[a/SuffixTarget]]`  → suffix of x/a/SuffixTarget.md → 0 C1.
+#   src/case.md     `[[a/casetarget.md]]` → lowercased + .md-stripped suffix of
+#                   x/a/CaseTarget.md → 0 C1 (case-insensitive + .md-suffixed).
+#   src/slashnorm.md `[[/a/SuffixTarget]]` `[[a//SuffixTarget]]`
+#                   `[[a/SuffixTarget/]]` → empties dropped → all suffix-match
+#                   x/a/SuffixTarget.md → 0 C1 (slash normalization).
+#   docs/src.md     `[[../docs/findings]]` → source-relative FS resolve to
+#                   docs/findings.md (Option B) → 0 C1 (relative no-FP-lock; a
+#                   strict ..-reject would false-positive this live-vault shape).
+#   src/broken-fn.md `[[wrong/path/UniquePathTarget]]` → NOT a suffix of
+#                   right/path/UniquePathTarget.md → exactly 1 C1 (the FN closed).
+#   src/broken-boundary.md `[[xa/BoundaryTarget]]` → NOT a suffix of
+#                   x/a/BoundaryTarget.md (component boundary, not string) → 1 C1.
+pq = subprocess.run([sys.executable, scanner, pathqual], capture_output=True, text=True)
+if pq.returncode != 1:
+    print(f"pathqual fixture: expected exit 1 (2 BROKEN sources), got {pq.returncode}; stdout={pq.stdout!r}")
+    sys.exit(1)
+PQF = json.loads(pq.stdout)["findings"]
+pqc1 = [f for f in PQF if f["class"] == "C1_broken_wikilink"]
+pathqual_expect = {
+    "src/suffix.md": 0,          # component-suffix CLEAN
+    "src/case.md": 0,            # case-insensitive + .md-suffixed CLEAN
+    "src/slashnorm.md": 0,       # slash-normalization CLEAN
+    "docs/src.md": 0,            # relative no-FP-lock CLEAN (Option B)
+    "src/broken-fn.md": 1,       # FN-closer BROKEN (1 C1)
+    "src/broken-boundary.md": 1,  # component-boundary BROKEN (1 C1)
+}
+for src, want_n in pathqual_expect.items():
+    hits = [f for f in pqc1 if f["file"] == src]
+    if len(hits) != want_n:
+        print(f"pathqual {src}: expected {want_n} C1 finding(s), got {len(hits)}: {hits}")
+        sys.exit(1)
+if len(pqc1) != 2:
+    print(f"pathqual fixture: expected exactly 2 C1 findings (broken-fn + broken-boundary), got {len(pqc1)}: {pqc1}")
+    sys.exit(1)
+
+# X1 resolver-level unit witness (NON-VACUOUS source-relative FS branch). The
+# pathqual/ [[../docs/findings]] fixture above guards strict-..-non-rejection
+# only: in an isolated scan note_index spans the whole kb_root, so the retained
+# bare-stem fallback (`parts[-1] in note_index`) reproduces a clean verdict with
+# OR without the FS branch — toggling the branch can't change that fixture's
+# verdict. The FS branch's DISTINCT contribution (a relative link to a REAL
+# target that the fallback would miss because its stem is absent from the index)
+# needs a direct unit assertion: call wikilink_resolves_as_written with a
+# note_index that EXCLUDES the target stem + a real on-disk relative target →
+# clean can then come ONLY from the source-relative FS branch (the fallback
+# returns False). Removing/breaking that branch flips this assertion.
+import importlib.util  # noqa: E402
+spec = importlib.util.spec_from_file_location("kb_drift_scan_x1", scanner)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    (root / "docs").mkdir()
+    (root / "src").mkdir()
+    (root / "docs" / "findings.md").write_text("# Findings\n", encoding="utf-8")
+    source = root / "src" / "note.md"
+    source.write_text("# Note\n[[../docs/findings]]\n", encoding="utf-8")
+    # note_index DELIBERATELY EMPTY → the bare-stem fallback `parts[-1] in
+    # note_index` (`"findings" in {}`) returns False. A clean verdict can come
+    # ONLY from the source-relative FS branch resolving src/../docs/findings.md.
+    empty_note_index = {}
+    empty_suffix_index = set()
+    if "findings" in empty_note_index:
+        print("X1 witness setup error: stem must be EXCLUDED from note_index")
+        sys.exit(1)
+    resolved = mod.wikilink_resolves_as_written(
+        "../docs/findings", root, empty_note_index, empty_suffix_index, source
+    )
+    if resolved is not True:
+        print("X1 witness: ../docs/findings with stem-excluded note_index + real "
+              f"on-disk target must resolve clean via the FS branch, got {resolved!r}")
+        sys.exit(1)
+    # Control: with NO on-disk target AND the stem excluded, the same call must
+    # return False — proves the True above came from the FS branch, not a
+    # vacuous always-True path.
+    (root / "docs" / "findings.md").unlink()
+    unresolved = mod.wikilink_resolves_as_written(
+        "../docs/findings", root, empty_note_index, empty_suffix_index, source
+    )
+    if unresolved is not False:
+        print("X1 control: ../docs/findings with NO on-disk target + stem-excluded "
+              f"note_index must NOT resolve, got {unresolved!r}")
+        sys.exit(1)
+
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment (aggregate C2=3, X6); pathqual/ C1 suffix-match per-source: suffix/case/slashnorm/relative CLEAN, broken-fn/broken-boundary 1 C1 each (#76d, aggregate C1=2) + X1 FS-branch unit witness (stem-excluded note_index + real relative target → clean via FS branch, control → broken)")
 PYEOF
 }
 
