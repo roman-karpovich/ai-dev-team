@@ -8606,7 +8606,7 @@ if d.returncode != 1:
     sys.exit(1)
 F = json.loads(d.stdout)["findings"]
 classes = {f["class"] for f in F}
-want = {"C1_broken_wikilink", "C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift", "C5_research_status_enum_violation"}
+want = {"C1_broken_wikilink", "C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift", "C5_research_status_enum_violation", "C6_index_row_bloat"}
 if classes != want:
     print(f"drift fixture: expected class set {want}, got {classes}")
     sys.exit(1)
@@ -8614,10 +8614,11 @@ for f in F:
     if not ({"class", "file", "line", "detail", "auto_safe"} <= set(f)):
         print(f"finding missing required keys: {f}")
         sys.exit(1)
-# Autonomy boundary: C2/C3/C4/C5 are never auto_safe (a fix/flip is a human call).
+# Autonomy boundary: C2/C3/C4/C5/C6 are never auto_safe (a fix/flip/trim is a
+# human call). Only C1 carries auto_safe:true on a unique correction.
 for f in F:
-    if f["class"] in ("C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift", "C5_research_status_enum_violation") and f["auto_safe"] is not False:
-        print(f"C2/C3/C4/C5 finding wrongly auto_safe: {f}")
+    if f["class"] in ("C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift", "C5_research_status_enum_violation", "C6_index_row_bloat") and f["auto_safe"] is not False:
+        print(f"C2/C3/C4/C5/C6 finding wrongly auto_safe: {f}")
         sys.exit(1)
 # C1 correction-candidacy: both a unique (auto_safe:true) and a 0/multi (false).
 c1 = [f["auto_safe"] for f in F if f["class"] == "C1_broken_wikilink"]
@@ -8885,7 +8886,7 @@ with tempfile.TemporaryDirectory() as td:
               f"note_index must NOT resolve, got {unresolved!r}")
         sys.exit(1)
 
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4+C5, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); C5-R research-status enum (type:research-scoped): off-enum status: OPEN at line 4 + no-status line:null (total 2), legacy type:research-note under research/ dir segment NOT flagged (clean-dir-zero); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment (aggregate C2=3, X6); pathqual/ C1 suffix-match per-source: suffix/case/slashnorm/relative CLEAN, broken-fn/broken-boundary 1 C1 each (#76d, aggregate C1=2) + X1 FS-branch unit witness (stem-excluded note_index + real relative target → clean via FS branch, control → broken)")
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4+C5+C6, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); C5-R research-status enum (type:research-scoped): off-enum status: OPEN at line 4 + no-status line:null (total 2), legacy type:research-note under research/ dir segment NOT flagged (clean-dir-zero); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment (aggregate C2=3, X6); pathqual/ C1 suffix-match per-source: suffix/case/slashnorm/relative CLEAN, broken-fn/broken-boundary 1 C1 each (#76d, aggregate C1=2) + X1 FS-branch unit witness (stem-excluded note_index + real relative target → clean via FS branch, control → broken)")
 PYEOF
 }
 
@@ -8955,7 +8956,7 @@ counts = {}
 for f in findings:
     short = f["class"].split("_", 1)[0]
     counts[short] = counts.get(short, 0) + 1
-present = [s for s in ("C1", "C2", "C3", "C4", "C5") if s in counts]
+present = [s for s in ("C1", "C2", "C3", "C4", "C5", "C6") if s in counts]
 want_counts = " ".join(f"{s}:{counts[s]}" for s in present)
 want_drift = (
     f"⚠ KB drift — {len(findings)} findings: {want_counts} "
@@ -9062,6 +9063,120 @@ if line1 != want_drift:
     sys.exit(1)
 
 print("kb_drift_scan --summary: clean headline exact + exit0; drift headline per-class counts canonical-order matching json tally + exit1; group header boundary tags correct (C2/C3/C4 human-decision); null-line C3 renders <file> — <detail> with NO :None (X2); bad kb_root exit2; --summary --json → summary wins (X3)")
+PYEOF
+}
+
+# Behavioral: C6 index-row bloat (spec 2026-06-02-c6-index-row-bloat-check).
+# Builds isolated single-file vaults so each assertion pins one C6 mechanic with
+# byte-exact expectations (line, measure, detail) the shared-dir class-set pins
+# cannot reach: the 301-flag / 300-clean STRICT boundary with the detail measure
+# substring (a `>=` comparator or wrong measure flips it); a >300 `-` bullet and
+# a >300 `1.` ordered entry firing at the correct 1-based line with the POST-
+# MARKER measure (a full-line measure would inflate the number); a non-index
+# `type: reference` >300 line that must NOT flag (scope); the UNESCAPED-pipe cell
+# split (a cell `200*"a" + "\|" + 200*"b"` is ONE 402-char cell that flags — a
+# naive `|` split would yield two ≤300 cells and miss it); and a no-frontmatter
+# `vault-index.md` >300 row firing via the basename clause above the FM gate (X1).
+check_kb_drift_c6_index_row_bloat() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  python3 - "$scanner" <<'PYEOF'
+import json, subprocess, sys, tempfile
+from pathlib import Path
+
+scanner = sys.argv[1]
+
+
+def scan_one(name, body):
+    """Write a single file into a fresh vault, scan it, return its findings."""
+    with tempfile.TemporaryDirectory() as td:
+        (Path(td) / name).write_text(body, encoding="utf-8")
+        r = subprocess.run([sys.executable, scanner, td], capture_output=True, text=True)
+        return json.loads(r.stdout)["findings"]
+
+
+def c6(findings):
+    return [f for f in findings if f["class"] == "C6_index_row_bloat"]
+
+
+IDX = "---\ntitle: T\ntype: index\ncreated: 2026-06-02\n---\n\n# T\n\n"
+HEAD = "| Page | Summary |\n|------|---------|\n"
+
+# (1) STRICT boundary: a cell of exactly 301 flags with the measure in detail;
+# exactly 300 stays clean. Pins the `> THRESHOLD` comparator + the per-cell
+# measure + the detail substring.
+flag = c6(scan_one("idx.md", IDX + HEAD + "| p | " + "x" * 301 + " |\n"))
+if len(flag) != 1:
+    print(f"(1) cell=301 must yield exactly 1 C6, got {len(flag)}: {flag}")
+    sys.exit(1)
+if "301 chars > 300" not in flag[0]["detail"]:
+    print(f"(1) cell=301 detail must carry '301 chars > 300', got {flag[0]['detail']!r}")
+    sys.exit(1)
+if flag[0]["auto_safe"] is not False:
+    print(f"(1) C6 must be auto_safe:false, got {flag[0]['auto_safe']!r}")
+    sys.exit(1)
+clean300 = c6(scan_one("idx.md", IDX + HEAD + "| p | " + "x" * 300 + " |\n"))
+if clean300 != []:
+    print(f"(1) cell=300 must NOT flag (strict >), got {clean300}")
+    sys.exit(1)
+
+# (2) List entries: a >300 `-` bullet and a >300 `1.` ordered entry each flag at
+# their correct 1-based line with the POST-MARKER measure (315 / 325 — NOT the
+# full-line length, which would be larger by the marker width).
+bullet = "B" * 315
+ordered = "O" * 325
+body = IDX + "- " + bullet + "\n1. " + ordered + "\n"
+lf = c6(scan_one("list.md", body))
+by_line = {f["line"]: f for f in lf}
+# IDX is 6 lines of frontmatter (---,title,type,created,---) + blank + "# T" +
+# blank → the body list starts at file line 9.
+if 9 not in by_line or "315 chars > 300" not in by_line[9]["detail"]:
+    print(f"(2) `-` bullet must flag at line 9 with measure 315 (post-marker), got {lf}")
+    sys.exit(1)
+if 10 not in by_line or "325 chars > 300" not in by_line[10]["detail"]:
+    print(f"(2) `1.` ordered entry must flag at line 10 with measure 325 (post-marker), got {lf}")
+    sys.exit(1)
+if len(lf) != 2:
+    print(f"(2) expected exactly 2 C6 list findings, got {len(lf)}: {lf}")
+    sys.exit(1)
+
+# (3) Scope: a non-index `type: reference` file with a >300 cell/line must NOT
+# flag (the predicate restricts C6 to type∈{moc,index} or vault-index.md).
+ref = "---\ntitle: R\ntype: reference\ncreated: 2026-06-02\n---\n\n# R\n\n" + HEAD + "| t | " + "y" * 360 + " |\n"
+refc6 = c6(scan_one("ref.md", ref))
+if refc6 != []:
+    print(f"(3) non-index type:reference >300 line must NOT flag, got {refc6}")
+    sys.exit(1)
+
+# (4) Unescaped-pipe cell split: a cell `200*"a" + "\|" + 200*"b"` is ONE logical
+# cell measuring 402 (200 + len("\\|")==2 + 200) and MUST flag. A naive `|`
+# split would yield two cells of 201 / 200 (both ≤300) and miss it entirely —
+# this discriminates the `(?<!\\)\|` split.
+escaped_cell = "a" * 200 + "\\|" + "b" * 200
+assert len(escaped_cell) == 402, len(escaped_cell)
+moc = "---\ntitle: M\ntype: moc\ncreated: 2026-06-02\n---\n\n# M\n\n" + HEAD + "| p | " + escaped_cell + " |\n"
+mocc6 = c6(scan_one("moc.md", moc))
+if len(mocc6) != 1 or "402 chars > 300" not in mocc6[0]["detail"]:
+    print(f"(4) escaped-pipe cell must be ONE 402-char cell that flags (not split into two ≤300 cells), got {mocc6}")
+    sys.exit(1)
+
+# (5) No-frontmatter vault-index.md: a >300 row fires via the basename clause —
+# proves C6 runs ABOVE the frontmatter gate (X1). A file with no leading
+# frontmatter returns None from leading_frontmatter(); a C6 block placed with
+# C3/C4/C5 (after the `frontmatter is None: continue`) would never reach it.
+vi = "# Vault Index\n\n" + HEAD + "| p | " + "z" * 441 + " |\n"
+vic6 = c6(scan_one("vault-index.md", vi))
+if len(vic6) != 1 or "441 chars > 300" not in vic6[0]["detail"]:
+    print(f"(5) no-frontmatter vault-index.md >300 row must flag via basename clause (X1), got {vic6}")
+    sys.exit(1)
+# Control: the SAME body in a file that is NEITHER type∈{moc,index} NOR named
+# vault-index.md must NOT flag (proves the basename clause, not a blanket scan).
+ctrl = c6(scan_one("notes.md", vi))
+if ctrl != []:
+    print(f"(5) control: a non-vault-index no-frontmatter file must NOT flag, got {ctrl}")
+    sys.exit(1)
+
+print("kb_drift_scan C6: 301-flag/300-clean strict boundary + detail measure; `-` bullet@9 (315) and `1.` ordered@10 (325) post-marker measure; non-index type:reference >300 NOT flagged (scope); unescaped-pipe cell 402 flags as ONE cell (not naive-split into two ≤300); no-frontmatter vault-index.md 441 flags via basename clause above the FM gate (X1) + control non-vault-index clean")
 PYEOF
 }
 

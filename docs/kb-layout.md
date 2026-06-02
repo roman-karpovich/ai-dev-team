@@ -90,3 +90,7 @@ tags: [research, <project>]
 ```
 
 Research notes are free-form. Use for: incident investigations before a postmortem is ready, mathematical modeling, competitive analysis, exploratory work without a clear spec.
+
+## Index / MOC one-liner convention
+
+An index or MOC page (a doc whose frontmatter `type:` is `index` or `moc`, or the per-vault `vault-index.md`) is a one-line-per-page map: read the index first, deep-read only what you need. Keep each entry to one sentence — in an index/MOC table, **no single summary cell** (and no list-entry) exceeds ~300 chars. Detail belongs on the page, not in the index row. The `/kb-audit` C6 check enforces this per-cell (it measures the longest single cell of a table row, not the whole-row total) and flags any cell or list-entry over the budget; the fix is a human/librarian call (summarize, move detail to the page) — it is reported, never auto-trimmed.

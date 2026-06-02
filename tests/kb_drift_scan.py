@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3/C4/C5).
+"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3/C4/C5/C6).
 
 Sibling of the existing offline checkers `check_dangling_anchors.py` /
 `check_finding_claims.py`, but scoped to the KB Obsidian vault (NOT the plugin
@@ -34,8 +34,37 @@ Check set (narrow first slice):
                               analog, type-scoped on `type: research` (NEVER the
                               `research/` path — legacy `type: research-note` notes
                               stay clean). `auto_safe: false`.
+  C6 index-row bloat        — an index/MOC file's table data row or list entry
+                              whose measure exceeds INDEX_ROW_BLOAT_THRESHOLD
+                              (300) chars. Index/MOC predicate: leading-
+                              frontmatter `type:` ∈ {moc, index} OR the basename
+                              is `vault-index.md` (a no-frontmatter file qualifies
+                              ONLY via the basename clause). Runs in the C1/C2
+                              region ABOVE the frontmatter gate so the no-
+                              frontmatter `vault-index.md` is reachable. Table
+                              measure = MAX stripped cell length (cells split on
+                              UNESCAPED `|`, separator rows excluded); list
+                              measure = stripped content length AFTER the marker.
+                              `auto_safe: false` (trimming requires summarization,
+                              a human/librarian call).
 
 Known limitations (heuristic, like the existing checkers):
+  - C6 multi-physical-line dumps are under-reported: a pipe-table row is one
+    physical line, so the dominant one-giant-cell case is caught, but a bullet
+    whose status dump spills onto indented continuation lines is measured per-
+    line only (the continuation is not summed). Conservative FN consistent with
+    the under-report posture; the long-single-line/long-single-bullet defects
+    ARE caught.
+  - C6 markup counts toward length: cell length is raw stripped text (wikilink/
+    backtick/**bold** markup included). The 300-char budget has ample margin
+    over real one-liners (median 92), so markup overhead does not cause FPs.
+  - C6 header-row edge: a pathologically long table HEADER row flags like a data
+    row. Not excluded (real headers are short); acceptable rare case.
+  - C6 measures PER-CELL, not whole-row: the table measure is the MAX single-
+    cell length, not the sum of cells. A multi-cell row whose cells total > 300
+    but each is ≤ 300 does NOT flag. Deliberate — the bloat defect is a single
+    prose cell, and the codified convention (docs/kb-layout.md / vault AGENTS.md)
+    is worded per-cell to match.
   - C1 vault-wide bare-name resolution can false-positive on intentional stub
     links (hence `auto_safe: false` on ambiguity — the curator surfaces, never
     auto-fixes those).
@@ -103,7 +132,8 @@ scanner walks `<kb_root>` directly (covers a flat fixture vault).
 Output: JSON
     {"scanned": <int>, "findings": [{"class", "file", "line", "detail", "auto_safe"}]}
 `class` is one of {C1_broken_wikilink, C2_dangling_section_pointer,
-C3_status_enum_violation, C4_status_drift, C5_research_status_enum_violation}.
+C3_status_enum_violation, C4_status_drift, C5_research_status_enum_violation,
+C6_index_row_bloat}.
 `file` is KB-relative. `--json` is accepted for explicitness; JSON is always
 emitted.
 
@@ -153,6 +183,33 @@ ACCEPTED_SPEC_STATUSES = frozenset(CANONICAL_SPEC_STATUSES) | {"DONE"}
 # spec lifecycle there is NO legacy synonym, so ACCEPTED == CANONICAL.
 CANONICAL_RESEARCH_STATUSES = ("ACTIVE", "CONCLUDED", "ARCHIVED")
 ACCEPTED_RESEARCH_STATUSES = frozenset(CANONICAL_RESEARCH_STATUSES)
+
+# C6 index-row bloat budget — the one-liner character ceiling for an index/MOC
+# table cell or list-entry. A row flags iff its measure is STRICTLY greater than
+# this (300 sits above the 258/288 cells maintainers accept and below the
+# observed dumps at 315/325/333/441/1756). No CLI override (consistent with
+# C1–C5 having no tunables).
+INDEX_ROW_BLOAT_THRESHOLD = 300
+
+# C6 index/MOC file-type tokens (the `type:` values that mark an index/MOC, in
+# addition to the `vault-index.md` basename clause).
+INDEX_MOC_TYPES = frozenset({"moc", "index"})
+
+# C6 table data row: a line that opens and closes with a `|` (whitespace
+# allowed). The separator-row exclusion is done on the parsed cells, not here.
+C6_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+
+# C6 list entry: a bullet (`-`/`*`/`+`) or ordered (`1.`) marker followed by
+# whitespace and at least one non-space content char.
+C6_LIST_ENTRY_RE = re.compile(r"^\s*([-*+]|\d+\.)\s+\S")
+
+# C6 cell split — split a table row on UNESCAPED `|` only, so a MOC wikilink
+# cell `[[…\|alias]]` (escaped pipe) stays one cell.
+C6_UNESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
+
+# C6 separator-cell shape: a stripped cell consisting only of dashes with
+# optional leading/trailing `:` alignment colons.
+C6_SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
 
 # Obsidian wikilink: [[target]] with optional #heading / |alias / ^block-id.
 WIKILINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
@@ -460,6 +517,60 @@ def fenced_line_mask(lines: List[str]) -> List[bool]:
     return mask
 
 
+def c6_table_row_measure(line: str) -> Optional[int]:
+    """Measure a markdown table data row for C6, or None if it is not one.
+
+    Splits on UNESCAPED `|` only so a MOC wikilink cell `[[…\\|alias]]` stays one
+    cell, drops the empty leading/trailing cells produced by the outer pipes,
+    and returns the MAX stripped-cell length. Returns None when the line is a
+    header SEPARATOR row (every non-empty stripped cell matches `^:?-+:?$` AND at
+    least one cell contains a `-`) — an all-empty `|  |  |` row is NOT a separator
+    (it is a degenerate data row, measure 0).
+    """
+    cells = [c.strip() for c in C6_UNESCAPED_PIPE_RE.split(line)]
+    # Drop the empty outer cells produced by the leading/trailing pipes.
+    if cells and cells[0] == "":
+        cells = cells[1:]
+    if cells and cells[-1] == "":
+        cells = cells[:-1]
+    nonempty = [c for c in cells if c]
+    if (
+        nonempty
+        and all(C6_SEPARATOR_CELL_RE.match(c) for c in nonempty)
+        and any("-" in c for c in nonempty)
+    ):
+        return None  # header separator row
+    return max((len(c) for c in cells), default=0)
+
+
+def c6_list_entry_measure(line: str) -> int:
+    """Stripped length of a list entry's content AFTER its marker.
+
+    The caller has already matched C6_LIST_ENTRY_RE; this strips the leading
+    whitespace + marker + the following whitespace and measures the remainder.
+    """
+    m = C6_LIST_ENTRY_RE.match(line)
+    assert m is not None  # caller matched first
+    return len(line[m.end() - 1 :].strip())
+
+
+def c6_frontmatter_skip_count(lines: List[str]) -> int:
+    """Number of LEADING lines (1-based count) covered by the `--- … ---` block.
+
+    Returns the 1-based count of leading lines to skip — both fences plus any
+    body between them. 0 = no leading frontmatter (skip nothing). The empty-FM
+    file `---\\n---` resolves to 2 (both fences, zero body). A file whose first
+    line is not `---`, or with no closing fence, yields 0.
+    """
+    fm_end = 0
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                fm_end = i + 1
+                break
+    return fm_end
+
+
 def scan(kb_root: Path, project: Optional[str]) -> Dict:
     roots = scan_roots(kb_root, project)
     files = md_files(roots)
@@ -592,6 +703,49 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                         }
                     )
 
+        # --- C6 index-row bloat ---
+        # Runs in the C1/C2 region — ABOVE the `frontmatter is None: continue`
+        # gate below — with its OWN index/MOC predicate (§3.2 a′). A no-
+        # frontmatter `vault-index.md` returns None from leading_frontmatter() and
+        # would `continue` before a C6 block placed alongside C3/C4/C5 ever ran,
+        # making the basename clause dead code. The predicate: leading-frontmatter
+        # `type:` ∈ {moc, index} OR the basename is `vault-index.md` (a no-
+        # frontmatter file qualifies ONLY via the basename clause).
+        c6_fm = leading_frontmatter(text)
+        c6_type = None
+        if c6_fm is not None:
+            c6_type_match = FM_TYPE_RE.search(c6_fm)
+            if c6_type_match is not None:
+                c6_type = c6_type_match.group(1)
+        is_index_moc = (
+            c6_type in INDEX_MOC_TYPES or path.name.lower() == "vault-index.md"
+        )
+        if is_index_moc:
+            # Skip the leading `--- … ---` frontmatter block (b′): C6 sees it
+            # because it runs above the gate, and a YAML block-sequence line
+            # (`  - tag`) would otherwise match the list-entry regex.
+            fm_skip = c6_frontmatter_skip_count(lines)
+            for line_num, line in enumerate(lines, 1):
+                if line_num <= fm_skip:
+                    continue  # inside the leading frontmatter block
+                if mask[line_num - 1]:
+                    continue  # inside a fenced code block
+                measure: Optional[int] = None
+                if C6_TABLE_ROW_RE.match(line):
+                    measure = c6_table_row_measure(line)
+                elif C6_LIST_ENTRY_RE.match(line):
+                    measure = c6_list_entry_measure(line)
+                if measure is not None and measure > INDEX_ROW_BLOAT_THRESHOLD:
+                    findings.append(
+                        {
+                            "class": "C6_index_row_bloat",
+                            "file": rel,
+                            "line": line_num,
+                            "detail": f"index row exceeds one-liner budget: {measure} chars > {INDEX_ROW_BLOAT_THRESHOLD} (summary belongs on the page, not the index row)",
+                            "auto_safe": False,
+                        }
+                    )
+
         # --- C3 status-enum violation ---
         # Scope strictly to the leading `--- ... ---` frontmatter block — a body
         # that merely QUOTES `type: spec` (e.g. a research note documenting the
@@ -710,9 +864,9 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
     return {"scanned": len(files), "findings": findings}
 
 
-# Canonical class order for the --summary render (C1<C2<C3<C4<C5). Keyed by the
-# leading CLASS_SHORT token (the class up to the first `_`).
-_CLASS_ORDER = ("C1", "C2", "C3", "C4", "C5")
+# Canonical class order for the --summary render (C1<C2<C3<C4<C5<C6). Keyed by
+# the leading CLASS_SHORT token (the class up to the first `_`).
+_CLASS_ORDER = ("C1", "C2", "C3", "C4", "C5", "C6")
 
 
 def class_short(cls: str) -> str:

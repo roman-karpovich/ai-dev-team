@@ -1,13 +1,13 @@
 ---
 name: kb-audit
-description: "Audit / curate KB-vault hygiene — surfaces mechanical drift (broken [[wikilinks]], dangling §-pointers, status-enum violations, status-drift) the librarian's KB-curator role consumes. REPORTS only; never auto-edits the vault. Use to check KB drift, audit the KB, or do KB hygiene."
+description: "Audit / curate KB-vault hygiene — surfaces mechanical drift (broken [[wikilinks]], dangling §-pointers, status-enum violations, status-drift, index-row bloat) the librarian's KB-curator role consumes. REPORTS only; never auto-edits the vault. Use to check KB drift, audit the KB, or do KB hygiene."
 argument-hint: "[--project <name>]"
 ---
 
 # /kb-audit — KB-vault drift report
 
 Explicit, opt-in surface over the offline KB-drift scanner
-(`tests/kb_drift_scan.py`, checks C1–C4). Runs Phase-0 KB discovery, invokes the
+(`tests/kb_drift_scan.py`, checks C1–C6). Runs Phase-0 KB discovery, invokes the
 scanner in `--summary` mode against the resolved vault + project, and presents
 the grouped digest. **REPORTS only — never edits the KB.**
 
