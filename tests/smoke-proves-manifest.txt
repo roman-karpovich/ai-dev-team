@@ -95,6 +95,7 @@ check_cross_audit_agent_handles_range_spec prompt-text
 # AGENTS.md proactive-read and repo-convention pins
 check_feature_skill_step1_reads_repo_conventions prompt-text
 check_feature_skill_step2_forbids_ambiguity prompt-text
+check_feature_skill_test_placement_reconciliation prompt-text
 check_cross_auditor_spec_mode_repo_convention_rule prompt-text
 check_r5_step1_reads_directive_files prompt-text
 check_developer_workflow_short_form_r7 prompt-text

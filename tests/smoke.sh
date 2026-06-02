@@ -4100,6 +4100,7 @@ echo "AGENTS.md proactive-read in /feature Research pins:"
 
 check "feature_skill_step1_reads_repo_conventions" check_feature_skill_step1_reads_repo_conventions
 check "feature_skill_step2_forbids_ambiguity"      check_feature_skill_step2_forbids_ambiguity
+check "feature_skill_test_placement_reconciliation" check_feature_skill_test_placement_reconciliation
 check "r5_step1_reads_directive_files"             check_r5_step1_reads_directive_files
 check "cross_auditor_spec_mode_repo_convention_rule" check_cross_auditor_spec_mode_repo_convention_rule
 echo

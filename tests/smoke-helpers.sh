@@ -3927,6 +3927,40 @@ check_feature_skill_step2_forbids_ambiguity() {
   echo "feature SKILL Step 2 forbids repo-convention ambiguity tokens"
 }
 
+# Section-scoped (X3): the test-placement reconciliation instruction must be
+# present in BOTH the `### Step 1 — Research` block AND the §5 Repo-convention
+# enforcement paragraph. A global whole-file grep would pass green if only one
+# surface carried the text — assert each surface independently.
+check_feature_skill_test_placement_reconciliation() {
+  local skill='skills/feature/SKILL.md'
+  local step1 conv5
+  step1=$(awk '/^### Step 1 — Research/{flag=1} /^### Step 2 —/{if (flag) exit} flag{print}' "$skill")
+  echo "$step1" | grep -qE -- 'R5-R7|R5–R7|R7' \
+    || { echo "$skill Step 1 reconciliation missing R5-R7/R7 reference"; return 1; }
+  echo "$step1" | grep -qiE -- 'reconcile|reconciliation' \
+    || { echo "$skill Step 1 reconciliation missing reconcile/reconciliation"; return 1; }
+  echo "$step1" | grep -qF -- 'sibling' \
+    || { echo "$skill Step 1 reconciliation missing sibling test-file token"; return 1; }
+  echo "$step1" | grep -qiE -- 'convention shift|convention-shift' \
+    || { echo "$skill Step 1 reconciliation missing convention shift token"; return 1; }
+  echo "$step1" | grep -qF -- 'Log' \
+    || { echo "$skill Step 1 reconciliation missing Log destination"; return 1; }
+
+  conv5=$(awk '/^\*\*Repo-convention enforcement in §5\*\*:/{flag=1} flag{print} flag && /^$/{exit}' "$skill")
+  [ -n "$conv5" ] || { echo "$skill §5 Repo-convention enforcement paragraph not found"; return 1; }
+  echo "$conv5" | grep -qE -- 'R7' \
+    || { echo "$skill §5 Repo-convention paragraph missing R7-wins requirement"; return 1; }
+  echo "$conv5" | grep -qF -- 'sibling' \
+    || { echo "$skill §5 Repo-convention paragraph missing sibling-path-in-allowed_scope requirement"; return 1; }
+  echo "$conv5" | grep -qF -- 'allowed_scope' \
+    || { echo "$skill §5 Repo-convention paragraph missing allowed_scope requirement"; return 1; }
+  echo "$conv5" | grep -qiE -- 'convention shift|convention-shift' \
+    || { echo "$skill §5 Repo-convention paragraph missing convention-shift Log requirement"; return 1; }
+  echo "$conv5" | grep -qF -- 'Log' \
+    || { echo "$skill §5 Repo-convention paragraph missing §7 Log destination"; return 1; }
+  echo "feature SKILL test-placement reconciliation present in Step 1 AND §5 (R7 wins, sibling in allowed_scope, convention-shift Log)"
+}
+
 check_cross_auditor_spec_mode_repo_convention_rule() {
   local agent='agents/references/cross-auditor-mode-focus.md'
   local section
