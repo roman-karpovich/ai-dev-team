@@ -8550,7 +8550,7 @@ if d.returncode != 1:
     sys.exit(1)
 F = json.loads(d.stdout)["findings"]
 classes = {f["class"] for f in F}
-want = {"C1_broken_wikilink", "C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift"}
+want = {"C1_broken_wikilink", "C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift", "C5_research_status_enum_violation"}
 if classes != want:
     print(f"drift fixture: expected class set {want}, got {classes}")
     sys.exit(1)
@@ -8558,10 +8558,10 @@ for f in F:
     if not ({"class", "file", "line", "detail", "auto_safe"} <= set(f)):
         print(f"finding missing required keys: {f}")
         sys.exit(1)
-# Autonomy boundary: C2/C3/C4 are never auto_safe (a fix/flip is a human call).
+# Autonomy boundary: C2/C3/C4/C5 are never auto_safe (a fix/flip is a human call).
 for f in F:
-    if f["class"] in ("C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift") and f["auto_safe"] is not False:
-        print(f"C2/C3/C4 finding wrongly auto_safe: {f}")
+    if f["class"] in ("C2_dangling_section_pointer", "C3_status_enum_violation", "C4_status_drift", "C5_research_status_enum_violation") and f["auto_safe"] is not False:
+        print(f"C2/C3/C4/C5 finding wrongly auto_safe: {f}")
         sys.exit(1)
 # C1 correction-candidacy: both a unique (auto_safe:true) and a 0/multi (false).
 c1 = [f["auto_safe"] for f in F if f["class"] == "C1_broken_wikilink"]
@@ -8587,6 +8587,41 @@ if c4_files != {"spec-status-drift-structured.md", "spec-status-drift-logmarker.
     sys.exit(1)
 if any(f["auto_safe"] is not False for f in c4):
     print(f"C4 findings must all be auto_safe:false, got {[f['auto_safe'] for f in c4]}")
+    sys.exit(1)
+
+# C5-R research-status enum violation (the C3 analog, type:research-scoped). TWO
+# drift fixtures, asserted BY FIXTURE FILE (not aggregate): research-bad-status.md
+# fires the off-enum path (status: OPEN ∉ {ACTIVE,CONCLUDED,ARCHIVED}) at the
+# EXACT authored status-line number (file line 4 — `frontmatter[:start].count(\n)
+# +2` = 2 preceding FM newlines + 2), with the enum detail substring;
+# research-no-status.md fires the no-status path → line is None. Both
+# auto_safe:false. The exact-line + detail + per-file attribution are what give
+# the pin mutation-sensitivity (a broken count(\n)+2, a missing-status mishandle,
+# or swapped fixture attribution flips it) — NOT the want-set update alone. The
+# legacy type:research-note FP-guard under a research/ DIR segment is pinned by
+# the clean-dir-zero assertion above (type-scope, not path-scope).
+c5 = [f for f in F if f["class"] == "C5_research_status_enum_violation"]
+if len(c5) != 2:
+    print(f"drift fixture: expected exactly 2 C5_research_status_enum_violation findings, got {len(c5)}: {c5}")
+    sys.exit(1)
+c5_files = {f["file"] for f in c5}
+if c5_files != {"research-bad-status.md", "research-no-status.md"}:
+    print(f"C5 findings must be on the off-enum + no-status research fixtures, got {c5_files}")
+    sys.exit(1)
+if any(f["auto_safe"] is not False for f in c5):
+    print(f"C5 findings must all be auto_safe:false, got {[f['auto_safe'] for f in c5]}")
+    sys.exit(1)
+c5_by_file = {f["file"]: f for f in c5}
+c5_nostatus = c5_by_file["research-no-status.md"]
+if c5_nostatus["line"] is not None:
+    print(f"C5 research-no-status.md: expected line is None (no frontmatter status:), got {c5_nostatus['line']!r}")
+    sys.exit(1)
+c5_bad = c5_by_file["research-bad-status.md"]
+if c5_bad["line"] != 4:
+    print(f"C5 research-bad-status.md: expected line == 4 (the authored status: line), got {c5_bad['line']!r}")
+    sys.exit(1)
+if "status: OPEN not in accepted research-status enum" not in c5_bad["detail"]:
+    print(f"C5 research-bad-status.md: detail must contain 'status: OPEN not in accepted research-status enum', got {c5_bad['detail']!r}")
     sys.exit(1)
 
 # X5 regression (path containment — out-of-vault target): the drift fixture's
@@ -8794,7 +8829,7 @@ with tempfile.TemporaryDirectory() as td:
               f"note_index must NOT resolve, got {unresolved!r}")
         sys.exit(1)
 
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment (aggregate C2=3, X6); pathqual/ C1 suffix-match per-source: suffix/case/slashnorm/relative CLEAN, broken-fn/broken-boundary 1 C1 each (#76d, aggregate C1=2) + X1 FS-branch unit witness (stem-excluded note_index + real relative target → clean via FS branch, control → broken)")
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4+C5, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); C5-R research-status enum (type:research-scoped): off-enum status: OPEN at line 4 + no-status line:null (total 2), legacy type:research-note under research/ dir segment NOT flagged (clean-dir-zero); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment (aggregate C2=3, X6); pathqual/ C1 suffix-match per-source: suffix/case/slashnorm/relative CLEAN, broken-fn/broken-boundary 1 C1 each (#76d, aggregate C1=2) + X1 FS-branch unit witness (stem-excluded note_index + real relative target → clean via FS branch, control → broken)")
 PYEOF
 }
 
@@ -8864,7 +8899,7 @@ counts = {}
 for f in findings:
     short = f["class"].split("_", 1)[0]
     counts[short] = counts.get(short, 0) + 1
-present = [s for s in ("C1", "C2", "C3", "C4") if s in counts]
+present = [s for s in ("C1", "C2", "C3", "C4", "C5") if s in counts]
 want_counts = " ".join(f"{s}:{counts[s]}" for s in present)
 want_drift = (
     f"⚠ KB drift — {len(findings)} findings: {want_counts} "

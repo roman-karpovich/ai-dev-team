@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3/C4).
+"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3/C4/C5).
 
 Sibling of the existing offline checkers `check_dangling_anchors.py` /
 `check_finding_claims.py`, but scoped to the KB Obsidian vault (NOT the plugin
@@ -28,6 +28,12 @@ Check set (narrow first slice):
                               the status was left stale. Offline / git-free — reads
                               only the spec file. `auto_safe: false` (a status flip
                               is a human decision).
+  C5 research-status-enum   — a `type: research` doc whose frontmatter `status:`
+                              is not in the documented research enum
+                              {ACTIVE, CONCLUDED, ARCHIVED} (or is missing). The C3
+                              analog, type-scoped on `type: research` (NEVER the
+                              `research/` path — legacy `type: research-note` notes
+                              stay clean). `auto_safe: false`.
 
 Known limitations (heuristic, like the existing checkers):
   - C1 vault-wide bare-name resolution can false-positive on intentional stub
@@ -97,8 +103,9 @@ scanner walks `<kb_root>` directly (covers a flat fixture vault).
 Output: JSON
     {"scanned": <int>, "findings": [{"class", "file", "line", "detail", "auto_safe"}]}
 `class` is one of {C1_broken_wikilink, C2_dangling_section_pointer,
-C3_status_enum_violation, C4_status_drift}. `file` is KB-relative. `--json` is
-accepted for explicitness; JSON is always emitted.
+C3_status_enum_violation, C4_status_drift, C5_research_status_enum_violation}.
+`file` is KB-relative. `--json` is accepted for explicitness; JSON is always
+emitted.
 
 Exit codes: 0 = no findings; 1 = >=1 finding; 2 = usage/IO error.
 """
@@ -139,6 +146,13 @@ CANONICAL_SPEC_STATUSES = (
 # A `status: DONE` spec is accepted (NOT flagged) because DONE is a legacy
 # read-only synonym of VERIFIED (specs predating 2026-04-17).
 ACCEPTED_SPEC_STATUSES = frozenset(CANONICAL_SPEC_STATUSES) | {"DONE"}
+
+# C5-R enum source-of-truth (research-note lifecycle). CANONICAL_RESEARCH_STATUSES
+# — the 3-status enum exactly as documented (ACTIVE → CONCLUDED → ARCHIVED) on
+# docs/kb-layout.md §research frontmatter + skills/research/SKILL.md. Unlike the
+# spec lifecycle there is NO legacy synonym, so ACCEPTED == CANONICAL.
+CANONICAL_RESEARCH_STATUSES = ("ACTIVE", "CONCLUDED", "ARCHIVED")
+ACCEPTED_RESEARCH_STATUSES = frozenset(CANONICAL_RESEARCH_STATUSES)
 
 # Obsidian wikilink: [[target]] with optional #heading / |alias / ^block-id.
 WIKILINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
@@ -658,12 +672,47 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                             }
                         )
 
+        # --- C5 research-status enum violation ---
+        # The C3 analog, type-scoped on the EXACT leading-frontmatter string
+        # `type: research` (NEVER the `research/` path — legacy
+        # `type: research-note` notes are a distinct, intentional type spelling
+        # and stay clean even with off-enum statuses, a deliberate conservative
+        # FN). Reuses the same `leading_frontmatter()` isolation + FM_STATUS_RE
+        # as C3 against the 3-value research enum (no legacy synonym).
+        elif type_match is not None and type_match.group(1) == "research":
+            status_match = FM_STATUS_RE.search(frontmatter)
+            if status_match is None:
+                findings.append(
+                    {
+                        "class": "C5_research_status_enum_violation",
+                        "file": rel,
+                        "line": None,
+                        "detail": "type: research doc has no frontmatter status:",
+                        "auto_safe": False,
+                    }
+                )
+            else:
+                status = status_match.group(1)
+                if status not in ACCEPTED_RESEARCH_STATUSES:
+                    # Frontmatter body starts at file line 2 (line 1 is the
+                    # opening `---` fence).
+                    line_num = frontmatter[: status_match.start()].count("\n") + 2
+                    findings.append(
+                        {
+                            "class": "C5_research_status_enum_violation",
+                            "file": rel,
+                            "line": line_num,
+                            "detail": f"status: {status} not in accepted research-status enum",
+                            "auto_safe": False,
+                        }
+                    )
+
     return {"scanned": len(files), "findings": findings}
 
 
-# Canonical class order for the --summary render (C1<C2<C3<C4). Keyed by the
+# Canonical class order for the --summary render (C1<C2<C3<C4<C5). Keyed by the
 # leading CLASS_SHORT token (the class up to the first `_`).
-_CLASS_ORDER = ("C1", "C2", "C3", "C4")
+_CLASS_ORDER = ("C1", "C2", "C3", "C4", "C5")
 
 
 def class_short(cls: str) -> str:
