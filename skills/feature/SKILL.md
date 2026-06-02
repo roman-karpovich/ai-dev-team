@@ -104,7 +104,7 @@ Read both KB and codebase before writing anything:
 2. Read any relevant KB docs: domain context, related project docs, glossary
 3. Explore source code in the project directory: understand architecture, existing patterns, files that will change
 4. Identify: reusable patterns, files to change, dependencies, risks, what already exists
-5. Read AGENTS.md, CLAUDE.md, .github/CONTRIBUTING.md, and README.md §Development/§Contributing/§Testing in the target repo if they exist. Lift any directive placement / naming / layout / branch-style rules verbatim into spec §2 Current State as a 'Repo conventions' subsection (`### 2.X Repo conventions`).
+5. Read AGENTS.md, CLAUDE.md, .github/CONTRIBUTING.md, and README.md §Development/§Contributing/§Testing in the target repo if they exist. Lift any directive placement / naming / layout / branch-style rules verbatim into spec §2 Current State as a 'Repo conventions' subsection (`### 2.X Repo conventions`). After lifting, **reconcile any test-placement / test-layout convention against R5-R7** in `skills/feature/references/code-quality-rules.md`. On conflict, **R7 wins** (sibling-file test layout for new files, even where the repo uses inline): §2 Repo conventions records the prior inline/mixed convention PLUS the R7 override, and the convention-shift line goes in the spec **§7 Log** (`- YYYY-MM-DD: introduced sibling-file test layout per R7; repo previously used inline` per R7 step 3) — NOT in §2 Current State. The reconciled placement then flows into the §5 step + workdoc `allowed_scope` as a concrete sibling test file path. Worked example: when module names are dynamic/generated, scope by **directory** (e.g. `src/foo/` + `src/foo/*_tests.rs`), not just the production file path, so the sibling test file is never silently dropped from `allowed_scope`.
 
 ### Step 2 — Write spec and initialize execution workdoc
 
@@ -121,7 +121,7 @@ Authoring style: caveman-style per skills/caveman/SKILL.md §8 — see skills/fe
 - **Verification** — how to test end-to-end
 - **Log** — append-only decisions and progress
 
-**Repo-convention enforcement in §5**: if §2 lists a Repo conventions subsection that constrains a checklist step's decision (test placement, file layout, branch naming, commit style, linter format, language version), the corresponding §5 Implementation Checklist step MUST specify the exact placement/value — never 'developer's call' / 'at developer's discretion' / 'as you see fit' / 'at agent discretion'. Spec-mode cross-audit (see `agents/cross-auditor.md` §spec mode) flags such ambiguity as HIGH.
+**Repo-convention enforcement in §5**: if §2 lists a Repo conventions subsection that constrains a checklist step's decision (test placement, file layout, branch naming, commit style, linter format, language version), the corresponding §5 Implementation Checklist step MUST specify the exact placement/value — never 'developer's call' / 'at developer's discretion' / 'as you see fit' / 'at agent discretion'. For test-placement specifically: where a lifted convention conflicts with R5-R7, **R7 wins** — the §5 step uses the sibling-file layout and lists the concrete sibling test file path(s) in the step's `allowed_scope`, and the convention-shift line is recorded in the spec **§7 Log** (not §2). Spec-mode cross-audit (see `agents/cross-auditor.md` §spec mode) flags such ambiguity as HIGH.
 
 YAML frontmatter:
 ```yaml
