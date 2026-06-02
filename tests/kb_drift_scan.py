@@ -33,6 +33,16 @@ Known limitations (heuristic, like the existing checkers):
   - C1 vault-wide bare-name resolution can false-positive on intentional stub
     links (hence `auto_safe: false` on ambiguity — the curator surfaces, never
     auto-fixes those).
+  - C1 path-qualified resolution APPROXIMATES Obsidian's note resolver via
+    vault-relative component-suffix matching (.md notes only); exact resolver
+    internals are not public.
+  - C1 unresolved `.`/`..` relative wikilinks fall back to bare-stem to avoid
+    live-vault false-positives; this may under-report a broken relative path
+    when a same-stem note exists elsewhere (scoped subset of #76d).
+  - C1 backslash-separated path-qualified targets are not normalized (POSIX
+    vault assumption; not observed on the real vault).
+  - C1 a wrong-looking path that is a valid Obsidian suffix of a DIFFERENT note
+    resolves clean (Obsidian-consistent — partial-path resolution).
   - Code is skipped: lines inside (or delimiting) a fenced ```code block``` are
     masked for both C1 and C2, and single-backtick inline-code spans are
     stripped before the C1 wikilink scan. Double-/multi-backtick inline spans
@@ -256,6 +266,24 @@ def build_fuzzy_index(all_md: List[Path]) -> Dict[str, List[Path]]:
     return index
 
 
+def build_suffix_index(all_md: List[Path], kb_root: Path) -> set:
+    """Set of vault-relative component-tuple SUFFIXES (length >= 2) of all notes.
+
+    Obsidian resolves a path-qualified link `[[a/Note]]` to any note whose
+    vault-relative path ENDS with those components, so the resolver checks
+    membership of the target's component tuple in this set. Tuple (not string)
+    suffixing enforces the path boundary: `("a","note")` is a suffix of
+    `("x","a","note")` but NOT `("xa","note")`. 1-tuples are omitted — a bare
+    name stays in note_index, never the suffix index.
+    """
+    idx: set = set()
+    for p in all_md:
+        parts = normalized_note_parts(p.relative_to(kb_root).as_posix())
+        for i in range(len(parts) - 1):
+            idx.add(parts[i:])
+    return idx
+
+
 def bare_target(raw: str) -> str:
     """Strip #heading / |alias / ^block-id suffixes to the bare link target."""
     target = raw
@@ -266,37 +294,72 @@ def bare_target(raw: str) -> str:
     return target.strip()
 
 
-def wikilink_resolves_as_written(
-    target: str, kb_root: Path, note_index: Dict[str, List[Path]]
-) -> bool:
-    """Stage 1 — Obsidian as-written resolution.
+def normalized_note_parts(target: str) -> tuple:
+    """Vault-relative component tuple of a wikilink target / note relpath.
 
-    A target resolves if it matches a vault note by bare note-name
-    (case-insensitive stem) OR by an explicit vault-relative path / `.md`-
-    qualified form. True iff at least one matching note exists.
+    Drops empty components (leading / trailing / doubled slash) and lowercases
+    each (Obsidian resolution is case-insensitive). The LAST component's `.md`
+    suffix is stripped AFTER the empty-drop so a `.md`-qualified target and its
+    note share one key. Used for both the suffix index and the resolver's
+    shape dispatch.
+    """
+    parts = [p.lower() for p in target.split("/") if p]
+    if parts and parts[-1].endswith(".md"):
+        parts[-1] = parts[-1][:-3]
+    return tuple(parts)
+
+
+def wikilink_resolves_as_written(
+    target: str,
+    kb_root: Path,
+    note_index: Dict[str, List[Path]],
+    suffix_index: set,
+    source_path: Path,
+) -> bool:
+    """Stage 1 — Obsidian as-written resolution, dispatched by target SHAPE.
+
+    - bare (no `/`)            → vault-wide case-insensitive note_index.
+    - path-qualified (no `..`/`.`) → component-tuple SUFFIX match (Obsidian
+      partial-path semantics: `[[a/Note]]` resolves `x/a/Note.md`). A wrong
+      path that is NOT a tuple-suffix of any note no longer false-resolves via
+      a bare-stem fallback (#76d FN closed).
+    - relative (`..`/`.`)      → source-relative FS try, then a conservative
+      bare-stem fallback (Option B — empirically keeps live `../` links clean,
+      no-FP posture; named known-limitation for the residual miss).
+
+    True iff the target resolves under any of those shapes. The vault-root FS
+    tries run UNCHANGED first (so an explicit `.md`/path target that is a real
+    vault file always wins). `is_contained` short-circuits before `is_file()`,
+    so an absolute / `../`-escaping FS try is rejected, never silently clean.
     """
     if not target:
         return True  # empty target — not a broken-link finding
-    # Path-qualified or `.md`-suffixed form: try as a vault-relative path,
-    # with and without an appended `.md`.
-    candidate = target
-    if candidate.lower().endswith(".md"):
-        candidate = candidate[: -len(".md")]
-    # Each KB-relative candidate must stay inside the vault: a `../`-escaping or
-    # absolute target that happens to resolve to a real out-of-vault `.md` is
-    # NOT a working link (it would be a silent false-clean), so guard with
-    # is_contained before is_file().
+    parts = normalized_note_parts(target)
+    if not parts:
+        return True  # degenerate (only slashes) — not a broken-link finding
+    candidate = target[: -len(".md")] if target.lower().endswith(".md") else target
+    # Vault-root FS tries (UNCHANGED): guard containment before is_file() so a
+    # `../`-escaping or absolute target that resolves to a real out-of-vault
+    # `.md` is NOT a silent false-clean.
     rel_md = kb_root / (candidate + ".md")
     if is_contained(rel_md, kb_root) and rel_md.is_file():
         return True
     rel_exact = kb_root / target
     if is_contained(rel_exact, kb_root) and rel_exact.is_file():
         return True
-    # Bare note-name form (last path component, case-insensitive stem).
-    stem = Path(candidate).name.lower()
-    if stem in note_index:
-        return True
-    return False
+    if ".." in parts or "." in parts:
+        # Relative form (Option B): try source-relative FS, then fall back to a
+        # conservative bare-stem check (scoped #76d residual — no-FP posture).
+        srel_md = source_path.parent / (candidate + ".md")
+        if is_contained(srel_md, kb_root) and srel_md.is_file():
+            return True
+        srel_exact = source_path.parent / target
+        if is_contained(srel_exact, kb_root) and srel_exact.is_file():
+            return True
+        return parts[-1] in note_index
+    if len(parts) == 1:
+        return parts[0] in note_index  # bare note-name (UNCHANGED)
+    return parts in suffix_index  # path-qualified — strict component-tuple suffix
 
 
 def correction_candidates(target: str, fuzzy_index: Dict[str, List[Path]]) -> int:
@@ -391,6 +454,7 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
     all_md = md_files([kb_root])
     note_index = build_note_index(all_md)
     fuzzy_index = build_fuzzy_index(all_md)
+    suffix_index = build_suffix_index(all_md, kb_root)
 
     findings: List[Dict] = []
 
@@ -417,7 +481,9 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                 target = bare_target(m.group(1))
                 if not target:
                     continue
-                if wikilink_resolves_as_written(target, kb_root, note_index):
+                if wikilink_resolves_as_written(
+                    target, kb_root, note_index, suffix_index, path
+                ):
                     continue  # stage 1 resolved → working link → NOT a finding
                 # Broken at stage 1 — assess correction candidacy (stage 2).
                 n_cand = correction_candidates(target, fuzzy_index)
