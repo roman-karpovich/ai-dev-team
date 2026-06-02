@@ -2133,6 +2133,31 @@ check_developer_workflow_short_form_r5() {
   echo "developer-workflow.md §Code Quality Rules has R5 short-form bullet (S1+S2+S3)"
 }
 
+# (10b) R7 short-form bullet inside §Code Quality Rules of developer-workflow.md —
+# mirrors the R5 short-form pin: isolate the R7 bullet paragraph, then three
+# independent grep -qF -- checks (S1 byte-exact prefix, S2 `sibling`, S3 trivial
+# threshold, S4 `code-quality-rules.md`).
+check_developer_workflow_short_form_r7() {
+  local section para
+  section=$(extract_md_section "$DWF_R5" '## Code Quality Rules')
+  para=$(printf '%s\n' "$section" | awk '
+    /^- \*\*R7 — Keep unit tests in a sibling file, not inline\.\*\*/ { in_p=1; print; next }
+    in_p && /^[[:space:]]*$/ { exit }
+    in_p && /^- \*\*/ { exit }
+    in_p { print }
+  ')
+  [ -n "$para" ] || { echo "developer-workflow.md §Code Quality Rules missing R7 bullet (S1 prefix not found)"; return 1; }
+  printf '%s\n' "$para" | grep -qF -- '- **R7 — Keep unit tests in a sibling file, not inline.**' \
+    || { echo "developer-workflow.md R7 bullet missing byte-exact S1 prefix"; return 1; }
+  printf '%s\n' "$para" | grep -qF -- 'sibling' \
+    || { echo "developer-workflow.md R7 bullet missing 'sibling' (S2)"; return 1; }
+  printf '%s\n' "$para" | grep -qE -- '<~40|<~200|trivial' \
+    || { echo "developer-workflow.md R7 bullet missing trivial-exception threshold (S3)"; return 1; }
+  printf '%s\n' "$para" | grep -qF -- 'code-quality-rules.md' \
+    || { echo "developer-workflow.md R7 bullet missing 'code-quality-rules.md' reference (S4)"; return 1; }
+  echo "developer-workflow.md §Code Quality Rules has R7 short-form bullet (S1+S2+S3+S4)"
+}
+
 check "r5-rule-heading-present"                           check_r5_rule_heading_present
 check "r5-structure-triplet-present"                      check_r5_structure_triplet_present
 check "r5-key-tokens-present"                             check_r5_key_tokens_present
@@ -2143,6 +2168,7 @@ check "r5-majority-wording-present"                       check_r5_majority_word
 check "r5-mixed-fallback-present"                         check_r5_mixed_fallback_present
 check "r5-rule-sentence-present"                          check_r5_rule_sentence_present
 check "developer-workflow-short-form-r5"                  check_developer_workflow_short_form_r5
+check "developer-workflow-short-form-r7"                  check_developer_workflow_short_form_r7
 echo
 
 # --- R6 — Test scope / user-facing contract (spec: 2026-04-18) ---
