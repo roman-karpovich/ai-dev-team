@@ -31,7 +31,7 @@ Expected output ends with `Failed: 0` plus a per-class breakdown:
 
 Per-pin 3-edit protocol when adding a new check:
 
-1. Function definition: `check_<name>` in `tests/smoke-helpers.sh`.
+1. Function definition: `check_<name>`, placed adjacent to the related existing pins (topical clustering). Default home is `tests/smoke-helpers.sh` (the general helper pool); define it in `tests/smoke.sh` instead when a tight rule-text pin cluster already lives there — e.g. the R5/R6/R7 short-form digest pins are defined in `tests/smoke.sh` next to their rule-text pins, not in `smoke-helpers.sh`.
 2. Pin invocation: `check "<pin-slug>" check_<name>` registered in `tests/smoke.sh` adjacent to existing related pins.
 3. Classification: a line in `tests/smoke-proves-manifest.txt` mapping the helper to a class (`behavioral` / `schema` / `prompt-text`).
 
