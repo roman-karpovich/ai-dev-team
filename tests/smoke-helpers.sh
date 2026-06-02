@@ -3980,6 +3980,28 @@ check_cross_auditor_spec_mode_repo_convention_rule() {
   echo "cross-auditor spec mode pins Repo-convention enforcement rule"
 }
 
+# Section-scoped: the NEW weaker-than-R7 rule must live in the `### `spec` mode`
+# section and be distinct from the line-47 Repo-convention enforcement bullet.
+# Anchors: R7, trivial exception (or the <~40/<~200 thresholds), inline, and at
+# least one named weaker-shape token (pure helpers / category / #[cfg(test)] mod
+# tests). De-fuzzes against paraphrase per spec §3.2.3.
+check_cross_auditor_spec_mode_flags_weaker_r7_conventions() {
+  local agent='agents/references/cross-auditor-mode-focus.md'
+  local section
+  section=$(awk '/^### `spec` mode/{flag=1} /^<!-- end §spec mode -->/{if (flag) exit} flag{print}' "$agent")
+  echo "$section" | grep -qF 'Weaker-than-R7' \
+    || { echo "$agent spec mode missing Weaker-than-R7 test-placement rule"; return 1; }
+  echo "$section" | grep -qF 'R7' \
+    || { echo "$agent spec mode weaker-R7 rule missing R7 reference"; return 1; }
+  echo "$section" | grep -qE -- 'trivial exception|<~40|<~200' \
+    || { echo "$agent spec mode weaker-R7 rule missing trivial-exception threshold"; return 1; }
+  echo "$section" | grep -qF 'inline' \
+    || { echo "$agent spec mode weaker-R7 rule missing inline token"; return 1; }
+  echo "$section" | grep -qE -- 'pure helpers|category|#\[cfg\(test\)\] mod tests' \
+    || { echo "$agent spec mode weaker-R7 rule missing a named weaker-shape token"; return 1; }
+  echo "cross-auditor spec mode flags weaker-than-R7 test-placement conventions"
+}
+
 check_r5_step1_reads_directive_files() {
   local rules='skills/feature/references/code-quality-rules.md'
   grep -qF 'AGENTS.md' "$rules" \

@@ -4103,6 +4103,7 @@ check "feature_skill_step2_forbids_ambiguity"      check_feature_skill_step2_for
 check "feature_skill_test_placement_reconciliation" check_feature_skill_test_placement_reconciliation
 check "r5_step1_reads_directive_files"             check_r5_step1_reads_directive_files
 check "cross_auditor_spec_mode_repo_convention_rule" check_cross_auditor_spec_mode_repo_convention_rule
+check "cross_auditor_spec_mode_flags_weaker_r7_conventions" check_cross_auditor_spec_mode_flags_weaker_r7_conventions
 echo
 
 # --- Audit-evidence enum (spec 2026-04-27-audit-evidence-enum) ---
