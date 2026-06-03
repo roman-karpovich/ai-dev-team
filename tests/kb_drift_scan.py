@@ -111,6 +111,12 @@ Known limitations (heuristic, like the existing checkers):
         that now resolves nowhere is silently skipped (dangling-FILE detection is
         dominated by cross-repo noise on the real vault; re-adding a cross-repo
         predicate to recover it is a deferred follow-up).
+  - Whole-vault scan exclusion (no `--project`) is whole-component anchored,
+    never substring. Excluded (NOT scanned): case-insensitive `templates`/
+    `images`, the Obsidian numbered-prefix form `90_Templates/` / `01-images/`,
+    and any dot-dir. NOT excluded (still scanned): content dirs like
+    `templates-analysis/` and `image-pipeline/` — they embed the token but are
+    not the build dir. The wikilink resolution index stays whole-vault regardless.
   - No git/network reads.
   - C4 is offline status-drift via the spec's own frontmatter
     `code_audit_evidence:` + column-0 `code audit passed`/zero-diff Log markers.
@@ -208,7 +214,23 @@ INDEX_MOC_TYPES = frozenset({"moc", "index"})
 # `.git`, `.trash`, future ones) is excluded — generalized so new dot-dirs need
 # no constant edit. The comparison is on kb_root-RELATIVE path components, so an
 # excluded-named ancestor ABOVE the vault root does not nuke the scan.
+#
+# Matched forms (whole-component anchored, NEVER substring):
+#   - case-insensitive plain `templates` / `images` (e.g. `Templates`, `IMAGES`)
+#     via `comp.casefold()`;
+#   - the Obsidian numbered-prefix form `90_Templates` / `01-images` / `2 Template`
+#     via SCAN_EXCLUDE_RE.fullmatch (anchored to the whole component).
+# NOT matched (still scanned — these are content dirs, not build dirs):
+#   `templates-analysis`, `my-templates`, `image-pipeline` — no leading digits
+#   and `fullmatch` rejects the trailing suffix.
 SCAN_EXCLUDE_DIRNAMES = frozenset({"templates", "images"})
+
+# Obsidian numbered-prefix build-dir form: leading digits + optional ` `/`_`/`-`
+# separator + `template(s)`/`image(s)`. Matched with `fullmatch` (anchored to the
+# WHOLE component, equivalent to `^…$`) — case-insensitive. Matches
+# `90_Templates`, `01-images`, `2 Template`. Does NOT match `templates-analysis`
+# (no leading digits + trailing suffix) or `image-pipeline`.
+SCAN_EXCLUDE_RE = re.compile(r"\d+[ _-]?(?:templates?|images?)", re.IGNORECASE)
 
 # C6 table data row: a line that opens and closes with a `|` (whitespace
 # allowed). The separator-row exclusion is done on the parsed cells, not here.
@@ -309,6 +331,15 @@ def _is_excluded(path: Path, kb_root: Path) -> bool:
     """True iff any kb_root-RELATIVE path component of `path` is a build/template
     dirname or starts with `.` (dot-dir).
 
+    A component is excluded iff ANY of:
+      - `comp.startswith(".")` — dot-dir rule (UNCHANGED);
+      - `comp.casefold()` ∈ {"templates", "images"} — plain name, matched
+        case-insensitively (whole component, never substring);
+      - `SCAN_EXCLUDE_RE.fullmatch(comp)` — the Obsidian numbered-prefix form
+        (`90_Templates`, `01-images`), anchored to the WHOLE component.
+    Matching is whole-component anchored — NEVER substring — so content dirs like
+    `templates-analysis` / `image-pipeline` stay scanned.
+
     Compares kb_root-RELATIVE components (NOT absolute) so an excluded-named
     ancestor ABOVE kb_root (e.g. the vault living under `~/.../templates/`) does
     not wrongly exclude everything. A path outside kb_root is treated as not
@@ -319,7 +350,10 @@ def _is_excluded(path: Path, kb_root: Path) -> bool:
     except ValueError:
         return False
     return any(
-        comp in SCAN_EXCLUDE_DIRNAMES or comp.startswith(".") for comp in rel.parts
+        comp.startswith(".")
+        or comp.casefold() in SCAN_EXCLUDE_DIRNAMES
+        or SCAN_EXCLUDE_RE.fullmatch(comp)
+        for comp in rel.parts
     )
 
 
@@ -392,7 +426,9 @@ def build_suffix_index(all_md: List[Path], kb_root: Path) -> set:
 
 def bare_target(raw: str) -> str:
     """Strip #heading / |alias / ^block-id suffixes to the bare link target."""
-    target = raw.replace("\\|", "|")  # escaped table-cell alias separator -> plain alias sep
+    target = raw.replace(
+        "\\|", "|"
+    )  # escaped table-cell alias separator -> plain alias sep
     for sep in ("|", "#", "^"):
         idx = target.find(sep)
         if idx != -1:
