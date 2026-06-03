@@ -245,10 +245,6 @@ C6_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
 # whitespace and at least one non-space content char.
 C6_LIST_ENTRY_RE = re.compile(r"^\s*([-*+]|\d+\.)\s+\S")
 
-# C6 cell split — split a table row on UNESCAPED `|` only, so a MOC wikilink
-# cell `[[…\|alias]]` (escaped pipe) stays one cell.
-C6_UNESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
-
 # C6 separator-cell shape: a stripped cell consisting only of dashes with
 # optional leading/trailing `:` alignment colons.
 C6_SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
@@ -430,11 +426,29 @@ def build_suffix_index(all_md: List[Path], kb_root: Path) -> set:
 
 
 def bare_target(raw: str) -> str:
-    """Strip #heading / |alias / ^block-id suffixes to the bare link target."""
-    target = raw.replace(
-        "\\|", "|"
-    )  # escaped table-cell alias separator -> plain alias sep
-    for sep in ("|", "#", "^"):
+    """Strip #heading / |alias / ^block-id suffixes to the bare link target.
+
+    EVERY pipe ends the target — both the plain `|` and the table-escaped `\\|` are
+    Obsidian alias separators — so truncation happens at the FIRST `|` of any
+    backslash parity. The literal backslashes that survive into the target are
+    `floor(bs/2)`, where `bs` is the consecutive `\\` run immediately before that
+    pipe (an odd run's last `\\` is the pipe's escape and is dropped; pairs collapse
+    to one literal `\\`). `#`/`^` truncate at their first occurrence; final
+    `.strip()` is unchanged. NOTE: does NOT use split_unescaped_pipes — that
+    even-parity split would leave an odd `\\|` (e.g. `Real Note\\|alias`)
+    un-truncated.
+    """
+    pipe = raw.find("|")
+    if pipe != -1:
+        bs = 0
+        j = pipe - 1
+        while j >= 0 and raw[j] == "\\":
+            bs += 1
+            j -= 1
+        target = raw[: pipe - bs] + "\\" * (bs // 2)
+    else:
+        target = raw
+    for sep in ("#", "^"):
         idx = target.find(sep)
         if idx != -1:
             target = target[:idx]
@@ -593,17 +607,48 @@ def fenced_line_mask(lines: List[str]) -> List[bool]:
     return mask
 
 
+def split_unescaped_pipes(s: str) -> List[str]:
+    """Split a string on UNESCAPED `|` cell separators (backslash-parity aware).
+
+    A `|` is a SEPARATOR iff the run of consecutive `\\` immediately before it is
+    EVEN (0, 2, 4, …): zero backslashes is a plain separator; two backslashes are
+    an escaped backslash followed by an unescaped pipe; etc. An ODD run (1, 3, …)
+    escapes the pipe, which stays inside its segment. Segments keep their RAW text
+    (backslashes intact — C6 measures visual length). So `a\\|b` (1 `\\`, odd)
+    stays one segment `['a\\|b']`, while `a\\\\|b` (2 `\\`, even) splits into
+    `['a\\\\', 'b']`.
+    """
+    segments: List[str] = []
+    start = 0
+    i = 0
+    n = len(s)
+    while i < n:
+        if s[i] == "|":
+            bs = 0
+            j = i - 1
+            while j >= 0 and s[j] == "\\":
+                bs += 1
+                j -= 1
+            if bs % 2 == 0:
+                segments.append(s[start:i])
+                start = i + 1
+        i += 1
+    segments.append(s[start:])
+    return segments
+
+
 def c6_table_row_measure(line: str) -> Optional[int]:
     """Measure a markdown table data row for C6, or None if it is not one.
 
-    Splits on UNESCAPED `|` only so a MOC wikilink cell `[[…\\|alias]]` stays one
-    cell, drops the empty leading/trailing cells produced by the outer pipes,
-    and returns the MAX stripped-cell length. Returns None when the line is a
-    header SEPARATOR row (every non-empty stripped cell matches `^:?-+:?$` AND at
-    least one cell contains a `-`) — an all-empty `|  |  |` row is NOT a separator
-    (it is a degenerate data row, measure 0).
+    Splits on UNESCAPED `|` only (via split_unescaped_pipes — a `|` separates iff
+    the preceding `\\` run is EVEN, so `a\\|b` with one `\\` stays one cell while a
+    real `a\\\\|b` separator with two `\\` splits), drops the empty leading/trailing
+    cells produced by the outer pipes, and returns the MAX stripped-cell length.
+    Returns None when the line is a header SEPARATOR row (every non-empty stripped
+    cell matches `^:?-+:?$` AND at least one cell contains a `-`) — an all-empty
+    `|  |  |` row is NOT a separator (it is a degenerate data row, measure 0).
     """
-    cells = [c.strip() for c in C6_UNESCAPED_PIPE_RE.split(line)]
+    cells = [c.strip() for c in split_unescaped_pipes(line)]
     # Drop the empty outer cells produced by the leading/trailing pipes.
     if cells and cells[0] == "":
         cells = cells[1:]
