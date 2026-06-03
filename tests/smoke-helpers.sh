@@ -9187,6 +9187,92 @@ print("kb_drift_scan C6: 301-flag/300-clean strict boundary + detail measure; `-
 PYEOF
 }
 
+# Behavioral: the no-project scan covers the WHOLE vault (root files + non-repos
+# top-level dirs + repos/*, each once), excludes the templates/ + dot-dir build
+# content from the SCANNED set, and keeps the wikilink resolution index
+# (all_md) unfiltered so a link INTO an excluded dir still resolves. Scans the
+# committed vault-scope/ fixture (which HAS a repos/ dir, so the no-project
+# broadening from repos/* subdirs to [kb_root] is observable) and asserts BY
+# FIXTURE FILE: the root vault-index.md C6-bloat row flags, the non-repos
+# cross-cutting/foo.md C1 flags, the repos/projx/y.md C1 flags EXACTLY ONCE (no
+# double-count from the scan-root switch), the excluded templates/bar.md +
+# .obsidian/baz.md appear in NO finding (build-dir exclusion), and the
+# link-into-templates.md `[[bar]]` link raises NO C1 (resolution index is
+# whole-vault). Catches a regression where the no-project scan reverts to
+# repos/* only (root + non-repos-dir files silently skipped), the exclusion
+# leaks into the resolution index (spurious C1 on a link into templates/), the
+# exclusion is dropped (excluded files wrongly scanned), or the scan-root switch
+# double-counts repos files.
+check_kb_drift_whole_vault_scope() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  local vs="$PLUGIN_ROOT/tests/fixtures/kb-drift/vault-scope"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  [ -d "$vs" ] || { echo "$vs fixture dir missing"; return 1; }
+  python3 - "$scanner" "$vs" <<'PYEOF'
+import json, subprocess, sys
+scanner, vs = sys.argv[1], sys.argv[2]
+
+# vault-scope/ HAS a repos/ dir, so a no-project scan that walked repos/* only
+# would skip the root + non-repos-dir files. exit 1 == findings present.
+r = subprocess.run([sys.executable, scanner, vs], capture_output=True, text=True)
+if r.returncode != 1:
+    print(f"vault-scope: expected exit 1 (whole-vault findings), got {r.returncode}; stdout={r.stdout!r} stderr={r.stderr!r}")
+    sys.exit(1)
+F = json.loads(r.stdout)["findings"]
+files = [f["file"] for f in F]
+
+# (1) Root file scanned: the no-frontmatter vault-index.md C6-bloat row flags via
+# the basename clause — proves a root-level file (skipped by the old repos/*
+# scope) is now scanned. Exactly 1 C6 on it.
+root_c6 = [f for f in F if f["file"] == "vault-index.md" and f["class"] == "C6_index_row_bloat"]
+if len(root_c6) != 1:
+    print(f"(1) root vault-index.md must flag exactly 1 C6 (root file now scanned), got {root_c6}")
+    sys.exit(1)
+
+# (2) Non-repos top-level dir scanned: cross-cutting/foo.md (a dir that is NEITHER
+# repos/ NOR root) flags exactly 1 C1 — proves a non-repos content dir is now
+# covered.
+xc_c1 = [f for f in F if f["file"] == "cross-cutting/foo.md" and f["class"] == "C1_broken_wikilink"]
+if len(xc_c1) != 1:
+    print(f"(2) non-repos cross-cutting/foo.md must flag exactly 1 C1 (non-repos dir now scanned), got {xc_c1}")
+    sys.exit(1)
+
+# (3) Single-count: repos/projx/y.md flags exactly 1 C1. Switching the no-project
+# scan root from repos/* subdirs to a single kb_root rglob must visit each repos
+# file ONCE — a >1 count would witness a double-count regression.
+repos_c1 = [f for f in F if f["file"] == "repos/projx/y.md" and f["class"] == "C1_broken_wikilink"]
+if len(repos_c1) != 1:
+    print(f"(3) repos/projx/y.md must flag EXACTLY 1 C1 (no double-count from the scan-root switch), got {len(repos_c1)}: {repos_c1}")
+    sys.exit(1)
+
+# (4) Build-dir exclusion: the templates/bar.md (broken link + C6-bloat row) and
+# the .obsidian/baz.md (broken link) appear in NO finding's file — excluded from
+# the SCAN set via SCAN_EXCLUDE_DIRNAMES + the dot-dir startswith('.') rule.
+if any("templates/" in x for x in files):
+    print(f"(4) templates/ files must be EXCLUDED from the scan set, got scanned: {[x for x in files if 'templates/' in x]}")
+    sys.exit(1)
+if any(x.startswith(".obsidian") or "/.obsidian" in x for x in files):
+    print(f"(4) .obsidian/ dot-dir files must be EXCLUDED from the scan set, got scanned: {[x for x in files if '.obsidian' in x]}")
+    sys.exit(1)
+
+# (5) Resolution-index invariant: link-into-templates.md links `[[bar]]` to the
+# EXCLUDED templates/bar.md note. The exclusion applies to the SCAN set ONLY;
+# all_md stays whole-vault, so the link resolves and raises NO C1. A spurious C1
+# here would witness the exclusion leaking into the resolution index.
+if any(f["class"] == "C1_broken_wikilink" and f["file"] == "link-into-templates.md" for f in F):
+    print(f"(5) [[bar]] into the excluded templates/ note must RESOLVE (all_md unfiltered) — no C1 on link-into-templates.md, got {[f for f in F if f['file']=='link-into-templates.md']}")
+    sys.exit(1)
+
+# Total: exactly the 3 intended findings (root C6 + non-repos C1 + repos C1), and
+# nothing else — the fixture is otherwise C1/C2-clean.
+if len(F) != 3:
+    print(f"vault-scope: expected exactly 3 findings (root C6 + cross-cutting C1 + repos C1), got {len(F)}: {F}")
+    sys.exit(1)
+
+print("kb_drift_scan whole-vault scope: root vault-index.md C6 + non-repos cross-cutting/foo.md C1 + repos/projx/y.md C1 (exactly once) scanned; templates/ + .obsidian/ EXCLUDED from the scan set; [[bar]] into the excluded templates/ note resolves clean (all_md unfiltered, no spurious C1); exactly 3 findings total")
+PYEOF
+}
+
 # Prompt-text: the /kb-audit skill (skills/kb-audit/SKILL.md) carries the
 # load-bearing prose contracts (X4 — not just file existence): name=kb-audit
 # frontmatter; Phase-0 discovery; the scanner invocation at
