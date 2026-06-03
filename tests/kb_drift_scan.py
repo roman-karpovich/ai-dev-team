@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3/C4/C5/C6).
+r"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3/C4/C5/C6).
 
 Sibling of the existing offline checkers `check_dangling_anchors.py` /
 `check_finding_claims.py`, but scoped to the KB Obsidian vault (NOT the plugin
