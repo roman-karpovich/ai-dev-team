@@ -9158,7 +9158,8 @@ if refc6 != []:
 # (4) Unescaped-pipe cell split: a cell `200*"a" + "\|" + 200*"b"` is ONE logical
 # cell measuring 402 (200 + len("\\|")==2 + 200) and MUST flag. A naive `|`
 # split would yield two cells of 201 / 200 (both ≤300) and miss it entirely —
-# this discriminates the `(?<!\\)\|` split.
+# this discriminates split_unescaped_pipes' parity behavior (one `\` is odd, so
+# the pipe is escaped and stays inside the cell).
 escaped_cell = "a" * 200 + "\\|" + "b" * 200
 assert len(escaped_cell) == 402, len(escaped_cell)
 moc = "---\ntitle: M\ntype: moc\ncreated: 2026-06-02\n---\n\n# M\n\n" + HEAD + "| p | " + escaped_cell + " |\n"
@@ -9183,7 +9184,36 @@ if ctrl != []:
     print(f"(5) control: a non-vault-index no-frontmatter file must NOT flag, got {ctrl}")
     sys.exit(1)
 
-print("kb_drift_scan C6: 301-flag/300-clean strict boundary + detail measure; `-` bullet@9 (315) and `1.` ordered@10 (325) post-marker measure; non-index type:reference >300 NOT flagged (scope); unescaped-pipe cell 402 flags as ONE cell (not naive-split into two ≤300); no-frontmatter vault-index.md 441 flags via basename clause above the FM gate (X1) + control non-vault-index clean")
+# (6) Backslash-parity unit assertions on the split primitive: a `|` is a CELL
+# separator iff the preceding `\` run is EVEN. `a\\|b` (2 `\`, even) SPLITS into
+# `['a\\', 'b']`; `a\|b` (1 `\`, odd) does NOT split (escaped pipe stays in cell).
+# And c6_table_row_measure on a row whose real cells split at a `\\|` separator
+# measures the SPLIT cells (max 200) — not the merged 402. Kills a revert to the
+# single-`\` lookbehind (which would refuse to split `\\|` and merge the cells).
+import importlib.util as _u
+_s = _u.spec_from_file_location("kb_drift_scan", scanner)
+_m = _u.module_from_spec(_s)
+_s.loader.exec_module(_m)
+BS = chr(92)
+even = _m.split_unescaped_pipes("a" + BS * 2 + "|b")
+if even != ["a" + BS * 2, "b"]:
+    print(f"(6) split_unescaped_pipes must SPLIT even-parity `\\\\|`, got {even!r}")
+    sys.exit(1)
+odd = _m.split_unescaped_pipes("a" + BS + "|b")
+if odd != ["a" + BS + "|b"]:
+    print(f"(6) split_unescaped_pipes must NOT split odd-parity `\\|`, got {odd!r}")
+    sys.exit(1)
+# Row with a REAL `\\|` separator: the even `\\|` splits the cells, so the left
+# cell is 200*"a"+two raw backslashes = 202 (C6 keeps raw bytes — no parity
+# collapse) and the right is 200*"b" = 200. The max measured cell is 202, NOT the
+# merged 402. (`\|`, odd, would stay merged at 402 — covered by (4).)
+sep_row = "| " + "a" * 200 + BS * 2 + "|" + "b" * 200 + " |"
+measure = _m.c6_table_row_measure(sep_row)
+if measure != 202:
+    print(f"(6) c6_table_row_measure must measure the SPLIT cells (max 202) on a real `\\\\|` separator, got {measure}")
+    sys.exit(1)
+
+print("kb_drift_scan C6: 301-flag/300-clean strict boundary + detail measure; `-` bullet@9 (315) and `1.` ordered@10 (325) post-marker measure; non-index type:reference >300 NOT flagged (scope); unescaped-pipe cell 402 flags as ONE cell (not naive-split into two ≤300); no-frontmatter vault-index.md 441 flags via basename clause above the FM gate (X1) + control non-vault-index clean; split_unescaped_pipes parity unit — splits even `\\|`, not odd `\|`, and c6_table_row_measure splits a real `\\|` separator (201 not 402)")
 PYEOF
 }
 
@@ -9414,10 +9444,11 @@ if len(c1) != 1:
     print(f"(1) expected exactly 1 C1 (only the broken No Such Note link), got {len(c1)}: {c1}")
     sys.exit(1)
 
-# (2) The detail names the CLEANED target [[No Such Note]] — the `\|` was
-# normalized to `|` before the split, so the alias is dropped and NO trailing
-# backslash leaks. A regression to the old buggy split would emit
-# [[No Such Note\]] here.
+# (2) The detail names the CLEANED target [[No Such Note]] — bare_target
+# truncates at the first alias pipe of ANY parity (the escaped `\|` is a single
+# `\`, odd, so its `\` is the pipe's escape and is dropped), so the alias is
+# dropped and NO trailing backslash leaks. A regression to the old buggy split
+# would emit [[No Such Note\]] here.
 detail = c1[0]["detail"]
 if "[[No Such Note]]" not in detail:
     print(f"(2) C1 detail must name the cleaned target [[No Such Note]] (no trailing backslash), got {detail!r}")
@@ -9433,7 +9464,29 @@ if real:
     print(f"(3) escaped + plain alias to the existing Real Note must resolve clean (no C1), got {real}")
     sys.exit(1)
 
-print("kb_drift_scan C1 escaped-pipe alias: [[Real Note\\|alias]] (escaped) + [[Real Note|other]] (plain) resolve clean; [[No Such Note\\|x]] flags EXACTLY 1 C1 on the cleaned target [[No Such Note]] (no trailing backslash leak)")
+# (4) bare_target backslash-parity unit matrix: EVERY pipe ends the target (both
+# `|` and `\|` are alias separators) and the surviving literal backslashes are
+# floor(bs/2) of the run before that pipe. The 1/2-bs rows pin the existing
+# behavior; the 3/4-bs rows kill the global `replace("\\|","|")` mutant (which
+# would keep bs-1 literal backslashes: 2 and 3, not 1 and 2).
+import importlib.util as _u
+_s = _u.spec_from_file_location("kb_drift_scan", scanner)
+_m = _u.module_from_spec(_s)
+_s.loader.exec_module(_m)
+BS = chr(92)
+matrix = [
+    ("foo" + BS + "|bar", "foo"),            # 1 bs — odd, pipe escaped, dropped
+    ("foo" + BS * 2 + "|bar", "foo" + BS),   # 2 bs — one literal `\` survives
+    ("foo" + BS * 3 + "|bar", "foo" + BS),   # 3 bs — CHANGED (was foo\\)
+    ("foo" + BS * 4 + "|bar", "foo" + BS * 2),  # 4 bs — kills global-replace mutant
+]
+for raw, want in matrix:
+    got = _m.bare_target(raw)
+    if got != want:
+        print(f"(4) bare_target({raw!r}) must be {want!r}, got {got!r}")
+        sys.exit(1)
+
+print("kb_drift_scan C1 escaped-pipe alias: [[Real Note\\|alias]] (escaped) + [[Real Note|other]] (plain) resolve clean; [[No Such Note\\|x]] flags EXACTLY 1 C1 on the cleaned target [[No Such Note]] (no trailing backslash leak); bare_target parity matrix — floor(bs/2) literal backslashes (1bs->foo, 2bs->foo\\, 3bs->foo\\, 4bs->foo\\\\)")
 PYEOF
 }
 
