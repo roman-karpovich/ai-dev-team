@@ -126,8 +126,10 @@ CLI:
 `<kb_root>` is the vault root. `--project <name>` restricts the scan to
 `<kb_root>/repos/<name>/` (path-prefix filter) and is an error (exit 2) when
 that subtree does not exist — never a silent zero-scan. Without `--project`,
-the scan covers `<kb_root>/repos/*/`; when `<kb_root>/repos/` does not exist the
-scanner walks `<kb_root>` directly (covers a flat fixture vault).
+the scan covers the whole `<kb_root>` vault recursively, excluding dot-
+directories and the `templates/` / `images/` build dirs; the wikilink
+resolution index stays whole-vault (unfiltered) so links into those dirs still
+resolve.
 
 Output: JSON
     {"scanned": <int>, "findings": [{"class", "file", "line", "detail", "auto_safe"}]}
@@ -194,6 +196,15 @@ INDEX_ROW_BLOAT_THRESHOLD = 300
 # C6 index/MOC file-type tokens (the `type:` values that mark an index/MOC, in
 # addition to the `vault-index.md` basename clause).
 INDEX_MOC_TYPES = frozenset({"moc", "index"})
+
+# Build/template dirnames excluded from the SCANNED set (NOT the wikilink
+# resolution index). `templates/` carries illustrative `[[example]]` wikilinks +
+# status-enum samples that would false-positive; `images/` has no `.md`. Plus
+# any path component that starts with `.` (dot-dirs: `.obsidian`, `.claude`,
+# `.git`, `.trash`, future ones) is excluded — generalized so new dot-dirs need
+# no constant edit. The comparison is on kb_root-RELATIVE path components, so an
+# excluded-named ancestor ABOVE the vault root does not nuke the scan.
+SCAN_EXCLUDE_DIRNAMES = frozenset({"templates", "images"})
 
 # C6 table data row: a line that opens and closes with a `|` (whitespace
 # allowed). The separator-row exclusion is done on the parsed cells, not here.
@@ -281,24 +292,44 @@ def is_contained(path: Path, root: Path) -> bool:
 def scan_roots(kb_root: Path, project: Optional[str]) -> List[Path]:
     """Resolve the directory subtree(s) to walk.
 
-    --project <name>      → <kb_root>/repos/<name>/
-    <kb_root>/repos/ exists → every <kb_root>/repos/*/ subdir
-    otherwise             → <kb_root> itself (flat fixture vault)
+    --project <name>  → <kb_root>/repos/<name>/
+    otherwise         → <kb_root> itself (the whole vault — root files +
+                        non-repos top-level dirs + repos/*, each walked once).
     """
     if project is not None:
         return [kb_root / "repos" / project]
-    repos = kb_root / "repos"
-    if repos.is_dir():
-        return sorted(p for p in repos.iterdir() if p.is_dir())
     return [kb_root]
 
 
-def md_files(roots: List[Path]) -> List[Path]:
+def _is_excluded(path: Path, kb_root: Path) -> bool:
+    """True iff any kb_root-RELATIVE path component of `path` is a build/template
+    dirname or starts with `.` (dot-dir).
+
+    Compares kb_root-RELATIVE components (NOT absolute) so an excluded-named
+    ancestor ABOVE kb_root (e.g. the vault living under `~/.../templates/`) does
+    not wrongly exclude everything. A path outside kb_root is treated as not
+    excluded (relative_to raises → no filtering).
+    """
+    try:
+        rel = path.relative_to(kb_root)
+    except ValueError:
+        return False
+    return any(
+        comp in SCAN_EXCLUDE_DIRNAMES or comp.startswith(".") for comp in rel.parts
+    )
+
+
+def md_files(
+    roots: List[Path], kb_root: Optional[Path] = None, exclude_build_dirs: bool = False
+) -> List[Path]:
     files: List[Path] = []
     for root in roots:
         if not root.is_dir():
             continue
-        files.extend(sorted(root.rglob("*.md")))
+        for p in sorted(root.rglob("*.md")):
+            if exclude_build_dirs and kb_root is not None and _is_excluded(p, kb_root):
+                continue
+            files.append(p)
     return files
 
 
@@ -573,9 +604,12 @@ def c6_frontmatter_skip_count(lines: List[str]) -> int:
 
 def scan(kb_root: Path, project: Optional[str]) -> Dict:
     roots = scan_roots(kb_root, project)
-    files = md_files(roots)
+    # The SCANNED set excludes dot-dirs + templates/images (build/template
+    # content). The note/resolution index below stays UNFILTERED.
+    files = md_files(roots, kb_root, exclude_build_dirs=True)
     # Note index spans the WHOLE vault (wikilinks resolve vault-wide in
-    # Obsidian), not just the scanned subtree.
+    # Obsidian), not just the scanned subtree — and NOT filtered, so wikilink
+    # targets in templates/ or dot-dirs still resolve (no spurious C1).
     all_md = md_files([kb_root])
     note_index = build_note_index(all_md)
     fuzzy_index = build_fuzzy_index(all_md)
