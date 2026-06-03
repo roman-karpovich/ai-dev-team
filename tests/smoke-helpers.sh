@@ -9210,10 +9210,11 @@ PYEOF
 # dir files silently skipped), the exclusion leaks into the resolution index
 # (spurious C1 on a link into templates/), the numbered-prefix form is missed
 # (90_Templates/ wrongly scanned) or over-matched (templates-analysis/ wrongly
-# excluded), the linker is silently dropped from the scan set (M-B positive C6
-# vanishes), the absolute-vs-relative comparison regresses to path.parts (a
-# templates/ ancestor nukes the scan), or the scan-root switch double-counts
-# repos files.
+# excluded), the case-insensitive plain-name match degrades to exact-case
+# (capitalized Templates/ wrongly scanned — casefold dropped), the linker is
+# silently dropped from the scan set (M-B positive C6 vanishes), the absolute-vs-
+# relative comparison regresses to path.parts (a templates/ ancestor nukes the
+# scan), or the scan-root switch double-counts repos files.
 check_kb_drift_whole_vault_scope() {
   local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
   local vs="$PLUGIN_ROOT/tests/fixtures/kb-drift/vault-scope"
@@ -9301,6 +9302,48 @@ if len(linker_c6) != 1:
     print(f"(8) link-into-templates.md must flag EXACTLY 1 C6 (linker IS in the scan set), got {linker_c6}")
     sys.exit(1)
 
+# (10)+(11) Exclusion-match contract — UNIT assertions on _is_excluded directly.
+# Two contract boundaries (X1 case-insensitivity, X2 ASCII-digit) cannot be pinned
+# by a filesystem fixture: this repo's worktree may sit on a case-insensitive FS
+# (macOS APFS default), where a capitalized `Templates/` dir collapses into the
+# existing lowercase `templates/` — the distinct-case dir is unrepresentable on
+# disk. So load the module and exercise `_is_excluded(path, kb_root)` with synthetic
+# kb_root-relative components (portable, locale-independent — Unicode lookalikes
+# built via chr() so this assertion's source stays ASCII):
+#   (10) X1 case-insensitive plain name: a CAPITALIZED `Templates` / uppercase
+#        `IMAGES` component must be EXCLUDED via the casefold clause
+#        (`comp.casefold() in {"templates","images"}`). A regression dropping
+#        `casefold()` (exact-case `comp in {...}`) wrongly SCANS `Templates`
+#        (capitalized != exact-lowercase `templates`; no leading digit so the
+#        regex does not catch it either).
+#   (11) X2 ASCII-digit boundary: SCAN_EXCLUDE_RE must use `[0-9]` (ASCII), NOT
+#        `\d` (Unicode-aware). The numbered-prefix forms `90_Templates`/`01-images`
+#        are excluded; the Unicode-digit lookalikes (Arabic-Indic U+0669, fullwidth
+#        U+FF11/U+FF12 + `_templates`/`_images`) must be SCANNED (a `[0-9]`->`\d`
+#        revert over-excludes them — a false-negative dropping real content).
+#   plus anti-over-exclusion at the unit level (`templates-analysis` scanned).
+import importlib.util as _u
+from pathlib import Path as _P
+_spec = _u.spec_from_file_location("kb_drift_scan", scanner)
+_m = _u.module_from_spec(_spec); _spec.loader.exec_module(_m)
+_kr = _P("/v")
+def _excl(comp):  # _is_excluded for a single kb_root-relative dir component
+    return _m._is_excluded(_kr / comp / "a.md", _kr)
+# NB: the plain-name set is PLURAL-only ({"templates","images"}); a bare singular
+# `template`/`image` (no digit prefix) is intentionally SCANNED — only the regex's
+# `templates?`/`images?` admits singular, and only WITH a leading digit.
+_excluded_expected = ["Templates", "IMAGES", "90_Templates", "01-images", "2 Template"]
+_scanned_expected = ["templates-analysis", "image-pipeline", "my-templates", "template", "image",
+                     chr(0x669) + "_templates", chr(0xff11) + chr(0xff12) + "_images"]
+_bad_excl = [c for c in _excluded_expected if not _excl(c)]
+_bad_scan = [c for c in _scanned_expected if _excl(c)]
+if _bad_excl:
+    print(f"(10/11) _is_excluded must EXCLUDE {_bad_excl} (X1 casefold + numbered-prefix); they were SCANNED — casefold dropped or regex broken")
+    sys.exit(1)
+if _bad_scan:
+    print(f"(10/11) _is_excluded must SCAN {_bad_scan} (anti-over-exclusion + X2 ASCII boundary); they were EXCLUDED — substring over-match or \\d Unicode over-match")
+    sys.exit(1)
+
 # Total: exactly the 5 intended findings (root C6 + cross-cutting C1 + repos C1 +
 # templates-analysis C1 + linker C6), and nothing else — 90_Templates/x.md,
 # templates/bar.md, .obsidian/baz.md contribute 0 (excluded).
@@ -9336,7 +9379,7 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
-print("kb_drift_scan whole-vault scope: root vault-index.md C6 + non-repos cross-cutting/foo.md C1 + repos/projx/y.md C1 (exactly once) scanned; 90_Templates/x.md (numbered-prefix) + templates/bar.md + .obsidian/baz.md EXCLUDED from the scan set; templates-analysis/y.md flags 1 C1 (anti-over-exclusion, not over-excluded); link-into-templates.md flags 1 C6 (linker IS in the scan set, M-B positive) + 0 C1 ([[bar]] into excluded templates/ resolves clean, all_md unfiltered); exactly 5 findings total; under a templates/ ANCESTOR the 3 baseline in-scope findings still fire (M-A kb_root-RELATIVE guard)")
+print("kb_drift_scan whole-vault scope: root vault-index.md C6 + non-repos cross-cutting/foo.md C1 + repos/projx/y.md C1 (exactly once) scanned; 90_Templates/x.md (numbered-prefix) + templates/bar.md + .obsidian/baz.md EXCLUDED from the scan set; templates-analysis/y.md flags 1 C1 (anti-over-exclusion, not over-excluded); link-into-templates.md flags 1 C6 (linker IS in the scan set, M-B positive) + 0 C1 ([[bar]] into excluded templates/ resolves clean, all_md unfiltered); exactly 5 findings total; _is_excluded unit checks: casefold excludes capitalized Templates/IMAGES (X1), ASCII [0-9] excludes 90_Templates but SCANS Unicode-digit lookalikes (X2), content dirs templates-analysis/image-pipeline scanned (anti-over-exclusion); under a templates/ ANCESTOR the 3 baseline in-scope findings still fire (M-A kb_root-RELATIVE guard)")
 PYEOF
 }
 

@@ -113,10 +113,12 @@ Known limitations (heuristic, like the existing checkers):
         predicate to recover it is a deferred follow-up).
   - Whole-vault scan exclusion (no `--project`) is whole-component anchored,
     never substring. Excluded (NOT scanned): case-insensitive `templates`/
-    `images`, the Obsidian numbered-prefix form `90_Templates/` / `01-images/`,
-    and any dot-dir. NOT excluded (still scanned): content dirs like
-    `templates-analysis/` and `image-pipeline/` — they embed the token but are
-    not the build dir. The wikilink resolution index stays whole-vault regardless.
+    `images`, the Obsidian numbered-prefix form `90_Templates/` / `01-images/`
+    (leading ASCII digits `[0-9]` only — a name prefixed with a non-ASCII decimal
+    digit is NOT a build dir and stays scanned), and any dot-dir. NOT excluded
+    (still scanned): content dirs like `templates-analysis/` and `image-pipeline/`
+    — they embed the token but are not the build dir. The wikilink resolution
+    index stays whole-vault regardless.
   - No git/network reads.
   - C4 is offline status-drift via the spec's own frontmatter
     `code_audit_evidence:` + column-0 `code audit passed`/zero-diff Log markers.
@@ -225,12 +227,15 @@ INDEX_MOC_TYPES = frozenset({"moc", "index"})
 #   and `fullmatch` rejects the trailing suffix.
 SCAN_EXCLUDE_DIRNAMES = frozenset({"templates", "images"})
 
-# Obsidian numbered-prefix build-dir form: leading digits + optional ` `/`_`/`-`
-# separator + `template(s)`/`image(s)`. Matched with `fullmatch` (anchored to the
-# WHOLE component, equivalent to `^…$`) — case-insensitive. Matches
-# `90_Templates`, `01-images`, `2 Template`. Does NOT match `templates-analysis`
-# (no leading digits + trailing suffix) or `image-pipeline`.
-SCAN_EXCLUDE_RE = re.compile(r"\d+[ _-]?(?:templates?|images?)", re.IGNORECASE)
+# Obsidian numbered-prefix build-dir form: leading ASCII digits + optional
+# ` `/`_`/`-` separator + `template(s)`/`image(s)`. Matched with `fullmatch`
+# (anchored to the WHOLE component, equivalent to `^…$`) — case-insensitive.
+# Matches `90_Templates`, `01-images`, `2 Template`. Does NOT match
+# `templates-analysis` (no leading digits + trailing suffix) or `image-pipeline`.
+# The digit class is `[0-9]` (ASCII only) — NOT `\d`, which is Unicode-aware and
+# would over-exclude exotic non-ASCII-digit-prefixed content dirs (`٩_templates`,
+# `１２_images`) beyond this documented ASCII contract.
+SCAN_EXCLUDE_RE = re.compile(r"[0-9]+[ _-]?(?:templates?|images?)", re.IGNORECASE)
 
 # C6 table data row: a line that opens and closes with a `|` (whitespace
 # allowed). The separator-row exclusion is done on the parsed cells, not here.
