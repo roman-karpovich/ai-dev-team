@@ -426,11 +426,29 @@ def build_suffix_index(all_md: List[Path], kb_root: Path) -> set:
 
 
 def bare_target(raw: str) -> str:
-    """Strip #heading / |alias / ^block-id suffixes to the bare link target."""
-    target = raw.replace(
-        "\\|", "|"
-    )  # escaped table-cell alias separator -> plain alias sep
-    for sep in ("|", "#", "^"):
+    """Strip #heading / |alias / ^block-id suffixes to the bare link target.
+
+    EVERY pipe ends the target — both the plain `|` and the table-escaped `\\|` are
+    Obsidian alias separators — so truncation happens at the FIRST `|` of any
+    backslash parity. The literal backslashes that survive into the target are
+    `floor(bs/2)`, where `bs` is the consecutive `\\` run immediately before that
+    pipe (an odd run's last `\\` is the pipe's escape and is dropped; pairs collapse
+    to one literal `\\`). `#`/`^` truncate at their first occurrence; final
+    `.strip()` is unchanged. NOTE: does NOT use split_unescaped_pipes — that
+    even-parity split would leave an odd `\\|` (e.g. `Real Note\\|alias`)
+    un-truncated.
+    """
+    pipe = raw.find("|")
+    if pipe != -1:
+        bs = 0
+        j = pipe - 1
+        while j >= 0 and raw[j] == "\\":
+            bs += 1
+            j -= 1
+        target = raw[: pipe - bs] + "\\" * (bs // 2)
+    else:
+        target = raw
+    for sep in ("#", "^"):
         idx = target.find(sep)
         if idx != -1:
             target = target[:idx]
