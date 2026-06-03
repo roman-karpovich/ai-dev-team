@@ -8762,10 +8762,16 @@ with tempfile.TemporaryDirectory() as td:
 #              → exactly 1 C2 "escapes vault containment" (X2 target-must-exist +
 #              X5 depth-pinned; the explicit is_file() and not is_contained()
 #              escape test).
-# Aggregate nested/ C2 total = 3 (N3 + N4 + N6).
+#   N7 CLAUDE.md `CLAUDE.md` §X → now-scanned root file (whole-vault no-project
+#              scope): the bait's OWN prose pointer resolves SOURCE-relative to
+#              the root nested/CLAUDE.md (present, heading X absent) → exactly 1
+#              C2 "no matching heading". Before the whole-vault widening this
+#              root file was never scanned (repos/* only); it is now a CORRECT
+#              finding, not a regression.
+# Aggregate nested/ C2 total = 4 (N3 + N4 + N6 + N7).
 n = subprocess.run([sys.executable, scanner, nested], capture_output=True, text=True)
 if n.returncode != 1:
-    print(f"nested fixture: expected exit 1 (N3+N4+N6 drift), got {n.returncode}; stdout={n.stdout!r}")
+    print(f"nested fixture: expected exit 1 (N3+N4+N6+N7 drift), got {n.returncode}; stdout={n.stdout!r}")
     sys.exit(1)
 NF = json.loads(n.stdout)["findings"]
 nc2 = [f for f in NF if f["class"] == "C2_dangling_section_pointer"]
@@ -8777,6 +8783,7 @@ nested_expect = {
     "repos/projA/design/src3.md": (1, "no matching heading"),   # N3 genuine same-dir
     "repos/projA/design/src4.md": (1, "no matching heading"),   # N4 explicit repos/ xrepo
     "repos/projA/design/src6.md": (1, "escapes vault containment"),  # N6 nested escape
+    "CLAUDE.md": (1, "no matching heading"),   # N7 now-scanned root file (whole-vault scope)
 }
 for src, (want_n, want_sub) in nested_expect.items():
     hits = [f for f in nc2 if f["file"] == src]
@@ -8786,8 +8793,8 @@ for src, (want_n, want_sub) in nested_expect.items():
     if want_sub is not None and want_sub not in hits[0]["detail"]:
         print(f"nested {src}: expected C2 detail to contain {want_sub!r}, got {hits[0]['detail']!r}")
         sys.exit(1)
-if len(nc2) != 3:
-    print(f"nested fixture: expected exactly 3 C2 findings (N3+N4+N6), got {len(nc2)}: {nc2}")
+if len(nc2) != 4:
+    print(f"nested fixture: expected exactly 4 C2 findings (N3+N4+N6+N7), got {len(nc2)}: {nc2}")
     sys.exit(1)
 if any(f["auto_safe"] is not False for f in nc2):
     print(f"nested C2 findings must all be auto_safe:false, got {[f['auto_safe'] for f in nc2]}")
@@ -8886,7 +8893,7 @@ with tempfile.TemporaryDirectory() as td:
               f"note_index must NOT resolve, got {unresolved!r}")
         sys.exit(1)
 
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4+C5+C6, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); C5-R research-status enum (type:research-scoped): off-enum status: OPEN at line 4 + no-status line:null (total 2), legacy type:research-note under research/ dir segment NOT flagged (clean-dir-zero); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment (aggregate C2=3, X6); pathqual/ C1 suffix-match per-source: suffix/case/slashnorm/relative CLEAN, broken-fn/broken-boundary 1 C1 each (#76d, aggregate C1=2) + X1 FS-branch unit witness (stem-excluded note_index + real relative target → clean via FS branch, control → broken)")
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4+C5+C6, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); C5-R research-status enum (type:research-scoped): off-enum status: OPEN at line 4 + no-status line:null (total 2), legacy type:research-note under research/ dir segment NOT flagged (clean-dir-zero); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment, N7 now-scanned root CLAUDE.md dangling-heading (whole-vault scope; aggregate C2=4, X6); pathqual/ C1 suffix-match per-source: suffix/case/slashnorm/relative CLEAN, broken-fn/broken-boundary 1 C1 each (#76d, aggregate C1=2) + X1 FS-branch unit witness (stem-excluded note_index + real relative target → clean via FS branch, control → broken)")
 PYEOF
 }
 
