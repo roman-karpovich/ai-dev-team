@@ -6084,6 +6084,7 @@ echo "KB-drift scanner pins:"
 check "kb-drift-scan-behavioral"                 check_kb_drift_scan_behavioral
 check "kb-drift-summary-behavioral"              check_kb_drift_summary_behavioral
 check "kb-drift C6 index-row bloat"              check_kb_drift_c6_index_row_bloat
+check "kb-drift whole-vault scope"               check_kb_drift_whole_vault_scope
 check "kb-audit-skill-contract"                  check_kb_audit_skill_contract
 check "feature-status-kb-drift-fold"             check_feature_status_kb_drift_fold
 check "kb-audit-trigger-map-wired"               check_kb_audit_trigger_map_wired

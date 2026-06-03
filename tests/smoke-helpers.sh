@@ -8762,10 +8762,16 @@ with tempfile.TemporaryDirectory() as td:
 #              → exactly 1 C2 "escapes vault containment" (X2 target-must-exist +
 #              X5 depth-pinned; the explicit is_file() and not is_contained()
 #              escape test).
-# Aggregate nested/ C2 total = 3 (N3 + N4 + N6).
+#   N7 CLAUDE.md `CLAUDE.md` §X → now-scanned root file (whole-vault no-project
+#              scope): the bait's OWN prose pointer resolves SOURCE-relative to
+#              the root nested/CLAUDE.md (present, heading X absent) → exactly 1
+#              C2 "no matching heading". Before the whole-vault widening this
+#              root file was never scanned (repos/* only); it is now a CORRECT
+#              finding, not a regression.
+# Aggregate nested/ C2 total = 4 (N3 + N4 + N6 + N7).
 n = subprocess.run([sys.executable, scanner, nested], capture_output=True, text=True)
 if n.returncode != 1:
-    print(f"nested fixture: expected exit 1 (N3+N4+N6 drift), got {n.returncode}; stdout={n.stdout!r}")
+    print(f"nested fixture: expected exit 1 (N3+N4+N6+N7 drift), got {n.returncode}; stdout={n.stdout!r}")
     sys.exit(1)
 NF = json.loads(n.stdout)["findings"]
 nc2 = [f for f in NF if f["class"] == "C2_dangling_section_pointer"]
@@ -8777,6 +8783,7 @@ nested_expect = {
     "repos/projA/design/src3.md": (1, "no matching heading"),   # N3 genuine same-dir
     "repos/projA/design/src4.md": (1, "no matching heading"),   # N4 explicit repos/ xrepo
     "repos/projA/design/src6.md": (1, "escapes vault containment"),  # N6 nested escape
+    "CLAUDE.md": (1, "no matching heading"),   # N7 now-scanned root file (whole-vault scope)
 }
 for src, (want_n, want_sub) in nested_expect.items():
     hits = [f for f in nc2 if f["file"] == src]
@@ -8786,8 +8793,8 @@ for src, (want_n, want_sub) in nested_expect.items():
     if want_sub is not None and want_sub not in hits[0]["detail"]:
         print(f"nested {src}: expected C2 detail to contain {want_sub!r}, got {hits[0]['detail']!r}")
         sys.exit(1)
-if len(nc2) != 3:
-    print(f"nested fixture: expected exactly 3 C2 findings (N3+N4+N6), got {len(nc2)}: {nc2}")
+if len(nc2) != 4:
+    print(f"nested fixture: expected exactly 4 C2 findings (N3+N4+N6+N7), got {len(nc2)}: {nc2}")
     sys.exit(1)
 if any(f["auto_safe"] is not False for f in nc2):
     print(f"nested C2 findings must all be auto_safe:false, got {[f['auto_safe'] for f in nc2]}")
@@ -8886,7 +8893,7 @@ with tempfile.TemporaryDirectory() as td:
               f"note_index must NOT resolve, got {unresolved!r}")
         sys.exit(1)
 
-print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4+C5+C6, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); C5-R research-status enum (type:research-scoped): off-enum status: OPEN at line 4 + no-status line:null (total 2), legacy type:research-note under research/ dir segment NOT flagged (clean-dir-zero); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment (aggregate C2=3, X6); pathqual/ C1 suffix-match per-source: suffix/case/slashnorm/relative CLEAN, broken-fn/broken-boundary 1 C1 each (#76d, aggregate C1=2) + X1 FS-branch unit witness (stem-excluded note_index + real relative target → clean via FS branch, control → broken)")
+print("kb_drift_scan: clean exit0/no-findings; drift exit1 with C1+C2+C3+C4+C5+C6, autonomy boundary intact; C3 frontmatter-scoped (X1); C4 status-drift on both structured + Log-marker paths (total 2), IN_PROGRESS/terminal/pre-impl/blocked stay clean (anti-FP); C5-R research-status enum (type:research-scoped): off-enum status: OPEN at line 4 + no-status line:null (total 2), legacy type:research-note under research/ dir segment NOT flagged (clean-dir-zero); code-aware (fenced+inline [[]] and C2-in-fence and tilde/longer fences → zero) + cross-repo pointer not flagged; --project-typo errors exit2 (X2); out-of-vault wikilink+pointer reported (X5); --project ../traversal errors exit2 (X4); nested/ C2 cross-repo resolver per-file: N1/N2/N5 clean, N3/N4 dangling-heading, N6 escapes-containment, N7 now-scanned root CLAUDE.md dangling-heading (whole-vault scope; aggregate C2=4, X6); pathqual/ C1 suffix-match per-source: suffix/case/slashnorm/relative CLEAN, broken-fn/broken-boundary 1 C1 each (#76d, aggregate C1=2) + X1 FS-branch unit witness (stem-excluded note_index + real relative target → clean via FS branch, control → broken)")
 PYEOF
 }
 
@@ -9177,6 +9184,92 @@ if ctrl != []:
     sys.exit(1)
 
 print("kb_drift_scan C6: 301-flag/300-clean strict boundary + detail measure; `-` bullet@9 (315) and `1.` ordered@10 (325) post-marker measure; non-index type:reference >300 NOT flagged (scope); unescaped-pipe cell 402 flags as ONE cell (not naive-split into two ≤300); no-frontmatter vault-index.md 441 flags via basename clause above the FM gate (X1) + control non-vault-index clean")
+PYEOF
+}
+
+# Behavioral: the no-project scan covers the WHOLE vault (root files + non-repos
+# top-level dirs + repos/*, each once), excludes the templates/ + dot-dir build
+# content from the SCANNED set, and keeps the wikilink resolution index
+# (all_md) unfiltered so a link INTO an excluded dir still resolves. Scans the
+# committed vault-scope/ fixture (which HAS a repos/ dir, so the no-project
+# broadening from repos/* subdirs to [kb_root] is observable) and asserts BY
+# FIXTURE FILE: the root vault-index.md C6-bloat row flags, the non-repos
+# cross-cutting/foo.md C1 flags, the repos/projx/y.md C1 flags EXACTLY ONCE (no
+# double-count from the scan-root switch), the excluded templates/bar.md +
+# .obsidian/baz.md appear in NO finding (build-dir exclusion), and the
+# link-into-templates.md `[[bar]]` link raises NO C1 (resolution index is
+# whole-vault). Catches a regression where the no-project scan reverts to
+# repos/* only (root + non-repos-dir files silently skipped), the exclusion
+# leaks into the resolution index (spurious C1 on a link into templates/), the
+# exclusion is dropped (excluded files wrongly scanned), or the scan-root switch
+# double-counts repos files.
+check_kb_drift_whole_vault_scope() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  local vs="$PLUGIN_ROOT/tests/fixtures/kb-drift/vault-scope"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  [ -d "$vs" ] || { echo "$vs fixture dir missing"; return 1; }
+  python3 - "$scanner" "$vs" <<'PYEOF'
+import json, subprocess, sys
+scanner, vs = sys.argv[1], sys.argv[2]
+
+# vault-scope/ HAS a repos/ dir, so a no-project scan that walked repos/* only
+# would skip the root + non-repos-dir files. exit 1 == findings present.
+r = subprocess.run([sys.executable, scanner, vs], capture_output=True, text=True)
+if r.returncode != 1:
+    print(f"vault-scope: expected exit 1 (whole-vault findings), got {r.returncode}; stdout={r.stdout!r} stderr={r.stderr!r}")
+    sys.exit(1)
+F = json.loads(r.stdout)["findings"]
+files = [f["file"] for f in F]
+
+# (1) Root file scanned: the no-frontmatter vault-index.md C6-bloat row flags via
+# the basename clause — proves a root-level file (skipped by the old repos/*
+# scope) is now scanned. Exactly 1 C6 on it.
+root_c6 = [f for f in F if f["file"] == "vault-index.md" and f["class"] == "C6_index_row_bloat"]
+if len(root_c6) != 1:
+    print(f"(1) root vault-index.md must flag exactly 1 C6 (root file now scanned), got {root_c6}")
+    sys.exit(1)
+
+# (2) Non-repos top-level dir scanned: cross-cutting/foo.md (a dir that is NEITHER
+# repos/ NOR root) flags exactly 1 C1 — proves a non-repos content dir is now
+# covered.
+xc_c1 = [f for f in F if f["file"] == "cross-cutting/foo.md" and f["class"] == "C1_broken_wikilink"]
+if len(xc_c1) != 1:
+    print(f"(2) non-repos cross-cutting/foo.md must flag exactly 1 C1 (non-repos dir now scanned), got {xc_c1}")
+    sys.exit(1)
+
+# (3) Single-count: repos/projx/y.md flags exactly 1 C1. Switching the no-project
+# scan root from repos/* subdirs to a single kb_root rglob must visit each repos
+# file ONCE — a >1 count would witness a double-count regression.
+repos_c1 = [f for f in F if f["file"] == "repos/projx/y.md" and f["class"] == "C1_broken_wikilink"]
+if len(repos_c1) != 1:
+    print(f"(3) repos/projx/y.md must flag EXACTLY 1 C1 (no double-count from the scan-root switch), got {len(repos_c1)}: {repos_c1}")
+    sys.exit(1)
+
+# (4) Build-dir exclusion: the templates/bar.md (broken link + C6-bloat row) and
+# the .obsidian/baz.md (broken link) appear in NO finding's file — excluded from
+# the SCAN set via SCAN_EXCLUDE_DIRNAMES + the dot-dir startswith('.') rule.
+if any("templates/" in x for x in files):
+    print(f"(4) templates/ files must be EXCLUDED from the scan set, got scanned: {[x for x in files if 'templates/' in x]}")
+    sys.exit(1)
+if any(x.startswith(".obsidian") or "/.obsidian" in x for x in files):
+    print(f"(4) .obsidian/ dot-dir files must be EXCLUDED from the scan set, got scanned: {[x for x in files if '.obsidian' in x]}")
+    sys.exit(1)
+
+# (5) Resolution-index invariant: link-into-templates.md links `[[bar]]` to the
+# EXCLUDED templates/bar.md note. The exclusion applies to the SCAN set ONLY;
+# all_md stays whole-vault, so the link resolves and raises NO C1. A spurious C1
+# here would witness the exclusion leaking into the resolution index.
+if any(f["class"] == "C1_broken_wikilink" and f["file"] == "link-into-templates.md" for f in F):
+    print(f"(5) [[bar]] into the excluded templates/ note must RESOLVE (all_md unfiltered) — no C1 on link-into-templates.md, got {[f for f in F if f['file']=='link-into-templates.md']}")
+    sys.exit(1)
+
+# Total: exactly the 3 intended findings (root C6 + non-repos C1 + repos C1), and
+# nothing else — the fixture is otherwise C1/C2-clean.
+if len(F) != 3:
+    print(f"vault-scope: expected exactly 3 findings (root C6 + cross-cutting C1 + repos C1), got {len(F)}: {F}")
+    sys.exit(1)
+
+print("kb_drift_scan whole-vault scope: root vault-index.md C6 + non-repos cross-cutting/foo.md C1 + repos/projx/y.md C1 (exactly once) scanned; templates/ + .obsidian/ EXCLUDED from the scan set; [[bar]] into the excluded templates/ note resolves clean (all_md unfiltered, no spurious C1); exactly 3 findings total")
 PYEOF
 }
 
