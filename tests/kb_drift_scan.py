@@ -76,6 +76,10 @@ Known limitations (heuristic, like the existing checkers):
     when a same-stem note exists elsewhere (scoped subset of #76d).
   - C1 backslash-separated path-qualified targets are not normalized (POSIX
     vault assumption; not observed on the real vault).
+  - C1 escaped alias separator `\|` IS normalized to a plain `|` before the
+    target split (the Obsidian table-cell escape); escaped `\#` / `\^` (heading /
+    block-ref markers) are NOT normalized — not observed in the vault, a
+    conservative deferred case that would split at the literal `#` / `^` as today.
   - C1 a wrong-looking path that is a valid Obsidian suffix of a DIFFERENT note
     resolves clean (Obsidian-consistent — partial-path resolution).
   - Code is skipped: lines inside (or delimiting) a fenced ```code block``` are
@@ -388,7 +392,7 @@ def build_suffix_index(all_md: List[Path], kb_root: Path) -> set:
 
 def bare_target(raw: str) -> str:
     """Strip #heading / |alias / ^block-id suffixes to the bare link target."""
-    target = raw
+    target = raw.replace("\\|", "|")  # escaped table-cell alias separator -> plain alias sep
     for sep in ("|", "#", "^"):
         idx = target.find(sep)
         if idx != -1:
