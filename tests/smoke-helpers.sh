@@ -9188,21 +9188,32 @@ PYEOF
 }
 
 # Behavioral: the no-project scan covers the WHOLE vault (root files + non-repos
-# top-level dirs + repos/*, each once), excludes the templates/ + dot-dir build
-# content from the SCANNED set, and keeps the wikilink resolution index
-# (all_md) unfiltered so a link INTO an excluded dir still resolves. Scans the
-# committed vault-scope/ fixture (which HAS a repos/ dir, so the no-project
-# broadening from repos/* subdirs to [kb_root] is observable) and asserts BY
-# FIXTURE FILE: the root vault-index.md C6-bloat row flags, the non-repos
-# cross-cutting/foo.md C1 flags, the repos/projx/y.md C1 flags EXACTLY ONCE (no
-# double-count from the scan-root switch), the excluded templates/bar.md +
-# .obsidian/baz.md appear in NO finding (build-dir exclusion), and the
-# link-into-templates.md `[[bar]]` link raises NO C1 (resolution index is
-# whole-vault). Catches a regression where the no-project scan reverts to
-# repos/* only (root + non-repos-dir files silently skipped), the exclusion
-# leaks into the resolution index (spurious C1 on a link into templates/), the
-# exclusion is dropped (excluded files wrongly scanned), or the scan-root switch
-# double-counts repos files.
+# top-level dirs + repos/*, each once), excludes the templates/images + dot-dir
+# build content from the SCANNED set (case-insensitive plain names AND the
+# Obsidian numbered-prefix form `90_Templates/`, whole-component anchored — never
+# substring), and keeps the wikilink resolution index (all_md) unfiltered so a
+# link INTO an excluded dir still resolves. Scans the committed vault-scope/
+# fixture (which HAS a repos/ dir, so the no-project broadening from repos/*
+# subdirs to [kb_root] is observable) and asserts BY FIXTURE FILE: the root
+# vault-index.md C6-bloat row flags, the non-repos cross-cutting/foo.md C1 flags,
+# the repos/projx/y.md C1 flags EXACTLY ONCE (no double-count from the scan-root
+# switch), the numbered-prefix 90_Templates/x.md appears in NO finding (M-C
+# numbered-prefix exclusion), the content dir templates-analysis/y.md flags
+# EXACTLY 1 C1 (M-C anti-over-exclusion — fullmatch did not over-exclude), the
+# link-into-templates.md flags EXACTLY 1 C6 (M-B positive: the linker IS in the
+# scan set) AND 0 C1 (resolution-index invariant — `[[bar]]` into the excluded
+# templates/ note resolves clean), the excluded templates/bar.md + .obsidian/baz.md
+# appear in NO finding (build-dir exclusion), and — under a tmp ancestor dir
+# literally named templates/ — all in-scope findings still fire (M-A relative-
+# guard: _is_excluded compares kb_root-RELATIVE parts, NOT absolute). Catches a
+# regression where the no-project scan reverts to repos/* only (root + non-repos-
+# dir files silently skipped), the exclusion leaks into the resolution index
+# (spurious C1 on a link into templates/), the numbered-prefix form is missed
+# (90_Templates/ wrongly scanned) or over-matched (templates-analysis/ wrongly
+# excluded), the linker is silently dropped from the scan set (M-B positive C6
+# vanishes), the absolute-vs-relative comparison regresses to path.parts (a
+# templates/ ancestor nukes the scan), or the scan-root switch double-counts
+# repos files.
 check_kb_drift_whole_vault_scope() {
   local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
   local vs="$PLUGIN_ROOT/tests/fixtures/kb-drift/vault-scope"
@@ -9263,13 +9274,69 @@ if any(f["class"] == "C1_broken_wikilink" and f["file"] == "link-into-templates.
     print(f"(5) [[bar]] into the excluded templates/ note must RESOLVE (all_md unfiltered) — no C1 on link-into-templates.md, got {[f for f in F if f['file']=='link-into-templates.md']}")
     sys.exit(1)
 
-# Total: exactly the 3 intended findings (root C6 + non-repos C1 + repos C1), and
-# nothing else — the fixture is otherwise C1/C2-clean.
-if len(F) != 3:
-    print(f"vault-scope: expected exactly 3 findings (root C6 + cross-cutting C1 + repos C1), got {len(F)}: {F}")
+# (6) M-C numbered-prefix exclusion: 90_Templates/x.md (Obsidian numbered-prefix
+# build dir) carries a C6-bloat row AND a broken wikilink that WOULD flag if
+# scanned (it is C6-eligible via `type: index`), but SCAN_EXCLUDE_RE.fullmatch
+# excludes it. It must appear in NO finding's file. A regression that reverts the
+# match to exact-lowercase equality (90_Templates != templates) wrongly scans it.
+if any(x.startswith("90_Templates") or "/90_Templates/" in x for x in files):
+    print(f"(6) 90_Templates/x.md (numbered-prefix build dir) must be EXCLUDED from the scan set, got scanned: {[x for x in files if '90_Templates' in x]}")
     sys.exit(1)
 
-print("kb_drift_scan whole-vault scope: root vault-index.md C6 + non-repos cross-cutting/foo.md C1 + repos/projx/y.md C1 (exactly once) scanned; templates/ + .obsidian/ EXCLUDED from the scan set; [[bar]] into the excluded templates/ note resolves clean (all_md unfiltered, no spurious C1); exactly 3 findings total")
+# (7) M-C anti-over-exclusion: templates-analysis/y.md is a CONTENT dir embedding
+# the `templates` token but is NOT the build dir — whole-component fullmatch
+# rejects it (no leading digits + trailing `-analysis`). It MUST be scanned and
+# flag EXACTLY 1 C1. A regression that swaps fullmatch for a substring `in` test
+# wrongly excludes it (0 C1 here).
+ta_c1 = [f for f in F if f["file"] == "templates-analysis/y.md" and f["class"] == "C1_broken_wikilink"]
+if len(ta_c1) != 1:
+    print(f"(7) templates-analysis/y.md must flag EXACTLY 1 C1 (content dir, NOT over-excluded), got {ta_c1}")
+    sys.exit(1)
+
+# (8) M-B positive: link-into-templates.md (now `type: index`) raises EXACTLY 1
+# C6_index_row_bloat — POSITIVE proof the linker IS in the scan set (assertion
+# (5) above is negative-only; it passes even if the file were silently dropped).
+linker_c6 = [f for f in F if f["file"] == "link-into-templates.md" and f["class"] == "C6_index_row_bloat"]
+if len(linker_c6) != 1:
+    print(f"(8) link-into-templates.md must flag EXACTLY 1 C6 (linker IS in the scan set), got {linker_c6}")
+    sys.exit(1)
+
+# Total: exactly the 5 intended findings (root C6 + cross-cutting C1 + repos C1 +
+# templates-analysis C1 + linker C6), and nothing else — 90_Templates/x.md,
+# templates/bar.md, .obsidian/baz.md contribute 0 (excluded).
+if len(F) != 5:
+    print(f"vault-scope: expected exactly 5 findings (root C6 + cross-cutting C1 + repos C1 + templates-analysis C1 + linker C6), got {len(F)}: {F}")
+    sys.exit(1)
+
+# (9) M-A relative-guard: copy the fixture into a tmp ancestor dir literally named
+# templates/ (scan <tmp>/templates/vault-scope). _is_excluded compares kb_root-
+# RELATIVE components, so the templates/ ANCESTOR does not nuke the scan — the 3
+# baseline in-scope findings (root C6 + cross-cutting C1 + repos C1) still fire.
+# A path.parts mutant (absolute, not relative) would see `templates` in every
+# path component and exclude EVERYTHING → 0 findings here.
+import os, shutil, tempfile
+tmp = tempfile.mkdtemp()
+try:
+    nested = os.path.join(tmp, "templates", "vault-scope")
+    shutil.copytree(vs, nested)
+    rn = subprocess.run([sys.executable, scanner, nested], capture_output=True, text=True)
+    if rn.returncode != 1:
+        print(f"(9) M-A relative-guard: expected exit 1 (findings still fire under templates/ ancestor), got {rn.returncode}; stderr={rn.stderr!r}")
+        sys.exit(1)
+    Fn = json.loads(rn.stdout)["findings"]
+    base = {
+        ("vault-index.md", "C6_index_row_bloat"),
+        ("cross-cutting/foo.md", "C1_broken_wikilink"),
+        ("repos/projx/y.md", "C1_broken_wikilink"),
+    }
+    got = {(f["file"], f["class"]) for f in Fn}
+    if not base.issubset(got):
+        print(f"(9) M-A relative-guard: under a templates/ ANCESTOR the in-scope baseline findings must still fire (kb_root-RELATIVE, not path.parts) — missing {base - got}; got {sorted(got)}")
+        sys.exit(1)
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
+
+print("kb_drift_scan whole-vault scope: root vault-index.md C6 + non-repos cross-cutting/foo.md C1 + repos/projx/y.md C1 (exactly once) scanned; 90_Templates/x.md (numbered-prefix) + templates/bar.md + .obsidian/baz.md EXCLUDED from the scan set; templates-analysis/y.md flags 1 C1 (anti-over-exclusion, not over-excluded); link-into-templates.md flags 1 C6 (linker IS in the scan set, M-B positive) + 0 C1 ([[bar]] into excluded templates/ resolves clean, all_md unfiltered); exactly 5 findings total; under a templates/ ANCESTOR the 3 baseline in-scope findings still fire (M-A kb_root-RELATIVE guard)")
 PYEOF
 }
 
