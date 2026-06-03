@@ -9273,6 +9273,60 @@ print("kb_drift_scan whole-vault scope: root vault-index.md C6 + non-repos cross
 PYEOF
 }
 
+# Behavioral: bare_target normalizes the escaped table-cell alias separator `\|`
+# to a plain `|` BEFORE the target split, so an Obsidian table-cell wikilink
+# `[[Real Note\|alias]]` resolves to the existing note instead of false-flagging
+# C1 on a trailing-backslash target (`Real Note\`). Scans the committed
+# c1-escaped-pipe/ fixture and asserts BY FIXTURE FILE: the escaped-pipe link AND
+# the plain-alias link to the existing Real Note both resolve clean (no C1),
+# while the genuinely-broken `[[No Such Note\|x]]` still flags EXACTLY 1 C1 whose
+# detail names the CLEANED target `[[No Such Note]]` (NOT `[[No Such Note\]]`).
+# Catches a regression where the `\|` normalization is dropped (escaped-pipe
+# links false-flag C1 again), where the normalization over-reaches and breaks the
+# genuine still-broken case, or where the trailing backslash leaks back into the
+# finding detail / fuzzy-candidate key.
+check_kb_drift_c1_escaped_pipe_alias() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  local fx="$PLUGIN_ROOT/tests/fixtures/kb-drift/c1-escaped-pipe"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  [ -d "$fx" ] || { echo "$fx fixture dir missing"; return 1; }
+  python3 - "$scanner" "$fx" <<'PYEOF'
+import json, subprocess, sys
+scanner, fx = sys.argv[1], sys.argv[2]
+
+r = subprocess.run([sys.executable, scanner, fx], capture_output=True, text=True)
+F = json.loads(r.stdout)["findings"]
+c1 = [f for f in F if f["class"] == "C1_broken_wikilink"]
+
+# (1) Exactly one C1: the two Real Note links (escaped `\|` + plain `|`) resolve
+# clean; only the genuinely-broken [[No Such Note\|x]] flags.
+if len(c1) != 1:
+    print(f"(1) expected exactly 1 C1 (only the broken No Such Note link), got {len(c1)}: {c1}")
+    sys.exit(1)
+
+# (2) The detail names the CLEANED target [[No Such Note]] — the `\|` was
+# normalized to `|` before the split, so the alias is dropped and NO trailing
+# backslash leaks. A regression to the old buggy split would emit
+# [[No Such Note\]] here.
+detail = c1[0]["detail"]
+if "[[No Such Note]]" not in detail:
+    print(f"(2) C1 detail must name the cleaned target [[No Such Note]] (no trailing backslash), got {detail!r}")
+    sys.exit(1)
+if "[[No Such Note\\]]" in detail:
+    print(f"(2) C1 detail must NOT carry the trailing-backslash target [[No Such Note\\]], got {detail!r}")
+    sys.exit(1)
+
+# (3) Neither Real Note link produces a C1 (both the escaped-pipe and the
+# plain-alias forms resolve to the committed Real Note.md).
+real = [f for f in c1 if "Real Note" in f["detail"]]
+if real:
+    print(f"(3) escaped + plain alias to the existing Real Note must resolve clean (no C1), got {real}")
+    sys.exit(1)
+
+print("kb_drift_scan C1 escaped-pipe alias: [[Real Note\\|alias]] (escaped) + [[Real Note|other]] (plain) resolve clean; [[No Such Note\\|x]] flags EXACTLY 1 C1 on the cleaned target [[No Such Note]] (no trailing backslash leak)")
+PYEOF
+}
+
 # Prompt-text: the /kb-audit skill (skills/kb-audit/SKILL.md) carries the
 # load-bearing prose contracts (X4 — not just file existence): name=kb-audit
 # frontmatter; Phase-0 discovery; the scanner invocation at
