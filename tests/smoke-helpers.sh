@@ -9158,7 +9158,8 @@ if refc6 != []:
 # (4) Unescaped-pipe cell split: a cell `200*"a" + "\|" + 200*"b"` is ONE logical
 # cell measuring 402 (200 + len("\\|")==2 + 200) and MUST flag. A naive `|`
 # split would yield two cells of 201 / 200 (both ≤300) and miss it entirely —
-# this discriminates the `(?<!\\)\|` split.
+# this discriminates split_unescaped_pipes' parity behavior (one `\` is odd, so
+# the pipe is escaped and stays inside the cell).
 escaped_cell = "a" * 200 + "\\|" + "b" * 200
 assert len(escaped_cell) == 402, len(escaped_cell)
 moc = "---\ntitle: M\ntype: moc\ncreated: 2026-06-02\n---\n\n# M\n\n" + HEAD + "| p | " + escaped_cell + " |\n"

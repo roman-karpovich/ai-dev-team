@@ -245,10 +245,6 @@ C6_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
 # whitespace and at least one non-space content char.
 C6_LIST_ENTRY_RE = re.compile(r"^\s*([-*+]|\d+\.)\s+\S")
 
-# C6 cell split — split a table row on UNESCAPED `|` only, so a MOC wikilink
-# cell `[[…\|alias]]` (escaped pipe) stays one cell.
-C6_UNESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
-
 # C6 separator-cell shape: a stripped cell consisting only of dashes with
 # optional leading/trailing `:` alignment colons.
 C6_SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
@@ -593,17 +589,48 @@ def fenced_line_mask(lines: List[str]) -> List[bool]:
     return mask
 
 
+def split_unescaped_pipes(s: str) -> List[str]:
+    """Split a string on UNESCAPED `|` cell separators (backslash-parity aware).
+
+    A `|` is a SEPARATOR iff the run of consecutive `\\` immediately before it is
+    EVEN (0, 2, 4, …): zero backslashes is a plain separator; two backslashes are
+    an escaped backslash followed by an unescaped pipe; etc. An ODD run (1, 3, …)
+    escapes the pipe, which stays inside its segment. Segments keep their RAW text
+    (backslashes intact — C6 measures visual length). So `a\\|b` (1 `\\`, odd)
+    stays one segment `['a\\|b']`, while `a\\\\|b` (2 `\\`, even) splits into
+    `['a\\\\', 'b']`.
+    """
+    segments: List[str] = []
+    start = 0
+    i = 0
+    n = len(s)
+    while i < n:
+        if s[i] == "|":
+            bs = 0
+            j = i - 1
+            while j >= 0 and s[j] == "\\":
+                bs += 1
+                j -= 1
+            if bs % 2 == 0:
+                segments.append(s[start:i])
+                start = i + 1
+        i += 1
+    segments.append(s[start:])
+    return segments
+
+
 def c6_table_row_measure(line: str) -> Optional[int]:
     """Measure a markdown table data row for C6, or None if it is not one.
 
-    Splits on UNESCAPED `|` only so a MOC wikilink cell `[[…\\|alias]]` stays one
-    cell, drops the empty leading/trailing cells produced by the outer pipes,
-    and returns the MAX stripped-cell length. Returns None when the line is a
-    header SEPARATOR row (every non-empty stripped cell matches `^:?-+:?$` AND at
-    least one cell contains a `-`) — an all-empty `|  |  |` row is NOT a separator
-    (it is a degenerate data row, measure 0).
+    Splits on UNESCAPED `|` only (via split_unescaped_pipes — a `|` separates iff
+    the preceding `\\` run is EVEN, so `a\\|b` with one `\\` stays one cell while a
+    real `a\\\\|b` separator with two `\\` splits), drops the empty leading/trailing
+    cells produced by the outer pipes, and returns the MAX stripped-cell length.
+    Returns None when the line is a header SEPARATOR row (every non-empty stripped
+    cell matches `^:?-+:?$` AND at least one cell contains a `-`) — an all-empty
+    `|  |  |` row is NOT a separator (it is a degenerate data row, measure 0).
     """
-    cells = [c.strip() for c in C6_UNESCAPED_PIPE_RE.split(line)]
+    cells = [c.strip() for c in split_unescaped_pipes(line)]
     # Drop the empty outer cells produced by the leading/trailing pipes.
     if cells and cells[0] == "":
         cells = cells[1:]
