@@ -9865,6 +9865,42 @@ sys.exit(0)
 PY
 }
 
+# Continuous parallel diff-audits (large multi-step features — opt-in):
+# §Implement subsection rule text. Prompt-text regression-guard for the 14
+# load-bearing anchors — every behavior-bearing invariant whose removal would
+# change orchestrator runtime behavior OR re-introduce a prior numbered finding
+# (heading, opt-in-not-default, exact overview sub-line, initial + fixup
+# `/cross-audit` invocations, worktree isolation, narrow scope, SOLE-writer
+# reconciliation, audit_slug isolation, serial-gate header, append-only-fixup,
+# pause-on-HIGH, Phase-5 non-replacement, ref-range-not-persisted). Residual is
+# non-load-bearing prose — this is a regression-guard, not a prose-completeness proof.
+check_cpda_subsection() {
+  local path='skills/feature/SKILL.md'
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local a
+  local anchors=(
+    '### Continuous parallel diff-audits (large multi-step features — opt-in)'
+    '**Opt-in, not default.**'
+    '/cross-audit <prev-step-sha>..<step-sha> --mode full --severity high --materialize=worktree'
+    'NEVER run a diff-audit in the active implementation worktree'
+    'audit only the step/batch commit range'
+    'the orchestrator stays the SOLE writer of the spec'
+    'parallel audits never collide on a shared findings file'
+    'does NOT weaken the serial per-step compliance gate'
+    'it never rebases or amends an already-landed step'
+    'PAUSES dispatch of NEW steps until that finding is triaged'
+    'Does NOT replace the Phase-5 final code-audit gate.'
+    '/cross-audit <prev-step-sha>..<fixup-sha> --mode full --severity high --materialize=worktree'
+    'ref-range scope is NOT persisted in findings frontmatter'
+    '(large multi-step features: opt-in continuous parallel diff-audits — see §Implement)'
+  )
+  for a in "${anchors[@]}"; do
+    grep -qF "$a" "$path" \
+      || { echo "$path §Implement continuous-parallel-diff-audits missing anchor: $a"; return 1; }
+  done
+  echo "$path §Implement continuous-parallel-diff-audits: all 14 load-bearing anchors present"
+}
+
 # P1 — orchestrator copies observed into exec.md BEFORE spawning the
 # compliance-checker (the loop-ordering invariant; checker contract unchanged).
 check_pwp_loop_ordering() {
