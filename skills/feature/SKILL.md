@@ -51,6 +51,7 @@ Parse `$ARGUMENTS` to determine the mode:
 1. Research + write spec + exec workdoc  →  user approves spec (HARD GATE)
 2. Spec self-review + cross-audit (Claude + Codex)  →  fix if CRITICAL/HIGH
 3. Baseline test  →  implement step-by-step with compliance checks per step
+   (large multi-step features: opt-in continuous parallel diff-audits — see §Implement)
 4. Verify (full test suite)
 5. Code audit (cross-auditor mode:full on diff — closed gate, per-finding triage)  →  hand-off (merge / PR / keep / discard)
 ```
@@ -822,6 +823,42 @@ The orchestrator is the sole KB writer, serially — the developer writes only s
 **Copy observed BEFORE spawning the checker.** Because the orchestrator copies every `report.json` field into `exec.md` `observed` BEFORE spawning the compliance-checker, the checker reads `exec.md` exactly as before (including `commit_message_grep` for its tier-1 SHA-rewrite fallback). For this to hold, `report.json` MUST carry every `observed` field the checker reads (per the schema in `skills/feature/references/developer-workflow.md`).
 
 **Continue-mode reconcile rule (crash-safety).** Continue resumes from the first unchecked `- [ ]` step. A crash after the developer commits + writes `report.json` but before the orchestrator's checkoff leaves a committed-but-unchecked step. Reconcile: if an unchecked step has BOTH `report.json` AND the commit present in `captures`/git → ingest the report + run the checker (do NOT blind re-dispatch). The durable triad = commits (git) + captures + `report.json`, all surviving any crash.
+
+### Continuous parallel diff-audits (large multi-step features — opt-in)
+
+For LARGE multi-step features (later steps build on earlier code), do NOT defer all auditing to the Phase-5 code-audit gate. Run narrow cross-audits CONTINUOUSLY, in parallel with implementation: as each step (or small batch) lands its commit, audit that step's diff in an isolated worktree while the main implementation chain proceeds. Early defect detection — keep a clean base for subsequent code, catch defects before they compound across layers, spread audit load over deltas instead of one large final PR.
+
+**Opt-in, not default.** This applies ONLY to large multi-step features (heuristic: §5 has many steps — e.g. ≥6 — OR the user opts in). Small features keep the single Phase-5 closed gate; do NOT force per-step audits on every feature. At implement-start for a qualifying spec, the orchestrator offers continuous diff-audits via the banner below and logs the choice (`- YYYY-MM-DD: continuous diff-audits=<on|off> (large-feature opt-in)`).
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+This spec is large (`<N>` steps). Choose the implementation-phase audit mode:
+
+1. **Continuous parallel diff-audits** ← recommended — audit each step's diff in an isolated worktree as it lands, in parallel with implementation
+2. **Single Phase-5 gate only** — defer all auditing to hand-off
+
+**Which auditing mode?**
+
+---
+
+**How the orchestrator runs one step's diff-audit.** When a step's commit lands (its compliance-check has PASSED — see §Orchestrator-sole-KB-writer per-step loop), the orchestrator launches a narrow audit of that step's commit range by invoking the standalone `/cross-audit` skill in ref-range mode with worktree materialization:
+
+`/cross-audit <prev-step-sha>..<step-sha> --mode full --severity high --materialize=worktree`
+
+`/cross-audit` owns the whole mechanism end-to-end (see `skills/cross-audit/SKILL.md`): it creates a dedicated worktree at `refB` (`git worktree add /tmp/cross-audit-<audit_slug> <refB>`), runs the dual-model `cross-auditor` (Claude + Codex independently → consolidate) against ONLY that commit range, persists findings to KB, and registers worktree cleanup (`git worktree remove --force` + `rm -rf`, best-effort) on completion or error. Do NOT hand-roll the worktree create/cleanup around a direct `cross-auditor` spawn — `/cross-audit` already owns it.
+
+**Mechanics:**
+- **Worktree isolation** — the diff-audit runs in `/tmp/cross-audit-<audit_slug>`, a DEDICATED worktree pinned at the step's commit, so it does not contend with the active implementation worktree. NEVER run a diff-audit in the active implementation worktree.
+- **Narrow scope** — audit only the step/batch commit range `<prev-step-sha>..<step-sha>`, NOT the whole codebase.
+- **Dual-model** — the same dual-model `cross-auditor` machinery as §Code audit Pass 2 (Claude + Codex independently, then consolidate). Per project policy, terminal cross-audit evidence stays `dual_model`.
+- **KB single-writer + per-audit findings isolation** — the orchestrator stays the SOLE writer of the spec + `exec.md` (per §Orchestrator-sole-KB-writer per-step loop); the diff-audit cross-auditors REPORT findings only. `/cross-audit` ref-range mode derives a per-range `audit_slug` (`YYYY-MM-DD-range-<sanitized-refA>__<sanitized-refB>` — see the audit_slug derivation in `skills/cross-audit/SKILL.md`) that is inherently UNIQUE per step range, so each step's diff-audit writes a distinct `<audit_slug>-findings.md` and parallel audits never collide on a shared findings file.
+
+**Sequencing & invalidation (does NOT weaken the serial per-step compliance gate).** The per-step COMPLIANCE gate (§Orchestrator-sole-KB-writer per-step loop — one step at a time, gated by the step-4 PASS check before the next dispatch, on the MAIN worktree) is UNCHANGED. The diff-audit is a SEPARATE, non-blocking layer that runs in its own worktree and therefore does not block the impl chain. Every fix is an APPEND-ONLY fixup commit at HEAD (the existing rework sub-loop appends fixup SHAs — it never rebases or amends an already-landed step), so a diff-audit fix never rewrites history and later steps' already-passed compliance ranges (`git diff <first>^ <last>`) are NOT invalidated; the fixup itself gets its own compliance check + diff-audit. On a CRITICAL/HIGH from a diff-audit, the orchestrator PAUSES dispatch of NEW steps until that finding is triaged and the fix re-audited (below). The Phase-5 terminal gate on the full PR diff is the final backstop for anything a narrow diff-audit missed.
+
+**Triage + fix loop (reuses the §Code audit state machine).** Diff-audit findings flow through the SAME finding state machine and per-finding triage as the Phase-5 gate (`OPEN → FIXED → VERIFIED | REOPENED | ACCEPTED | DEFERRED`; per-finding `fix` / `accept` / `defer` with rationale — see §Code audit Pass 2). The orchestrator (sole KB writer) tracks each step's fix/accept/defer decisions itself. On `fix`: developer re-dispatch (orchestrator-side, append-only fixup commit at HEAD), then re-audit by RE-RUNNING the narrow audit over the UPDATED range that now includes the fixup — `/cross-audit <prev-step-sha>..<fixup-sha> --mode full --severity high --materialize=worktree` — a fresh ref-range audit that re-checks whether the finding is resolved. Do NOT rely on `/cross-audit`'s findings-doc re-audit-detection to recover the range: ref-range scope is NOT persisted in findings frontmatter (see `agents/references/cross-auditor-output-format.md`), so the range MUST be re-passed explicitly; the orchestrator re-applies its tracked accept/defer decisions to the fresh findings rather than depending on `previously_fixed`/`accepted_ids`/`next_finding_id` auto-derivation (the latter is spec-mode-only). Loop the narrow range until no CRITICAL/HIGH remain `OPEN`/`REOPENED`. §3.5c Stop criteria apply (REOPEN / same-defect-class → comprehensive sweep; iter ≤ 5 cap). The authoritative finding-state record + per-finding triage doc is the Phase-5 terminal gate on the full PR diff.
+
+**Does NOT replace the Phase-5 final code-audit gate.** The mandatory §Code audit closed gate on the full PR diff still runs at hand-off. Continuous diff-audits are an early-detection layer that de-risks the terminal gate and keeps the base clean throughout — not a substitute for it.
 
 ### Git conventions
 
