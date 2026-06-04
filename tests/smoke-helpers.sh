@@ -104,10 +104,13 @@ check_developer_workflow_test_quality_points_to_r3() {
 
 check_developer_workflow_observed_notes_requirement() {
   local path="$1"
+  # Orchestrator-sole-writer contract (spec 2026-06-03-kb-parallel-write-protection):
+  # the developer records the R3 regression in report.json `notes` (the
+  # orchestrator copies it into observed.notes), not in observed.notes directly.
   extract_md_section "$path" '## Per-step protocol' | \
-    grep -qF 'If the step adds or modifies a fresh test, `observed.notes` must include a one-sentence description of the regression the test catches (see R3).' \
-    || { echo "$path §Per-step protocol missing byte-exact observed.notes R3 sentence"; return 1; }
-  echo "$path §Per-step protocol has observed.notes R3 requirement"
+    grep -qF 'If the step adds or modifies a fresh test, `notes` MUST include a one-sentence description of the regression the test catches (see R3).' \
+    || { echo "$path §Per-step protocol missing byte-exact report.json notes R3 sentence"; return 1; }
+  echo "$path §Per-step protocol has report.json notes R3 requirement"
 }
 
 # --- Per-step agent pre-tag (spec 2026-04-20-per-step-agent-pretag) ---
@@ -138,12 +141,16 @@ check_skill_md_step2_pretag_guidance() {
   # Explicit anchor-presence guards (iter-5 X28 + iter-6 X30) — awk range mode
   # is silent on missing/out-of-order anchors, so assert both exist as
   # standalone greppable lines before extracting.
-  grep -qF -- 'Leave all `observed` fields empty — the developer fills them during implementation.' "$path" \
-    || { echo "$path missing start anchor 'Leave all \`observed\` fields empty — the developer fills them during implementation.'"; return 1; }
+  grep -qF -- 'Leave all `observed` fields empty — the orchestrator fills `observed` from the developer'"'"'s `report.json` before spawning the compliance-checker (per §Implement; the developer never writes `exec.md` or the spec).' "$path" \
+    || { echo "$path missing start anchor 'Leave all \`observed\` fields empty — the orchestrator fills \`observed\` from the developer'\''s \`report.json\` before spawning the compliance-checker ...'"; return 1; }
   grep -qF -- '**Change-type prompt.**' "$path" \
     || { echo "$path missing end anchor '**Change-type prompt.**'"; return 1; }
   local range
-  range=$(awk '/^Leave all `observed` fields empty — the developer fills them during implementation\.$/,/^\*\*Change-type prompt\.\*\*/' "$path")
+  # awk range start: stable single-quoted prefix (backticks/parens/apostrophe
+  # in the full sentence make a double-quoted awk script unsafe — the grep -qF
+  # guard above already pins the full byte-exact sentence; this prefix just
+  # opens the range).
+  range=$(awk '/^Leave all `observed` fields empty — the orchestrator fills/,/^\*\*Change-type prompt\.\*\*/' "$path")
   printf '%s\n' "$range" | grep -qF -- 'optionally tag the recommended agent inline using the' \
     || { echo "$path §Step 2 insertion range missing byte-exact 'optionally tag the recommended agent inline using the' phrase"; return 1; }
   local marker_count
@@ -421,17 +428,18 @@ check_developer_workflow_no_active_done_writes() {
   local path="$1"
   [[ -r "$path" ]] || { echo "$path not readable"; return 1; }
 
-  # Positive — line 28 full replacement: three key phrases.
-  grep -qF 'When your scope is complete: leave status: IN_PROGRESS.' "$path" \
-    || { echo "$path missing line-28 preamble 'When your scope is complete: leave status: IN_PROGRESS.'"; return 1; }
-  grep -qF 'Do NOT set a terminal status.' "$path" \
-    || { echo "$path missing line-28 'Do NOT set a terminal status.' prohibition"; return 1; }
-  grep -qF 'The feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
-    || { echo "$path missing line-28 shared sentence 'The feature-skill orchestrator owns the terminal transition ...'"; return 1; }
+  # Positive — §Workflow scope-complete clause (orchestrator-sole-writer
+  # contract, spec 2026-06-03-kb-parallel-write-protection): the developer
+  # no longer writes any spec `status`; it returns report.json and the
+  # orchestrator owns IN_PROGRESS + the terminal transition.
+  grep -qF 'When your scope is complete: return the `report.json` pointer for each step. Do NOT write any spec `status`.' "$path" \
+    || { echo "$path missing §Workflow scope-complete clause 'When your scope is complete: return the \`report.json\` pointer for each step. Do NOT write any spec \`status\`.'"; return 1; }
+  grep -qF 'The orchestrator keeps the spec at `IN_PROGRESS` and owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
+    || { echo "$path missing §Workflow shared sentence 'The orchestrator keeps the spec at \`IN_PROGRESS\` and owns the terminal transition ...'"; return 1; }
 
-  # Positive — line 104 full replacement: single full-sentence check.
-  grep -qF 'Leave status: IN_PROGRESS when done — the feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
-    || { echo "$path missing line-104 full-sentence canonical replacement"; return 1; }
+  # Positive — §Spec Updates status clause: orchestrator owns status; dev never writes it.
+  grep -qF 'The developer never writes `status`. The orchestrator keeps the spec at `IN_PROGRESS` during implementation and owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
+    || { echo "$path missing §Spec Updates status clause 'The developer never writes \`status\`. The orchestrator keeps the spec at \`IN_PROGRESS\` ...'"; return 1; }
 
   # Negatives.
   if grep -qF 'set status: DONE' "$path"; then
@@ -442,6 +450,12 @@ check_developer_workflow_no_active_done_writes() {
     echo "$path still contains stale 'owns the DONE transition' phrase"
     return 1
   fi
+  # Negative — the old dev-side "leave status: IN_PROGRESS" self-write
+  # instruction must be gone (the developer no longer writes status).
+  if grep -qF 'leave status: IN_PROGRESS' "$path"; then
+    echo "$path still contains stale dev-side 'leave status: IN_PROGRESS' write instruction (status is orchestrator-owned now)"
+    return 1
+  fi
 
   # Count: shared sentence must appear at least twice (once per paragraph).
   local shared_count
@@ -449,7 +463,7 @@ check_developer_workflow_no_active_done_writes() {
   [[ "$shared_count" -ge 2 ]] \
     || { echo "$path expected >=2 occurrences of shared 'owns the terminal transition (VERIFIED / SHIPPED, per §3.4a' sentence, got $shared_count"; return 1; }
 
-  echo "$path has canonical no-active-DONE-writes form (line-28 + line-104 both present, stale gone)"
+  echo "$path has canonical no-active-DONE-writes form (orchestrator owns status + terminal transition; dev writes none)"
 }
 
 check_cross_auditor_pretag_consistency_check() {
@@ -9697,4 +9711,322 @@ SPECEOF
     return 1
   fi
   echo "kb-layout enum single-source intact; status:DONE accepted (not C3-flagged)"
+}
+
+# --- KB parallel-write protection (spec 2026-06-03-kb-parallel-write-protection) ---
+# Stage-1 enforcement slice: orchestrator-sole-KB-writer (M1) + codex sandbox (M2).
+# Four pins P1-P4, helper prefix `check_pwp_` (so the Step-3 probe
+# `grep -c '^check_pwp_' tests/smoke-proves-manifest.txt` == 4). All prompt-text.
+
+# Shared allowlist-primary write-verb scanner (§3.8 P2/P4). For each dev-facing
+# line in the WHOLE FILE that contains a write verb, the write-TARGET must be
+# ONLY captures/ , report.json , or a source/git path. A line whose target is
+# the spec / exec.md / observed / workdoc / Log / status / compliance-checker
+# FAILS — unless it is a prohibition ("do NOT write X", "never", "read-only",
+# "may NOT", "but NOT") or attributes the action to the orchestrator. A write
+# verb sitting DIRECTLY on a forbidden target (e.g. "Update observed",
+# "append a note to the spec Log", "Spawn spec-compliance-checker",
+# "Check off the step", "Set spec status") is a HARD fail even if the line also
+# names an allowed token. Target-allowlist, not phrase-denylist — a novel
+# phrasing of a forbidden write still fails because its target is off-allowlist.
+_pwp_allowlist_scan() {
+  python3 - "$1" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+lines = open(path, encoding="utf-8").read().splitlines()
+
+# X3/X8: WRITE_RE is a FLOOR, not the structural teeth. It is case-insensitive
+# and carries the synonym set so a forbidden line using a lowercase/synonym verb
+# (update/set/edit/modify/mark off/populate/log/enter/flip/note down/...) is not
+# silently skipped (re-introducing the X17 denylist hole). The structural teeth
+# (below) are "nearest write-destination after a write verb is a forbidden
+# target, and the orchestrator is NOT the same-clause actor of that verb" — not
+# the verb enumeration. `(?<![-/])` … `(?![-/])` reject a verb token embedded in
+# a hyphen/slash compound noun (e.g. `workspace-write`, `read-write`,
+# `amend/rebase`) on either side — config literals / nouns, not dev imperatives.
+# X8: `log` is the feature's own vocabulary aimed at the spec Log; as a VERB it
+# is the attack ("Log your R2 justification …") but as a NOUN it is everywhere
+# ("the spec Log", "the Log"). The fixed-width lookbehinds `(?<!the )(?<!spec )`
+# drop the noun forms; only the verb form is a write verb, the noun forms stay
+# FORBIDDEN targets.
+LOG_VERB = r"(?<!the )(?<!spec )\blog\b"
+WRITE_RE = re.compile(
+    r"(?<![-/])(?:"
+    r"\bupdate(?:s|d)?\b|\bwrite(?:s)?\b|\bsave(?:s|d)?\b|\bappend(?:s|ed)?\b|"
+    r"\bcheck(?:s)?\s+off\b|\bmark(?:s)?\s+off\b|\bspawn(?:s)?\b|\bset(?:s)?\b|"
+    r"\bedit(?:s|ed)?\b|\bmodif(?:y|ies|ied)\b|\bfill(?:s)?\b|\brecord(?:s|ed)?\b|"
+    r"\bpopulate(?:s|d)?\b|\binitiali[sz]e(?:s|d)?\b|\bamend(?:s|ed)?\b|\bput\b|"
+    r"\binsert(?:s|ed)?\b|" + LOG_VERB + r"|\benter(?:s|ed)?\b|\bflip(?:s|ped)?\b|"
+    r"\bnote(?:s|d)?\s+down\b)(?![-/])",
+    re.IGNORECASE)
+
+FORBIDDEN_RE = re.compile(
+    r"\bthe spec\b|\bspec Log\b|\bspec file\b|\bspec frontmatter\b|"
+    r"\bspec `status`\b|\bspec status\b|`exec\.md`|\bexec\.md\b|\bobserved\b|"
+    r"`observed`|observed\.|\bthe workdoc\b|\bthe Log\b|\bLog section\b|"
+    r"\bLog append\b|\bLog entry\b|\bLog line\b|\bLogs\b|\bLogged\b|\bstatus\b|"
+    r"compliance-checker|spec-compliance-checker|\bthe checker\b|\bchecklist\b")
+
+# X7: every ALLOWED token is word-boundary anchored so a substring inside a
+# larger word (git⊂digital, capture⊂captured, commit⊂commitment) cannot win the
+# nearest-dest race. captures/ and report.json keep their literal punctuated form.
+ALLOWED_RE = re.compile(
+    r"captures/|`captures/`|report\.json|`report\.json`|"
+    r"\bcommit(?:s|ted|ting)?\b|\bgit\b|\bbranch(?:es)?\b|\bsource-repo\b|"
+    r"\bcapture(?:s|d)?\b")
+
+# Prohibition markers — a forbidden line that tells the dev NOT to do something
+# (or that something is read-only) is compliant. Does NOT include a bare
+# "orchestrator" token (X2): mere mention of the orchestrator must not exempt a
+# dev-imperative forbidden write. Orchestrator-AS-SUBJECT exemption is positional
+# + clause-scoped — handled in orch_is_actor(), not here.
+PROHIBITION_RE = re.compile(
+    r"do NOT|does NOT|never writes?|NOT touch|NOT write|may NOT|but NOT|"
+    r"NOT the spec|no longer|read-only|read only|writes nothing|"
+    r"neither you nor|contradicts this contract|are read-only", re.IGNORECASE)
+
+# Orchestrator-as-actor token (subject attribution).
+ORCH_SUBJECT_RE = re.compile(
+    r"\borchestrator\b|\borchestrator-owned\b|\borchestrator's\b", re.IGNORECASE)
+
+# X6: a NEW-SUBJECT signal between the orchestrator token and the verb breaks
+# attribution — a second-person pronoun (the dev became the subject) or a
+# sentence-ending period (new sentence = new subject). A bare comma/semicolon is
+# NOT a break: "the orchestrator parses it, copies …, then spawns the checker" is
+# one orchestrator subject with a compound predicate.
+CLAUSE_BREAK_RE = re.compile(r"\.\s|\.$|\byou\b|\byour\b|\byourself\b",
+                             re.IGNORECASE)
+
+
+def orch_is_actor(line, verb_start):
+    """X6: clause-scoped positional attribution. An orchestrator token precedes
+    the verb AND no NEW-SUBJECT signal sits between them, so a cross-clause /
+    cross-sentence mention ("After the orchestrator unblocks you, update the spec
+    status") no longer exempts the dev-imperative verb."""
+    for om in ORCH_SUBJECT_RE.finditer(line):
+        if om.start() >= verb_start:
+            break
+        if not CLAUSE_BREAK_RE.search(line[om.end():verb_start]):
+            return True
+    return False
+
+
+# X2/X4: single clause-tolerant algorithm — NO DIRECT/non-direct split (the
+# split's lenient path re-introduced the bypass class). For each write verb on
+# the line, look at what comes AFTER it: if the NEAREST write-destination after
+# the verb is a forbidden target (and an allowed dest does not come first), it is
+# a forbidden dev-write UNLESS the orchestrator is the same-clause actor of THAT
+# verb. Iterating ALL verbs makes it clause-tolerant: "put … report.json notes
+# (the orchestrator appends it to the spec Log …)" passes because the first verb
+# (put) has an ALLOWED nearest-dest (report.json) and the second verb (appends →
+# spec Log) has the orchestrator same-clause before it. Teeth = nearest-dest +
+# clause-scoped positional attribution; the verb list is a FLOOR.
+#
+# KNOWN LIMITATION (§3.8 offline-pin limit) — not closed in this bounded pass:
+#   X9 (whole-line PROHIBITION short-circuit): a prohibition in one clause
+#     exempts a forbidden write in a different clause of the same line, e.g.
+#     `You append to the spec Log; the old captures path is no longer used.`
+#     Per-clause PROHIBITION scoping false-flagged many legit whole-line
+#     prohibition sentences in the real docs, so it stays a whole-line check.
+#   X10 (fronted object): `The spec status: set it to DONE.` — the forbidden
+#     target precedes the verb (object fronting), so the nearest-dest-after-verb
+#     rule does not see it. Both need sentence parsing beyond an offline regex
+#     pin; accepted as the offline-pin limit (the mechanical guarantee on the
+#     codex path is the sandbox §3.3, on the senior path the holistic rewrite).
+failures = []
+for i, line in enumerate(lines, 1):
+    if PROHIBITION_RE.search(line):
+        continue  # X9 known-limitation: whole-line prohibition short-circuit
+    flagged = False
+    for wm in WRITE_RE.finditer(line):
+        rest = line[wm.end():]
+        fhit = FORBIDDEN_RE.search(rest)
+        if not fhit:
+            continue  # this verb's object is not a forbidden target
+        ahit = ALLOWED_RE.search(rest)
+        if ahit and ahit.start() < fhit.start():
+            continue  # nearest dest after the verb is ALLOWED → object allowed
+        if orch_is_actor(line, wm.start()):
+            continue  # orchestrator is the same-clause actor of this verb
+        flagged = True
+        break
+    if flagged:
+        failures.append((i, line))
+
+if failures:
+    print(f"{path}: allowlist FAIL — dev-facing write-verb line(s) target a "
+          f"forbidden KB surface (spec/exec.md/observed/workdoc/Log/status/checker):")
+    for n, l in failures:
+        print(f"  :{n}: {l.strip()[:160]}")
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+
+# P1 — orchestrator copies observed into exec.md BEFORE spawning the
+# compliance-checker (the loop-ordering invariant; checker contract unchanged).
+check_pwp_loop_ordering() {
+  local path='skills/feature/SKILL.md'
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF '**Copy observed BEFORE spawning the checker.**' "$path" \
+    || { echo "$path §Implement missing '**Copy observed BEFORE spawning the checker.**' ordering anchor"; return 1; }
+  grep -qF 'copies every `report.json` field into `exec.md` `observed` BEFORE spawning the compliance-checker' "$path" \
+    || { echo "$path §Implement missing 'copies every report.json field into exec.md observed BEFORE spawning the compliance-checker' ordering sentence"; return 1; }
+  # SKILL.md:170 must say the ORCHESTRATOR (not the developer) fills observed.
+  grep -qF 'the orchestrator fills `observed` from the developer'"'"'s `report.json` before spawning the compliance-checker' "$path" \
+    || { echo "$path missing 'orchestrator fills observed from the developer's report.json before spawning the compliance-checker' (was 'developer fills')"; return 1; }
+  # X1 fix: R1/R2 justification goes to the spec Log BEFORE the checker (the
+  # checker reads the spec Log, not observed.notes, for R1/R2); only the
+  # checkoff stays post-PASS. Re-deferring it regresses this assertion.
+  grep -qF '**Append R1/R2 justification to the spec Log BEFORE spawning the checker.**' "$path" \
+    || { echo "$path §Implement missing '**Append R1/R2 justification to the spec Log BEFORE spawning the checker.**' anchor (X1)"; return 1; }
+  grep -qF 'the orchestrator MUST append it to the spec Log in the checker-readable grammar BEFORE spawning the checker' "$path" \
+    || { echo "$path §Implement missing 'orchestrator MUST append R1/R2 justification to the spec Log … BEFORE spawning the checker' sentence (X1)"; return 1; }
+  grep -qF 'Only the `[ ]→[x]` checkoff stays post-PASS.' "$path" \
+    || { echo "$path §Implement missing 'Only the [ ]->[x] checkoff stays post-PASS.' clause (X1)"; return 1; }
+  # X5 fix: R7 is NOT checker-gated — its spec-Log append must be framed as
+  # audit-trail, not a checker precondition. Assert the corrected framing and
+  # reject the false 'R7 … checker reads the spec Log' claim.
+  grep -qF 'R5-R7 are convention-text references, NOT checker-gated' "$path" \
+    || { echo "$path §Implement missing 'R5-R7 … NOT checker-gated' clarification (X5)"; return 1; }
+  grep -qF 'R7 is not checker-gated, so its Log append is a record, not a checker precondition' "$path" \
+    || { echo "$path §Implement missing 'R7 … not checker-gated … record, not a checker precondition' clause (X5)"; return 1; }
+  # The false 'R1/R2/R7 … rides report.json notes → observed.notes → the
+  # checker' sentence must be gone (only R3 takes that path).
+  if grep -qF 'Any R1/R2/R7 justification rides in `report.json` `notes` → `observed.notes` → the checker.' "$path"; then
+    echo "$path still claims R1/R2/R7 justification rides observed.notes to the checker (false — checker reads spec Log for R1/R2) (X1)"
+    return 1
+  fi
+  echo "$path §Implement: orchestrator writes observed + appends R1/R2 justification (checker-gated) + R7 audit-trail to the spec Log BEFORE the checker (only checkoff post-PASS)"
+}
+
+# P2 — developer-workflow.md (+ developer-senior.md) allowlist-primary:
+# canonical allowlist sentence present + WHOLE-FILE write-verb target scan.
+check_pwp_devworkflow_allowlist() {
+  local dwf='skills/feature/references/developer-workflow.md'
+  local snr='agents/developer-senior.md'
+  [ -r "$dwf" ] || { echo "$dwf not readable"; return 1; }
+  [ -r "$snr" ] || { echo "$snr not readable"; return 1; }
+  grep -qF 'The developer'"'"'s ONLY writes are: source-repo commits on the branch, and files under `captures/` (including `report.json`). The developer writes nothing else and does not spawn the compliance-checker.' "$dwf" \
+    || { echo "$dwf missing the canonical allowlist sentence (byte-exact)"; return 1; }
+  local out
+  out=$(_pwp_allowlist_scan "$dwf") || { echo "$out"; return 1; }
+  out=$(_pwp_allowlist_scan "$snr") || { echo "$out"; return 1; }
+  echo "developer-workflow.md has the canonical allowlist sentence; whole-file write-verb scan clean (dwf + developer-senior)"
+}
+
+# P3 — codex sandbox config shape: workspace-write (NOT danger-full-access),
+# approval-policy: never, nested sandbox_workspace_write.writable_roots +
+# captures-only placeholder.
+check_pwp_codex_sandbox_config() {
+  local path='agents/developer-codex.md'
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE '^sandbox: workspace-write' "$path" \
+    || { echo "$path missing active 'sandbox: workspace-write' param"; return 1; }
+  if grep -qF 'sandbox: danger-full-access' "$path"; then
+    echo "$path still sets the stale 'sandbox: danger-full-access' param"
+    return 1
+  fi
+  grep -qE '^approval-policy: never' "$path" \
+    || { echo "$path missing active 'approval-policy: never' param"; return 1; }
+  grep -qF 'sandbox_workspace_write:' "$path" \
+    || { echo "$path missing nested 'sandbox_workspace_write:' key"; return 1; }
+  grep -qF 'writable_roots: [<captures_dir>]' "$path" \
+    || { echo "$path missing captures-only 'writable_roots: [<captures_dir>]' placeholder"; return 1; }
+  echo "$path codex sandbox config: workspace-write + approval-policy:never + nested sandbox_workspace_write.writable_roots=[<captures_dir>] (no danger-full-access)"
+}
+
+# P4 — developer-codex.md allowlist-primary WHOLE-FILE scan: no dev-facing
+# write-verb line targets anything but captures/report.json/git; no
+# checker-spawn directive.
+check_pwp_codex_allowlist() {
+  local path='agents/developer-codex.md'
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local out
+  out=$(_pwp_allowlist_scan "$path") || { echo "$out"; return 1; }
+  # Negative — the old "Compliance loop is yours — you spawn …" directive gone.
+  if grep -qF 'Compliance loop is yours' "$path"; then
+    echo "$path still contains the stale 'Compliance loop is yours' checker-spawn directive"
+    return 1
+  fi
+  echo "$path whole-file write-verb scan clean (captures/report.json/git only; no checker-spawn directive)"
+}
+
+# Behavioral self-test for the shared allowlist scanner — proves it has teeth
+# (catches the X1->X9->X13->X17 dev-KB-write regression class) by driving it
+# against synthetic forbidden + compliant fixtures. Without this, P2/P4 could
+# silently degrade to a no-op (always-pass) and not be noticed.
+check_smoke_helper_pwp_allowlist_scanner_self_test() {
+  local tmpd
+  tmpd=$(mktemp -d 2>/dev/null) || { echo "self-test: mktemp -d failed"; return 1; }
+  if [ -z "$tmpd" ] || [ ! -d "$tmpd" ]; then echo "self-test: bad tmpdir"; return 1; fi
+  # Forbidden fixtures (each must be REJECTED by the scanner, rc!=0).
+  printf '%s\n' '**k. Check off the step** in the spec checklist and append a terse note to the spec Log section.' > "$tmpd/bad1.md"
+  printf '%s\n' '- **i. Update `observed`** fields in the workdoc with actual_files_touched.' > "$tmpd/bad2.md"
+  printf '%s\n' '**j. Spawn `spec-compliance-checker`** subagent with spec_path, workdoc_path.' > "$tmpd/bad3.md"
+  printf '%s\n' 'Set spec status: IN_PROGRESS in the spec frontmatter before writing any code.' > "$tmpd/bad4.md"
+  printf '%s\n' 'Append a terse note to the spec Log after the commit.' > "$tmpd/bad5.md"
+  # X2 class — forbidden dev-imperative that name-drops orchestrator AFTER the
+  # verb (a stray trailing mention must NOT exempt the imperative). MUST REJECT.
+  printf '%s\n' 'Update `observed` in exec.md so the orchestrator can read it.' > "$tmpd/bad_x2.md"
+  # X3 class — forbidden lines using lowercase / synonym verbs. MUST REJECT.
+  printf '%s\n' 'update observed fields in the workdoc' > "$tmpd/bad_x3a.md"
+  printf '%s\n' 'set spec status: IN_PROGRESS' > "$tmpd/bad_x3b.md"
+  printf '%s\n' 'edit the spec Log' > "$tmpd/bad_x3c.md"
+  printf '%s\n' 'mark off the step in the checklist' > "$tmpd/bad_x3d.md"
+  # X4 / X2-reopened class — NON-direct forbidden writes (verb NOT adjacent to
+  # target: a noun-phrase / clause sits between the verb and the forbidden
+  # target, or the orchestrator is mentioned only AFTER the verb). The prior
+  # DIRECT/non-direct split exempted these; the clause-tolerant nearest-dest
+  # algorithm MUST REJECT them.
+  printf '%s\n' 'You update the spec status to DONE once the orchestrator unblocks you.' > "$tmpd/bad_x4a.md"
+  printf '%s\n' 'Record observed fields in exec.md before returning; the orchestrator consumes them.' > "$tmpd/bad_x4b.md"
+  printf '%s\n' 'write the blocker into the spec Log' > "$tmpd/bad_x4c.md"
+  printf '%s\n' 'put your notes into observed.notes' > "$tmpd/bad_x4d.md"
+  # X6 class — cross-clause orchestrator mention (orchestrator is the subject of
+  # a DIFFERENT clause; a 2nd-person pronoun introduces the dev as the actor of
+  # the forbidden write). Clause-scoped attribution MUST REJECT.
+  printf '%s\n' 'After the orchestrator unblocks you, update the spec status yourself.' > "$tmpd/bad_x6.md"
+  # X6 class — cross-SENTENCE orchestrator mention (period breaks attribution).
+  printf '%s\n' 'The orchestrator does its thing. Update the spec status to DONE.' > "$tmpd/bad_x6b.md"
+  # X7 class — ALLOWED substring inside a larger word must NOT fake-allow
+  # ("digital" ⊅ git). Nearest dest after the verb is the forbidden spec status.
+  printf '%s\n' 'Update the digital spec status to DONE.' > "$tmpd/bad_x7.md"
+  # X8 class — write-verb synonym `log` (the feature's own vocabulary) aimed at
+  # the spec Log. MUST REJECT.
+  printf '%s\n' 'Log your R2 justification in the spec Log.' > "$tmpd/bad_x8.md"
+  # Compliant fixtures (each must be ACCEPTED, rc==0).
+  {
+    printf '%s\n' 'Write your evidence to captures/step-NN-report.json and return the pointer.'
+    printf '%s\n' 'The developer does NOT write the spec Log; the orchestrator appends the Log.'
+  } > "$tmpd/good1.md"
+  # X2 legit — orchestrator is the SUBJECT (precedes the verb). MUST ACCEPT.
+  printf '%s\n' 'The orchestrator copies every report.json field into exec.md observed before spawning the compliance-checker.' > "$tmpd/good2.md"
+  # X4 legit multi-clause — first verb (put) has an ALLOWED nearest-dest
+  # (report.json); the second clause's verb (appends → spec Log) has the
+  # orchestrator preceding it. MUST ACCEPT (clause-tolerance).
+  printf '%s\n' 'put the assertion-update justification in report.json notes (the orchestrator appends it to the spec Log before the checker)' > "$tmpd/good3.md"
+  # X6 legit — orchestrator is the same-clause subject (no 2nd-person pronoun /
+  # period in the gap). MUST ACCEPT.
+  printf '%s\n' 'the orchestrator appends it to the spec Log before spawning the checker' > "$tmpd/good4.md"
+  local f rc
+  for f in bad1 bad2 bad3 bad4 bad5 bad_x2 bad_x3a bad_x3b bad_x3c bad_x3d \
+           bad_x4a bad_x4b bad_x4c bad_x4d bad_x6 bad_x6b bad_x7 bad_x8; do
+    _pwp_allowlist_scan "$tmpd/$f.md" >/dev/null 2>&1; rc=$?
+    if [ "$rc" -eq 0 ]; then
+      echo "self-test: scanner WRONGLY accepted forbidden fixture $f (no teeth)"
+      rm -rf "$tmpd"; return 1
+    fi
+  done
+  for f in good1 good2 good3 good4; do
+    _pwp_allowlist_scan "$tmpd/$f.md" >/dev/null 2>&1; rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "self-test: scanner WRONGLY rejected the compliant fixture $f"
+      rm -rf "$tmpd"; return 1
+    fi
+  done
+  rm -rf "$tmpd"
+  echo "allowlist scanner self-test: 18 forbidden fixtures rejected (incl X2 trailing-orch, X3 synonym-verb, X4 non-direct, X6 cross-clause/sentence orch, X7 substring-allow, X8 log-verb classes), 4 compliant accepted (orch-subject + multi-clause + same-clause-orch); scanner has teeth"
 }

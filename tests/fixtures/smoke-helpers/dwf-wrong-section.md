@@ -16,11 +16,11 @@ This section is intentionally empty of any canonical R3 pointer sentence.
 
 ## Per-step protocol
 
-This section is intentionally empty of any canonical observed.notes
+This section is intentionally empty of any canonical report.json notes
 sentence.
 
 ## Other Section
 
 - R3 test strength: see `code-quality-rules.md`.
 - For test strength (whether a test actually catches regressions), see R3 in `code-quality-rules.md`.
-- If the step adds or modifies a fresh test, `observed.notes` must include a one-sentence description of the regression the test catches (see R3).
+- If the step adds or modifies a fresh test, `notes` MUST include a one-sentence description of the regression the test catches (see R3).
