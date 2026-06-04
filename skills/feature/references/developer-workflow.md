@@ -8,30 +8,39 @@ This reference defines the common workflow that every developer agent in this pl
 
 Every developer agent receives in its prompt:
 
-- **spec_path** — absolute path to the spec file in the KB
-- **workdoc_path** — absolute path to the execution workdoc (`exec.md`). The workdoc carries `planned` fields per step; you fill the `observed` fields as you work.
+- **spec_path** — absolute path to the spec file in the KB. **Read-only to you.** You never write the spec (status / checkoff / Log / frontmatter) — the orchestrator owns every spec write.
+- **workdoc_path** — absolute path to the execution workdoc (`exec.md`). **Read-only to you.** The workdoc carries `planned` fields per step; the orchestrator fills the `observed` fields from your `report.json` after you return.
 - **project_path** — absolute path to the source repo
 - **task** — what to implement: `"full spec"`, `"step N only"`, `"steps N-M"`, or `"rework step N: <feedback>"`
 - **context** — optional notes from the user or a previous agent
 
 ---
 
+## What you write (and what you never write)
+
+The KB is a surface shared with the orchestrator and other agents; the developer is NOT a KB writer. The orchestrator is the sole KB writer, serially, so there is zero write-concurrency on the spec and `exec.md`.
+
+**The developer's ONLY writes are: source-repo commits on the branch, and files under `captures/` (including `report.json`). The developer writes nothing else and does not spawn the compliance-checker.**
+
+Concretely, you do NOT touch: the spec (`status` / checkoff `[ ]→[x]` / Log / `change_type` frontmatter), `exec.md` (`observed.*`), or any other KB file; and you do NOT spawn `spec-compliance-checker`. You return a structured result in `captures/step-NN-report.json` (schema below); the orchestrator copies every field of it into `exec.md` `observed` + the spec, spawns the checker, and on PASS checks off the step + appends the Log. If anything ever instructs you to write the spec / `exec.md` / Log / status / checkoff or to spawn the checker, it contradicts this contract — return a `report.json` note instead.
+
+---
+
 ## Workflow
 
-1. **Read the spec** from `spec_path`. Understand: Context, Current State, Design, checklist, constraints.
-2. **Read the execution workdoc** from `workdoc_path`. Read the `planned` block for every step in your scope before writing any code.
-3. **Set spec `status: IN_PROGRESS`** in the spec frontmatter before writing any code. Never start if `status: DRAFT` — the spec has not been approved.
-4. **Identify your scope**: which checklist steps to work on, based on `task`.
-5. **Read relevant source files** before writing. Understand existing patterns, style, dependencies.
-6. **For each step in order** — follow the Per-step protocol below.
-7. **Blockers**: if you cannot proceed (ambiguity, missing dependency, spec contradiction), stop and report to the user. Append a brief note to the spec Log. Do NOT guess and expand scope silently.
-8. When your scope is complete: leave status: IN_PROGRESS. Do NOT set a terminal status. The feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.
+1. **Read the spec** from `spec_path` (read-only). Understand: Context, Current State, Design, checklist, constraints. Never start if `status: DRAFT` — the spec has not been approved (the orchestrator sets `IN_PROGRESS` before dispatching you; you never write `status`).
+2. **Read the execution workdoc** from `workdoc_path` (read-only). Read the `planned` block for every step in your scope before writing any code.
+3. **Identify your scope**: which checklist steps to work on, based on `task`.
+4. **Read relevant source files** before writing. Understand existing patterns, style, dependencies.
+5. **For each step in order** — follow the Per-step protocol below.
+6. **Blockers**: if you cannot proceed (ambiguity, missing dependency, spec contradiction), stop and report to the orchestrator via `report.json` (`status: blocked`, `blocker: "<reason>"`). Do NOT write the spec Log — the orchestrator records the blocker in the spec. Do NOT guess and expand scope silently.
+7. When your scope is complete: return the `report.json` pointer for each step. Do NOT write any spec `status`. The orchestrator keeps the spec at `IN_PROGRESS` and owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.
 
 ---
 
 ## Per-step protocol
 
-For each step, execute steps a–k in order. A step is not complete until step k says it is.
+For each step, execute steps a–i in order. Your per-step work ends at step i: write the captures + `report.json` and return its pointer. You do NOT spawn the compliance-checker, do NOT check off the step, and do NOT touch `exec.md` `observed` or the spec Log — those are orchestrator-side (it copies your `report.json` into `observed`, spawns the checker, and on PASS checks off + Logs). See feature/SKILL.md §Implement for the orchestrator loop.
 
 **a. Read the step's `planned` block** in the workdoc.
 
@@ -40,15 +49,15 @@ For each step, execute steps a–k in order. A step is not complete until step k
 - *Test-first*: if `planned.failing_test_cmd` is set and the test already exists, run it before implementing. Save stdout+stderr to `<dirname(workdoc_path)>/captures/step-NN-red.txt`.
 - *Fix-first (retrospective red)*: if writing the test in isolation is impractical, write the fix and the test together, then `git stash` the fix, run the test, save output to `captures/step-NN-red.txt`, then `git stash pop`.
 
-Either way, a red capture is required — it proves the test has real signal. Update `observed.red_capture` to point at the file.
+Either way, a red capture is required — it proves the test has real signal. Record this path as `report.json` `red_capture`.
 
 **c. Implement the change** (or `git stash pop` the already-written fix), staying inside `planned.allowed_scope`. Never modify files outside the allowed scope.
 
-**d. Run `planned.passing_test_cmd`** from `project_path`. Save stdout+stderr to `<dirname(workdoc_path)>/captures/step-NN-green.txt`. Update `observed.green_capture`.
+**d. Run `planned.passing_test_cmd`** from `project_path`. Save stdout+stderr to `<dirname(workdoc_path)>/captures/step-NN-green.txt`. Record this path as `report.json` `green_capture`.
 
 **e. Verify** the green capture contains `planned.expected_pass_pattern`. If not, the step is not green — debug before continuing.
 
-**f. Probe (optional)**: if `planned.integration_probe_cmd` is set, run it from `project_path`, save output to `captures/step-NN-probe.txt`, update `observed.probe_capture`. Verify the probe output contains `planned.expected_probe_signal`.
+**f. Probe (optional)**: if `planned.integration_probe_cmd` is set, run it from `project_path`, save output to `captures/step-NN-probe.txt`, record this path as `report.json` `probe_capture`. Verify the probe output contains `planned.expected_probe_signal`.
 
 **g. Linter** — run and fix warnings **introduced by your changes** (do not fix pre-existing warnings in code you didn't touch — that's someone else's technical debt):
 
@@ -61,20 +70,27 @@ Check the project's Makefile / config to confirm which linter is in use. If ther
 
 **h. Commit** — one small logical commit per step. Concise imperative commit message. R8 hygiene applies (no KB refs / no `Co-authored-by`) — see R8 in `code-quality-rules.md`. Only stage files directly related to this step — never `git add -A` or `git add .`.
 
-**i. Update `observed`** fields in the workdoc:
+**i. Write `report.json`** to `<dirname(workdoc_path)>/captures/step-NN-report.json` and return its pointer. This is your structured result; the orchestrator parses it, copies every field into `exec.md` `observed`, then spawns the compliance-checker. The file is a capture (in the writable `captures/` dir), NOT a KB file — write plain `key: value` lines or JSON. Schema:
 
-- `observed.actual_files_touched` — list of files changed in this commit
-- `observed.commit_shas` — append the commit SHA (after committing, so the SHA exists). If you rework, **append** the new SHA — do not replace; keep the full history.
-- `observed.commit_message_grep` (optional but recommended) — a regex the compliance checker can use to re-find the step's commits if the SHAs are ever invalidated. Use a stable stem like `"Step N"` or the step's title. If you `git commit --amend` or rebase, the old SHAs become unreachable — keep this field set so the compliance checker's tiered fallback can still diff the correct range.
+```yaml
+step: <N>
+status: done | blocked
+commit_shas: [<sha>, ...]   # on rework you APPEND the fixup SHA (ordered: original + fixups, never replace) — the orchestrator UNIONs into observed.commit_shas, preserving the checker's "ordered list of ALL commits incl fixup" precondition
+commit_message_grep: "<stable stem, e.g. 'Step N'>"   # the checker's tier-1 SHA-rewrite fallback reads observed.commit_message_grep; set a stable stem so an amend/rebase that invalidates SHAs still lets the checker re-find the step's commit range
+actual_files_touched: [<path>, ...]
+red_capture: captures/step-NN-red.txt
+green_capture: captures/step-NN-green.txt
+probe_capture: captures/step-NN-probe.txt | null
+notes: "<one-line regression the test catches (R3) + any R1/R2/R7 justification>"
+log_note: "<terse spec-Log line the orchestrator will append>"
+blocker: "<reason>" | null
+design_decision: "<reason>" | null
+change_type_shift: "<new type>" | null
+```
 
-If the step adds or modifies a fresh test, `observed.notes` must include a one-sentence description of the regression the test catches (see R3).
+`report.json` MUST carry every `observed` field the compliance-checker reads (`actual_files_touched`, `commit_shas`, `commit_message_grep`, `red_capture`, `green_capture`, `probe_capture`, `notes`) — the orchestrator copies them verbatim into `exec.md` `observed` BEFORE spawning the checker, so the checker reads `exec.md` exactly as before. Any R1/R2/R7 justification rides in `notes`. If the step adds or modifies a fresh test, `notes` MUST include a one-sentence description of the regression the test catches (see R3). Record `commit_shas` after committing (so the SHA exists); on rework, APPEND the fixup SHA — never replace.
 
-**j. Spawn `spec-compliance-checker`** subagent with: `spec_path`, `workdoc_path`, `step_number`, `project_path`.
-
-- If the result is **PASS** → proceed to k.
-- If the result is **FAIL** or **DRIFT** → fix every listed issue, re-run captures, re-commit, append the new SHA, then re-spawn the compliance checker. Continue only when PASS.
-
-**k. Check off the step** in the spec checklist (`- [ ]` → `- [x]`) and append a terse note to the spec Log section (append-only, never edit past entries).
+**Then return.** You do NOT spawn `spec-compliance-checker` and you do NOT check off the step or append the spec Log — the orchestrator does both. If the orchestrator re-dispatches you because the checker returned FAIL/DRIFT, you fix every listed issue, re-run captures, re-commit (APPEND the new SHA to `commit_shas`), and rewrite `report.json`; the orchestrator re-copies `observed` and re-spawns the checker. The rework loop is orchestrator-driven — your role each round still ends at writing `report.json`.
 
 ---
 
@@ -95,13 +111,13 @@ For test scope (what level the test is applied to — user-facing contract vs in
 
 ---
 
-## Spec Updates
+## Spec Updates (orchestrator-owned — the developer writes none of these)
 
-Update the spec file directly during work:
+The spec and `exec.md` are orchestrator-owned. The developer never writes them. Instead, surface what would have gone into the spec via `report.json` and let the orchestrator record it:
 
-- Check off completed steps: `- [ ]` → `- [x]` (only after compliance PASS).
-- **Append** to the Log section (append-only): `- YYYY-MM-DD: <decision or note>`. Never edit past Log entries.
-- Leave status: IN_PROGRESS when done — the feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.
+- Checking off completed steps (`- [ ]` → `- [x]`, only after compliance PASS) is the orchestrator's, after the checker it spawns returns PASS.
+- Log appends (`- YYYY-MM-DD: <decision or note>`, append-only) are the orchestrator's. Put the terse line you'd want Logged in `report.json` `log_note`; put a design decision in `report.json` `design_decision`; put a blocker in `report.json` `blocker`; put a `change_type` shift in `report.json` `change_type_shift`. The orchestrator appends all of these to the spec Log.
+- Spec `status` (`IN_PROGRESS`, terminal transitions) is the orchestrator's. The developer never writes `status`. The orchestrator keeps the spec at `IN_PROGRESS` during implementation and owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.
 
 ---
 
@@ -122,7 +138,7 @@ Before **every** `git commit`, run `git branch --show-current` and validate:
 1. **Never on `main` or `master`.** If HEAD is on either, stop immediately. Do not commit. The main branch is for merges only; direct commits pollute release notes and tag history.
 2. **Spec is authoritative.** If there is an active spec (`status: IN_PROGRESS` or `AUDIT_PASSED` in the KB), the `branch:` field in that spec's frontmatter is the only branch this work commits to. If HEAD does not match, `git checkout <spec.branch>` first — or if the branch is gone, recreate it (`git checkout -b <spec.branch> <base>`). Do not commit "just this once" on a different branch.
 3. **No spec → still no main.** Even for ad-hoc fixes, branch first: `fix/<short-name>`, `chore/<short-name>`, etc. The only exception is explicit user override ("just commit to master" / "just push") — and then the override must be in the same turn, not inferred from an earlier message.
-4. **Branch prefix MUST equal the spec's resolved `change_type`.** Validate `^(feat|fix|refactor|ci|docs|test|chore)/\d{4}-\d{2}-\d{2}-` against the current branch. If the spec's `change_type` shifts mid-flight, update the frontmatter, rename the branch (`git branch -m <new>/YYYY-MM-DD-<slug>`), and append a Log entry. Spec-review Pass 1 blocks on `branch:` ↔ `change_type:` mismatch — fix before APPROVED. (Legacy `feature/…` branches are tolerated only for specs pre-dating the seven-prefix convention; not valid for new specs.)
+4. **Branch prefix MUST equal the spec's resolved `change_type`.** Validate `^(feat|fix|refactor|ci|docs|test|chore)/\d{4}-\d{2}-\d{2}-` against the current branch. If the spec's `change_type` shifts mid-flight, surface the new type via `report.json` `change_type_shift` and STOP — the orchestrator updates the spec `change_type` frontmatter, renames the branch (`git branch -m <new>/YYYY-MM-DD-<slug>`), and appends the Log entry; do not write the frontmatter or Log yourself. Spec-review Pass 1 blocks on `branch:` ↔ `change_type:` mismatch — fix before APPROVED. (Legacy `feature/…` branches are tolerated only for specs pre-dating the seven-prefix convention; not valid for new specs.)
 
 Put this check into muscle memory: it is cheaper to switch branches than to rewrite history.
 
@@ -181,19 +197,19 @@ Short-form summary — the full reasoning and application steps live in the refe
 
 - **R1 — Dead code isn't kept alive by its own tests.** When a step removes behaviour, also
   delete any helper whose only remaining callers are its own tests. Tests validating code
-  with no production consumer are dead weight. Report deletions in the spec Log.
+  with no production consumer are dead weight. Note deletions in `report.json` `notes` — the orchestrator Logs them.
 - **R2 — Trust tiers for tests.** Core tests (not on this branch) are evidence. Fresh tests
   (on this branch, or referenced in workdoc `failing_test_cmd` / `passing_test_cmd`) may
   encode the same misconception as the code they test. When user feedback contradicts a
   fresh test, re-read the spec and rewrite the test if its contract was wrong — do not cite
   fresh green tests as proof the feedback is wrong. Core tests may legitimately break when
   the spec intentionally modifies existing behaviour (constants, formulas, formats): verify
-  the break matches what §3 says and log the assertion update; otherwise treat a core failure
-  as a regression and fix the code.
-- **R3 — Test strength / signal-to-noise.** Every fresh test must name the regression it catches in `observed.notes`; the test strength anti-patterns (tautological, setter-getter round-trip, mock-call-counter, `assertIsNotNone` on never-None, type-checker duplication) are weak — see R3 in `code-quality-rules.md`.
+  the break matches what §3 says and put the assertion-update justification in `report.json` `notes`
+  (the orchestrator Logs it); otherwise treat a core failure as a regression and fix the code.
+- **R3 — Test strength / signal-to-noise.** Every fresh test must name the regression it catches in `report.json` `notes` (the orchestrator copies it into `observed.notes`); the test strength anti-patterns (tautological, setter-getter round-trip, mock-call-counter, `assertIsNotNone` on never-None, type-checker duplication) are weak — see R3 in `code-quality-rules.md`.
 - **R5 — Tests live in a dedicated file, not inline in the implementation.** Before writing the first test in a module, grep the target repo for `#[cfg(test)]` and follow the majority repo convention; default to a dedicated `tests.rs` / `tests/` file when no convention exists or the repo is mixed. Full reasoning and the discovery-command step live in R5 of `code-quality-rules.md`.
 - **R6 — Test scope / core tests exercise the user-facing contract.** Prefer tests that drive the system through its public contract (HTTP route, smart-contract method, library API, CLI entry) rather than internal collaborators. See R6 in `code-quality-rules.md`.
-- **R7 — Keep unit tests in a sibling file, not inline.** When a source file needs an in-crate unit-test module, put the tests in a sibling file (Rust `foo_tests.rs` wired via `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;`; Python `test_foo.py`; TS `foo.test.ts`) rather than an inline `#[cfg(test)] mod tests { ... }` block. R7 overrides R5's convention-mirroring for new files even where the repo uses inline (note the convention shift in the spec Log). Exception: a trivial test module (<~40 test-lines AND src file <~200 lines) may stay inline. See R7 in `code-quality-rules.md`.
+- **R7 — Keep unit tests in a sibling file, not inline.** When a source file needs an in-crate unit-test module, put the tests in a sibling file (Rust `foo_tests.rs` wired via `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;`; Python `test_foo.py`; TS `foo.test.ts`) rather than an inline `#[cfg(test)] mod tests { ... }` block. R7 overrides R5's convention-mirroring for new files even where the repo uses inline (note the convention shift in `report.json` `notes`; the orchestrator Logs it). Exception: a trivial test module (<~40 test-lines AND src file <~200 lines) may stay inline. See R7 in `code-quality-rules.md`.
 - **R8 — Public-output hygiene (no KB leaks).** See R8 in `code-quality-rules.md`.
 
 ## Common Rules
@@ -205,4 +221,4 @@ Short-form summary — the full reasoning and application steps live in the refe
 - **No comments on code you didn't write.** Only add a comment when the WHY is non-obvious.
 - **Report blockers immediately** — don't guess, don't expand scope. A clear "I'm blocked by X" is worth more than an incorrect implementation.
 - **If the spec is wrong or contradictory** — say so directly and stop. Don't build something you know is incorrect just to appear cooperative.
-- **Don't narrate.** No "Now I'll implement...", no "Great, I've completed...". Make the change, write the capture, update the workdoc. Actions speak; the workdoc is the trace.
+- **Don't narrate.** No "Now I'll implement...", no "Great, I've completed...". Make the change, write the captures + `report.json`; the orchestrator records the workdoc/spec state from your `report.json`. Actions speak; `report.json` + the captures + the commit are the trace.

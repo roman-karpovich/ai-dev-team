@@ -104,10 +104,13 @@ check_developer_workflow_test_quality_points_to_r3() {
 
 check_developer_workflow_observed_notes_requirement() {
   local path="$1"
+  # Orchestrator-sole-writer contract (spec 2026-06-03-kb-parallel-write-protection):
+  # the developer records the R3 regression in report.json `notes` (the
+  # orchestrator copies it into observed.notes), not in observed.notes directly.
   extract_md_section "$path" '## Per-step protocol' | \
-    grep -qF 'If the step adds or modifies a fresh test, `observed.notes` must include a one-sentence description of the regression the test catches (see R3).' \
-    || { echo "$path §Per-step protocol missing byte-exact observed.notes R3 sentence"; return 1; }
-  echo "$path §Per-step protocol has observed.notes R3 requirement"
+    grep -qF 'If the step adds or modifies a fresh test, `notes` MUST include a one-sentence description of the regression the test catches (see R3).' \
+    || { echo "$path §Per-step protocol missing byte-exact report.json notes R3 sentence"; return 1; }
+  echo "$path §Per-step protocol has report.json notes R3 requirement"
 }
 
 # --- Per-step agent pre-tag (spec 2026-04-20-per-step-agent-pretag) ---
@@ -138,12 +141,16 @@ check_skill_md_step2_pretag_guidance() {
   # Explicit anchor-presence guards (iter-5 X28 + iter-6 X30) — awk range mode
   # is silent on missing/out-of-order anchors, so assert both exist as
   # standalone greppable lines before extracting.
-  grep -qF -- 'Leave all `observed` fields empty — the developer fills them during implementation.' "$path" \
-    || { echo "$path missing start anchor 'Leave all \`observed\` fields empty — the developer fills them during implementation.'"; return 1; }
+  grep -qF -- 'Leave all `observed` fields empty — the orchestrator fills `observed` from the developer'"'"'s `report.json` before spawning the compliance-checker (per §Implement; the developer never writes `exec.md` or the spec).' "$path" \
+    || { echo "$path missing start anchor 'Leave all \`observed\` fields empty — the orchestrator fills \`observed\` from the developer'\''s \`report.json\` before spawning the compliance-checker ...'"; return 1; }
   grep -qF -- '**Change-type prompt.**' "$path" \
     || { echo "$path missing end anchor '**Change-type prompt.**'"; return 1; }
   local range
-  range=$(awk '/^Leave all `observed` fields empty — the developer fills them during implementation\.$/,/^\*\*Change-type prompt\.\*\*/' "$path")
+  # awk range start: stable single-quoted prefix (backticks/parens/apostrophe
+  # in the full sentence make a double-quoted awk script unsafe — the grep -qF
+  # guard above already pins the full byte-exact sentence; this prefix just
+  # opens the range).
+  range=$(awk '/^Leave all `observed` fields empty — the orchestrator fills/,/^\*\*Change-type prompt\.\*\*/' "$path")
   printf '%s\n' "$range" | grep -qF -- 'optionally tag the recommended agent inline using the' \
     || { echo "$path §Step 2 insertion range missing byte-exact 'optionally tag the recommended agent inline using the' phrase"; return 1; }
   local marker_count
@@ -421,17 +428,18 @@ check_developer_workflow_no_active_done_writes() {
   local path="$1"
   [[ -r "$path" ]] || { echo "$path not readable"; return 1; }
 
-  # Positive — line 28 full replacement: three key phrases.
-  grep -qF 'When your scope is complete: leave status: IN_PROGRESS.' "$path" \
-    || { echo "$path missing line-28 preamble 'When your scope is complete: leave status: IN_PROGRESS.'"; return 1; }
-  grep -qF 'Do NOT set a terminal status.' "$path" \
-    || { echo "$path missing line-28 'Do NOT set a terminal status.' prohibition"; return 1; }
-  grep -qF 'The feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
-    || { echo "$path missing line-28 shared sentence 'The feature-skill orchestrator owns the terminal transition ...'"; return 1; }
+  # Positive — §Workflow scope-complete clause (orchestrator-sole-writer
+  # contract, spec 2026-06-03-kb-parallel-write-protection): the developer
+  # no longer writes any spec `status`; it returns report.json and the
+  # orchestrator owns IN_PROGRESS + the terminal transition.
+  grep -qF 'When your scope is complete: return the `report.json` pointer for each step. Do NOT write any spec `status`.' "$path" \
+    || { echo "$path missing §Workflow scope-complete clause 'When your scope is complete: return the \`report.json\` pointer for each step. Do NOT write any spec \`status\`.'"; return 1; }
+  grep -qF 'The orchestrator keeps the spec at `IN_PROGRESS` and owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
+    || { echo "$path missing §Workflow shared sentence 'The orchestrator keeps the spec at \`IN_PROGRESS\` and owns the terminal transition ...'"; return 1; }
 
-  # Positive — line 104 full replacement: single full-sentence check.
-  grep -qF 'Leave status: IN_PROGRESS when done — the feature-skill orchestrator owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
-    || { echo "$path missing line-104 full-sentence canonical replacement"; return 1; }
+  # Positive — §Spec Updates status clause: orchestrator owns status; dev never writes it.
+  grep -qF 'The developer never writes `status`. The orchestrator keeps the spec at `IN_PROGRESS` during implementation and owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.' "$path" \
+    || { echo "$path missing §Spec Updates status clause 'The developer never writes \`status\`. The orchestrator keeps the spec at \`IN_PROGRESS\` ...'"; return 1; }
 
   # Negatives.
   if grep -qF 'set status: DONE' "$path"; then
@@ -442,6 +450,12 @@ check_developer_workflow_no_active_done_writes() {
     echo "$path still contains stale 'owns the DONE transition' phrase"
     return 1
   fi
+  # Negative — the old dev-side "leave status: IN_PROGRESS" self-write
+  # instruction must be gone (the developer no longer writes status).
+  if grep -qF 'leave status: IN_PROGRESS' "$path"; then
+    echo "$path still contains stale dev-side 'leave status: IN_PROGRESS' write instruction (status is orchestrator-owned now)"
+    return 1
+  fi
 
   # Count: shared sentence must appear at least twice (once per paragraph).
   local shared_count
@@ -449,7 +463,7 @@ check_developer_workflow_no_active_done_writes() {
   [[ "$shared_count" -ge 2 ]] \
     || { echo "$path expected >=2 occurrences of shared 'owns the terminal transition (VERIFIED / SHIPPED, per §3.4a' sentence, got $shared_count"; return 1; }
 
-  echo "$path has canonical no-active-DONE-writes form (line-28 + line-104 both present, stale gone)"
+  echo "$path has canonical no-active-DONE-writes form (orchestrator owns status + terminal transition; dev writes none)"
 }
 
 check_cross_auditor_pretag_consistency_check() {
