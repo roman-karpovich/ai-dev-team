@@ -75,8 +75,8 @@ Check the project's Makefile / config to confirm which linter is in use. If ther
 ```yaml
 step: <N>
 status: done | blocked
-commit_shas: [<sha>, ...]   # on rework you APPEND the fixup SHA (ordered: original + fixups, never replace) — the orchestrator UNIONs into observed.commit_shas, preserving the checker's "ordered list of ALL commits incl fixup" precondition
-commit_message_grep: "<stable stem, e.g. 'Step N'>"   # the checker's tier-1 SHA-rewrite fallback reads observed.commit_message_grep; set a stable stem so an amend/rebase that invalidates SHAs still lets the checker re-find the step's commit range
+commit_shas: [<sha>, ...]   # on rework you APPEND the fixup SHA to report.json commit_shas (ordered: original + fixups, never replace); the orchestrator then UNIONs that into observed.commit_shas, preserving the checker's "ordered list of ALL commits incl fixup" precondition
+commit_message_grep: "<stable stem, e.g. 'Step N'>"   # a stable stem (e.g. "Step N") goes here so an amend/rebase that invalidates SHAs still lets the checker re-find the step's commit range via its tier-1 SHA-rewrite fallback (which reads observed.commit_message_grep)
 actual_files_touched: [<path>, ...]
 red_capture: captures/step-NN-red.txt
 green_capture: captures/step-NN-green.txt
@@ -116,7 +116,7 @@ For test scope (what level the test is applied to — user-facing contract vs in
 The spec and `exec.md` are orchestrator-owned. The developer never writes them. Instead, surface what would have gone into the spec via `report.json` and let the orchestrator record it:
 
 - Checking off completed steps (`- [ ]` → `- [x]`, only after compliance PASS) is the orchestrator's, after the checker it spawns returns PASS.
-- Log appends (`- YYYY-MM-DD: <decision or note>`, append-only) are the orchestrator's. Put the terse line you'd want Logged in `report.json` `log_note`; put a design decision in `report.json` `design_decision`; put a blocker in `report.json` `blocker`; put a `change_type` shift in `report.json` `change_type_shift`. The orchestrator appends all of these to the spec Log.
+- Log appends (`- YYYY-MM-DD: <decision or note>`, append-only) are the orchestrator's. Put into `report.json` `log_note` the terse line you'd want Logged; put into `report.json` `design_decision` a design decision; put into `report.json` `blocker` a blocker; put into `report.json` `change_type_shift` a `change_type` shift. The orchestrator appends all of these to the spec Log.
 - Spec `status` (`IN_PROGRESS`, terminal transitions) is the orchestrator's. The developer never writes `status`. The orchestrator keeps the spec at `IN_PROGRESS` during implementation and owns the terminal transition (VERIFIED / SHIPPED, per §3.4a of feature/SKILL.md) after the verifier passes and the user picks a hand-off option.
 
 ---
@@ -204,14 +204,15 @@ Short-form summary — the full reasoning and application steps live in the refe
   fresh test, re-read the spec and rewrite the test if its contract was wrong — do not cite
   fresh green tests as proof the feedback is wrong. Core tests may legitimately break when
   the spec intentionally modifies existing behaviour (constants, formulas, formats): verify
-  the break matches what §3 says and put the assertion-update justification in `report.json` `notes`
-  (the orchestrator appends it to the spec Log BEFORE spawning the checker, in the checker-readable
-  grammar `- YYYY-MM-DD: core test <file> updated …` — the checker reads the spec Log for R2, not
-  `observed.notes`); otherwise treat a core failure as a regression and fix the code.
+  the break matches what §3 says and put the assertion-update justification in `report.json` `notes`;
+  the orchestrator then records that justification on the spec Log BEFORE spawning the checker, in the
+  checker-readable grammar (`- YYYY-MM-DD: core test <file> changed …`). For R2 the checker reads the
+  spec Log — NOT `observed.notes` — so it must be Logged before the checker runs. Otherwise treat a core
+  failure as a regression and fix the code.
 - **R3 — Test strength / signal-to-noise.** Every fresh test must name the regression it catches in `report.json` `notes` (the orchestrator copies it into `observed.notes`); the test strength anti-patterns (tautological, setter-getter round-trip, mock-call-counter, `assertIsNotNone` on never-None, type-checker duplication) are weak — see R3 in `code-quality-rules.md`.
 - **R5 — Tests live in a dedicated file, not inline in the implementation.** Before writing the first test in a module, grep the target repo for `#[cfg(test)]` and follow the majority repo convention; default to a dedicated `tests.rs` / `tests/` file when no convention exists or the repo is mixed. Full reasoning and the discovery-command step live in R5 of `code-quality-rules.md`.
 - **R6 — Test scope / core tests exercise the user-facing contract.** Prefer tests that drive the system through its public contract (HTTP route, smart-contract method, library API, CLI entry) rather than internal collaborators. See R6 in `code-quality-rules.md`.
-- **R7 — Keep unit tests in a sibling file, not inline.** When a source file needs an in-crate unit-test module, put the tests in a sibling file (Rust `foo_tests.rs` wired via `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;`; Python `test_foo.py`; TS `foo.test.ts`) rather than an inline `#[cfg(test)] mod tests { ... }` block. R7 overrides R5's convention-mirroring for new files even where the repo uses inline (note the convention shift in `report.json` `notes`; the orchestrator appends it to the spec Log BEFORE spawning the checker — the checker reads the spec Log for R7, not `observed.notes`). Exception: a trivial test module (<~40 test-lines AND src file <~200 lines) may stay inline. See R7 in `code-quality-rules.md`.
+- **R7 — Keep unit tests in a sibling file, not inline.** When a source file needs an in-crate unit-test module, put the tests in a sibling file (Rust `foo_tests.rs` wired via `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;`; Python `test_foo.py`; TS `foo.test.ts`) rather than an inline `#[cfg(test)] mod tests { ... }` block. R7 overrides R5's convention-mirroring for new files even where the repo uses inline (note the convention shift in `report.json` `notes`; the orchestrator appends it to the spec Log as audit-trail — R5-R7 are NOT checker-gated, so this is a record, not a checker precondition; contrast R1/R2 which the checker DOES read from the spec Log and so must be Logged before the checker runs). Exception: a trivial test module (<~40 test-lines AND src file <~200 lines) may stay inline. See R7 in `code-quality-rules.md`.
 - **R8 — Public-output hygiene (no KB leaks).** See R8 in `code-quality-rules.md`.
 
 ## Common Rules

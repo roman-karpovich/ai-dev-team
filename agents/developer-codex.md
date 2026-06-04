@@ -126,7 +126,7 @@ under the `codex:` block). Treat absent values as "use the defaults above".
 
 ### Why this sandbox recipe (validated live, 2026-06-04)
 
-- **`workspace-write`** confines writes to `cwd` + `writable_roots` + the system temp dirs (`/tmp` and the macOS default `$TMPDIR` under `/var/folders/...` — both validated writable, so bare `mktemp -d` / `tempfile.mkdtemp()` test tooling works). Reads stay unrestricted, so Codex still reads the spec and workdoc directly by path.
+- **`workspace-write`** restricts the writable paths to `cwd` + `writable_roots` + the system temp dirs (`/tmp` and the macOS default `$TMPDIR` under `/var/folders/...` — both validated, so bare `mktemp -d` / `tempfile.mkdtemp()` test tooling works). Read access stays unrestricted, so Codex still reads the spec and workdoc directly by path.
 - **`writable_roots: [<captures_dir>]`** = EXACTLY `dirname(workdoc_path)/captures`. This lets Codex write `report.json` + capture files but NOT the spec or `exec.md` (both live under the KB, outside `cwd` + `writable_roots`). NEVER point `writable_roots` at the workdoc parent — that directory holds `exec.md` and would make it writable again.
 - **`approval-policy: never`** converts the out-of-root "needs approval" into a HARD REJECT in the non-interactive MCP context. Without it, `workspace-write` is approval-gated (not deny), and the mechanical guarantee silently degrades.
 - **Cache env relocation**: `danger-full-access` previously let test tools write `$HOME` caches (`~/.cargo`, `~/.cache`, `~/.npm`) — these are NOT temp, so `workspace-write` blocks them. The `env` block points `CARGO_HOME` / `PIP_CACHE_DIR` / `npm_config_cache` under `cwd` (writable).

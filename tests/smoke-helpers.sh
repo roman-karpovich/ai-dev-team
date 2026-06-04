@@ -9737,20 +9737,23 @@ import sys
 path = sys.argv[1]
 lines = open(path, encoding="utf-8").read().splitlines()
 
-# X3: WRITE_RE is a FLOOR, not the structural teeth. The real teeth are
-# DIRECT_FORBIDDEN (write-verb sitting on a forbidden target) + the
-# target-allowlist; the verb list only widens which lines get scanned. It is
-# case-insensitive and carries the synonym set so a forbidden line using a
-# lowercase/synonym verb (update/set/edit/modify/mark off/populate/...) is not
-# silently skipped (re-introducing the X17 denylist hole). Broadening the verb
-# list cannot create false positives on its own — a line still only FAILS if
-# it ALSO hits a forbidden target with no allowlist/orchestrator-subject escape.
+# X3: WRITE_RE is a FLOOR, not the structural teeth. It is case-insensitive and
+# carries the synonym set so a forbidden line using a lowercase/synonym verb
+# (update/set/edit/modify/mark off/populate/...) is not silently skipped
+# (re-introducing the X17 denylist hole). The structural teeth (below) are
+# "nearest write-destination after a write verb is a forbidden target, and the
+# orchestrator is NOT the actor of that verb" — not the verb enumeration.
+# `(?<![-/])` … `(?![-/])` reject a verb token embedded in a hyphen/slash
+# compound noun (e.g. `workspace-write`, `read-write`, `amend/rebase`) on either
+# side — those are config literals / nouns, not dev imperatives. Word boundaries
+# still anchor each verb.
 WRITE_RE = re.compile(
+    r"(?<![-/])(?:"
     r"\bupdate(?:s|d)?\b|\bwrite(?:s)?\b|\bsave(?:s|d)?\b|\bappend(?:s|ed)?\b|"
     r"\bcheck(?:s)?\s+off\b|\bmark(?:s)?\s+off\b|\bspawn(?:s)?\b|\bset(?:s)?\b|"
     r"\bedit(?:s|ed)?\b|\bmodif(?:y|ies|ied)\b|\bfill(?:s)?\b|\brecord(?:s|ed)?\b|"
     r"\bpopulate(?:s|d)?\b|\binitiali[sz]e(?:s|d)?\b|\bamend(?:s|ed)?\b|\bput\b|"
-    r"\binsert(?:s|ed)?\b",
+    r"\binsert(?:s|ed)?\b)(?![-/])",
     re.IGNORECASE)
 
 FORBIDDEN_RE = re.compile(
@@ -9767,85 +9770,49 @@ ALLOWED_RE = re.compile(
 # Prohibition markers — a forbidden line that tells the dev NOT to do something
 # (or that something is read-only) is compliant. Does NOT include a bare
 # "orchestrator" token (X2): mere mention of the orchestrator must not exempt a
-# dev-imperative forbidden write. Orchestrator-AS-SUBJECT exemption is handled
-# separately (must precede the DIRECT-forbidden write).
+# dev-imperative forbidden write. Orchestrator-AS-SUBJECT exemption is positional
+# (must precede the write verb) — handled in the loop, not here.
 PROHIBITION_RE = re.compile(
     r"do NOT|does NOT|never writes?|NOT touch|NOT write|may NOT|but NOT|"
     r"NOT the spec|no longer|read-only|read only|writes nothing|"
     r"neither you nor|contradicts this contract|are read-only", re.IGNORECASE)
 
-# Orchestrator-as-actor token (subject attribution).
+# Orchestrator-as-actor token (subject attribution). POSITIONAL only: a trailing
+# mention never rescues a forbidden write — it must precede the write verb.
 ORCH_SUBJECT_RE = re.compile(
     r"\borchestrator\b|\borchestrator-owned\b|\borchestrator's\b", re.IGNORECASE)
 
-# Descriptive / read-context markers — for the NON-direct (co-occurrence) path
-# only. The broadened WRITE_RE (X3 floor) catches a write-verb and a far-away
-# forbidden target co-occurring in descriptive prose (e.g. "Reads stay
-# unrestricted, so Codex still reads the spec"); such lines are not dev
-# imperatives. The structural teeth are DIRECT_FORBIDDEN (verb-on-target) + the
-# target-allowlist, NOT the verb enumeration — so the non-direct path is
-# lenient. A genuine dev-imperative forbidden write is verb-adjacent-to-target
-# and therefore caught by DIRECT_FORBIDDEN, which is strict.
-NONDIRECT_EXEMPT_RE = re.compile(
-    r"\breads?\b|\bread\b|orchestrator|will append|schema|grammar|"
-    r"^\s*[a-z_]+:\s|describes?|confines? writes", re.IGNORECASE)
-
-DIRECT_FORBIDDEN_RE = re.compile(
-    r"\bupdate(?:s|d)?\s+`?observed`?|\bfill(?:s)?\s+(?:the\s+)?`?observed`?|"
-    r"\b(?:write|writes|edit|edits|modify|modifies)\s+(?:the\s+)?"
-    r"(?:spec|`?exec\.md`?|workdoc|`?observed`?|Log|spec Log|spec frontmatter)|"
-    r"\bappend(?:s)?\s+(?:a\s+)?(?:terse\s+)?(?:note|line|entry)?\s*to\s+the\s+spec\s+Log|"
-    r"\bappend(?:s)?\s+to\s+the\s+(?:spec\s+)?Log|"
-    r"\b(?:check|checks|mark|marks)\s+off\s+the\s+step|"
-    r"\bspawn(?:s)?\s+`?spec-compliance-checker`?|"
-    r"\bspawn(?:s)?\s+(?:the\s+)?compliance-checker|"
-    r"\bset(?:s)?\s+spec\s+(?:frontmatter\s+)?`?status`?|"
-    r"\bset\s+spec\s+status",
-    re.IGNORECASE)
-
-
-def orch_precedes(line, anchor_start):
-    """True iff an orchestrator token appears to the LEFT of anchor_start
-    (orchestrator is the actor of the imperative, not a trailing mention).
-    'Update observed (the orchestrator reads it)' → False (orch follows verb)."""
-    om = ORCH_SUBJECT_RE.search(line)
-    return bool(om) and om.start() < anchor_start
-
-
+# X2 (reopened) + X4: single clause-tolerant algorithm — NO DIRECT/non-direct
+# split (the split's lenient path re-introduced the bypass class). For each
+# write verb on the line, look at what comes AFTER it: if the NEAREST
+# write-destination after the verb is a forbidden target (and an allowed dest
+# does not come first), it is a forbidden dev-write UNLESS the orchestrator is
+# the actor of THAT verb (orchestrator token precedes the verb). Iterating ALL
+# verbs is what makes it clause-tolerant: a legit multi-clause line like
+# "put … report.json notes (the orchestrator appends it to the spec Log …)"
+# passes because the first verb (put) has an ALLOWED nearest-dest (report.json)
+# and the second verb (appends → spec Log) has orchestrator preceding it.
+# Attribution is POSITIONAL; the verb list is a FLOOR; the teeth are
+# nearest-dest + positional attribution.
 failures = []
 for i, line in enumerate(lines, 1):
-    if not WRITE_RE.search(line):
-        continue
-    if not FORBIDDEN_RE.search(line):
-        continue
-    direct = DIRECT_FORBIDDEN_RE.search(line)
-    if direct:
-        # X2: a write verb sitting DIRECTLY on a forbidden target is the hard
-        # teeth. It FAILS unless a prohibition marker is present OR the
-        # orchestrator is the SUBJECT (orchestrator token precedes the direct
-        # match). A stray trailing "orchestrator" mention no longer rescues it.
-        if PROHIBITION_RE.search(line) or orch_precedes(line, direct.start()):
-            continue
-        failures.append((i, line))
-        continue
-    # Non-direct co-occurrence path (verb + far target, not verb-adjacent) —
-    # lenient: this is the X3 floor catching descriptive prose. A genuine dev
-    # imperative is verb-adjacent-to-target → DIRECT (strict). Exempt when:
-    # prohibition; read/descriptive/orchestrator context; allowlist destination;
-    # OR the forbidden target appears BEFORE the write verb (target-before-verb
-    # word order = descriptive, e.g. "the spec modifies …", "core test updated",
-    # not the imperative "update the spec").
     if PROHIBITION_RE.search(line):
         continue
-    if NONDIRECT_EXEMPT_RE.search(line):
-        continue
-    if ALLOWED_RE.search(line):
-        continue
-    fm = FORBIDDEN_RE.search(line)
-    wm = WRITE_RE.search(line)
-    if fm and wm and fm.start() < wm.start():
-        continue
-    failures.append((i, line))
+    flagged = False
+    for wm in WRITE_RE.finditer(line):
+        rest = line[wm.end():]
+        fhit = FORBIDDEN_RE.search(rest)
+        if not fhit:
+            continue  # this verb's object is not a forbidden target
+        ahit = ALLOWED_RE.search(rest)
+        if ahit and ahit.start() < fhit.start():
+            continue  # nearest dest after the verb is ALLOWED → object allowed
+        if ORCH_SUBJECT_RE.search(line[:wm.start()]):
+            continue  # orchestrator precedes this verb = orchestrator is actor
+        flagged = True
+        break
+    if flagged:
+        failures.append((i, line))
 
 if failures:
     print(f"{path}: allowlist FAIL — dev-facing write-verb line(s) target a "
@@ -9869,22 +9836,29 @@ check_pwp_loop_ordering() {
   # SKILL.md:170 must say the ORCHESTRATOR (not the developer) fills observed.
   grep -qF 'the orchestrator fills `observed` from the developer'"'"'s `report.json` before spawning the compliance-checker' "$path" \
     || { echo "$path missing 'orchestrator fills observed from the developer's report.json before spawning the compliance-checker' (was 'developer fills')"; return 1; }
-  # X1 fix: R1/R2/R7 justification goes to the spec Log BEFORE the checker
-  # (the checker reads the spec Log, not observed.notes, for R1/R2/R7); only
-  # the checkoff stays post-PASS. Re-deferring it regresses this assertion.
-  grep -qF '**Append R1/R2/R7 justification to the spec Log BEFORE spawning the checker.**' "$path" \
-    || { echo "$path §Implement missing '**Append R1/R2/R7 justification to the spec Log BEFORE spawning the checker.**' anchor (X1)"; return 1; }
+  # X1 fix: R1/R2 justification goes to the spec Log BEFORE the checker (the
+  # checker reads the spec Log, not observed.notes, for R1/R2); only the
+  # checkoff stays post-PASS. Re-deferring it regresses this assertion.
+  grep -qF '**Append R1/R2 justification to the spec Log BEFORE spawning the checker.**' "$path" \
+    || { echo "$path §Implement missing '**Append R1/R2 justification to the spec Log BEFORE spawning the checker.**' anchor (X1)"; return 1; }
   grep -qF 'the orchestrator MUST append it to the spec Log in the checker-readable grammar BEFORE spawning the checker' "$path" \
-    || { echo "$path §Implement missing 'orchestrator MUST append R1/R2/R7 justification to the spec Log … BEFORE spawning the checker' sentence (X1)"; return 1; }
+    || { echo "$path §Implement missing 'orchestrator MUST append R1/R2 justification to the spec Log … BEFORE spawning the checker' sentence (X1)"; return 1; }
   grep -qF 'Only the `[ ]→[x]` checkoff stays post-PASS.' "$path" \
     || { echo "$path §Implement missing 'Only the [ ]->[x] checkoff stays post-PASS.' clause (X1)"; return 1; }
+  # X5 fix: R7 is NOT checker-gated — its spec-Log append must be framed as
+  # audit-trail, not a checker precondition. Assert the corrected framing and
+  # reject the false 'R7 … checker reads the spec Log' claim.
+  grep -qF 'R5-R7 are convention-text references, NOT checker-gated' "$path" \
+    || { echo "$path §Implement missing 'R5-R7 … NOT checker-gated' clarification (X5)"; return 1; }
+  grep -qF 'R7 is not checker-gated, so its Log append is a record, not a checker precondition' "$path" \
+    || { echo "$path §Implement missing 'R7 … not checker-gated … record, not a checker precondition' clause (X5)"; return 1; }
   # The false 'R1/R2/R7 … rides report.json notes → observed.notes → the
   # checker' sentence must be gone (only R3 takes that path).
   if grep -qF 'Any R1/R2/R7 justification rides in `report.json` `notes` → `observed.notes` → the checker.' "$path"; then
-    echo "$path still claims R1/R2/R7 justification rides observed.notes to the checker (false — checker reads spec Log for R1/R2/R7) (X1)"
+    echo "$path still claims R1/R2/R7 justification rides observed.notes to the checker (false — checker reads spec Log for R1/R2) (X1)"
     return 1
   fi
-  echo "$path §Implement: orchestrator writes observed + appends R1/R2/R7 justification to the spec Log BEFORE the checker (only checkoff post-PASS)"
+  echo "$path §Implement: orchestrator writes observed + appends R1/R2 justification (checker-gated) + R7 audit-trail to the spec Log BEFORE the checker (only checkoff post-PASS)"
 }
 
 # P2 — developer-workflow.md (+ developer-senior.md) allowlist-primary:
@@ -9961,6 +9935,15 @@ check_smoke_helper_pwp_allowlist_scanner_self_test() {
   printf '%s\n' 'set spec status: IN_PROGRESS' > "$tmpd/bad_x3b.md"
   printf '%s\n' 'edit the spec Log' > "$tmpd/bad_x3c.md"
   printf '%s\n' 'mark off the step in the checklist' > "$tmpd/bad_x3d.md"
+  # X4 / X2-reopened class — NON-direct forbidden writes (verb NOT adjacent to
+  # target: a noun-phrase / clause sits between the verb and the forbidden
+  # target, or the orchestrator is mentioned only AFTER the verb). The prior
+  # DIRECT/non-direct split exempted these; the clause-tolerant nearest-dest
+  # algorithm MUST REJECT them.
+  printf '%s\n' 'You update the spec status to DONE once the orchestrator unblocks you.' > "$tmpd/bad_x4a.md"
+  printf '%s\n' 'Record observed fields in exec.md before returning; the orchestrator consumes them.' > "$tmpd/bad_x4b.md"
+  printf '%s\n' 'write the blocker into the spec Log' > "$tmpd/bad_x4c.md"
+  printf '%s\n' 'put your notes into observed.notes' > "$tmpd/bad_x4d.md"
   # Compliant fixtures (each must be ACCEPTED, rc==0).
   {
     printf '%s\n' 'Write your evidence to captures/step-NN-report.json and return the pointer.'
@@ -9968,15 +9951,19 @@ check_smoke_helper_pwp_allowlist_scanner_self_test() {
   } > "$tmpd/good1.md"
   # X2 legit — orchestrator is the SUBJECT (precedes the verb). MUST ACCEPT.
   printf '%s\n' 'The orchestrator copies every report.json field into exec.md observed before spawning the compliance-checker.' > "$tmpd/good2.md"
+  # X4 legit multi-clause — first verb (put) has an ALLOWED nearest-dest
+  # (report.json); the second clause's verb (appends → spec Log) has the
+  # orchestrator preceding it. MUST ACCEPT (clause-tolerance).
+  printf '%s\n' 'put the assertion-update justification in report.json notes (the orchestrator appends it to the spec Log before the checker)' > "$tmpd/good3.md"
   local f rc
-  for f in bad1 bad2 bad3 bad4 bad5 bad_x2 bad_x3a bad_x3b bad_x3c bad_x3d; do
+  for f in bad1 bad2 bad3 bad4 bad5 bad_x2 bad_x3a bad_x3b bad_x3c bad_x3d bad_x4a bad_x4b bad_x4c bad_x4d; do
     _pwp_allowlist_scan "$tmpd/$f.md" >/dev/null 2>&1; rc=$?
     if [ "$rc" -eq 0 ]; then
       echo "self-test: scanner WRONGLY accepted forbidden fixture $f (no teeth)"
       rm -rf "$tmpd"; return 1
     fi
   done
-  for f in good1 good2; do
+  for f in good1 good2 good3; do
     _pwp_allowlist_scan "$tmpd/$f.md" >/dev/null 2>&1; rc=$?
     if [ "$rc" -ne 0 ]; then
       echo "self-test: scanner WRONGLY rejected the compliant fixture $f"
@@ -9984,5 +9971,5 @@ check_smoke_helper_pwp_allowlist_scanner_self_test() {
     fi
   done
   rm -rf "$tmpd"
-  echo "allowlist scanner self-test: 10 forbidden fixtures rejected (incl X2 trailing-orch + X3 synonym-verb classes), 2 compliant accepted (orch-subject); scanner has teeth"
+  echo "allowlist scanner self-test: 14 forbidden fixtures rejected (incl X2 trailing-orch, X3 synonym-verb, X4 non-direct/clause classes), 3 compliant accepted (orch-subject + multi-clause); scanner has teeth"
 }
