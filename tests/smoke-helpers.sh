@@ -9737,23 +9737,29 @@ import sys
 path = sys.argv[1]
 lines = open(path, encoding="utf-8").read().splitlines()
 
-# X3: WRITE_RE is a FLOOR, not the structural teeth. It is case-insensitive and
-# carries the synonym set so a forbidden line using a lowercase/synonym verb
-# (update/set/edit/modify/mark off/populate/...) is not silently skipped
-# (re-introducing the X17 denylist hole). The structural teeth (below) are
-# "nearest write-destination after a write verb is a forbidden target, and the
-# orchestrator is NOT the actor of that verb" — not the verb enumeration.
-# `(?<![-/])` … `(?![-/])` reject a verb token embedded in a hyphen/slash
-# compound noun (e.g. `workspace-write`, `read-write`, `amend/rebase`) on either
-# side — those are config literals / nouns, not dev imperatives. Word boundaries
-# still anchor each verb.
+# X3/X8: WRITE_RE is a FLOOR, not the structural teeth. It is case-insensitive
+# and carries the synonym set so a forbidden line using a lowercase/synonym verb
+# (update/set/edit/modify/mark off/populate/log/enter/flip/note down/...) is not
+# silently skipped (re-introducing the X17 denylist hole). The structural teeth
+# (below) are "nearest write-destination after a write verb is a forbidden
+# target, and the orchestrator is NOT the same-clause actor of that verb" — not
+# the verb enumeration. `(?<![-/])` … `(?![-/])` reject a verb token embedded in
+# a hyphen/slash compound noun (e.g. `workspace-write`, `read-write`,
+# `amend/rebase`) on either side — config literals / nouns, not dev imperatives.
+# X8: `log` is the feature's own vocabulary aimed at the spec Log; as a VERB it
+# is the attack ("Log your R2 justification …") but as a NOUN it is everywhere
+# ("the spec Log", "the Log"). The fixed-width lookbehinds `(?<!the )(?<!spec )`
+# drop the noun forms; only the verb form is a write verb, the noun forms stay
+# FORBIDDEN targets.
+LOG_VERB = r"(?<!the )(?<!spec )\blog\b"
 WRITE_RE = re.compile(
     r"(?<![-/])(?:"
     r"\bupdate(?:s|d)?\b|\bwrite(?:s)?\b|\bsave(?:s|d)?\b|\bappend(?:s|ed)?\b|"
     r"\bcheck(?:s)?\s+off\b|\bmark(?:s)?\s+off\b|\bspawn(?:s)?\b|\bset(?:s)?\b|"
     r"\bedit(?:s|ed)?\b|\bmodif(?:y|ies|ied)\b|\bfill(?:s)?\b|\brecord(?:s|ed)?\b|"
     r"\bpopulate(?:s|d)?\b|\binitiali[sz]e(?:s|d)?\b|\bamend(?:s|ed)?\b|\bput\b|"
-    r"\binsert(?:s|ed)?\b)(?![-/])",
+    r"\binsert(?:s|ed)?\b|" + LOG_VERB + r"|\benter(?:s|ed)?\b|\bflip(?:s|ped)?\b|"
+    r"\bnote(?:s|d)?\s+down\b)(?![-/])",
     re.IGNORECASE)
 
 FORBIDDEN_RE = re.compile(
@@ -9763,41 +9769,76 @@ FORBIDDEN_RE = re.compile(
     r"\bLog append\b|\bLog entry\b|\bLog line\b|\bLogs\b|\bLogged\b|\bstatus\b|"
     r"compliance-checker|spec-compliance-checker|\bthe checker\b|\bchecklist\b")
 
+# X7: every ALLOWED token is word-boundary anchored so a substring inside a
+# larger word (git⊂digital, capture⊂captured, commit⊂commitment) cannot win the
+# nearest-dest race. captures/ and report.json keep their literal punctuated form.
 ALLOWED_RE = re.compile(
-    r"captures/|`captures/`|report\.json|`report\.json`|commit|git|branch|"
-    r"source-repo|capture")
+    r"captures/|`captures/`|report\.json|`report\.json`|"
+    r"\bcommit(?:s|ted|ting)?\b|\bgit\b|\bbranch(?:es)?\b|\bsource-repo\b|"
+    r"\bcapture(?:s|d)?\b")
 
 # Prohibition markers — a forbidden line that tells the dev NOT to do something
 # (or that something is read-only) is compliant. Does NOT include a bare
 # "orchestrator" token (X2): mere mention of the orchestrator must not exempt a
 # dev-imperative forbidden write. Orchestrator-AS-SUBJECT exemption is positional
-# (must precede the write verb) — handled in the loop, not here.
+# + clause-scoped — handled in orch_is_actor(), not here.
 PROHIBITION_RE = re.compile(
     r"do NOT|does NOT|never writes?|NOT touch|NOT write|may NOT|but NOT|"
     r"NOT the spec|no longer|read-only|read only|writes nothing|"
     r"neither you nor|contradicts this contract|are read-only", re.IGNORECASE)
 
-# Orchestrator-as-actor token (subject attribution). POSITIONAL only: a trailing
-# mention never rescues a forbidden write — it must precede the write verb.
+# Orchestrator-as-actor token (subject attribution).
 ORCH_SUBJECT_RE = re.compile(
     r"\borchestrator\b|\borchestrator-owned\b|\borchestrator's\b", re.IGNORECASE)
 
-# X2 (reopened) + X4: single clause-tolerant algorithm — NO DIRECT/non-direct
-# split (the split's lenient path re-introduced the bypass class). For each
-# write verb on the line, look at what comes AFTER it: if the NEAREST
-# write-destination after the verb is a forbidden target (and an allowed dest
-# does not come first), it is a forbidden dev-write UNLESS the orchestrator is
-# the actor of THAT verb (orchestrator token precedes the verb). Iterating ALL
-# verbs is what makes it clause-tolerant: a legit multi-clause line like
-# "put … report.json notes (the orchestrator appends it to the spec Log …)"
-# passes because the first verb (put) has an ALLOWED nearest-dest (report.json)
-# and the second verb (appends → spec Log) has orchestrator preceding it.
-# Attribution is POSITIONAL; the verb list is a FLOOR; the teeth are
-# nearest-dest + positional attribution.
+# X6: a NEW-SUBJECT signal between the orchestrator token and the verb breaks
+# attribution — a second-person pronoun (the dev became the subject) or a
+# sentence-ending period (new sentence = new subject). A bare comma/semicolon is
+# NOT a break: "the orchestrator parses it, copies …, then spawns the checker" is
+# one orchestrator subject with a compound predicate.
+CLAUSE_BREAK_RE = re.compile(r"\.\s|\.$|\byou\b|\byour\b|\byourself\b",
+                             re.IGNORECASE)
+
+
+def orch_is_actor(line, verb_start):
+    """X6: clause-scoped positional attribution. An orchestrator token precedes
+    the verb AND no NEW-SUBJECT signal sits between them, so a cross-clause /
+    cross-sentence mention ("After the orchestrator unblocks you, update the spec
+    status") no longer exempts the dev-imperative verb."""
+    for om in ORCH_SUBJECT_RE.finditer(line):
+        if om.start() >= verb_start:
+            break
+        if not CLAUSE_BREAK_RE.search(line[om.end():verb_start]):
+            return True
+    return False
+
+
+# X2/X4: single clause-tolerant algorithm — NO DIRECT/non-direct split (the
+# split's lenient path re-introduced the bypass class). For each write verb on
+# the line, look at what comes AFTER it: if the NEAREST write-destination after
+# the verb is a forbidden target (and an allowed dest does not come first), it is
+# a forbidden dev-write UNLESS the orchestrator is the same-clause actor of THAT
+# verb. Iterating ALL verbs makes it clause-tolerant: "put … report.json notes
+# (the orchestrator appends it to the spec Log …)" passes because the first verb
+# (put) has an ALLOWED nearest-dest (report.json) and the second verb (appends →
+# spec Log) has the orchestrator same-clause before it. Teeth = nearest-dest +
+# clause-scoped positional attribution; the verb list is a FLOOR.
+#
+# KNOWN LIMITATION (§3.8 offline-pin limit) — not closed in this bounded pass:
+#   X9 (whole-line PROHIBITION short-circuit): a prohibition in one clause
+#     exempts a forbidden write in a different clause of the same line, e.g.
+#     `You append to the spec Log; the old captures path is no longer used.`
+#     Per-clause PROHIBITION scoping false-flagged many legit whole-line
+#     prohibition sentences in the real docs, so it stays a whole-line check.
+#   X10 (fronted object): `The spec status: set it to DONE.` — the forbidden
+#     target precedes the verb (object fronting), so the nearest-dest-after-verb
+#     rule does not see it. Both need sentence parsing beyond an offline regex
+#     pin; accepted as the offline-pin limit (the mechanical guarantee on the
+#     codex path is the sandbox §3.3, on the senior path the holistic rewrite).
 failures = []
 for i, line in enumerate(lines, 1):
     if PROHIBITION_RE.search(line):
-        continue
+        continue  # X9 known-limitation: whole-line prohibition short-circuit
     flagged = False
     for wm in WRITE_RE.finditer(line):
         rest = line[wm.end():]
@@ -9807,8 +9848,8 @@ for i, line in enumerate(lines, 1):
         ahit = ALLOWED_RE.search(rest)
         if ahit and ahit.start() < fhit.start():
             continue  # nearest dest after the verb is ALLOWED → object allowed
-        if ORCH_SUBJECT_RE.search(line[:wm.start()]):
-            continue  # orchestrator precedes this verb = orchestrator is actor
+        if orch_is_actor(line, wm.start()):
+            continue  # orchestrator is the same-clause actor of this verb
         flagged = True
         break
     if flagged:
@@ -9944,6 +9985,18 @@ check_smoke_helper_pwp_allowlist_scanner_self_test() {
   printf '%s\n' 'Record observed fields in exec.md before returning; the orchestrator consumes them.' > "$tmpd/bad_x4b.md"
   printf '%s\n' 'write the blocker into the spec Log' > "$tmpd/bad_x4c.md"
   printf '%s\n' 'put your notes into observed.notes' > "$tmpd/bad_x4d.md"
+  # X6 class — cross-clause orchestrator mention (orchestrator is the subject of
+  # a DIFFERENT clause; a 2nd-person pronoun introduces the dev as the actor of
+  # the forbidden write). Clause-scoped attribution MUST REJECT.
+  printf '%s\n' 'After the orchestrator unblocks you, update the spec status yourself.' > "$tmpd/bad_x6.md"
+  # X6 class — cross-SENTENCE orchestrator mention (period breaks attribution).
+  printf '%s\n' 'The orchestrator does its thing. Update the spec status to DONE.' > "$tmpd/bad_x6b.md"
+  # X7 class — ALLOWED substring inside a larger word must NOT fake-allow
+  # ("digital" ⊅ git). Nearest dest after the verb is the forbidden spec status.
+  printf '%s\n' 'Update the digital spec status to DONE.' > "$tmpd/bad_x7.md"
+  # X8 class — write-verb synonym `log` (the feature's own vocabulary) aimed at
+  # the spec Log. MUST REJECT.
+  printf '%s\n' 'Log your R2 justification in the spec Log.' > "$tmpd/bad_x8.md"
   # Compliant fixtures (each must be ACCEPTED, rc==0).
   {
     printf '%s\n' 'Write your evidence to captures/step-NN-report.json and return the pointer.'
@@ -9955,15 +10008,19 @@ check_smoke_helper_pwp_allowlist_scanner_self_test() {
   # (report.json); the second clause's verb (appends → spec Log) has the
   # orchestrator preceding it. MUST ACCEPT (clause-tolerance).
   printf '%s\n' 'put the assertion-update justification in report.json notes (the orchestrator appends it to the spec Log before the checker)' > "$tmpd/good3.md"
+  # X6 legit — orchestrator is the same-clause subject (no 2nd-person pronoun /
+  # period in the gap). MUST ACCEPT.
+  printf '%s\n' 'the orchestrator appends it to the spec Log before spawning the checker' > "$tmpd/good4.md"
   local f rc
-  for f in bad1 bad2 bad3 bad4 bad5 bad_x2 bad_x3a bad_x3b bad_x3c bad_x3d bad_x4a bad_x4b bad_x4c bad_x4d; do
+  for f in bad1 bad2 bad3 bad4 bad5 bad_x2 bad_x3a bad_x3b bad_x3c bad_x3d \
+           bad_x4a bad_x4b bad_x4c bad_x4d bad_x6 bad_x6b bad_x7 bad_x8; do
     _pwp_allowlist_scan "$tmpd/$f.md" >/dev/null 2>&1; rc=$?
     if [ "$rc" -eq 0 ]; then
       echo "self-test: scanner WRONGLY accepted forbidden fixture $f (no teeth)"
       rm -rf "$tmpd"; return 1
     fi
   done
-  for f in good1 good2 good3; do
+  for f in good1 good2 good3 good4; do
     _pwp_allowlist_scan "$tmpd/$f.md" >/dev/null 2>&1; rc=$?
     if [ "$rc" -ne 0 ]; then
       echo "self-test: scanner WRONGLY rejected the compliant fixture $f"
@@ -9971,5 +10028,5 @@ check_smoke_helper_pwp_allowlist_scanner_self_test() {
     fi
   done
   rm -rf "$tmpd"
-  echo "allowlist scanner self-test: 14 forbidden fixtures rejected (incl X2 trailing-orch, X3 synonym-verb, X4 non-direct/clause classes), 3 compliant accepted (orch-subject + multi-clause); scanner has teeth"
+  echo "allowlist scanner self-test: 18 forbidden fixtures rejected (incl X2 trailing-orch, X3 synonym-verb, X4 non-direct, X6 cross-clause/sentence orch, X7 substring-allow, X8 log-verb classes), 4 compliant accepted (orch-subject + multi-clause + same-clause-orch); scanner has teeth"
 }
