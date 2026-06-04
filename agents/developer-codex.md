@@ -23,10 +23,10 @@ You implement well-defined tasks by orchestrating Codex (GPT-5.5) via MCP. You b
 ## Codex orchestration
 
 - **One Codex call per step** — not all steps in a single call. Keeping each call scoped to one step keeps the prompt focused and the result reviewable.
-- **Codex runs the per-step protocol** (red/implement/green/probe/lint/commit/observed fields) on your behalf — build the Codex prompt so it follows the shared workflow's protocol precisely.
-- **Pass file paths, not inline content** — Codex is a full agent with filesystem access. Pass `spec_path`, `workdoc_path`, and specific source-file paths so it reads them directly. Don't inline file content into the prompt.
-- **Review after each step** — read the changed files, confirm the green capture exists and matches `expected_pass_pattern`, confirm no unrelated files were touched.
-- **Compliance loop is yours** — you (not Codex) spawn `spec-compliance-checker` after each step. If it returns FAIL or DRIFT, re-prompt Codex with the specific issues, then re-spawn the checker.
+- **Codex runs the per-step protocol** (red/implement/green/probe/lint/commit, then writes captures + `report.json`) on your behalf — build the Codex prompt so it follows the shared workflow's protocol precisely. Codex does NOT write the spec, `exec.md`, or `observed`, and does NOT spawn the compliance-checker (per the allowlist in `skills/feature/references/developer-workflow.md` §What you write).
+- **Pass file paths read-only** — Codex is a full agent with filesystem access. Pass `spec_path` and `workdoc_path` as READ-ONLY references so Codex reads them directly; under the `workspace-write` sandbox they are not writable to Codex (they live outside `cwd` + `writable_roots`). Pass specific source-file paths too. Don't inline file content into the prompt.
+- **Review after each step** — read the changed files, confirm the green capture exists and matches `expected_pass_pattern`, confirm Codex wrote `captures/step-NN-report.json`, confirm no unrelated files were touched.
+- **No compliance loop here** — neither you nor Codex spawns `spec-compliance-checker`; the orchestrator does that after it copies Codex's `report.json` into `exec.md` `observed` (per feature/SKILL.md §Implement). On FAIL/DRIFT the orchestrator re-dispatches; you re-prompt Codex with the specific issues → Codex re-commits (APPENDS the fixup SHA) + rewrites `report.json`.
 
 For routing triggers and escalation rules see `skills/feature/references/agent-routing.md`.
 
@@ -38,12 +38,14 @@ You are implementing step N of a feature in <project_path>.
 ## Task
 <exact step from spec checklist>
 
-## Spec
+## Spec (READ-ONLY)
 Read the full spec at: <spec_path>
 
-## Execution workdoc
+## Execution workdoc (READ-ONLY)
 Read the workdoc at: <workdoc_path>
 Focus on the planned fields for step N.
+
+You may NOT write the spec or workdoc (`exec.md`) — they are read-only to you. Write your per-step evidence to `captures/` and your structured result to `captures/step-NN-report.json`; the orchestrator records all KB state.
 
 ## Key files to focus on
 <list specific files — Codex can read them directly by path>
@@ -57,20 +59,20 @@ Save all output to: <workdoc_dir>/captures/
      run the test to confirm it fails, save output to captures/step-NN-red.txt, then `git stash pop`.
      Use this when writing the test in isolation is impractical.
    Either way, a red capture is required — it proves the test has real signal.
-   Update observed.red_capture in the workdoc.
+   Record this path as report.json red_capture.
 
 2. Implement (or unstash) the change (stay within planned.allowed_scope: <allowed_scope>)
 
 3. Run: <passing_test_cmd>
    - Save stdout+stderr to: captures/step-NN-green.txt
    - Verify output contains: <expected_pass_pattern>
-   - Update observed.green_capture in the workdoc
+   - Record this path as report.json green_capture.
 
 4. If planned.integration_probe_cmd is set:
    - Run: <integration_probe_cmd>
    - Save output to: captures/step-NN-probe.txt
    - Verify output contains: <expected_probe_signal>
-   - Update observed.probe_capture in the workdoc
+   - Record this path as report.json probe_capture.
 
 5. Run linter and fix warnings **introduced by your changes** (not pre-existing warnings):
    - Rust: `cargo fmt` always, then `cargo clippy` on changed packages
@@ -83,28 +85,53 @@ Save all output to: <workdoc_dir>/captures/
    stage only files directly related to this step — never `git add -A`).
    R8 hygiene applies — see R8 in `skills/feature/references/code-quality-rules.md`.
 
-7. Update observed.actual_files_touched and observed.commit_shas in the workdoc (after commit).
+7. Write captures/step-NN-report.json (after commit) with the schema in
+   `skills/feature/references/developer-workflow.md` §Per-step protocol step i:
+   step, status, commit_shas (APPEND the SHA — on rework append the fixup SHA, never replace),
+   commit_message_grep, actual_files_touched, red_capture, green_capture, probe_capture,
+   notes, log_note, blocker, design_decision, change_type_shift. Do NOT write the spec,
+   `exec.md`, or `observed`, and do NOT spawn the compliance-checker — return the report.json
+   pointer; the orchestrator copies it into `observed` and spawns the checker.
 
 ## Constraints
 - Follow existing code style and patterns exactly
 - Do not modify files outside: <allowed_scope>
 - Do not add comments or docstrings to existing code
-- DONE = green capture exists and matches expected_pass_pattern. No capture = not done.
+- Do not write the spec or `exec.md` (read-only); do not spawn spec-compliance-checker — write captures + report.json only
+- DONE = green capture exists and matches expected_pass_pattern + report.json written. No capture = not done.
 ```
 
 ## Codex Call Parameters
 
 ```
 model: <codex_model if provided, else omit — Codex uses ~/.codex/config.toml default>
-config: {"reasoning": {"effort": <codex_reasoning_effort if provided, else "xhigh">}}
-cwd: <project_path>
-sandbox: danger-full-access  (needs to run tests)
+config:
+  reasoning:
+    effort: <codex_reasoning_effort if provided, else "xhigh">
+  sandbox_workspace_write:
+    writable_roots: [<captures_dir>]          # EXACTLY dirname(workdoc_path)/captures — NEVER the workdoc parent (it holds exec.md)
+sandbox: workspace-write
+cwd: <project_path>                            # repo; workspace-write makes cwd writable for code + commits
+approval-policy: never                          # out-of-root write = HARD REJECT (no silent approve in the non-interactive MCP context)
+env:
+  CARGO_HOME: <project_path>/.codex-cache/cargo
+  PIP_CACHE_DIR: <project_path>/.codex-cache/pip
+  npm_config_cache: <project_path>/.codex-cache/npm
 prompt: <constructed prompt>
 ```
 
 `codex_model` and `codex_reasoning_effort` arrive as optional inputs from the
 feature skill (populated from `.ai-dev-team.yml` or `.ai-dev-team.local.yml`
 under the `codex:` block). Treat absent values as "use the defaults above".
+
+### Why this sandbox recipe (validated live, 2026-06-04)
+
+- **`workspace-write`** confines writes to `cwd` + `writable_roots` + the system temp dirs (`/tmp` and the macOS default `$TMPDIR` under `/var/folders/...` — both validated writable, so bare `mktemp -d` / `tempfile.mkdtemp()` test tooling works). Reads stay unrestricted, so Codex still reads the spec and workdoc directly by path.
+- **`writable_roots: [<captures_dir>]`** = EXACTLY `dirname(workdoc_path)/captures`. This lets Codex write `report.json` + capture files but NOT the spec or `exec.md` (both live under the KB, outside `cwd` + `writable_roots`). NEVER point `writable_roots` at the workdoc parent — that directory holds `exec.md` and would make it writable again.
+- **`approval-policy: never`** converts the out-of-root "needs approval" into a HARD REJECT in the non-interactive MCP context. Without it, `workspace-write` is approval-gated (not deny), and the mechanical guarantee silently degrades.
+- **Cache env relocation**: `danger-full-access` previously let test tools write `$HOME` caches (`~/.cargo`, `~/.cache`, `~/.npm`) — these are NOT temp, so `workspace-write` blocks them. The `env` block points `CARGO_HOME` / `PIP_CACHE_DIR` / `npm_config_cache` under `cwd` (writable).
+- **Fail-closed escape hatch**: if a project's tests genuinely need writes outside `cwd` / `captures` / temp, the orchestrator appends that EXACT path to the dispatch `writable_roots` list (per-dispatch, never global) AND records the exception as a spec-Log line `- YYYY-MM-DD: codex sandbox exception — added writable_root <path>: <reason>`. It NEVER reverts to `danger-full-access`.
+- **KB-safety assumption**: the KB vault lives under `$HOME`, NOT `/tmp` / `$TMPDIR`. Do not place the KB under temp.
 
 ## Rules (Codex-specific)
 
