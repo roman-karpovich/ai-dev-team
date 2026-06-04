@@ -167,7 +167,7 @@ probe_capture:
 notes: ""
 ```
 
-Leave all `observed` fields empty — the developer fills them during implementation.
+Leave all `observed` fields empty — the orchestrator fills `observed` from the developer's `report.json` before spawning the compliance-checker (per §Implement; the developer never writes `exec.md` or the spec).
 
 Quick facts for implementation steps:
 - Each implementation step requires evidence captures (failing test → implement → passing test → compliance check)
@@ -788,6 +788,8 @@ If the current checklist step in §5 carries a `@codex` or `@senior` suffix (cas
 
 **Remember the choice**: once the user has picked an agent, append to the spec Log per the canonical format in `skills/feature/references/agent-routing.md` §Rationale logging. Continue mode reads the most recent `last_agent=` entry from the Log and offers that as the default on resume (the user can still override).
 
+**Set `status: IN_PROGRESS` before dispatch.** After agent selection and BEFORE dispatching the developer, the orchestrator sets the spec frontmatter `status: IN_PROGRESS` (this was formerly the developer's job; it is now orchestrator-owned, because the developer never writes the spec — see `skills/feature/references/developer-workflow.md` §What you write).
+
 #### Option 1: Codex (developer-codex agent)
 
 Spawn `developer-codex` subagent with:
@@ -803,6 +805,23 @@ Spawn `developer-senior` subagent with:
 - `workdoc_path`: `<kb_path>/repos/<project>/design/workdocs/<slug>/exec.md`
 - `project_path`: path to the source repo
 - `task`: "full spec" or specific steps
+
+### Orchestrator-sole-KB-writer per-step loop
+
+The orchestrator is the sole KB writer, serially — the developer writes only source-repo commits + `captures/` (including `report.json`) and never the spec or `exec.md` (see `skills/feature/references/developer-workflow.md` §What you write). The orchestrator drives the per-step loop:
+
+1. **Dispatch ONE step at a time** with read-only `spec_path` / `workdoc_path` and a writable `captures/` dir. A PASS gate (step 4) MUST clear before the next step is dispatched — no multi-step batch where a later step's commit lands before an earlier step's fixup, which would span the checker's `git diff <first>^ <last>` range across an unrelated step (spurious scope/semantic verdicts). One-step dispatch keeps each step's commit range contiguous.
+2. **The developer** runs its per-step protocol (red → implement → green → probe → lint → commit), writes the captures + `captures/step-NN-report.json`, and returns the report pointer. It does NOT spawn the compliance-checker and does NOT write the spec or `exec.md`.
+3. **The developer returns** the `report.json` pointer for the step.
+4. **The orchestrator, per step IN ORDER**, reads `report.json`:
+   - **If `report.json` `status: blocked`** → to stay coherent with the Continue-mode resume contract, the orchestrator MUST: (a) set spec frontmatter `status: BLOCKED` (NOT leave it `IN_PROGRESS` — Continue-mode routes on frontmatter `BLOCKED`; if left `IN_PROGRESS` it resumes and silently re-dispatches the blocked step); (b) append a Log line in the Continue grammar `- YYYY-MM-DD: BLOCKED — waiting on step N: <blocker>; prior_status=IN_PROGRESS` (the grammar Continue-mode reads for the unblock prompt); (c) leave the step unchecked; (d) STOP. Do NOT copy `observed`, do NOT spawn the checker, do NOT check off (the developer no longer writes the blocker Log, so the orchestrator owns this).
+   - **Else (`status: done`)** → in this exact order: (1) **append the R1/R2 justification to the spec Log BEFORE the checker** (the checker reads the spec Log, NOT `observed.notes`, for R1/R2 — see below; if `report.json` carries an R7 convention-shift line the orchestrator appends that too, but as audit-trail, since R5-R7 are NOT checker-gated); (2) copy EVERY `observed` field from `report.json` into `exec.md` `observed` (`actual_files_touched`, `commit_shas` — UNION on rework, never overwrite, preserving the checker's "ordered list of ALL commits incl fixup" precondition; `commit_message_grep`; `red_capture`; `green_capture`; `probe_capture`; `notes`); (3) spawn `spec-compliance-checker` (it reads `exec.md` + the spec Log from disk — its contract is UNCHANGED); (4) on **PASS**: check off the step (`- [ ]` → `- [x]`) — checkoff is the ONLY spec write that stays post-PASS — and append the remaining Log (progress + `report.json` `log_note` / `design_decision` / `change_type_shift` not already Logged in step 1); on **FAIL/DRIFT**: re-dispatch the developer with the issues → the developer re-commits (APPENDS the fixup SHA) + rewrites `report.json` → the orchestrator re-copies `observed` (UNION `commit_shas`) + re-spawns the checker (the justification Log from step 1 is append-once — see below, NOT re-appended on re-spawn). The rework sub-loop is orchestrator-side.
+
+**Append R1/R2 justification to the spec Log BEFORE spawning the checker.** The compliance-checker reads the **spec Log** (not `observed.notes`) for R1/R2 justification (it gates R1/R2/R3/R8; R5-R7 are convention-text references, NOT checker-gated — see `agents/spec-compliance-checker.md`): R2 requires a `- YYYY-MM-DD: core test <file> changed …` Log entry (plus matching spec §3 intent) before it PASSes a core-test assertion edit; R1 expects the public-API reason in the spec Log. So when `report.json` carries an R1/R2 justification (`log_note` / `notes`), the orchestrator MUST append it to the spec Log in the checker-readable grammar BEFORE spawning the checker — R2 = `- YYYY-MM-DD: core test <file> changed …`, R1 = the public-API reason. An R7 convention-shift line (`report.json` `notes`) is also appended to the spec Log, but as audit-trail only — R7 is not checker-gated, so its Log append is a record, not a checker precondition. This append is **append-once before the first checker spawn for the step**: on a FAIL/DRIFT re-spawn, do NOT re-append the same justification (idempotent — the Log entry already exists from the first spawn). Only the `[ ]→[x]` checkoff stays post-PASS. (Contrast R3: only R3's regression description rides `report.json` `notes` → `observed.notes` → the checker — the checker reads R3 from `observed.notes`, but R1/R2 from the spec Log.)
+
+**Copy observed BEFORE spawning the checker.** Because the orchestrator copies every `report.json` field into `exec.md` `observed` BEFORE spawning the compliance-checker, the checker reads `exec.md` exactly as before (including `commit_message_grep` for its tier-1 SHA-rewrite fallback). For this to hold, `report.json` MUST carry every `observed` field the checker reads (per the schema in `skills/feature/references/developer-workflow.md`).
+
+**Continue-mode reconcile rule (crash-safety).** Continue resumes from the first unchecked `- [ ]` step. A crash after the developer commits + writes `report.json` but before the orchestrator's checkoff leaves a committed-but-unchecked step. Reconcile: if an unchecked step has BOTH `report.json` AND the commit present in `captures`/git → ingest the report + run the checker (do NOT blind re-dispatch). The durable triad = commits (git) + captures + `report.json`, all surviving any crash.
 
 ### Git conventions
 
