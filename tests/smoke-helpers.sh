@@ -9712,3 +9712,188 @@ SPECEOF
   fi
   echo "kb-layout enum single-source intact; status:DONE accepted (not C3-flagged)"
 }
+
+# --- KB parallel-write protection (spec 2026-06-03-kb-parallel-write-protection) ---
+# Stage-1 enforcement slice: orchestrator-sole-KB-writer (M1) + codex sandbox (M2).
+# Four pins P1-P4, helper prefix `check_pwp_` (so the Step-3 probe
+# `grep -c '^check_pwp_' tests/smoke-proves-manifest.txt` == 4). All prompt-text.
+
+# Shared allowlist-primary write-verb scanner (§3.8 P2/P4). For each dev-facing
+# line in the WHOLE FILE that contains a write verb, the write-TARGET must be
+# ONLY captures/ , report.json , or a source/git path. A line whose target is
+# the spec / exec.md / observed / workdoc / Log / status / compliance-checker
+# FAILS — unless it is a prohibition ("do NOT write X", "never", "read-only",
+# "may NOT", "but NOT") or attributes the action to the orchestrator. A write
+# verb sitting DIRECTLY on a forbidden target (e.g. "Update observed",
+# "append a note to the spec Log", "Spawn spec-compliance-checker",
+# "Check off the step", "Set spec status") is a HARD fail even if the line also
+# names an allowed token. Target-allowlist, not phrase-denylist — a novel
+# phrasing of a forbidden write still fails because its target is off-allowlist.
+_pwp_allowlist_scan() {
+  python3 - "$1" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+lines = open(path, encoding="utf-8").read().splitlines()
+
+WRITE_RE = re.compile(
+    r"\bUpdate\b|\bwrite\b|\bwrites\b|\bSave\b|\bsave\b|\bAppend\b|\bappend\b|"
+    r"\bappends\b|\bCheck off\b|\bcheck off\b|\bchecks off\b|\bSpawn\b|"
+    r"\bspawn\b|\bspawns\b|\bSet spec\b|\bfill the\b|\bfills\b|\brecord\b|"
+    r"\brecords\b")
+
+FORBIDDEN_RE = re.compile(
+    r"\bthe spec\b|\bspec Log\b|\bspec file\b|\bspec frontmatter\b|"
+    r"\bspec `status`\b|\bspec status\b|`exec\.md`|\bexec\.md\b|\bobserved\b|"
+    r"`observed`|observed\.|\bthe workdoc\b|\bthe Log\b|\bLog section\b|"
+    r"\bLog append\b|\bLog entry\b|\bLog line\b|\bLogs\b|\bLogged\b|\bstatus\b|"
+    r"compliance-checker|spec-compliance-checker|\bthe checker\b")
+
+ALLOWED_RE = re.compile(
+    r"captures/|`captures/`|report\.json|`report\.json`|commit|git|branch|"
+    r"source-repo|capture")
+
+EXEMPT_RE = re.compile(
+    r"do NOT|does NOT|never writes?|NOT touch|NOT write|may NOT|but NOT|"
+    r"NOT the spec|no longer|read-only|read only|orchestrator|writes nothing|"
+    r"neither you nor|contradicts this contract|are the orchestrator's|"
+    r"owns the|owns every|is the orchestrator|are read-only|"
+    r"reads (?:the|them|it)|reads `exec", re.IGNORECASE)
+
+DIRECT_FORBIDDEN_RE = re.compile(
+    r"Update\s+`?observed`?|fill the `?observed`?|fills?\s+`?observed`?|"
+    r"write(?:s)?\s+(?:the\s+)?(?:spec|`?exec\.md`?|workdoc|`?observed`?|Log)|"
+    r"append\s+(?:a\s+)?(?:terse\s+)?(?:note|line|entry)?\s*to\s+the\s+spec\s+Log|"
+    r"append\s+to\s+the\s+Log|Check off\s+the\s+step|check\s+off\s+the\s+step|"
+    r"Spawn\s+`?spec-compliance-checker`?|spawn\s+(?:the\s+)?compliance-checker|"
+    r"Set\s+spec\s+`?status`?|set\s+spec\s+frontmatter\s+`?status`?",
+    re.IGNORECASE)
+
+failures = []
+for i, line in enumerate(lines, 1):
+    if not WRITE_RE.search(line):
+        continue
+    if not FORBIDDEN_RE.search(line):
+        continue
+    if DIRECT_FORBIDDEN_RE.search(line) and not EXEMPT_RE.search(line):
+        failures.append((i, line))
+        continue
+    if EXEMPT_RE.search(line):
+        continue
+    if ALLOWED_RE.search(line):
+        continue
+    failures.append((i, line))
+
+if failures:
+    print(f"{path}: allowlist FAIL — dev-facing write-verb line(s) target a "
+          f"forbidden KB surface (spec/exec.md/observed/workdoc/Log/status/checker):")
+    for n, l in failures:
+        print(f"  :{n}: {l.strip()[:160]}")
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+
+# P1 — orchestrator copies observed into exec.md BEFORE spawning the
+# compliance-checker (the loop-ordering invariant; checker contract unchanged).
+check_pwp_loop_ordering() {
+  local path='skills/feature/SKILL.md'
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF '**Copy observed BEFORE spawning the checker.**' "$path" \
+    || { echo "$path §Implement missing '**Copy observed BEFORE spawning the checker.**' ordering anchor"; return 1; }
+  grep -qF 'copies every `report.json` field into `exec.md` `observed` BEFORE spawning the compliance-checker' "$path" \
+    || { echo "$path §Implement missing 'copies every report.json field into exec.md observed BEFORE spawning the compliance-checker' ordering sentence"; return 1; }
+  # SKILL.md:170 must say the ORCHESTRATOR (not the developer) fills observed.
+  grep -qF 'the orchestrator fills `observed` from the developer'"'"'s `report.json` before spawning the compliance-checker' "$path" \
+    || { echo "$path missing 'orchestrator fills observed from the developer's report.json before spawning the compliance-checker' (was 'developer fills')"; return 1; }
+  echo "$path §Implement states orchestrator writes observed BEFORE spawning the checker"
+}
+
+# P2 — developer-workflow.md (+ developer-senior.md) allowlist-primary:
+# canonical allowlist sentence present + WHOLE-FILE write-verb target scan.
+check_pwp_devworkflow_allowlist() {
+  local dwf='skills/feature/references/developer-workflow.md'
+  local snr='agents/developer-senior.md'
+  [ -r "$dwf" ] || { echo "$dwf not readable"; return 1; }
+  [ -r "$snr" ] || { echo "$snr not readable"; return 1; }
+  grep -qF 'The developer'"'"'s ONLY writes are: source-repo commits on the branch, and files under `captures/` (including `report.json`). The developer writes nothing else and does not spawn the compliance-checker.' "$dwf" \
+    || { echo "$dwf missing the canonical allowlist sentence (byte-exact)"; return 1; }
+  local out
+  out=$(_pwp_allowlist_scan "$dwf") || { echo "$out"; return 1; }
+  out=$(_pwp_allowlist_scan "$snr") || { echo "$out"; return 1; }
+  echo "developer-workflow.md has the canonical allowlist sentence; whole-file write-verb scan clean (dwf + developer-senior)"
+}
+
+# P3 — codex sandbox config shape: workspace-write (NOT danger-full-access),
+# approval-policy: never, nested sandbox_workspace_write.writable_roots +
+# captures-only placeholder.
+check_pwp_codex_sandbox_config() {
+  local path='agents/developer-codex.md'
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qE '^sandbox: workspace-write' "$path" \
+    || { echo "$path missing active 'sandbox: workspace-write' param"; return 1; }
+  if grep -qF 'sandbox: danger-full-access' "$path"; then
+    echo "$path still sets the stale 'sandbox: danger-full-access' param"
+    return 1
+  fi
+  grep -qE '^approval-policy: never' "$path" \
+    || { echo "$path missing active 'approval-policy: never' param"; return 1; }
+  grep -qF 'sandbox_workspace_write:' "$path" \
+    || { echo "$path missing nested 'sandbox_workspace_write:' key"; return 1; }
+  grep -qF 'writable_roots: [<captures_dir>]' "$path" \
+    || { echo "$path missing captures-only 'writable_roots: [<captures_dir>]' placeholder"; return 1; }
+  echo "$path codex sandbox config: workspace-write + approval-policy:never + nested sandbox_workspace_write.writable_roots=[<captures_dir>] (no danger-full-access)"
+}
+
+# P4 — developer-codex.md allowlist-primary WHOLE-FILE scan: no dev-facing
+# write-verb line targets anything but captures/report.json/git; no
+# checker-spawn directive.
+check_pwp_codex_allowlist() {
+  local path='agents/developer-codex.md'
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local out
+  out=$(_pwp_allowlist_scan "$path") || { echo "$out"; return 1; }
+  # Negative — the old "Compliance loop is yours — you spawn …" directive gone.
+  if grep -qF 'Compliance loop is yours' "$path"; then
+    echo "$path still contains the stale 'Compliance loop is yours' checker-spawn directive"
+    return 1
+  fi
+  echo "$path whole-file write-verb scan clean (captures/report.json/git only; no checker-spawn directive)"
+}
+
+# Behavioral self-test for the shared allowlist scanner — proves it has teeth
+# (catches the X1->X9->X13->X17 dev-KB-write regression class) by driving it
+# against synthetic forbidden + compliant fixtures. Without this, P2/P4 could
+# silently degrade to a no-op (always-pass) and not be noticed.
+check_smoke_helper_pwp_allowlist_scanner_self_test() {
+  local tmpd
+  tmpd=$(mktemp -d 2>/dev/null) || { echo "self-test: mktemp -d failed"; return 1; }
+  if [ -z "$tmpd" ] || [ ! -d "$tmpd" ]; then echo "self-test: bad tmpdir"; return 1; fi
+  # Forbidden fixtures (each must be REJECTED by the scanner, rc!=0).
+  printf '%s\n' '**k. Check off the step** in the spec checklist and append a terse note to the spec Log section.' > "$tmpd/bad1.md"
+  printf '%s\n' '- **i. Update `observed`** fields in the workdoc with actual_files_touched.' > "$tmpd/bad2.md"
+  printf '%s\n' '**j. Spawn `spec-compliance-checker`** subagent with spec_path, workdoc_path.' > "$tmpd/bad3.md"
+  printf '%s\n' 'Set spec status: IN_PROGRESS in the spec frontmatter before writing any code.' > "$tmpd/bad4.md"
+  printf '%s\n' 'Append a terse note to the spec Log after the commit.' > "$tmpd/bad5.md"
+  # Compliant fixture (must be ACCEPTED, rc==0).
+  {
+    printf '%s\n' 'Write your evidence to captures/step-NN-report.json and return the pointer.'
+    printf '%s\n' 'The developer does NOT write the spec Log; the orchestrator appends the Log.'
+  } > "$tmpd/good1.md"
+  local f rc
+  for f in bad1 bad2 bad3 bad4 bad5; do
+    _pwp_allowlist_scan "$tmpd/$f.md" >/dev/null 2>&1; rc=$?
+    if [ "$rc" -eq 0 ]; then
+      echo "self-test: scanner WRONGLY accepted forbidden fixture $f (no teeth)"
+      rm -rf "$tmpd"; return 1
+    fi
+  done
+  _pwp_allowlist_scan "$tmpd/good1.md" >/dev/null 2>&1; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "self-test: scanner WRONGLY rejected the compliant fixture good1"
+    rm -rf "$tmpd"; return 1
+  fi
+  rm -rf "$tmpd"
+  echo "allowlist scanner self-test: 5 forbidden fixtures rejected, 1 compliant accepted (scanner has teeth)"
+}

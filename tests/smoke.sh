@@ -689,6 +689,15 @@ check "compliance-checker SHA fallback"     check_compliance_sha_validation
 check "dev-workflow commit_message_grep"    check_dev_workflow_amend_note
 echo
 
+# --- KB parallel-write protection (spec 2026-06-03-kb-parallel-write-protection) ---
+echo "KB parallel-write protection (Stage 1):"
+check "pwp-loop-ordering"            check_pwp_loop_ordering
+check "pwp-devworkflow-allowlist"    check_pwp_devworkflow_allowlist
+check "pwp-codex-sandbox-config"     check_pwp_codex_sandbox_config
+check "pwp-codex-allowlist"          check_pwp_codex_allowlist
+check "pwp-allowlist-scanner-self-test" check_smoke_helper_pwp_allowlist_scanner_self_test
+echo
+
 # --- /feature investigation-bridge retirement (absence guard) ---
 echo "Feature investigation-bridge retirement guard:"
 

@@ -133,6 +133,16 @@ under the `codex:` block). Treat absent values as "use the defaults above".
 - **Fail-closed escape hatch**: if a project's tests genuinely need writes outside `cwd` / `captures` / temp, the orchestrator appends that EXACT path to the dispatch `writable_roots` list (per-dispatch, never global) AND records the exception as a spec-Log line `- YYYY-MM-DD: codex sandbox exception — added writable_root <path>: <reason>`. It NEVER reverts to `danger-full-access`.
 - **KB-safety assumption**: the KB vault lives under `$HOME`, NOT `/tmp` / `$TMPDIR`. Do not place the KB under temp.
 
+### Honest labeling — claim limit
+
+This recipe is **configured for mechanical denial** (per-version integration check gates the stronger claim). An offline contract/config edit cannot prove runtime behavior; the mechanical guarantee depends on the running `mcp__codex__codex` / Codex binary honoring `approval-policy: never` + the nested `sandbox_workspace_write` block. Until the per-version manual integration check below passes for the current binary, say "configured for mechanical denial," NOT "mechanically prevents Codex KB writes."
+
+**Per-version manual integration check** (run after release AND on every codex/MCP version bump): dispatch a real codex step under the §Codex Call Parameters recipe and confirm all three —
+1. a write to a real vault spec path under `$HOME` is **HARD-REJECTED** (operation not permitted; file unchanged);
+2. a write to `captures/` **succeeds**;
+3. a bare `mktemp -d` write **succeeds** (temp tooling works under workspace-write).
+Record the codex binary version with the result. If (1) does not hard-reject, the recipe degraded to discipline — STOP and re-evaluate; do NOT ship the stronger claim.
+
 ## Rules (Codex-specific)
 
 - Never call Codex with a vague prompt — be specific about files, functions, expected behavior.

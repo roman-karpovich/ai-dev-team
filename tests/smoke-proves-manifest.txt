@@ -301,3 +301,15 @@ check_kb_audit_skill_contract prompt-text
 check_feature_status_kb_drift_fold prompt-text
 check_kb_audit_trigger_map_wired prompt-text
 check_kb_layout_status_enum_single_source behavioral
+
+# KB parallel-write protection (spec 2026-06-03-kb-parallel-write-protection):
+#   P1-P4 pin prompt/config text (orchestrator-sole-writer contract + codex
+#   sandbox shape) → prompt-text. The shared allowlist scanner's self-test
+#   executes the scanner against synthetic fixtures (runtime behavior) →
+#   behavioral. The Step-3 probe asserts exactly the four `^check_pwp_`
+#   prompt-text helpers are classified here.
+check_pwp_loop_ordering prompt-text
+check_pwp_devworkflow_allowlist prompt-text
+check_pwp_codex_sandbox_config prompt-text
+check_pwp_codex_allowlist prompt-text
+check_smoke_helper_pwp_allowlist_scanner_self_test behavioral
