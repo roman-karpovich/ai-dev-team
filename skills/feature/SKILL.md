@@ -1098,6 +1098,8 @@ After phase 1, show the commit list and present exactly these 4 options:
 git log --oneline <base>..<branch>
 ```
 
+After the user picks a preserving option and phase 2 status is set (§3.4a), run `python3 tests/backlog_archive.py --dry-run` and present the archive-approval banner if any done items are found — full protocol in `§3.4a`. Option 4 (Discard) does NOT trigger the backlog_archive check.
+
 ---
 ## ⏸ AWAITING YOUR INPUT
 
@@ -1125,6 +1127,35 @@ Phase 2 applies only after a preserving option succeeds. Set frontmatter
 
 `DONE` remains accepted as a legacy synonym of `VERIFIED` when reading older specs, but new transitions must write `VERIFIED`.
 
+After phase 2 status is set, run the backlog archive check:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/tests/backlog_archive.py" "<kb_path>" --project <project> --dry-run
+```
+
+If AUTO count N + CANDIDATE count M > 0, present the approval banner. Two variants:
+
+- **M ≥ 1** (candidates exist):
+
+  > ## ⏸ AWAITING YOUR INPUT
+  > Backlog has **N** unambiguously-done item(s) ready to archive. **M** more look done (number matches a done table row) — approve which to archive:
+  > - `#<id>` "<block_title>" ↔ "<matched_row_title>" — *<hint>*
+  > - (one line per candidate from `--dry-run` CANDIDATES section)
+  > Reply `all` / a list of ids / `none` (auto set only) / `skip`.
+  > **Approve which candidates?**
+
+  On reply `all` → `--apply --archive-candidates <all-ids>`; a list of ids → `--apply --archive-candidates <ids>`; `none` → `--apply` (no `--archive-candidates`, AUTO set only); `skip` → nothing.
+
+- **M = 0** (AUTO-only, no candidates):
+
+  > ## ⏸ AWAITING YOUR INPUT
+  > Backlog has **N** done item(s) ready to archive (all unambiguous). Reply `ok` to archive / `skip`.
+  > **Archive now?**
+
+  On `ok` → `--apply` (no `--archive-candidates`); `skip` → nothing.
+
+After any `--apply`, show the diff; the user reviews and commits. The archiver never commits. `--dry-run` always runs before `--apply`; `--apply` only on explicit reply. Not fired at session-start (#76a).
+
 ---
 
 **Option 1 — Merge into base branch locally:**
@@ -1133,7 +1164,7 @@ git checkout <base-branch> && git pull && git merge <branch>
 ```
 Run verifier once more on the merged result. If green, apply phase 2:
 append staged §8 items, append the staged Log line if any, set `shipped_at`,
-and decide status per `§3.4a`. **Do not delete the feature branch** — leave
+and decide status per `§3.4a`. Then run the backlog_archive.py check per `§3.4a`. **Do not delete the feature branch** — leave
 the branch reference in place (useful for reflection and quick rollback).
 
 **Option 2 — Push feature branch:**
@@ -1142,11 +1173,11 @@ git push -u origin <branch>
 ```
 Report the branch name. After a clean push, apply phase 2: append staged §8
 items, append the staged Log line if any, set `shipped_at`, and decide
-status per `§3.4a`.
+status per `§3.4a`. Then run the backlog_archive.py check per `§3.4a`.
 
 **Option 3 — Keep as-is:** Do nothing externally. Report the branch name.
 Apply phase 2 unconditionally: append staged §8 items, append the staged Log
-line if any, set `shipped_at`, and decide status per `§3.4a`.
+line if any, set `shipped_at`, and decide status per `§3.4a`. Then run the backlog_archive.py check per `§3.4a`.
 
 **Option 4 — Discard:** discard the in-memory delta and delegate to the
 Discard mode below (same flow as `/feature discard <spec-path>`). Any
@@ -1370,7 +1401,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/tests/kb_drift_scan.py" "<kb_path>" --project <pr
 
 Render rules:
 
-- **Findings present (scanner exit 1)**: render the `### KB drift — <project>` header, then ONE line — the `--summary` headline (line 1) — then `(run /kb-audit for detail)`. Do not expand the grouped detail here; `/kb-audit` is the detailed surface.
+- **Findings present (scanner exit 1)**: render the `### KB drift — <project>` header, then ONE line — the `--summary` headline (line 1) — then `(run /kb-audit for detail)`. Do not expand the grouped detail here; `/kb-audit` is the detailed surface. If the headline includes `C7:` (backlog done-item bloat), append one recommend-line: `  → Run python3 tests/backlog_archive.py <kb_path> --project <project> --dry-run to review archived candidates.`
 - **0 findings (exit 0)**: **omit** the `### KB drift — <project>` section entirely (consistent with the omit-empty-section rule used by the other Status sections).
 - **Scanner/vault unavailable (exit 2, `python3` absent, `kb_path`/`project` unresolved)**: omit the section silently — **never block or error** the status render.
 
@@ -1523,6 +1554,14 @@ Comparison uses the normalized form. Storage keeps the original text.
 4. Tally items:
    - All `status: done` → flip spec `status: VERIFIED`, append Log
      `- YYYY-MM-DD: VERIFIED — all post-merge items closed`. Report success.
+     After the status flip, run the backlog archive check:
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/tests/backlog_archive.py" "<kb_path>" --project <project> --dry-run
+     ```
+     If AUTO count N + CANDIDATE count M > 0, present the approval banner. Two variants:
+     - **M ≥ 1** (candidates exist): show `## ⏸ AWAITING YOUR INPUT` banner listing AUTO count N + each candidate (`#<id>` "<block_title>" ↔ "<matched_row_title>" — *<hint>*), reply `all`/ids/`none`/`skip`. **Approve which candidates?** On reply → `--apply --archive-candidates <approved-ids>`; `none` → `--apply` (AUTO only); `skip` → nothing.
+     - **M = 0** (AUTO-only): show `## ⏸ AWAITING YOUR INPUT` banner: "Backlog has **N** done item(s) ready to archive (all unambiguous). Reply `ok` to archive / `skip`." **Archive now?** On `ok` → `--apply` (no `--archive-candidates`); `skip` → nothing.
+     After any `--apply`, show the diff; the user reviews and commits. The archiver never commits. `--dry-run` runs before `--apply`; `--apply` only on explicit reply. Not fired at session-start (#76a).
    - Any `failed` → refuse. Report each failed item with its note; tell the
      user to resolve via `checklist done <n> --note=...` or to open a
      follow-up spec.

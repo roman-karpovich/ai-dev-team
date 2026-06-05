@@ -147,7 +147,7 @@ Output: JSON
     {"scanned": <int>, "findings": [{"class", "file", "line", "detail", "auto_safe"}]}
 `class` is one of {C1_broken_wikilink, C2_dangling_section_pointer,
 C3_status_enum_violation, C4_status_drift, C5_research_status_enum_violation,
-C6_index_row_bloat}.
+C6_index_row_bloat, C7_backlog_done_bloat}.
 `file` is KB-relative. `--json` is accepted for explicitness; JSON is always
 emitted.
 
@@ -204,6 +204,7 @@ ACCEPTED_RESEARCH_STATUSES = frozenset(CANONICAL_RESEARCH_STATUSES)
 # observed dumps at 315/325/333/441/1756). No CLI override (consistent with
 # C1–C5 having no tunables).
 INDEX_ROW_BLOAT_THRESHOLD = 300
+C7_BLOAT_THRESHOLD = 12
 
 # C6 index/MOC file-type tokens (the `type:` values that mark an index/MOC, in
 # addition to the `vault-index.md` basename clause).
@@ -248,6 +249,11 @@ C6_LIST_ENTRY_RE = re.compile(r"^\s*([-*+]|\d+\.)\s+\S")
 # C6 separator-cell shape: a stripped cell consisting only of dashes with
 # optional leading/trailing `:` alignment colons.
 C6_SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
+
+# C7 backlog done-bloat markers: completed backlog section headers and
+# completed Active-priorities table rows kept inline in BACKLOG.md.
+C7_STRUCK_HEADER_RE = re.compile(r"^### ~~")
+C7_STRUCK_TABLE_ROW_RE = re.compile(r"^\s*\| ~~")
 
 # Obsidian wikilink: [[target]] with optional #heading / |alias / ^block-id.
 WIKILINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
@@ -870,6 +876,26 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                         }
                     )
 
+        # --- C7 backlog done bloat ---
+        # Runs ABOVE the `frontmatter is None: continue` gate so BACKLOG.md files
+        # without YAML frontmatter are still checked.
+        if path.name == "BACKLOG.md":
+            completed_inline = sum(
+                1
+                for line in lines
+                if C7_STRUCK_HEADER_RE.match(line) or C7_STRUCK_TABLE_ROW_RE.match(line)
+            )
+            if completed_inline >= C7_BLOAT_THRESHOLD:
+                findings.append(
+                    {
+                        "class": "C7_backlog_done_bloat",
+                        "file": rel,
+                        "line": None,
+                        "detail": f"BACKLOG.md has {completed_inline} completed items inline (>= {C7_BLOAT_THRESHOLD}) — run python3 tests/backlog_archive.py <kb_root> --project <p> --dry-run to review",
+                        "auto_safe": False,
+                    }
+                )
+
         # --- C3 status-enum violation ---
         # Scope strictly to the leading `--- ... ---` frontmatter block — a body
         # that merely QUOTES `type: spec` (e.g. a research note documenting the
@@ -988,16 +1014,16 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
     return {"scanned": len(files), "findings": findings}
 
 
-# Canonical class order for the --summary render (C1<C2<C3<C4<C5<C6). Keyed by
+# Canonical class order for the --summary render (C1<C2<C3<C4<C5<C6<C7). Keyed by
 # the leading CLASS_SHORT token (the class up to the first `_`).
-_CLASS_ORDER = ("C1", "C2", "C3", "C4", "C5", "C6")
+_CLASS_ORDER = ("C1", "C2", "C3", "C4", "C5", "C6", "C7")
 
 
 def class_short(cls: str) -> str:
     """Leading CLASS_SHORT token of a finding class (up to the first `_`).
 
     `C4_status_drift` → `C4`. Used for the headline per-class counts and to
-    order/group the detail block in canonical C1<C2<C3<C4 order.
+    order/group the detail block in canonical class order.
     """
     return cls.split("_", 1)[0]
 

@@ -8977,7 +8977,7 @@ counts = {}
 for f in findings:
     short = f["class"].split("_", 1)[0]
     counts[short] = counts.get(short, 0) + 1
-present = [s for s in ("C1", "C2", "C3", "C4", "C5", "C6") if s in counts]
+present = [s for s in ("C1", "C2", "C3", "C4", "C5", "C6", "C7") if s in counts]
 want_counts = " ".join(f"{s}:{counts[s]}" for s in present)
 want_drift = (
     f"⚠ KB drift — {len(findings)} findings: {want_counts} "
@@ -9228,6 +9228,359 @@ if measure != 202:
     sys.exit(1)
 
 print("kb_drift_scan C6: 301-flag/300-clean strict boundary + detail measure; `-` bullet@9 (315) and `1.` ordered@10 (325) post-marker measure; non-index type:reference >300 NOT flagged (scope); unescaped-pipe cell 402 flags as ONE cell (not naive-split into two ≤300); no-frontmatter vault-index.md 441 flags via basename clause above the FM gate (X1) + control non-vault-index clean; split_unescaped_pipes parity unit — splits even `\\|`, not odd `\|`, and c6_table_row_measure splits a real `\\|` separator (201 not 402)")
+PYEOF
+}
+
+# Behavioral: C7 backlog-done-bloat (spec 2026-06-04-backlog-curator). Builds two
+# single-project vaults and pins the STRICT threshold boundary: a BACKLOG.md with
+# exactly C7_BLOAT_THRESHOLD (12) struck-done lines fires C7 in the `--summary`
+# headline (`C7:` token present), while one with 11 stays clean (no C7). Both the
+# struck section-header form (`^### ~~`) and the struck table-row form (`^\s*\| ~~`)
+# count toward the tally, and the BACKLOG carries NO frontmatter (proves C7 runs
+# above the frontmatter gate, alongside C6). Mutation-protected: drop the `>=`
+# threshold compare (fire on any count, or fire at 11) and the 11-struck clean
+# assertion goes RED; key the regex on a non-line-start pattern (so prose
+# `- ~~…~~` mentions count) and the low-FP boundary breaks.
+check_kb_drift_c7_backlog_bloat() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  python3 - "$scanner" <<'PYEOF'
+import subprocess, sys, tempfile
+from pathlib import Path
+
+scanner = sys.argv[1]
+
+
+def summary(struck_headers, struck_rows, prose_mentions=0):
+    """Build a single-project vault whose BACKLOG.md (NO frontmatter) carries the
+    given count of struck section headers + struck table rows + line-start-absent
+    prose `~~` mentions; return the `--summary` stdout."""
+    with tempfile.TemporaryDirectory() as td:
+        proj = Path(td) / "repos" / "ai-dev-team"
+        proj.mkdir(parents=True)
+        lines = ["# Backlog", ""]
+        for i in range(struck_headers):
+            lines.append(f"### ~~{i}. done~~ ✅ DONE (2026-04-17)")
+            lines.append("body")
+        if struck_rows:
+            lines += ["", "| # | Item | Status |", "|---|------|--------|"]
+            for i in range(struck_rows):
+                lines.append(f"| ~~**{100 + i}**~~ | done | ✅ DONE |")
+        for i in range(prose_mentions):
+            lines.append(f"- a ~~struck prose mention {i}~~ inline, not at line start")
+        (proj / "BACKLOG.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        r = subprocess.run(
+            [sys.executable, scanner, str(td), "--project", "ai-dev-team", "--summary"],
+            capture_output=True,
+            text=True,
+        )
+        return r.stdout
+
+
+# (1) STRICT threshold: exactly 12 struck items (>= C7_BLOAT_THRESHOLD) → C7 fires
+# in the headline; 11 stays clean. A `>` instead of `>=`, or any-count firing,
+# flips one of these.
+bloat = summary(12, 0)
+if "C7:" not in bloat.splitlines()[0]:
+    print(f"(1) 12 struck headers must fire C7 in headline, got: {bloat.splitlines()[0]!r}")
+    sys.exit(1)
+lean = summary(11, 0)
+if "C7:" in lean:
+    print(f"(1) 11 struck headers (< threshold) must NOT fire C7, got: {lean!r}")
+    sys.exit(1)
+
+# (2) Both struck forms count: 6 struck headers + 6 struck table rows = 12 → fires.
+mixed = summary(6, 6)
+if "C7:" not in mixed.splitlines()[0]:
+    print(f"(2) 6 headers + 6 struck rows (=12) must fire C7, got: {mixed.splitlines()[0]!r}")
+    sys.exit(1)
+
+# (3) Low-FP: 11 struck items + many `- ~~…~~` prose mentions (NOT line-start
+# struck markers) must stay clean — prose `~~` must not be counted toward C7.
+fp = summary(11, 0, prose_mentions=20)
+if "C7:" in fp:
+    print(f"(3) prose `- ~~…~~` mentions must NOT count toward C7, got: {fp!r}")
+    sys.exit(1)
+
+print("kb_drift_scan C7: 12-struck-fires / 11-clean strict threshold; header + table-row struck forms both count (6+6=12); no-frontmatter (above FM gate); prose `- ~~…~~` line-start-absent mentions NOT counted (low-FP)")
+PYEOF
+}
+
+# Behavioral: GOLDEN backlog-archiver (spec 2026-06-04-backlog-curator §6). Copies
+# the committed pre-cleanup golden BACKLOG (frozen ONCE as a static fixture from
+# the real pre-deep-clean backlog — NO vault reach in the test, cwd-independent) into a
+# temp project, then reproduces the 2026-06-04 human deep-clean and ID-anchors the
+# result under the STRUCK-ONLY done-detection contract (spec §3.2 rule 1):
+# `--dry-run` CANDIDATE set is EXACTLY {37,42,45,46,52,55,75} (with #55/#75 hinted
+# likely-collision); the FLAGGED section lists the NON-struck `✅` rows #76 and #77;
+# `--apply --archive-candidates 37,42,45,46,52` archives the non-struck approved set
+# {#37,#42,#45,#46,#52} + ALL struck `### ~~`/`| ~~` items + the #76 own-status
+# block, while {#40,#50,#55,#75} stay OPEN AND the non-struck `✅` rows #76/#77 stay
+# in BACKLOG (flagged, never archived); the regenerated index has exactly ONE line
+# each for #37/#45/#46/#52, FOUR lines for #42/#42a/#42b/#42c, ONE #76 line (the
+# block only — the flagged #76 ROW produces no index line), and the #37 line sources
+# `PR #57` from the matched row; a second identical `--apply` is a byte-identical
+# no-op. Layered with the archiver's own `--selftest` and an end-to-end --apply
+# guard that pins the column-parse data-loss class (X1/X4/X6) CLOSED BY CONSTRUCTION:
+# every OPEN row carrying a `✅` in a non-Status cell + a misparse vector (escaped
+# `\|` / double-escaped `\\|` / inline-code-span pipe / 6-col ragged / 5-col-under-
+# 4-col-header) MUST stay OPEN; only a STRUCK row archives. Plus the file-level
+# symlink write-target guard (X5 — symlinked month file / BACKLOG.md refused exit-2).
+# Mutation-protected: any regression in classification (candidate set / flag set),
+# coalescing (index line counts), date-bucketing, merge idempotency, a regression of
+# done-detection to a column parse, or the symlink guard drives an assertion RED.
+check_backlog_archiver_behavioral() {
+  local archiver="$PLUGIN_ROOT/tests/backlog_archive.py"
+  local golden="$PLUGIN_ROOT/tests/fixtures/backlog-curator/golden-input-backlog.md"
+  [ -f "$archiver" ] || { echo "$archiver missing"; return 1; }
+  [ -f "$golden" ] || { echo "$golden fixture missing"; return 1; }
+  # Layer 0: the archiver's embedded selftest (per-table Status-col detection +
+  # storage-identity merge keying — X1/X2/X3). Goes RED if that core regresses.
+  if ! python3 "$archiver" --selftest >/dev/null 2>&1; then
+    echo "backlog_archive.py --selftest failed"
+    return 1
+  fi
+  python3 - "$archiver" "$golden" <<'PYEOF'
+import hashlib, re, shutil, subprocess, sys, tempfile
+from pathlib import Path
+
+archiver, golden = sys.argv[1], sys.argv[2]
+
+
+def run(root, *extra):
+    return subprocess.run(
+        [sys.executable, archiver, str(root), "--project", "ai-dev-team", *extra],
+        capture_output=True,
+        text=True,
+    )
+
+
+with tempfile.TemporaryDirectory() as td:
+    proj = Path(td) / "repos" / "ai-dev-team"
+    proj.mkdir(parents=True)
+    shutil.copy(golden, proj / "BACKLOG.md")
+
+    # (1) --dry-run CANDIDATE set is EXACTLY {37,42,45,46,52,55,75}; #55/#75 are
+    # hinted likely-collision. A classification regression (number-match gate,
+    # struck/own-status discrimination) shifts this set.
+    dry = run(td, "--dry-run")
+    cand_sec = dry.stdout.split("CANDIDATES", 1)[1] if "CANDIDATES" in dry.stdout else ""
+    cand_ids = {int(x) for x in re.findall(r"#(\d+)", cand_sec)}
+    if cand_ids != {37, 42, 45, 46, 52, 55, 75}:
+        print(f"(1) candidate set must be {{37,42,45,46,52,55,75}}, got {sorted(cand_ids)}\n{cand_sec[:800]}")
+        sys.exit(1)
+    cand_lines = {}
+    for ln in cand_sec.splitlines():
+        m = re.search(r"#(\d+)\b", ln)
+        if m:
+            cand_lines[int(m.group(1))] = ln
+    for n in (55, 75):
+        if "likely-collision" not in cand_lines.get(n, ""):
+            print(f"(1) #{n} must be hinted likely-collision, got {cand_lines.get(n)!r}")
+            sys.exit(1)
+
+    # (2) Reproduce the human's 2026-06-04 approval: --apply the AUTO set + the
+    # five approved non-struck candidates {37,42,45,46,52}.
+    ap = run(td, "--apply", "--archive-candidates", "37,42,45,46,52")
+    if ap.returncode != 1:
+        print(f"(2) --apply with changes must exit 1, got {ap.returncode}; stderr={ap.stderr[:400]}")
+        sys.exit(1)
+    arch = sorted((proj / "archive").glob("backlog-done-*.md"))
+    archtxt = "\n".join(a.read_text() for a in arch)
+    bl = (proj / "BACKLOG.md").read_text()
+    openpart = bl.split("## Completed")[0]
+
+    # ID-anchored archived set: the five approved non-struck blocks are archived
+    # AND removed from the open part (move, not copy).
+    for n in (37, 42, 45, 46, 52):
+        if not re.search(rf"^### (~~)?{n}\.", archtxt, re.M):
+            print(f"(2) approved #{n} block must be archived, missing from archive")
+            sys.exit(1)
+        if re.search(rf"^### (~~)?{n}\.", openpart, re.M):
+            print(f"(2) approved #{n} block must be removed from open BACKLOG (move not copy)")
+            sys.exit(1)
+
+    # ALL struck items archived: none left in the open part.
+    if "### ~~" in openpart or re.search(r"^\s*\| ~~", openpart, re.M):
+        print("(2) all struck `### ~~`/`| ~~` items must be archived (none left in open part)")
+        sys.exit(1)
+
+    # The #76 own-status block ("Smoke-pin placement …") is archived even though
+    # it was never struck (mid-line `**Status: ✅` own-status discriminator).
+    if not re.search(r"^### 76\. Smoke-pin placement", archtxt, re.M):
+        print("(2) #76 own-status block must be archived")
+        sys.exit(1)
+
+    # STRUCK-ONLY contract (spec §3.2 rule 1): the NON-struck #76 librarian-cluster
+    # ROW and the NON-struck #77 row carry a `✅` but are NOT struck → they are
+    # FLAGGED, never archived. They MUST stay in the open BACKLOG and MUST NOT
+    # appear in any archive file. (RED if done-detection regresses to a column
+    # parse that re-reads a non-Status `✅` cell and archives the OPEN row.)
+    for n in (76, 77):
+        if not re.search(rf"^\s*\| \*\*{n}\*\*", openpart, re.M):
+            print(f"(2) non-struck ✅ row #{n} must STAY in the open BACKLOG (flagged, not archived)")
+            sys.exit(1)
+        if re.search(rf"^\s*\| \*\*{n}\*\*", archtxt, re.M):
+            print(f"(2) non-struck ✅ row #{n} must NEVER be archived (struck-only done-detection)")
+            sys.exit(1)
+    # The FLAGGED dry-run section advertises the #76/#77 rows so the human can
+    # strike them.
+    flag_sec = dry.stdout.split("FLAGGED", 1)[1].split("CANDIDATES", 1)[0] if "FLAGGED" in dry.stdout else ""
+    flag_ids = {int(x) for x in re.findall(r"#(\d+)", flag_sec)}
+    if not {76, 77} <= flag_ids:
+        print(f"(2) FLAGGED section must list the non-struck ✅ rows #76 and #77, got {sorted(flag_ids)}\n{flag_sec[:600]}")
+        sys.exit(1)
+
+    # Must-stay-OPEN set: #40/#50 (X12 FP-guards) + the un-approved collision
+    # candidates #55/#75 keep their OPEN headers in the trimmed BACKLOG.
+    for n in (40, 50, 55, 75):
+        if not re.search(rf"^### (~~)?{n}\.", openpart, re.M):
+            print(f"(2) #{n} must stay OPEN in the trimmed BACKLOG")
+            sys.exit(1)
+
+    # (3) Regenerated index: ONE line per logical item for the approved candidates
+    # (block+row coalesce) — #37/#45/#46/#52; FOUR distinct #42/#42a/#42b/#42c
+    # lines (block matched only to suffixed rows → no coalesce); exactly ONE #76
+    # line — the AUTO-DONE block only (the non-struck #76 ROW is FLAGGED, never
+    # archived, so it produces NO index line). The #37 line carries the row's
+    # `PR #57` (coalesced PR sourced from the matched row).
+    idx = (
+        bl.split("### Done backlog items — index")[1].split("### Completed specs")[0]
+        if "Done backlog items — index" in bl
+        else ""
+    )
+    for lbl, want in (("#37", 1), ("#45", 1), ("#46", 1), ("#52", 1),
+                      ("#42", 1), ("#42a", 1), ("#42b", 1), ("#42c", 1), ("#76", 1)):
+        got = idx.count(f"**{lbl}**")
+        if got != want:
+            print(f"(3) index line count for {lbl}: want {want}, got {got}\n{idx[:1200]}")
+            sys.exit(1)
+    line37 = [ln for ln in idx.splitlines() if "**#37**" in ln]
+    if not line37 or "PR #57" not in line37[0]:
+        print(f"(3) #37 index line must carry `PR #57` from the matched row, got {line37}")
+        sys.exit(1)
+
+    # (4) Idempotency: a second identical --apply is a byte-identical no-op (exit 0,
+    # archives + BACKLOG unchanged).
+    snap = {f.name: hashlib.md5(f.read_bytes()).hexdigest() for f in [proj / "BACKLOG.md", *arch]}
+    ap2 = run(td, "--apply", "--archive-candidates", "37,42,45,46,52")
+    if ap2.returncode != 0:
+        print(f"(4) second identical --apply must be a no-op (exit 0), got {ap2.returncode}")
+        sys.exit(1)
+    arch2 = sorted((proj / "archive").glob("backlog-done-*.md"))
+    snap2 = {f.name: hashlib.md5(f.read_bytes()).hexdigest() for f in [proj / "BACKLOG.md", *arch2]}
+    if snap != snap2:
+        print(f"(4) second --apply must be byte-identical no-op; snapshots differ:\n  {snap}\n  {snap2}")
+        sys.exit(1)
+
+    # (5+6) STRUCK-ONLY done-detection closes the column-parse data-loss class
+    # (X1 all-cell-scan / X4 escaped `\|` / X6 double-escaped `\\|`) BY
+    # CONSTRUCTION — these REPLACE the prior column-parse vector pins. Every row
+    # below carries a `✅` in a NON-Status cell PLUS a misparse vector (escaped
+    # `\|`, double-escaped `\\|`, inline-code-span pipe, 6-col ragged, 5-col-under-
+    # 4-col-header). Pre-fix, a column parse inflated the apparent arity and
+    # re-keyed a non-Status `✅` cell as the Status cell → the OPEN row was
+    # archived + trimmed = DATA LOSS. Asserted END-TO-END via --apply: NONE may be
+    # archived (done-detection reads NO cell). The lone done signal is STRUCK, so a
+    # struck control row still archives. These pins go RED if done-detection ever
+    # regresses to a column parse.
+    #   SOESCMARK   (escaped `\|` + leading-✅ Reason)              → MUST stay OPEN
+    #   SODBLESC    (double-escaped `\\|` + leading-✅ Reason)      → MUST stay OPEN
+    #   SOCODEMARK  (inline-code-span pipe + leading-✅ Reason)     → MUST stay OPEN
+    #   SORAGMARK   (6-col ragged, ✅ in a non-Status cell)         → MUST stay OPEN
+    #   SOALLCELL   (5-col-under-4-col-header, ✅ non-struck cell)  → MUST stay OPEN
+    #   SOSTRUCK    (struck row)                                    → MUST archive
+    synth = "\n".join([
+        "# BACKLOG",
+        "",
+        "## Active priorities",
+        "",
+        "| # | Item | Status | Reason |",
+        "|---|------|--------|--------|",
+        r"| **101** | SOESCMARK escaped-pipe open | P2 queued | "
+        r"✅ RESOLVED 2026-05-31 \| extra note |",
+        r"| **102** | SODBLESC double-escaped open | P2 queued | "
+        r"✅ RESOLVED 2026-05-31 \\| extra note |",
+        "| **103** | SOCODEMARK code-span open | P2 queued | "
+        "✅ see `a | b` pipe |",
+        "| **104** | SOALLCELL five-col ✅-in-cell open | ax | P2 queued | "
+        "✅ RESOLVED 2026-04-30 discussion only |",
+        "| ~~**105**~~ | SOSTRUCK struck done | **✅ DONE 2026-04-15** | r |",
+        "",
+        "| # | Item | Status | Reason | Extra | More |",
+        "|---|------|--------|--------|-------|------|",
+        "| **106** | SORAGMARK six-col ✅-non-status open | ✅ leads here | "
+        "P2 queued | x | y |",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as td5:
+        proj5 = Path(td5) / "repos" / "ai-dev-team"
+        proj5.mkdir(parents=True)
+        (proj5 / "BACKLOG.md").write_text(synth, encoding="utf-8")
+        run(td5, "--apply")
+        bl5 = (proj5 / "BACKLOG.md").read_text()
+        open5 = bl5.split("## Completed")[0]
+        arch5 = "\n".join(a.read_text() for a in (proj5 / "archive").glob("backlog-done-*.md"))
+        for marker, why in (
+            ("SOESCMARK", "escaped `\\|` + leading-✅ in a non-Status cell"),
+            ("SODBLESC", "double-escaped `\\\\|` + leading-✅ in a non-Status cell"),
+            ("SOCODEMARK", "inline-code-span pipe + leading-✅ in a non-Status cell"),
+            ("SOALLCELL", "5-col-under-4-col-header, ✅ in a non-struck cell"),
+            ("SORAGMARK", "6-col ragged row with ✅ in a non-Status cell"),
+        ):
+            if marker not in open5:
+                print(f"(5+6) column-parse regression: OPEN row [{why}] was LOST from open BACKLOG (data loss)")
+                sys.exit(1)
+            if marker in arch5:
+                print(f"(5+6) column-parse regression: OPEN row [{why}] was wrongly ARCHIVED — struck-only done-detection broke (data loss)")
+                sys.exit(1)
+        # The lone STRUCK row still archives — the done signal stays narrow.
+        if "SOSTRUCK" not in arch5 or "SOSTRUCK" in open5:
+            print("(5+6) struck control row MUST still archive (struck-only done signal)")
+            sys.exit(1)
+
+    # (7) AUDIT X5 (MEDIUM) — file-level symlink guard: a pre-planted symlink AT a
+    # write target (the month file OR BACKLOG.md) is refused (exit 2, nothing
+    # written through it), even when the `archive/` dir itself is a REAL dir that
+    # passes the X3 dir-level guard.
+    import os as _os
+    seed7 = ("# BACKLOG\n\n## P1: section\n\n"
+             "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n")
+    with tempfile.TemporaryDirectory() as td7:
+        proj7 = Path(td7) / "repos" / "ai-dev-team"
+        proj7.mkdir(parents=True)
+        (proj7 / "BACKLOG.md").write_text(seed7, encoding="utf-8")
+        (proj7 / "archive").mkdir()  # REAL dir → passes the X3 dir-level guard
+        outside7 = Path(td7) / "OUTSIDE"
+        outside7.mkdir()
+        victim7 = outside7 / "victim.md"
+        victim7.write_text("ORIGINAL VICTIM\n", encoding="utf-8")
+        _os.symlink(str(victim7), str(proj7 / "archive" / "backlog-done-2026-04.md"))
+        ap7 = run(td7, "--apply")
+        if ap7.returncode != 2:
+            print(f"(7) X5: symlinked month-file write target must be refused (exit 2), got {ap7.returncode}")
+            sys.exit(1)
+        if victim7.read_text() != "ORIGINAL VICTIM\n":
+            print("(7) X5: outside victim file was written THROUGH the month-file symlink (escape)")
+            sys.exit(1)
+    with tempfile.TemporaryDirectory() as td7b:
+        proj7b = Path(td7b) / "repos" / "ai-dev-team"
+        proj7b.mkdir(parents=True)
+        outside7b = Path(td7b) / "OUTSIDE"
+        outside7b.mkdir()
+        realbl7 = outside7b / "real-backlog.md"
+        realbl7.write_text(seed7, encoding="utf-8")
+        _os.symlink(str(realbl7), str(proj7b / "BACKLOG.md"))
+        (proj7b / "archive").mkdir()
+        ap7b = run(td7b, "--apply")
+        if ap7b.returncode != 2:
+            print(f"(7) X5: symlinked BACKLOG.md write target must be refused (exit 2), got {ap7b.returncode}")
+            sys.exit(1)
+        if "BODY_5" not in realbl7.read_text():
+            print("(7) X5: outside real-backlog was trimmed THROUGH the BACKLOG.md symlink (escape)")
+            sys.exit(1)
+
+print("backlog_archive GOLDEN: dry-run candidates exactly {37,42,45,46,52,55,75} (#55/#75 likely-collision), FLAGGED lists non-struck ✅ rows #76/#77; --apply 37,42,45,46,52 archives approved+struck+#76-block (move not copy), {#40,#50,#55,#75} stay OPEN, non-struck ✅ rows #76/#77 stay in BACKLOG (flagged, never archived); index one line each #37/#45/#46/#52, four #42/#42a/#42b/#42c, ONE #76 (block only); #37 line sources PR #57; 2nd --apply byte-identical no-op; STRUCK-ONLY done-detection closes the column-parse data-loss class by construction (escaped-`\\|`/double-escaped-`\\\\|`/code-span/ragged/5-col-under-4-col OPEN rows with ✅ in a non-Status cell stay OPEN; only struck rows archive) (X1/X4/X6); file-level symlink write targets refused exit-2 (X5); selftest + AUDIT-X3/X5 green")
 PYEOF
 }
 
