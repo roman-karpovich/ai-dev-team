@@ -1098,13 +1098,7 @@ After phase 1, show the commit list and present exactly these 4 options:
 git log --oneline <base>..<branch>
 ```
 
-**Phase 3 — backlog archive check (after phase 2 status is set, for any preserving option)**
-
-After the spec status is set via `§3.4a`, run:
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/tests/backlog_archive.py" "<kb_path>" --project <project> --dry-run
-```
-See `§3.4a` for the full backlog_archive banner protocol (AUTO count N + CANDIDATE count M variants, `--apply --archive-candidates`, never-commits invariant). Skip this check for Option 4 (Discard).
+After the user picks a preserving option and phase 2 status is set (§3.4a), run `python3 tests/backlog_archive.py --dry-run` and present the archive-approval banner if any done items are found — full protocol in `§3.4a`. Option 4 (Discard) does NOT trigger the backlog_archive check.
 
 ---
 ## ⏸ AWAITING YOUR INPUT
@@ -1170,7 +1164,7 @@ git checkout <base-branch> && git pull && git merge <branch>
 ```
 Run verifier once more on the merged result. If green, apply phase 2:
 append staged §8 items, append the staged Log line if any, set `shipped_at`,
-and decide status per `§3.4a`. **Do not delete the feature branch** — leave
+and decide status per `§3.4a`. Then run the backlog_archive.py check per `§3.4a`. **Do not delete the feature branch** — leave
 the branch reference in place (useful for reflection and quick rollback).
 
 **Option 2 — Push feature branch:**
@@ -1179,11 +1173,11 @@ git push -u origin <branch>
 ```
 Report the branch name. After a clean push, apply phase 2: append staged §8
 items, append the staged Log line if any, set `shipped_at`, and decide
-status per `§3.4a`.
+status per `§3.4a`. Then run the backlog_archive.py check per `§3.4a`.
 
 **Option 3 — Keep as-is:** Do nothing externally. Report the branch name.
 Apply phase 2 unconditionally: append staged §8 items, append the staged Log
-line if any, set `shipped_at`, and decide status per `§3.4a`.
+line if any, set `shipped_at`, and decide status per `§3.4a`. Then run the backlog_archive.py check per `§3.4a`.
 
 **Option 4 — Discard:** discard the in-memory delta and delegate to the
 Discard mode below (same flow as `/feature discard <spec-path>`). Any
