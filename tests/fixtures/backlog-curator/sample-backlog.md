@@ -13,14 +13,24 @@ Every `### N.` block + table row below is an EXPLICIT distinct case (spec §3.2.
 | ~~**30**~~ | networking retry backoff tuning | rollout-isolation | **✅ DONE 2026-04-15 — PR #92** | Struck done row, title DISsimilar to `### 30` block → candidate hint likely-collision. |
 | ~~**40a**~~ | suffix sub-item alpha | process-truthfulness | **✅ DONE 2026-04-20 — PR #93** | Letter-suffix struck row, indexed #40a, NOT coalesced into #40. |
 | ~~**40b**~~ | suffix sub-item beta | process-truthfulness | **✅ DONE 2026-04-22 — PR #94** | Letter-suffix struck row, indexed #40b. |
-| **80** | non-struck closed item | audit-coverage | **✅ CLOSED 2026-04-30 — done** | Non-struck `✅`-status row (rule-1 status cell). Date bucket MUST be 2026-04 from the status cell, NOT the earlier-MONTH discussion 2026-03-15 in this Rationale cell. |
-| **41** | genuinely open priority | rule-enforcement | **P1 queued** | Open row, stays in BACKLOG. |
+| **80** | non-struck closed item | audit-coverage | **✅ CLOSED 2026-04-30 — done** | Non-struck row carrying a `✅` (rule-1 STRUCK-ONLY contract) → FLAGGED, NOT archived; stays in BACKLOG. The `--dry-run` FLAGGED section lists `#80`. |
+| **41** | genuinely open priority | rule-enforcement | **P1 queued** | Open row with no done-marker glyph, stays in BACKLOG; never flagged. |
 
-### P2 — four-column Status=col-3
+### P2 — four-column, misparse-vector OPEN rows that MUST stay safe
+
+These rows carry content pipes (an escaped `\|`, a double-escaped `\\|`, an
+inline-code-span pipe) AND a leading `✅` in a cell. Pre-fix, a naive column
+parse inflated their apparent arity and re-keyed a non-Status cell as the Status
+cell → the OPEN row was mis-archived (data loss, audit X1/X4/X6). Struck-only
+done-detection reads NO cell to decide done-ness, so they are INERT by
+construction: each is FLAGGED (`✅` present, not struck) and never archived.
 
 | # | Item | Status | Reason |
 |---|------|--------|--------|
-| **42** | deferred open four-col item | **P2 deferred** | Open row in a 4-col table; proves header-driven Status-column detection (Status=col-3), not a fixed ordinal. |
+| **42** | deferred open four-col item | **P2 deferred** | Open row in a 4-col table with no done-marker glyph; neither archived nor flagged. |
+| **81** | escaped-pipe open four-col item | P2 queued | ✅ RESOLVED 2026-05-31 \| extra note — escaped `\|` content pipe, MUST stay OPEN. |
+| **82** | double-escaped open four-col item | P2 queued | ✅ RESOLVED 2026-05-31 \\| extra note — double-escaped `\\|` content pipe, MUST stay OPEN. |
+| **83** | code-span open four-col item | P2 queued | ✅ see `a | b` inline-code-span pipe — MUST stay OPEN. |
 
 ## P3: Low impact / nice-to-have
 

@@ -17,21 +17,23 @@ not already present; never clobber). It NEVER commits.
 
 Classification (spec §3.2) — AUTO set + CANDIDATES (human-approved):
 
-  table_done — parse `## Active priorities` (PREFIX header match) pipe tables.
-    Rows are split MARKDOWN-AWARE (`split_table_pipes`): a backslash-escaped `\|`
-    and a pipe inside an inline-code span are NOT column boundaries, so a content
-    pipe cannot inflate a canonical arity (audit X4 — a naive `split("|")` turned
-    a 4-col OPEN row into a 5-col one that re-keyed onto a `✅`-leading Reason
-    fragment and was silently archived). The Status column index is then resolved
-    PER ROW from the row's OWN column count (`ROW_ARITY_STATUS_IDX` — 5-col
-    `# | Item | Axis | Status | Rationale` → idx-3, 4-col `# | Item | Status |
-    Reason` → idx-2), NOT the table header's arity, so a 5-col done row placed
-    under a 4-col header still keys on its own Status column. A row whose arity
-    matches NEITHER canonical schema (3, 6, …) is AMBIGUOUS → struck-only (never
-    re-read as done by a non-Status cell). For each data row record {item_label,
+  table_done — STRUCK-ONLY done-detection (NO column parsing). Parse
+    `## Active priorities` (PREFIX header match) pipe tables. A data row is DONE
+    iff its raw line STARTS `^\s*\| ~~` (struck). This is a pure line-prefix
+    regex — no `split`, no column arity, no Status-cell ordinal — so the
+    misparse-data-loss class that recurred 3× (X1 all-cell-scan → X4 escaped `\|`
+    → X6 double-escaped `\\|`: a content pipe inflates a row's apparent column
+    count and a non-Status cell is mis-read as the Status cell, archiving an OPEN
+    row) is IMPOSSIBLE BY CONSTRUCTION. For a struck row record {item_label,
     number (suffix-stripped 42a→42), title (item-cell), date (first YYYY-MM-DD in
-    the STATUS CELL), done?}. A row is DONE iff it starts `^\s*\| ~~` OR its
-    per-row-arity Status cell begins `✅` / `**✅`.
+    the LINE — struck rows carry status-date == first-date, verified 17/17 in the
+    golden)}. NON-struck rows whose raw line CONTAINS a `✅` (loose, anywhere) are
+    NOT auto-archived — they are emitted as an advisory FLAG in `--dry-run`
+    (`⚠ #N appears done (✅ present) but is not struck …`) and KEPT in BACKLOG.
+    The lone real instance is the #76 librarian-cluster row (`**✅ CLOSED
+    2026-06-02`); #59/#77 (`✅` in the Rationale cell) are likewise flagged, never
+    archived. The item-cell title is still extracted via `split_table_pipes` for
+    candidate-matching/index, but that split NEVER influences done-ness.
 
   `### N.` blocks — split `## P1/P2/P3` (PREFIX match) into blocks. Each is:
     * AUTO-DONE iff the header is struck (`### ~~`) OR a body line CONTAINS the
@@ -53,8 +55,11 @@ Classification (spec §3.2) — AUTO set + CANDIDATES (human-approved):
 `--dry-run` plan (writes nothing) under LABELED headers so consumers/tests can
 section-scope:
   `AUTO (<n>):`        one line per auto item — BOTH AUTO-DONE blocks
-                       (`#<item_label> <title>`) AND struck / `✅`-status done
-                       table ROWS (`#<item_label> <title> [row]`).
+                       (`#<item_label> <title>`) AND STRUCK done table ROWS
+                       (`#<item_label> <title> [row]`).
+  `FLAGGED (<k>):`     one line per NON-struck table row whose raw line contains
+                       a `✅` — advisory only; these rows are KEPT in BACKLOG,
+                       NEVER archived (strike the row to archive it).
   `CANDIDATES (<m>):`  one line per candidate block
                        (`#<N> "<block_title>" ↔ "<matched_row_title>" — <hint>`).
 OPEN items are NOT listed (their absence from AUTO+CANDIDATES is the assertion
@@ -86,20 +91,21 @@ from typing import Dict, List, Optional, Sequence, Tuple
 ACTIVE_PRIORITIES_PREFIX = "## Active priorities"
 BLOCK_SECTION_PREFIXES = ("## P1", "## P2", "## P3")
 
-# The two canonical Active-priorities table schemas, keyed by a DATA ROW's own
-# column count → the Status-column index for that arity:
-#   5-col `# | Item | Axis | Status | Rationale` → Status at index 3
-#   4-col `# | Item | Status | Reason`           → Status at index 2
-# The Status column is resolved PER ROW from the row's own arity (NOT the table
-# header's arity), so a 5-col done row physically placed under a 4-col header —
-# as in the real 898a8c0 golden snapshot's mixed P2 table — still keys on its
-# own Status column (audit X1: row #76's `✅ CLOSED` is at idx-3, while #77's
-# `✅ RESOLVED` is at idx-4 Rationale → #76 done, #77 open). A row whose column
-# count matches neither schema falls back to struck-only (conservative).
-ROW_ARITY_STATUS_IDX: Dict[int, int] = {5: 3, 4: 2}
-
 # A YYYY-MM-DD date.
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+# A struck table data row: the line STARTS `| ~~` (optionally indented). This
+# pure line-prefix regex is the SOLE table-row done-signal (spec §3.2 rule 1) —
+# no column split, no Status-column ordinal, no arity. Eliminating the column
+# parse closes the misparse-data-loss class (X1/X4/X6) by construction: a content
+# pipe can no longer inflate a row's apparent column count and re-key a non-Status
+# cell as the Status cell, because no cell is read to decide done-ness.
+STRUCK_ROW_RE = re.compile(r"^\s*\|\s*~~")
+
+# The number of a struck row (`| ~~**42a**~~ …` → `42a`), used to match a
+# candidate block to a done row. Extracts the label from the struck item cell;
+# this is metadata only — it does not influence done-ness.
+STRUCK_ROW_LABEL_RE = re.compile(r"^\s*\|\s*~~\*\*([0-9]+[a-z]?)\*\*")
 
 # `### N.` block header; captures the bare item_label (`9`, `12`, `40a`) whether
 # or not the header is struck (`### ~~12. …~~`).
@@ -258,55 +264,29 @@ def _tokens(title: str) -> set:
     return {w for w in words if w not in _STOPWORDS}
 
 
-def _row_status_idx(cells: List[str]) -> Optional[int]:
-    """The Status-column index for a DATA ROW, resolved from the row's own arity.
+def parse_table_done(lines: Sequence[str]) -> Tuple[List[Dict], List[Dict]]:
+    r"""Parse `## Active priorities` tables → (struck done rows, flagged rows).
 
-    Keyed on the row's column count against `ROW_ARITY_STATUS_IDX` (5→3, 4→2),
-    NOT the table header's arity — so a 5-col done row placed under a 4-col
-    header still keys on its own Status column. A row whose column count matches
-    neither canonical schema returns None (caller falls back to struck-only).
+    Done-detection is STRUCK-ONLY (spec §3.2 rule 1): a data row is done iff its
+    raw line matches `STRUCK_ROW_RE` (`^\s*\|\s*~~`). This is a pure line-prefix
+    test — NO column split decides done-ness — so a content pipe can never inflate
+    a row's apparent arity and mis-key a non-Status cell as the Status cell (the
+    X1/X4/X6 data-loss class, closed by construction).
+
+    A NON-struck data row whose RAW line contains a `✅` (loose, anywhere) is
+    FLAGGED, not archived: it stays in BACKLOG and is surfaced as an advisory line
+    in `--dry-run`. The lone real instance is the #76 librarian-cluster row
+    (`**✅ CLOSED 2026-06-02`); #59/#77 with a `✅` in the Rationale cell are
+    likewise flagged, never archived.
+
+    For each STRUCK row record `{item_label, number, title, date, status_cell,
+    raw_line, header_line, separator_line}` — the item-cell title is extracted via
+    `split_row` for candidate-matching/index ONLY (it does not influence
+    done-ness); the date is the first `YYYY-MM-DD` in the whole line. Each FLAGGED
+    row is `{number, raw_line}`.
     """
-    return ROW_ARITY_STATUS_IDX.get(len(cells))
-
-
-def _done_status_cell(cells: List[str]) -> Optional[str]:
-    """The done-completion status cell of a data row, or None if the row is open.
-
-    A row is DONE iff its per-row-arity Status cell (`_row_status_idx`, resolved
-    from the ROW's own column count) stripped text *starts with* `✅`/`**✅`. ONLY
-    that one Status column is tested — never any other cell — so an OPEN row whose
-    Rationale/Reason cell *leads* with `✅ RESOLVED`/`✅ DISCARDED` while its real
-    Status cell is open (`P2 queued`, the #59/#77 exclusion class) is NOT
-    mis-classified done (audit X1: scanning every cell here silently archived such
-    OPEN rows → data loss).
-
-    When the row's arity matches NEITHER canonical schema (`_row_status_idx is
-    None`) the row is never done by this signal — the caller falls back to the
-    struck-only (`^\\s*\\| ~~`) rule; we do NOT all-cell-`✅`-scan as a fallback.
-    """
-    status_idx = _row_status_idx(cells)
-    if status_idx is not None and status_idx < len(cells):
-        cell = cells[status_idx]
-        if strip_markup(cell).startswith("✅"):
-            return cell
-    return None
-
-
-def parse_table_done(lines: Sequence[str]) -> List[Dict]:
-    """Parse `## Active priorities` tables → list of done-row descriptors.
-
-    Walks every `## Active priorities`-prefixed section and finds each pipe table
-    inside it. Done-ness is decided PER ROW: the row is struck (`^\\s*\\| ~~`) OR
-    its per-row-arity Status cell (`_row_status_idx`, keyed on the ROW's own
-    column count — 5-col→idx-3, 4-col→idx-2) *starts with* `✅`/`**✅`. ONLY that
-    one Status column is tested, never other cells (audit X1) — so a 5-col done
-    row physically placed under a 4-col header (the real 898a8c0 golden snapshot's
-    mixed P2 table) still keys on its own Status column, and an OPEN row whose
-    Rationale cell *leads* with `✅` stays open. A row whose arity matches neither
-    canonical schema falls back to struck-only. Records every DONE data row as
-    `{item_label, number, title, date, status_cell}`.
-    """
-    rows: List[Dict] = []
+    done_rows: List[Dict] = []
+    flagged_rows: List[Dict] = []
     in_section = False
     header_line: Optional[str] = None  # raw header row of the current table
     separator_line: Optional[str] = None  # raw separator row of the current table
@@ -348,33 +328,31 @@ def parse_table_done(lines: Sequence[str]) -> List[Dict]:
         prev_pipe_line = line
         if len(cells) <= 1:
             continue
-        struck = bool(re.match(r"^\s*\|\s*~~", line))
-        status_cell = _done_status_cell(cells)
-        if not (struck or status_cell is not None):
+        if not STRUCK_ROW_RE.match(line):
+            # NON-struck data row. If it carries a `✅` anywhere it LOOKS done —
+            # flag it (advisory), but NEVER archive it.
+            if "✅" in line:
+                flagged_rows.append(
+                    {"number": bare_number(strip_markup(cells[0])), "raw_line": line}
+                )
             continue
-        # For a struck row with no `✅` cell, fall back to its per-row-arity status
-        # cell (struck rows historically carry their date in the status cell).
-        row_status_idx = _row_status_idx(cells)
-        if status_cell is None and row_status_idx is not None and row_status_idx < len(cells):
-            status_cell = cells[row_status_idx]
-        if status_cell is None:
-            status_cell = ""
+        # STRUCK row → done. Title (item-cell) is metadata for matching/index only.
         item_label = strip_markup(cells[0])
         title = cells[1] if len(cells) > 1 else ""
-        date_m = DATE_RE.search(status_cell)
-        rows.append(
+        date_m = DATE_RE.search(line)
+        done_rows.append(
             {
                 "item_label": item_label,
                 "number": bare_number(item_label),
                 "title": title.strip(),
                 "date": date_m.group(0) if date_m else None,
-                "status_cell": status_cell,
+                "status_cell": line,
                 "raw_line": line,
                 "header_line": header_line,
                 "separator_line": separator_line,
             }
         )
-    return rows
+    return done_rows, flagged_rows
 
 
 def parse_blocks(lines: List[str]) -> List[Dict]:
@@ -445,14 +423,17 @@ def hint_for(block_t: str, row_t: str) -> str:
 
 
 def classify(text: str) -> Dict:
-    """Classify a BACKLOG into AUTO rows + AUTO blocks + CANDIDATEs + OPEN.
+    """Classify a BACKLOG into AUTO rows + AUTO blocks + CANDIDATEs + FLAGGED + OPEN.
 
-    Returns `{auto_rows, auto_blocks, candidates, open_blocks}` where each
-    candidate carries its advisory metadata (`block_title`, `matched_row_title`,
-    `row_date`, `hint`).
+    Returns `{auto_rows, auto_blocks, candidates, flagged_rows, open_blocks}`.
+    `auto_rows` are STRUCK done table rows (the only auto-archived row class);
+    `flagged_rows` are NON-struck rows carrying a `✅` (advisory, never archived).
+    Each candidate carries its advisory metadata (`block_title`,
+    `matched_row_title`, `row_date`, `hint`). A `### N` block is a CANDIDATE iff
+    (not AUTO-DONE) AND its number matches a STRUCK done row's number.
     """
     lines = text.splitlines()
-    table_done = parse_table_done(lines)
+    table_done, flagged_rows = parse_table_done(lines)
     done_by_number: Dict[str, List[Dict]] = {}
     for row in table_done:
         done_by_number.setdefault(row["number"], []).append(row)
@@ -486,6 +467,7 @@ def classify(text: str) -> Dict:
         "auto_rows": table_done,
         "auto_blocks": auto_blocks,
         "candidates": candidates,
+        "flagged_rows": flagged_rows,
         "open_blocks": open_blocks,
     }
 
@@ -500,12 +482,20 @@ def render_dry_run(result: Dict) -> Tuple[str, int]:
     auto_blocks = result["auto_blocks"]
     auto_rows = result["auto_rows"]
     candidates = result["candidates"]
+    flagged_rows = result["flagged_rows"]
 
     auto_lines: List[str] = []
     for block in auto_blocks:
         auto_lines.append(f"#{block['item_label']} {block_title(block)}")
     for row in auto_rows:
         auto_lines.append(f"#{row['item_label']} {strip_markup(row['title'])} [row]")
+
+    flag_lines: List[str] = []
+    for row in flagged_rows:
+        flag_lines.append(
+            f"⚠ #{row['number']} appears done (✅ present) but is not struck — "
+            f"strike it (`~~`) to archive"
+        )
 
     cand_lines: List[str] = []
     for cand in candidates:
@@ -519,6 +509,8 @@ def render_dry_run(result: Dict) -> Tuple[str, int]:
     blocks: List[str] = []
     blocks.append(f"AUTO ({len(auto_lines)}):")
     blocks.extend(f"  {line}" for line in auto_lines)
+    blocks.append(f"FLAGGED ({len(flag_lines)}):")
+    blocks.extend(f"  {line}" for line in flag_lines)
     blocks.append(f"CANDIDATES ({len(cand_lines)}):")
     blocks.extend(f"  {line}" for line in cand_lines)
 
@@ -866,9 +858,9 @@ def parse_archive_entries(archive_text: str) -> Tuple[List[Dict], List[Dict]]:
     # One-row lookahead: a pipe row is only committed as a DATA row once the next
     # line proves it is NOT a table header (i.e. not immediately followed by a
     # `---` separator). This is what lets a SECOND table shape in the same rows
-    # section (its own header + separator) re-detect its Status column instead of
-    # the prior table's header being read as a data row → a garbage index line
-    # and a lost PR# (X3). Works whether tables are blank-separated or back-to-back.
+    # section (its own header + separator) be skipped instead of the prior table's
+    # header being read as a data row → a garbage index line and a lost PR# (X3).
+    # Works whether tables are blank-separated or back-to-back.
     pending: Optional[List[str]] = None  # held data-candidate row's cells
     pending_line: Optional[str] = None
 
@@ -879,21 +871,14 @@ def parse_archive_entries(archive_text: str) -> Tuple[List[Dict], List[Dict]]:
             return
         cells = pending
         if len(cells) > 1:
-            status_cell = _done_status_cell(cells)
-            row_status_idx = _row_status_idx(cells)
-            if (
-                status_cell is None
-                and row_status_idx is not None
-                and row_status_idx < len(cells)
-            ):
-                status_cell = cells[row_status_idx]
-            if status_cell is None:
-                status_cell = ""
+            # Archived rows are all STRUCK done rows (the only auto-archived row
+            # class). The index sources `— PR #M` from the whole raw line, so no
+            # Status-column parse is needed; `status_cell` carries the raw line.
             rows.append(
                 {
                     "item_label": strip_markup(cells[0]),
                     "title": cells[1].strip() if len(cells) > 1 else "",
-                    "status_cell": status_cell,
+                    "status_cell": pending_line,
                     "raw_line": pending_line,
                 }
             )
@@ -930,8 +915,8 @@ def parse_archive_entries(archive_text: str) -> Tuple[List[Dict], List[Dict]]:
             cells = split_row(line)
             if is_separator_row(cells):
                 # The pending pipe row was THIS table's header (a separator
-                # follows it): discard it. Status is resolved per-row-arity at
-                # flush time, so the header arity is not tracked here.
+                # follows it): discard it. Done-ness is struck-only, so the
+                # header arity is irrelevant here.
                 pending, pending_line = None, None
                 continue
             # A new pipe row: the previously-pending row is confirmed DATA.
@@ -1147,13 +1132,16 @@ def apply_archive(
 
 
 def _selftest() -> int:
-    """Behavioral self-test for the audit fixes X1/X2/X3/X4/X5 (spec §3.2).
+    r"""Behavioral self-test for the struck-only contract (spec §3.2).
 
-    Each case is RED on the pre-fix code (the prior bug) and GREEN here. Run with
+    Each case asserts the post-§3.5c contract: a table row is done IFF it is
+    STRUCK (`^\s*\|\s*~~`); a NON-struck row carrying a `✅` is FLAGGED, never
+    archived. The historic column-parse data-loss vectors (X1 all-cell-scan, X4
+    escaped `\|`, X6 double-escaped `\\|`, inline-code-span pipes) are now inert
+    BY CONSTRUCTION — they are pinned here as "OPEN/flagged row never archived"
+    and stay RED if done-detection ever regresses to a column parse. Run with
     `python3 tests/backlog_archive.py --selftest`; returns 0 iff every assertion
-    holds, non-zero (with the failing case named) otherwise — a real test gate.
-    All cases are pure in-memory except the AUDIT-X3 symlink-escape case, which
-    uses a self-cleaning `TemporaryDirectory` (no writes outside that temp dir).
+    holds. The symlink-escape cases use a self-cleaning `TemporaryDirectory`.
     """
     failures: List[str] = []
 
@@ -1163,394 +1151,181 @@ def _selftest() -> int:
         if not cond:
             failures.append(name)
 
-    # --- X2: a non-struck `✅`-status done row in a 4-col table that FOLLOWS a
-    # 5-col table is detected + bucketed (per-table Status-column re-detection;
-    # done-ness by cell-scan, not a single inherited ordinal). Mirrors the real
-    # golden #76 row (`✅ CLOSED 2026-06-02`) read from the wrong column pre-fix.
-    print("X2 — non-struck ✅-status row in a 4-col table after a 5-col table:")
-    x2_text = "\n".join(
+    def done_labels(text: str) -> set:
+        done, _flagged = parse_table_done(text.splitlines())
+        return {r["item_label"] for r in done}
+
+    def flagged_numbers(text: str) -> set:
+        _done, flagged = parse_table_done(text.splitlines())
+        return {r["number"] for r in flagged}
+
+    # --- STRUCK-ONLY done-detection: a row is done IFF struck. A non-struck row
+    # carrying a `✅` (the real #76 librarian-cluster shape) is FLAGGED, kept in
+    # BACKLOG, NEVER archived. Mirrors the golden mixed P2 table. ---
+    print("STRUCK-ONLY — struck rows done; non-struck ✅ rows flagged not archived:")
+    so_text = "\n".join(
         [
             "## Active priorities",
             "",
-            "### P1 five-col Status=col-3",
-            "",
-            "| # | Item | Axis | Status | Rationale |",
-            "|---|------|------|--------|-----------|",
-            "| ~~**5**~~ | five-col struck | ax | **✅ DONE 2026-04-10** | r |",
-            "",
-            "### P2 four-col Status=col-2",
-            "",
             "| # | Item | Status | Reason |",
             "|---|------|--------|--------|",
+            "| ~~**5**~~ | struck done row | **✅ DONE 2026-04-10** | r |",
             "| **76** | librarian cluster | **✅ CLOSED 2026-06-02 — done** | "
             "process-truthfulness (disc 2026-05-31) |",
-            "| **59** | open item | P2 queued | discussion ✅ RESOLVED mid-cell "
-            "— NOT done |",
+            "| **59** | open item | P2 queued | discussion ✅ RESOLVED mid-cell |",
+            "| **41** | genuinely open | P1 queued | reason |",
         ]
     )
-    x2_rows = parse_table_done(x2_text.splitlines())
-    x2_by_label = {r["item_label"]: r for r in x2_rows}
+    so_done = done_labels(so_text)
+    so_flagged = flagged_numbers(so_text)
+    check("struck #5 detected done", "5" in so_done, f"done={sorted(so_done)}")
     check(
-        "X2 #76 4-col done row detected",
-        "76" in x2_by_label,
-        f"labels={sorted(x2_by_label)}",
+        "non-struck ✅ #76 row FLAGGED (not done)",
+        "76" not in so_done and "76" in so_flagged,
+        f"done={sorted(so_done)} flagged={sorted(so_flagged)}",
     )
     check(
-        "X2 #76 bucketed to status-cell completion month 2026-06",
-        x2_by_label.get("76", {}).get("date") == "2026-06-02",
-        f"date={x2_by_label.get('76', {}).get('date')}",
+        "non-struck ✅ #59 row FLAGGED (not done)",
+        "59" not in so_done and "59" in so_flagged,
+        f"done={sorted(so_done)} flagged={sorted(so_flagged)}",
     )
     check(
-        "X2 #59 mid-cell ✅ RESOLVED stays OPEN (FP-guard)",
-        "59" not in x2_by_label,
-    )
-    # No-`Status`-header table must NOT silently drop a struck `| ~~` row.
-    x2_nostatus = "\n".join(
-        [
-            "## Active priorities",
-            "",
-            "| # | Item | State | Reason |",
-            "|---|------|-------|--------|",
-            "| ~~**77**~~ | struck done | done | r |",
-        ]
-    )
-    x2_ns_rows = parse_table_done(x2_nostatus.splitlines())
-    check(
-        "X2 struck row survives a no-Status-header table",
-        any(r["item_label"] == "77" for r in x2_ns_rows),
-        f"labels={sorted(r['item_label'] for r in x2_ns_rows)}",
+        "genuinely-open #41 (no ✅) neither done nor flagged",
+        "41" not in so_done and "41" not in so_flagged,
+        f"done={sorted(so_done)} flagged={sorted(so_flagged)}",
     )
 
-    # --- AUDIT X1 (CRITICAL): an OPEN row whose NON-Status cell *leads* with
-    # `✅` (Rationale `✅ RESOLVED …`) while its per-row-arity Status cell is open
-    # (`P2 queued`) MUST stay OPEN — only the per-row-arity Status column decides
-    # done-ness. Pre-fix the all-cell `✅`-scan archived this row → data loss. ---
-    print("AUDIT-X1 — OPEN row with leading-✅ in a non-Status cell stays OPEN:")
-    x1ax_text = "\n".join(
-        [
-            "## Active priorities",
-            "",
-            "| # | Item | Axis | Status | Rationale |",
-            "|---|------|------|--------|-----------|",
-            "| **99** | still open row-only item | ax | P2 queued | "
-            "✅ RESOLVED 2026-05-31 discussion only |",
-            "| **76** | legit done | ax | **✅ CLOSED 2026-06-02 — done** | "
-            "rationale (disc 2026-05-31) |",
-        ]
-    )
-    x1ax_rows = parse_table_done(x1ax_text.splitlines())
-    x1ax_labels = {r["item_label"] for r in x1ax_rows}
-    check(
-        "AUDIT-X1 #99 OPEN (✅ leads Rationale, Status=P2 queued) NOT classified done",
-        "99" not in x1ax_labels,
-        f"labels={sorted(x1ax_labels)}",
-    )
-    check(
-        "AUDIT-X1 #76 legit done (✅ in per-arity Status cell) STILL classified done",
-        "76" in x1ax_labels,
-        f"labels={sorted(x1ax_labels)}",
-    )
-    # PER-ROW-ARITY (the real 898a8c0 golden hazard): 5-col rows physically placed
-    # under a 4-col `# | Item | Status | Reason` header. Status is resolved from
-    # EACH row's own arity (5→idx-3), NOT the 4-col header's idx-2. #76's ✅ CLOSED
-    # is at idx-3 (its Status) → DONE; #77's ✅ RESOLVED is at idx-4 (Rationale)
-    # with `P2 — added` at idx-3 (Status) → OPEN. A 4-col sibling row keys idx-2.
-    print("AUDIT-X1 — 5-col rows under a 4-col header keyed per-row-arity:")
-    x1mix_text = "\n".join(
+    # --- struck-row date = first YYYY-MM-DD in the LINE (no column parse). ---
+    print("DATE — struck-row date is the first YYYY-MM-DD in the line:")
+    date_text = "\n".join(
         [
             "## Active priorities",
             "",
             "| # | Item | Status | Reason |",
             "|---|------|--------|--------|",
-            "| **36** | four-col open row | P2 queued | reason |",
-            "| **76** | five-col done row | ax | "
-            "**✅ CLOSED 2026-06-02 — all DONE** | rationale (disc 2026-05-31) |",
-            "| **77** | five-col open row | ax | **P2 — added 2026-05-31** | "
-            "✅ RESOLVED 2026-05-31 — done elsewhere |",
+            "| ~~**8**~~ | struck | **✅ DONE 2026-04-12 — PR #91** | "
+            "disc 2026-03-01 |",
         ]
     )
-    x1mix = {r["item_label"]: r for r in parse_table_done(x1mix_text.splitlines())}
+    d_rows, _ = parse_table_done(date_text.splitlines())
     check(
-        "AUDIT-X1 #76 5-col-under-4-col-header: ✅ at idx-3 → DONE (archived)",
-        "76" in x1mix and x1mix["76"]["date"] == "2026-06-02",
-        f"labels={sorted(x1mix)} date={x1mix.get('76', {}).get('date')}",
-    )
-    check(
-        "AUDIT-X1 #77 5-col-under-4-col-header: ✅ at idx-4 Rationale → OPEN",
-        "77" not in x1mix,
-        f"labels={sorted(x1mix)}",
-    )
-    check(
-        "AUDIT-X1 #36 4-col sibling row (Status idx-2 'P2 queued') stays OPEN",
-        "36" not in x1mix,
-        f"labels={sorted(x1mix)}",
-    )
-    # 4-col row: Status is idx-2 (per-arity), so a ✅ in idx-3 (Reason) is NOT the
-    # Status cell → the non-struck row stays OPEN; a struck row is still done.
-    x1ax_nostatus = "\n".join(
-        [
-            "## Active priorities",
-            "",
-            "| # | Item | Status | Reason |",
-            "|---|------|--------|--------|",
-            "| **88** | open four-col row | open | ✅ RESOLVED 2026-04-30 |",
-            "| ~~**89**~~ | struck four-col row | done | r |",
-        ]
-    )
-    x1ax_ns = {r["item_label"] for r in parse_table_done(x1ax_nostatus.splitlines())}
-    check(
-        "AUDIT-X1 4-col: non-struck ✅-in-Reason (idx-3) row stays OPEN",
-        "88" not in x1ax_ns,
-        f"labels={sorted(x1ax_ns)}",
-    )
-    check(
-        "AUDIT-X1 4-col: struck row still done (struck-only fallback)",
-        "89" in x1ax_ns,
-        f"labels={sorted(x1ax_ns)}",
-    )
-    # A row whose arity matches NEITHER canonical schema (e.g. 3 cols) → no Status
-    # index → done only if struck (conservative; never a non-struck ✅-scan).
-    x1ax_oddarity = "\n".join(
-        [
-            "## Active priorities",
-            "",
-            "| # | Item | Note |",
-            "|---|------|------|",
-            "| **90** | three-col row | ✅ RESOLVED 2026-04-30 |",
-            "| ~~**91**~~ | three-col struck row | r |",
-        ]
-    )
-    x1ax_odd = {r["item_label"] for r in parse_table_done(x1ax_oddarity.splitlines())}
-    check(
-        "AUDIT-X1 unknown-arity (3-col): non-struck ✅ row stays OPEN",
-        "90" not in x1ax_odd,
-        f"labels={sorted(x1ax_odd)}",
-    )
-    check(
-        "AUDIT-X1 unknown-arity (3-col): struck row still done",
-        "91" in x1ax_odd,
-        f"labels={sorted(x1ax_odd)}",
+        "struck #8 date is first line date 2026-04-12 (not the later 2026-03-01)",
+        bool(d_rows) and d_rows[0]["date"] == "2026-04-12",
+        f"date={d_rows[0]['date'] if d_rows else None}",
     )
 
-    # --- AUDIT X4 (CRITICAL — markdown-table-aware row split): a CONTENT pipe (a
-    # backslash-escaped `\|` OR a pipe inside an inline-code span) must NOT count
-    # as a column boundary. Pre-fix the naive `split("|")` inflated a canonical
-    # 4-col OPEN row to 5 apparent cells → re-keyed Status onto idx-3 (a
-    # `✅`-leading Reason fragment) → the OPEN row was classified DONE + archived +
-    # trimmed → DATA LOSS (the X1 class, re-introduced via per-row-arity). EVERY
-    # misparse vector below is asserted as "OPEN row MUST stay OPEN". ---
-    print("AUDIT-X4 — content pipes do not inflate arity; OPEN rows stay OPEN:")
-    # (a) 4-col OPEN row with an escaped `\|` AND a leading `✅` in the Reason cell.
-    x4_escaped = "\n".join(
+    # --- MISPARSE VECTORS NOW INERT BY CONSTRUCTION (the X1/X4/X6 class). Each
+    # OPEN row has a content pipe (escaped `\|`, double-escaped `\\|`, inline-code-
+    # span pipe) AND a leading `✅` in a cell — pre-fix these inflated the apparent
+    # arity and re-keyed a non-Status cell as Status → the OPEN row was archived
+    # (data loss). Struck-only detection reads NO cell to decide done-ness, so
+    # NONE can be done: each is flagged (✅ present, not struck), never archived.
+    # These RED if done-detection ever regresses to a column parse. ---
+    print("INERT — escaped/double-escaped/code-span content pipes never archive:")
+    vec_text = "\n".join(
         [
             "## Active priorities",
             "",
             "| # | Item | Status | Reason |",
             "|---|------|--------|--------|",
-            r"| **36** | open escaped-pipe item | P2 queued | "
+            r"| **36** | escaped-pipe open | P2 queued | "
             r"✅ RESOLVED 2026-05-31 \| extra note |",
+            r"| **37** | double-escaped open | P2 queued | "
+            r"✅ RESOLVED 2026-05-31 \\| extra note |",
+            "| **38** | code-span open | P2 queued | ✅ see `a | b` pipe |",
         ]
     )
-    x4a_cells = split_row(
-        r"| **36** | open escaped-pipe item | P2 queued | "
-        r"✅ RESOLVED 2026-05-31 \| extra note |"
-    )
-    check(
-        "AUDIT-X4(a) escaped `\\|` keeps the row at 4 cells (not inflated to 5)",
-        len(x4a_cells) == 4,
-        f"cells={x4a_cells}",
-    )
-    x4a = {r["item_label"] for r in parse_table_done(x4_escaped.splitlines())}
-    check(
-        "AUDIT-X4(a) 4-col escaped-`\\|` + leading-✅-Reason OPEN row stays OPEN",
-        "36" not in x4a,
-        f"labels={sorted(x4a)}",
-    )
-    # (b) 4-col OPEN row whose Reason cell holds a pipe inside an inline-code span.
-    x4_codespan = "\n".join(
-        [
-            "## Active priorities",
-            "",
-            "| # | Item | Status | Reason |",
-            "|---|------|--------|--------|",
-            "| **38** | open code-span item | P2 queued | ✅ see `a | b` pipe |",
-        ]
-    )
-    x4b_cells = split_row(
-        "| **38** | open code-span item | P2 queued | ✅ see `a | b` pipe |"
-    )
-    check(
-        "AUDIT-X4(b) code-span `a | b` pipe keeps the row at 4 cells",
-        len(x4b_cells) == 4,
-        f"cells={x4b_cells}",
-    )
-    x4b = {r["item_label"] for r in parse_table_done(x4_codespan.splitlines())}
-    check(
-        "AUDIT-X4(b) 4-col code-span-pipe + leading-✅-Reason OPEN row stays OPEN",
-        "38" not in x4b,
-        f"labels={sorted(x4b)}",
-    )
-    # (c) ragged rows whose CORRECT arity is unknown (3-col / 6-col) → struck-only;
-    # a non-struck ✅-anywhere row must NOT be re-read as done.
-    x4_ragged = "\n".join(
-        [
-            "## Active priorities",
-            "",
-            "| # | Item | Status | Reason | Extra | More |",
-            "|---|------|--------|--------|-------|------|",
-            "| **41** | six-col open row | ✅ leads here | P2 queued | x | y |",
-            "| ~~**42**~~ | six-col struck row | r | r | r | r |",
-        ]
-    )
-    x4c = {r["item_label"] for r in parse_table_done(x4_ragged.splitlines())}
-    check(
-        "AUDIT-X4(c) unknown-arity (6-col) non-struck ✅ row stays OPEN",
-        "41" not in x4c,
-        f"labels={sorted(x4c)}",
-    )
-    check(
-        "AUDIT-X4(c) unknown-arity (6-col) struck row still done (struck-only)",
-        "42" in x4c,
-        f"labels={sorted(x4c)}",
-    )
-    # (d) the original X1 all-cell-✅ vector: a ✅ in a NON-Status cell of an OPEN
-    # row (4-col Reason idx-3, 5-col Rationale idx-4) must NOT classify done.
-    x4_x1class = "\n".join(
-        [
-            "## Active priorities",
-            "",
-            "| # | Item | Status | Reason |",
-            "|---|------|--------|--------|",
-            "| **43** | 4-col ✅-in-Reason open | P2 queued | ✅ RESOLVED 2026-04-30 |",
-            "",
-            "| # | Item | Axis | Status | Rationale |",
-            "|---|------|------|--------|-----------|",
-            "| **44** | 5-col ✅-in-Rationale open | ax | P2 queued | "
-            "✅ RESOLVED 2026-04-30 |",
-        ]
-    )
-    x4d = {r["item_label"] for r in parse_table_done(x4_x1class.splitlines())}
-    check(
-        "AUDIT-X4(d) X1 vector: ✅ in a non-Status cell (4-col + 5-col) stays OPEN",
-        "43" not in x4d and "44" not in x4d,
-        f"labels={sorted(x4d)}",
-    )
-    # (e) CONTROL — legitimate done rows still archive after the markdown-aware
-    # split: golden #76 (5-col under 4-col header, ✅ at idx-3 Status), a struck
-    # row, and a 4-col P2 done row (✅ at idx-2 Status).
-    x4_control = "\n".join(
-        [
-            "## Active priorities",
-            "",
-            "| # | Item | Status | Reason |",
-            "|---|------|--------|--------|",
-            "| **76** | five-col golden done | ax | "
-            "**✅ CLOSED 2026-06-02 — done** | rationale (disc 2026-05-31) |",
-            "| ~~**80**~~ | four-col struck done | done | r |",
-            "| **81** | four-col status-done | **✅ DONE 2026-04-15** | reason |",
-        ]
-    )
-    x4e = {r["item_label"]: r for r in parse_table_done(x4_control.splitlines())}
-    check(
-        "AUDIT-X4(e) control: golden #76 (idx-3 ✅) still archives, bucket 2026-06",
-        "76" in x4e and x4e["76"]["date"] == "2026-06-02",
-        f"labels={sorted(x4e)} date={x4e.get('76', {}).get('date')}",
-    )
-    check(
-        "AUDIT-X4(e) control: struck #80 still archives",
-        "80" in x4e,
-        f"labels={sorted(x4e)}",
-    )
-    check(
-        "AUDIT-X4(e) control: 4-col #81 (idx-2 ✅ Status) still archives",
-        "81" in x4e and x4e["81"]["date"] == "2026-04-15",
-        f"labels={sorted(x4e)} date={x4e.get('81', {}).get('date')}",
-    )
-
-    # --- AUDIT X5 (MEDIUM, below floor — file-level symlink guard): a pre-planted
-    # symlink AT a write target (the month file OR BACKLOG.md) must be refused
-    # (exit 2, nothing written through it). The X3 guard validated only the
-    # `archive/` directory; these targets sit below it. ---
-    print("AUDIT-X5 — file-level symlinked write targets are refused:")
-    with tempfile.TemporaryDirectory() as _x5td:
-        _proj = Path(_x5td) / "repos" / "ai-dev-team"
-        _proj.mkdir(parents=True)
-        (_proj / "BACKLOG.md").write_text(
-            "# BACKLOG\n\n## P1: section\n\n"
-            "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n",
-            encoding="utf-8",
-        )
-        (_proj / "archive").mkdir()  # a REAL dir → passes the X3 dir-level guard
-        _outside = Path(_x5td) / "OUTSIDE"
-        _outside.mkdir()
-        _victim = _outside / "victim.md"
-        _victim.write_text("ORIGINAL VICTIM\n", encoding="utf-8")
-        os.symlink(str(_victim), str(_proj / "archive" / "backlog-done-2026-04.md"))
-        _btext = (_proj / "BACKLOG.md").read_text()
-        _rc, _ = apply_archive(_proj, "ai-dev-team", _btext, classify(_btext), [])
+    vec_done = done_labels(vec_text)
+    vec_flagged = flagged_numbers(vec_text)
+    for n in ("36", "37", "38"):
         check(
-            "AUDIT-X5 symlinked month-file target refused with exit 2",
-            _rc == 2,
-            f"rc={_rc}",
+            f"misparse-vector #{n} OPEN row never DONE (column-parse inert)",
+            n not in vec_done,
+            f"done={sorted(vec_done)}",
         )
         check(
-            "AUDIT-X5 outside victim file untouched (not written through symlink)",
-            _victim.read_text() == "ORIGINAL VICTIM\n",
-        )
-    with tempfile.TemporaryDirectory() as _x5td2:
-        _proj2 = Path(_x5td2) / "repos" / "ai-dev-team"
-        _proj2.mkdir(parents=True)
-        _outside2 = Path(_x5td2) / "OUTSIDE"
-        _outside2.mkdir()
-        _realbl = _outside2 / "real-backlog.md"
-        _realbl.write_text(
-            "# BACKLOG\n\n## P1: section\n\n"
-            "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n",
-            encoding="utf-8",
-        )
-        os.symlink(str(_realbl), str(_proj2 / "BACKLOG.md"))
-        (_proj2 / "archive").mkdir()
-        _btext2 = (_proj2 / "BACKLOG.md").read_text()
-        _rc2, _ = apply_archive(_proj2, "ai-dev-team", _btext2, classify(_btext2), [])
-        check(
-            "AUDIT-X5 symlinked BACKLOG.md target refused with exit 2",
-            _rc2 == 2,
-            f"rc={_rc2}",
-        )
-        check(
-            "AUDIT-X5 outside real-backlog untrimmed (not written through symlink)",
-            "BODY_5" in _realbl.read_text(),
+            f"misparse-vector #{n} OPEN row FLAGGED (✅ present, not struck)",
+            n in vec_flagged,
+            f"flagged={sorted(vec_flagged)}",
         )
 
-    # --- AUDIT X3 (MEDIUM): a pre-existing `archive/` symlink whose target is
-    # outside the project root MUST be refused (exit 2, nothing written) — pre-fix
-    # `--apply` followed the symlink and wrote files outside the project tree. ---
-    print("AUDIT-X3 — symlinked archive/ that escapes the project root is refused:")
-    with tempfile.TemporaryDirectory() as _x3td:
-        _proj = Path(_x3td) / "repos" / "ai-dev-team"
-        _proj.mkdir(parents=True)
-        (_proj / "BACKLOG.md").write_text(
-            "# BACKLOG\n\n## P1: section\n\n"
-            "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n",
-            encoding="utf-8",
-        )
-        _outside = Path(_x3td) / "OUTSIDE_TARGET"
-        _outside.mkdir()
-        os.symlink(str(_outside), str(_proj / "archive"))
-        _btext = (_proj / "BACKLOG.md").read_text()
-        _res = classify(_btext)
-        _rc, _ = apply_archive(_proj, "ai-dev-team", _btext, _res, [])
-        _escaped = list(_outside.glob("backlog-done-*.md"))
-        check(
-            "AUDIT-X3 symlinked-escape archive/ refused with exit 2",
-            _rc == 2,
-            f"rc={_rc}",
-        )
-        check(
-            "AUDIT-X3 nothing written outside the project root",
-            not _escaped,
-            f"escaped={[p.name for p in _escaped]}",
-        )
+    # --- candidate-matching keys on a STRUCK row's number (extracted from the
+    # struck item cell), unaffected by column parse. ---
+    print("CANDIDATE — a `### N` block matches a STRUCK row's number:")
+    cand_text = "\n".join(
+        [
+            "## Active priorities",
+            "",
+            "| # | Item | Status | Reason |",
+            "|---|------|--------|--------|",
+            "| ~~**9**~~ | candidate-similar topic | **✅ DONE 2026-04-12** | r |",
+            "| **76** | non-struck ✅ row | **✅ CLOSED 2026-06-02** | r |",
+            "",
+            "## P3: blocks",
+            "",
+            "### 9. candidate-similar topic block",
+            "",
+            "CAND_BLOCK_9 — not struck, no own-status; matches struck row #9.",
+            "",
+            "### 76. non-struck row number block",
+            "",
+            "This block's number matches a NON-struck (flagged) row → NOT a "
+            "candidate (no struck row #76).",
+        ]
+    )
+    cand_res = classify(cand_text)
+    cand_nums = {c["number"] for c in cand_res["candidates"]}
+    check(
+        "#9 block is a CANDIDATE (matches struck row #9)",
+        "9" in cand_nums,
+        f"candidates={sorted(cand_nums)}",
+    )
+    check(
+        "#76 block NOT a candidate (#76 row is non-struck/flagged, not a done row)",
+        "76" not in cand_nums,
+        f"candidates={sorted(cand_nums)}",
+    )
+
+    # --- AUTO-DONE blocks retained: struck `### ~~` header OR own-line
+    # `**Status: ✅` (matched mid-line); body-wide `✅ DONE` does NOT classify. ---
+    print("BLOCK AUTO-DONE — struck header / own-status field; body-✅ guard:")
+    block_text = "\n".join(
+        [
+            "## P1: section",
+            "",
+            "### ~~12. struck block~~ ✅ DONE (2026-04-17)",
+            "",
+            "STRUCK_DONE_12.",
+            "",
+            "### 20. own-status mid-line block",
+            "",
+            "**Axis:** foo. **Status: ✅ DONE (2026-04-18) — PR #99** OWN_20",
+            "",
+            "### 50. FP-guard open block",
+            "",
+            "FP_GUARD_50.",
+            "",
+            "- ~~**Cx — foo.**~~ ✅ DONE (2026-04-27, PR #64)",
+        ]
+    )
+    block_res = classify(block_text)
+    auto_block_labels = {b["item_label"] for b in block_res["auto_blocks"]}
+    open_block_labels = {b["item_label"] for b in block_res["open_blocks"]}
+    check(
+        "struck #12 block AUTO-DONE",
+        "12" in auto_block_labels,
+        f"auto={sorted(auto_block_labels)}",
+    )
+    check(
+        "own-status mid-line #20 block AUTO-DONE",
+        "20" in auto_block_labels,
+        f"auto={sorted(auto_block_labels)}",
+    )
+    check(
+        "body-wide-✅ #50 block stays OPEN (no own-status field)",
+        "50" in open_block_labels and "50" not in auto_block_labels,
+        f"open={sorted(open_block_labels)}",
+    )
 
     # --- X1: two DISTINCT items reusing a number (different title) BOTH survive
     # an idempotent merge — the second is not dropped by a bare-label dedup. ---
@@ -1579,22 +1354,16 @@ def _selftest() -> int:
         "struck": True,
     }
     merged = merge_into_archive(base_archive, [reused_block], [])
-    check(
-        "X1 original #12 body preserved",
-        "ORIGINAL_12_BODY" in merged,
-    )
+    check("X1 original #12 body preserved", "ORIGINAL_12_BODY" in merged)
     check(
         "X1 reused #12 (different title) preserved, not deduped away",
         "REUSED_12_BODY_DIFFERENT" in merged,
     )
-    # An identity-equal re-merge is a true no-op (no clobber, no duplication).
     remerged = merge_into_archive(merged, [reused_block], [])
     check(
         "X1 identity-equal re-merge is a no-op (no duplicate)",
         remerged == merged and remerged.count("REUSED_12_BODY_DIFFERENT") == 1,
     )
-    # trim only removes a BACKLOG block whose FULL identity was archived: the
-    # reused twin (archived) is dropped, an unrelated same-number block is kept.
     backlog_two_twelves = "\n".join(
         [
             "## P1: section",
@@ -1623,7 +1392,7 @@ def _selftest() -> int:
     )
 
     # --- X3: a 2-table-shape archive rows section regenerates clean index lines
-    # (no `**##**` header-as-data garbage; the 2nd table's PR# is preserved). ---
+    # (no `**##**` header-as-data garbage; each table's PR# is preserved). ---
     print("X3 — multi-table-shape archive yields clean index lines:")
     arch_two_shapes = "\n".join(
         [
@@ -1660,10 +1429,135 @@ def _selftest() -> int:
         f"labels={sorted(r['item_label'] for r in x3_rows)}",
     )
 
+    # --- END-TO-END (--apply): struck rows + AUTO blocks archive; a NON-struck
+    # ✅ row stays OPEN (flagged), with every misparse vector inert. ---
+    print("E2E — --apply archives struck/AUTO only; non-struck ✅ rows stay OPEN:")
+    e2e = "\n".join(
+        [
+            "# BACKLOG",
+            "",
+            "## Active priorities",
+            "",
+            "| # | Item | Status | Reason |",
+            "|---|------|--------|--------|",
+            "| ~~**5**~~ | E2ESTRUCK struck done | **✅ DONE 2026-04-10** | r |",
+            "| **76** | E2EFLAG non-struck ✅ row | **✅ CLOSED 2026-06-02** | r |",
+            r"| **36** | E2EESC escaped-pipe open | P2 queued | "
+            r"✅ RESOLVED 2026-05-31 \| extra |",
+            "| **38** | E2ECODE code-span open | P2 queued | ✅ see `a | b` |",
+            "",
+            "## P1: section",
+            "",
+            "### ~~12. E2EBLOCK struck block~~ ✅ DONE (2026-04-17)",
+            "",
+            "STRUCK_DONE_12.",
+            "",
+        ]
+    )
+    with tempfile.TemporaryDirectory() as e2etd:
+        e2eproj = Path(e2etd) / "repos" / "ai-dev-team"
+        e2eproj.mkdir(parents=True)
+        (e2eproj / "BACKLOG.md").write_text(e2e, encoding="utf-8")
+        rc_e, _ = apply_archive(
+            e2eproj, "ai-dev-team", e2e, classify(e2e), []
+        )
+        bl_e = (e2eproj / "BACKLOG.md").read_text()
+        open_e = bl_e.split("## Completed")[0]
+        arch_e = "\n".join(
+            a.read_text() for a in (e2eproj / "archive").glob("backlog-done-*.md")
+        )
+        check("E2E --apply exit 1 (changes)", rc_e == 1, f"rc={rc_e}")
+        check(
+            "E2E struck row #5 archived (move not copy)",
+            "E2ESTRUCK" in arch_e and "E2ESTRUCK" not in open_e,
+        )
+        check(
+            "E2E struck AUTO block #12 archived",
+            "E2EBLOCK" in arch_e and "E2EBLOCK" not in open_e,
+        )
+        check(
+            "E2E non-struck ✅ #76 row FLAGGED — stays OPEN, never archived",
+            "E2EFLAG" in open_e and "E2EFLAG" not in arch_e,
+        )
+        for marker in ("E2EESC", "E2ECODE"):
+            check(
+                f"E2E misparse-vector {marker} OPEN row stays OPEN (inert)",
+                marker in open_e and marker not in arch_e,
+            )
+
+    # --- AUDIT X5 (file-level symlink guard): a pre-planted symlink AT a write
+    # target (month file OR BACKLOG.md) is refused (exit 2, nothing written). ---
+    print("AUDIT-X5 — file-level symlinked write targets are refused:")
+    with tempfile.TemporaryDirectory() as _x5td:
+        _proj = Path(_x5td) / "repos" / "ai-dev-team"
+        _proj.mkdir(parents=True)
+        (_proj / "BACKLOG.md").write_text(
+            "# BACKLOG\n\n## P1: section\n\n"
+            "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n",
+            encoding="utf-8",
+        )
+        (_proj / "archive").mkdir()  # a REAL dir → passes the X3 dir-level guard
+        _outside = Path(_x5td) / "OUTSIDE"
+        _outside.mkdir()
+        _victim = _outside / "victim.md"
+        _victim.write_text("ORIGINAL VICTIM\n", encoding="utf-8")
+        os.symlink(str(_victim), str(_proj / "archive" / "backlog-done-2026-04.md"))
+        _btext = (_proj / "BACKLOG.md").read_text()
+        _rc, _ = apply_archive(_proj, "ai-dev-team", _btext, classify(_btext), [])
+        check("AUDIT-X5 symlinked month-file target refused exit 2", _rc == 2, f"rc={_rc}")
+        check(
+            "AUDIT-X5 outside victim untouched (not written through symlink)",
+            _victim.read_text() == "ORIGINAL VICTIM\n",
+        )
+    with tempfile.TemporaryDirectory() as _x5td2:
+        _proj2 = Path(_x5td2) / "repos" / "ai-dev-team"
+        _proj2.mkdir(parents=True)
+        _outside2 = Path(_x5td2) / "OUTSIDE"
+        _outside2.mkdir()
+        _realbl = _outside2 / "real-backlog.md"
+        _realbl.write_text(
+            "# BACKLOG\n\n## P1: section\n\n"
+            "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n",
+            encoding="utf-8",
+        )
+        os.symlink(str(_realbl), str(_proj2 / "BACKLOG.md"))
+        (_proj2 / "archive").mkdir()
+        _btext2 = (_proj2 / "BACKLOG.md").read_text()
+        _rc2, _ = apply_archive(_proj2, "ai-dev-team", _btext2, classify(_btext2), [])
+        check("AUDIT-X5 symlinked BACKLOG.md target refused exit 2", _rc2 == 2, f"rc={_rc2}")
+        check(
+            "AUDIT-X5 outside real-backlog untrimmed (not written through symlink)",
+            "BODY_5" in _realbl.read_text(),
+        )
+
+    # --- AUDIT X3 (dir-level symlink guard): a pre-existing `archive/` symlink
+    # whose target is outside the project root MUST be refused (exit 2). ---
+    print("AUDIT-X3 — symlinked archive/ that escapes the project root is refused:")
+    with tempfile.TemporaryDirectory() as _x3td:
+        _proj = Path(_x3td) / "repos" / "ai-dev-team"
+        _proj.mkdir(parents=True)
+        (_proj / "BACKLOG.md").write_text(
+            "# BACKLOG\n\n## P1: section\n\n"
+            "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n",
+            encoding="utf-8",
+        )
+        _outside = Path(_x3td) / "OUTSIDE_TARGET"
+        _outside.mkdir()
+        os.symlink(str(_outside), str(_proj / "archive"))
+        _btext = (_proj / "BACKLOG.md").read_text()
+        _rc, _ = apply_archive(_proj, "ai-dev-team", _btext, classify(_btext), [])
+        _escaped = list(_outside.glob("backlog-done-*.md"))
+        check("AUDIT-X3 symlinked-escape archive/ refused exit 2", _rc == 2, f"rc={_rc}")
+        check(
+            "AUDIT-X3 nothing written outside the project root",
+            not _escaped,
+            f"escaped={[p.name for p in _escaped]}",
+        )
+
     if failures:
         print(f"\nSELFTEST FAILED: {len(failures)} assertion(s): {', '.join(failures)}")
         return 1
-    print("\nSELFTEST OK: X1, X2, X3, X4, X5 all GREEN")
+    print("\nSELFTEST OK: struck-only done-detection + flagged non-struck-✅ rows + X1/X3/X5 GREEN")
     return 0
 
 

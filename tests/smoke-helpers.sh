@@ -9310,21 +9310,25 @@ PYEOF
 # the committed pre-cleanup golden BACKLOG (frozen ONCE as a static fixture from
 # the real pre-deep-clean backlog — NO vault reach in the test, cwd-independent) into a
 # temp project, then reproduces the 2026-06-04 human deep-clean and ID-anchors the
-# result: `--dry-run` CANDIDATE set is EXACTLY {37,42,45,46,52,55,75} (with #55/#75
-# hinted likely-collision); `--apply --archive-candidates 37,42,45,46,52` archives
-# the non-struck approved set {#37,#42,#45,#46,#52} + ALL struck `### ~~`/`| ~~`
-# items + the #76 own-status block, while {#40,#50,#55,#75} stay OPEN; the
-# regenerated index has exactly ONE line each for #37/#45/#46/#52, FOUR lines for
-# #42/#42a/#42b/#42c, TWO #76 lines, and the #37 line sources `PR #57` from the
-# matched row; a second identical `--apply` is a byte-identical no-op. Layered with
-# the archiver's own `--selftest` (X1/X2/X3/X4/X5) and end-to-end --apply guards for
-# the markdown-table-aware row split (X4 — escaped `\|` / inline-code-span pipe /
-# ragged / all-cell-✅ OPEN rows MUST stay OPEN; a 4-col idx-2 done row still
-# archives) and the file-level symlink write-target guard (X5 — symlinked month
-# file / BACKLOG.md refused exit-2, nothing written through them).
-# Mutation-protected: any regression in classification (candidate set), coalescing
-# (index line counts), date-bucketing, merge idempotency, the row split, or the
-# symlink guard drives an assertion RED.
+# result under the STRUCK-ONLY done-detection contract (spec §3.2 rule 1):
+# `--dry-run` CANDIDATE set is EXACTLY {37,42,45,46,52,55,75} (with #55/#75 hinted
+# likely-collision); the FLAGGED section lists the NON-struck `✅` rows #76 and #77;
+# `--apply --archive-candidates 37,42,45,46,52` archives the non-struck approved set
+# {#37,#42,#45,#46,#52} + ALL struck `### ~~`/`| ~~` items + the #76 own-status
+# block, while {#40,#50,#55,#75} stay OPEN AND the non-struck `✅` rows #76/#77 stay
+# in BACKLOG (flagged, never archived); the regenerated index has exactly ONE line
+# each for #37/#45/#46/#52, FOUR lines for #42/#42a/#42b/#42c, ONE #76 line (the
+# block only — the flagged #76 ROW produces no index line), and the #37 line sources
+# `PR #57` from the matched row; a second identical `--apply` is a byte-identical
+# no-op. Layered with the archiver's own `--selftest` and an end-to-end --apply
+# guard that pins the column-parse data-loss class (X1/X4/X6) CLOSED BY CONSTRUCTION:
+# every OPEN row carrying a `✅` in a non-Status cell + a misparse vector (escaped
+# `\|` / double-escaped `\\|` / inline-code-span pipe / 6-col ragged / 5-col-under-
+# 4-col-header) MUST stay OPEN; only a STRUCK row archives. Plus the file-level
+# symlink write-target guard (X5 — symlinked month file / BACKLOG.md refused exit-2).
+# Mutation-protected: any regression in classification (candidate set / flag set),
+# coalescing (index line counts), date-bucketing, merge idempotency, a regression of
+# done-detection to a column parse, or the symlink guard drives an assertion RED.
 check_backlog_archiver_behavioral() {
   local archiver="$PLUGIN_ROOT/tests/backlog_archive.py"
   local golden="$PLUGIN_ROOT/tests/fixtures/backlog-curator/golden-input-backlog.md"
@@ -9407,6 +9411,26 @@ with tempfile.TemporaryDirectory() as td:
         print("(2) #76 own-status block must be archived")
         sys.exit(1)
 
+    # STRUCK-ONLY contract (spec §3.2 rule 1): the NON-struck #76 librarian-cluster
+    # ROW and the NON-struck #77 row carry a `✅` but are NOT struck → they are
+    # FLAGGED, never archived. They MUST stay in the open BACKLOG and MUST NOT
+    # appear in any archive file. (RED if done-detection regresses to a column
+    # parse that re-reads a non-Status `✅` cell and archives the OPEN row.)
+    for n in (76, 77):
+        if not re.search(rf"^\s*\| \*\*{n}\*\*", openpart, re.M):
+            print(f"(2) non-struck ✅ row #{n} must STAY in the open BACKLOG (flagged, not archived)")
+            sys.exit(1)
+        if re.search(rf"^\s*\| \*\*{n}\*\*", archtxt, re.M):
+            print(f"(2) non-struck ✅ row #{n} must NEVER be archived (struck-only done-detection)")
+            sys.exit(1)
+    # The FLAGGED dry-run section advertises the #76/#77 rows so the human can
+    # strike them.
+    flag_sec = dry.stdout.split("FLAGGED", 1)[1].split("CANDIDATES", 1)[0] if "FLAGGED" in dry.stdout else ""
+    flag_ids = {int(x) for x in re.findall(r"#(\d+)", flag_sec)}
+    if not {76, 77} <= flag_ids:
+        print(f"(2) FLAGGED section must list the non-struck ✅ rows #76 and #77, got {sorted(flag_ids)}\n{flag_sec[:600]}")
+        sys.exit(1)
+
     # Must-stay-OPEN set: #40/#50 (X12 FP-guards) + the un-approved collision
     # candidates #55/#75 keep their OPEN headers in the trimmed BACKLOG.
     for n in (40, 50, 55, 75):
@@ -9416,16 +9440,17 @@ with tempfile.TemporaryDirectory() as td:
 
     # (3) Regenerated index: ONE line per logical item for the approved candidates
     # (block+row coalesce) — #37/#45/#46/#52; FOUR distinct #42/#42a/#42b/#42c
-    # lines (block matched only to suffixed rows → no coalesce); TWO #76 lines
-    # (auto-block + same-number done row never coalesce). The #37 line carries the
-    # row's `PR #57` (coalesced PR sourced from the matched row).
+    # lines (block matched only to suffixed rows → no coalesce); exactly ONE #76
+    # line — the AUTO-DONE block only (the non-struck #76 ROW is FLAGGED, never
+    # archived, so it produces NO index line). The #37 line carries the row's
+    # `PR #57` (coalesced PR sourced from the matched row).
     idx = (
         bl.split("### Done backlog items — index")[1].split("### Completed specs")[0]
         if "Done backlog items — index" in bl
         else ""
     )
     for lbl, want in (("#37", 1), ("#45", 1), ("#46", 1), ("#52", 1),
-                      ("#42", 1), ("#42a", 1), ("#42b", 1), ("#42c", 1), ("#76", 2)):
+                      ("#42", 1), ("#42a", 1), ("#42b", 1), ("#42c", 1), ("#76", 1)):
         got = idx.count(f"**{lbl}**")
         if got != want:
             print(f"(3) index line count for {lbl}: want {want}, got {got}\n{idx[:1200]}")
@@ -9448,15 +9473,23 @@ with tempfile.TemporaryDirectory() as td:
         print(f"(4) second --apply must be byte-identical no-op; snapshots differ:\n  {snap}\n  {snap2}")
         sys.exit(1)
 
-    # (5) AUDIT X1 regression guard (RED on the pre-X1-fix all-cell-✅-scan), with
-    # the real 898a8c0 golden hazard baked in: 5-col rows physically placed under a
-    # 4-col `# | Item | Status | Reason` header. Status is resolved per-row-arity
-    # (5→idx-3, 4→idx-2), NOT the header arity. Asserted end-to-end via --apply:
-    #   #991 (5-col, ✅ RESOLVED at idx-4 Rationale, `P2 queued` at idx-3 Status)
-    #        → MUST stay OPEN (the #77/#59 data-loss class).
-    #   #992 (5-col, ✅ CLOSED at idx-3 Status) → MUST archive (the #76 class).
-    #   #993 (5-col struck) → MUST archive (struck-only, guard stays narrow).
-    #   #994 (4-col sibling, `P2 queued` at idx-2 Status) → MUST stay OPEN.
+    # (5+6) STRUCK-ONLY done-detection closes the column-parse data-loss class
+    # (X1 all-cell-scan / X4 escaped `\|` / X6 double-escaped `\\|`) BY
+    # CONSTRUCTION — these REPLACE the prior column-parse vector pins. Every row
+    # below carries a `✅` in a NON-Status cell PLUS a misparse vector (escaped
+    # `\|`, double-escaped `\\|`, inline-code-span pipe, 6-col ragged, 5-col-under-
+    # 4-col-header). Pre-fix, a column parse inflated the apparent arity and
+    # re-keyed a non-Status `✅` cell as the Status cell → the OPEN row was
+    # archived + trimmed = DATA LOSS. Asserted END-TO-END via --apply: NONE may be
+    # archived (done-detection reads NO cell). The lone done signal is STRUCK, so a
+    # struck control row still archives. These pins go RED if done-detection ever
+    # regresses to a column parse.
+    #   SOESCMARK   (escaped `\|` + leading-✅ Reason)              → MUST stay OPEN
+    #   SODBLESC    (double-escaped `\\|` + leading-✅ Reason)      → MUST stay OPEN
+    #   SOCODEMARK  (inline-code-span pipe + leading-✅ Reason)     → MUST stay OPEN
+    #   SORAGMARK   (6-col ragged, ✅ in a non-Status cell)         → MUST stay OPEN
+    #   SOALLCELL   (5-col-under-4-col-header, ✅ non-struck cell)  → MUST stay OPEN
+    #   SOSTRUCK    (struck row)                                    → MUST archive
     synth = "\n".join([
         "# BACKLOG",
         "",
@@ -9464,99 +9497,46 @@ with tempfile.TemporaryDirectory() as td:
         "",
         "| # | Item | Status | Reason |",
         "|---|------|--------|--------|",
-        "| **994** | X1FOURCOLOPEN four-col open row | P2 queued | reason |",
-        "| **991** | X1OPENMARKER five-col open row | ax | P2 queued | "
-        "✅ RESOLVED 2026-05-31 discussion only |",
-        "| **992** | X1DONEMARKER five-col done row | ax | "
-        "**✅ CLOSED 2026-05-10 — done** | rationale (disc 2026-03-15) |",
-        "| ~~**993**~~ | X1STRUCKMARKER five-col struck done | ax | "
-        "**✅ DONE 2026-05-10** | r |",
+        r"| **101** | SOESCMARK escaped-pipe open | P2 queued | "
+        r"✅ RESOLVED 2026-05-31 \| extra note |",
+        r"| **102** | SODBLESC double-escaped open | P2 queued | "
+        r"✅ RESOLVED 2026-05-31 \\| extra note |",
+        "| **103** | SOCODEMARK code-span open | P2 queued | "
+        "✅ see `a | b` pipe |",
+        "| **104** | SOALLCELL five-col ✅-in-cell open | ax | P2 queued | "
+        "✅ RESOLVED 2026-04-30 discussion only |",
+        "| ~~**105**~~ | SOSTRUCK struck done | **✅ DONE 2026-04-15** | r |",
+        "",
+        "| # | Item | Status | Reason | Extra | More |",
+        "|---|------|--------|--------|-------|------|",
+        "| **106** | SORAGMARK six-col ✅-non-status open | ✅ leads here | "
+        "P2 queued | x | y |",
         "",
     ])
     with tempfile.TemporaryDirectory() as td5:
         proj5 = Path(td5) / "repos" / "ai-dev-team"
         proj5.mkdir(parents=True)
         (proj5 / "BACKLOG.md").write_text(synth, encoding="utf-8")
-        ap5 = run(td5, "--apply")
+        run(td5, "--apply")
         bl5 = (proj5 / "BACKLOG.md").read_text()
         open5 = bl5.split("## Completed")[0]
         arch5 = "\n".join(a.read_text() for a in (proj5 / "archive").glob("backlog-done-*.md"))
-        if "X1OPENMARKER" not in open5:
-            print("(5) X1 regression: 5-col OPEN row with ✅ in idx-4 Rationale was LOST from open BACKLOG (data loss)")
-            sys.exit(1)
-        if "X1OPENMARKER" in arch5:
-            print("(5) X1 regression: 5-col OPEN row with ✅ in idx-4 Rationale was wrongly ARCHIVED (data loss)")
-            sys.exit(1)
-        if "X1FOURCOLOPEN" not in open5 or "X1FOURCOLOPEN" in arch5:
-            print("(5) X1 regression: 4-col sibling OPEN row (Status idx-2 'P2 queued') must stay OPEN")
-            sys.exit(1)
-        if "X1DONEMARKER" not in arch5 or "X1DONEMARKER" in open5:
-            print("(5) per-row-arity: 5-col done row (✅ at idx-3 Status) under a 4-col header MUST archive (#76 class)")
-            sys.exit(1)
-        if "X1STRUCKMARKER" not in arch5 or "X1STRUCKMARKER" in open5:
-            print("(5) X1 regression: the struck row must still archive (guard must stay narrow)")
-            sys.exit(1)
-
-    # (6) AUDIT X4 (CRITICAL) — markdown-table-aware row split: a CONTENT pipe (a
-    # backslash-escaped `\|` OR a pipe inside an inline-code span) must NOT inflate
-    # a canonical 4-col OPEN row into a 5-col one (which pre-fix re-keyed Status
-    # onto a `✅`-leading Reason fragment → the OPEN row was archived + trimmed →
-    # DATA LOSS). Asserted END-TO-END via --apply: EVERY misparse vector is an
-    # "OPEN row MUST stay OPEN" check (RED on the pre-fix naive split for X4ESCMARK),
-    # plus a control that legitimate done rows still archive.
-    #   X4ESCMARK  (4-col, escaped `\|` + leading-✅ Reason)        → MUST stay OPEN
-    #   X4CODEMARK (4-col, inline-code-span pipe + leading-✅ Reason) → MUST stay OPEN
-    #   X4RAGMARK  (6-col ragged, ✅ in a non-Status cell)           → MUST stay OPEN
-    #   X4ALLCELL  (5-col, ✅ in idx-4 Rationale — the X1 all-cell vector) → OPEN
-    #   X4DONEMARK (4-col, ✅ at idx-2 Status — control)             → MUST archive
-    synth6 = "\n".join([
-        "# BACKLOG",
-        "",
-        "## Active priorities",
-        "",
-        "| # | Item | Status | Reason |",
-        "|---|------|--------|--------|",
-        r"| **101** | X4ESCMARK escaped-pipe open | P2 queued | "
-        r"✅ RESOLVED 2026-05-31 \| extra note |",
-        "| **102** | X4CODEMARK code-span open | P2 queued | "
-        "✅ see `a | b` pipe |",
-        "| **103** | X4DONEMARK four-col status-done | "
-        "**✅ DONE 2026-04-15 — done** | reason |",
-        "",
-        "| # | Item | Axis | Status | Rationale |",
-        "|---|------|------|--------|-----------|",
-        "| **104** | X4ALLCELL five-col ✅-in-Rationale open | ax | P2 queued | "
-        "✅ RESOLVED 2026-04-30 discussion only |",
-        "",
-        "| # | Item | Status | Reason | Extra | More |",
-        "|---|------|--------|--------|-------|------|",
-        "| **105** | X4RAGMARK six-col ✅-non-status open | ✅ leads here | "
-        "P2 queued | x | y |",
-        "",
-    ])
-    with tempfile.TemporaryDirectory() as td6:
-        proj6 = Path(td6) / "repos" / "ai-dev-team"
-        proj6.mkdir(parents=True)
-        (proj6 / "BACKLOG.md").write_text(synth6, encoding="utf-8")
-        run(td6, "--apply")
-        bl6 = (proj6 / "BACKLOG.md").read_text()
-        open6 = bl6.split("## Completed")[0]
-        arch6 = "\n".join(a.read_text() for a in (proj6 / "archive").glob("backlog-done-*.md"))
         for marker, why in (
-            ("X4ESCMARK", "4-col escaped `\\|` + leading-✅ Reason"),
-            ("X4CODEMARK", "4-col inline-code-span pipe + leading-✅ Reason"),
-            ("X4RAGMARK", "6-col ragged row with ✅ in a non-Status cell"),
-            ("X4ALLCELL", "5-col row with ✅ in idx-4 Rationale (X1 all-cell vector)"),
+            ("SOESCMARK", "escaped `\\|` + leading-✅ in a non-Status cell"),
+            ("SODBLESC", "double-escaped `\\\\|` + leading-✅ in a non-Status cell"),
+            ("SOCODEMARK", "inline-code-span pipe + leading-✅ in a non-Status cell"),
+            ("SOALLCELL", "5-col-under-4-col-header, ✅ in a non-struck cell"),
+            ("SORAGMARK", "6-col ragged row with ✅ in a non-Status cell"),
         ):
-            if marker not in open6:
-                print(f"(6) X4 regression: OPEN row [{why}] was LOST from open BACKLOG (data loss)")
+            if marker not in open5:
+                print(f"(5+6) column-parse regression: OPEN row [{why}] was LOST from open BACKLOG (data loss)")
                 sys.exit(1)
-            if marker in arch6:
-                print(f"(6) X4 regression: OPEN row [{why}] was wrongly ARCHIVED (data loss)")
+            if marker in arch5:
+                print(f"(5+6) column-parse regression: OPEN row [{why}] was wrongly ARCHIVED — struck-only done-detection broke (data loss)")
                 sys.exit(1)
-        # Control: a legitimate 4-col done row (✅ at idx-2 Status) STILL archives.
-        if "X4DONEMARK" not in arch6 or "X4DONEMARK" in open6:
-            print("(6) control: 4-col done row (✅ at idx-2 Status) MUST still archive after the markdown-aware split")
+        # The lone STRUCK row still archives — the done signal stays narrow.
+        if "SOSTRUCK" not in arch5 or "SOSTRUCK" in open5:
+            print("(5+6) struck control row MUST still archive (struck-only done signal)")
             sys.exit(1)
 
     # (7) AUDIT X5 (MEDIUM) — file-level symlink guard: a pre-planted symlink AT a
@@ -9600,7 +9580,7 @@ with tempfile.TemporaryDirectory() as td:
             print("(7) X5: outside real-backlog was trimmed THROUGH the BACKLOG.md symlink (escape)")
             sys.exit(1)
 
-print("backlog_archive GOLDEN: dry-run candidates exactly {37,42,45,46,52,55,75} (#55/#75 likely-collision); --apply 37,42,45,46,52 archives approved+struck+#76-block (move not copy), {#40,#50,#55,#75} stay OPEN; index one line each #37/#45/#46/#52, four #42/#42a/#42b/#42c, two #76, #37 line sources PR #57; 2nd --apply byte-identical no-op; per-row-arity Status (5-col ✅-at-idx-3 done row under a 4-col header archives, ✅-at-idx-4-Rationale row stays OPEN) (X1); markdown-aware split keeps escaped-`\\|`/code-span/ragged/all-cell OPEN rows OPEN, 4-col idx-2 done row still archives (X4); file-level symlink write targets refused exit-2 (X5); selftest X1/X2/X3/X4/X5 + AUDIT-X1/X3/X4/X5 green")
+print("backlog_archive GOLDEN: dry-run candidates exactly {37,42,45,46,52,55,75} (#55/#75 likely-collision), FLAGGED lists non-struck ✅ rows #76/#77; --apply 37,42,45,46,52 archives approved+struck+#76-block (move not copy), {#40,#50,#55,#75} stay OPEN, non-struck ✅ rows #76/#77 stay in BACKLOG (flagged, never archived); index one line each #37/#45/#46/#52, four #42/#42a/#42b/#42c, ONE #76 (block only); #37 line sources PR #57; 2nd --apply byte-identical no-op; STRUCK-ONLY done-detection closes the column-parse data-loss class by construction (escaped-`\\|`/double-escaped-`\\\\|`/code-span/ragged/5-col-under-4-col OPEN rows with ✅ in a non-Status cell stay OPEN; only struck rows archive) (X1/X4/X6); file-level symlink write targets refused exit-2 (X5); selftest + AUDIT-X3/X5 green")
 PYEOF
 }
 
