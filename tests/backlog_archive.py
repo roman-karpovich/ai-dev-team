@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-r"""Offline BACKLOG deep-clean archiver — classify + plan (Step 2: --dry-run).
+r"""Offline BACKLOG deep-clean archiver — classify + plan + apply.
 
 Companion to the report-only drift scanner `kb_drift_scan.py` (C7 detects the
 bloat; THIS tool performs the move). Strict separation of concerns: the scanner
 never edits, the archiver never auto-guesses ambiguous items and never commits.
 
-This module covers CLASSIFICATION + the `--dry-run` PLAN only. It writes
-nothing. `--apply` (working-tree writes + idempotent archive merge + index
-regeneration) is a later step.
+`--dry-run` (default) covers CLASSIFICATION + the PLAN only and writes nothing.
+`--apply [--archive-candidates <ids>]` writes the working tree: it moves the
+AUTO set plus the human-approved candidate blocks into
+`archive/backlog-done-YYYY-MM.md` (codified structure, prose byte-exact),
+trims those items out of `BACKLOG.md`, and merges idempotently on re-run
+(append only entries whose archive-storage identity is not already present;
+never clobber). It NEVER commits. (Index regeneration is a later step.)
 
 Classification (spec §3.2) — AUTO set + CANDIDATES (human-approved):
 
@@ -170,10 +174,14 @@ def parse_table_done(lines: List[str]) -> List[Dict]:
     rows: List[Dict] = []
     in_section = False
     status_idx: Optional[int] = None  # detected per-table from its header row
+    header_line: Optional[str] = None  # raw header row of the current table
+    separator_line: Optional[str] = None  # raw separator row of the current table
     for line in lines:
         if line.startswith("## "):
             in_section = line.startswith(ACTIVE_PRIORITIES_PREFIX)
             status_idx = None
+            header_line = None
+            separator_line = None
             continue
         if not in_section:
             continue
@@ -184,9 +192,12 @@ def parse_table_done(lines: List[str]) -> List[Dict]:
             if stripped == "":
                 continue
             status_idx = None
+            header_line = None
+            separator_line = None
             continue
         cells = split_row(line)
         if is_separator_row(cells):
+            separator_line = line
             continue
         if status_idx is None:
             # Header row: detect the Status column by its cell text.
@@ -194,6 +205,7 @@ def parse_table_done(lines: List[str]) -> List[Dict]:
                 if cell.strip() == "Status":
                     status_idx = i
                     break
+            header_line = line
             continue
         if len(cells) <= 1:
             continue
@@ -212,6 +224,9 @@ def parse_table_done(lines: List[str]) -> List[Dict]:
                 "title": title.strip(),
                 "date": date_m.group(0) if date_m else None,
                 "status_cell": status_cell,
+                "raw_line": line,
+                "header_line": header_line,
+                "separator_line": separator_line,
             }
         )
     return rows
@@ -261,6 +276,23 @@ def block_is_auto(block: Dict) -> bool:
     return any(OWN_STATUS_DONE_RE.search(line) for line in block["body"])
 
 
+def block_auto_date(block: Dict) -> Optional[str]:
+    """Completion date of an AUTO-DONE block (date-bucketing, spec §3.2).
+
+    - struck header → the first `YYYY-MM-DD` on the header line;
+    - own-status block → the date on its `**Status: ✅ … (DATE)**` field line.
+    Returns None if no date is resolvable (the caller hard-errors).
+    """
+    if block["struck"]:
+        if m := DATE_RE.search(block["header"]):
+            return m.group(0)
+        return None
+    for line in block["body"]:
+        if OWN_STATUS_DONE_RE.search(line) and (m := DATE_RE.search(line)):
+            return m.group(0)
+    return None
+
+
 def hint_for(block_t: str, row_t: str) -> str:
     """Advisory candidate hint from title-token overlap (never a gate)."""
     shared = _tokens(block_t) & _tokens(row_t)
@@ -299,6 +331,7 @@ def classify(text: str) -> Dict:
                     "matched_row_title": rt,
                     "row_date": row["date"],
                     "hint": hint_for(bt, rt),
+                    "_block": block,
                 }
             )
         else:
@@ -347,14 +380,7 @@ def render_dry_run(result: Dict) -> Tuple[str, int]:
     # Per-month done counts (AUTO set only — the unambiguous archive set).
     month_counts: Dict[str, int] = {}
     for block in auto_blocks:
-        date = next(
-            (
-                DATE_RE.search(line).group(0)
-                for line in [block["header"], *block["body"]]
-                if DATE_RE.search(line)
-            ),
-            None,
-        )
+        date = block_auto_date(block)
         m = month_of(date)
         if m:
             month_counts[m] = month_counts.get(m, 0) + 1
@@ -368,6 +394,332 @@ def render_dry_run(result: Dict) -> Tuple[str, int]:
             blocks.append(f"  {m}: {month_counts[m]}")
 
     return "\n".join(blocks), archived_count
+
+
+# --- `--apply`: archive write + BACKLOG trim + idempotent merge (spec §3.2) ---
+
+# Archive section headers (codified 2026-06-04 structure).
+ARCHIVE_BLOCKS_HEADER = "## Done items (original write-ups)"
+ARCHIVE_ROWS_HEADER = "## Done items (Active-priorities table rows)"
+
+_MONTH_NAMES = {
+    "01": "January",
+    "02": "February",
+    "03": "March",
+    "04": "April",
+    "05": "May",
+    "06": "June",
+    "07": "July",
+    "08": "August",
+    "09": "September",
+    "10": "October",
+    "11": "November",
+    "12": "December",
+}
+
+
+def parse_candidate_ids(raw: str) -> List[str]:
+    """Parse the `--archive-candidates` comma list into bare item numbers."""
+    return [tok.strip() for tok in raw.split(",") if tok.strip()]
+
+
+def block_body_verbatim(block: Dict) -> str:
+    """The block's prose (`### N.` header + body) with trailing blanks stripped.
+
+    Prose is copied BYTE-EXACT (spec §3.2 "moved byte-exact, copy never
+    rewrite"); only trailing blank body lines are dropped so archive entries are
+    separated by exactly one blank line.
+    """
+    lines = [block["header"], *block["body"]]
+    while lines and lines[-1].strip() == "":
+        lines.pop()
+    return "\n".join(lines)
+
+
+def select_archive_set(
+    result: Dict, approved: List[str]
+) -> Tuple[List[Dict], List[Dict]]:
+    """Resolve the full archive set for `--apply`.
+
+    Returns `(blocks, rows)` where `blocks` = AUTO-DONE blocks + APPROVED
+    candidate blocks (each annotated with its resolved `_date`), and `rows` =
+    every done table row. Candidates NOT in `approved` stay open.
+    """
+    approved_set = set(approved)
+    done_by_number: Dict[str, List[Dict]] = {}
+    for row in result["auto_rows"]:
+        done_by_number.setdefault(row["number"], []).append(row)
+
+    blocks: List[Dict] = []
+    for block in result["auto_blocks"]:
+        annotated = dict(block)
+        annotated["_date"] = block_auto_date(block)
+        blocks.append(annotated)
+
+    # Approved candidates: bucket by the matching done row's status-cell date
+    # (completion), earliest across suffixed rows (spec §3.2 date clause 4).
+    for cand in result["candidates"]:
+        if cand["number"] not in approved_set:
+            continue
+        match_block = cand.get("_block")
+        rows = done_by_number.get(cand["number"], [])
+        dates = sorted(r["date"] for r in rows if r["date"])
+        annotated = dict(match_block) if match_block else None
+        if annotated is None:
+            continue
+        annotated["_date"] = dates[0] if dates else None
+        blocks.append(annotated)
+
+    return blocks, list(result["auto_rows"])
+
+
+def archive_month_path(project_root: Path, month: str) -> Path:
+    """`<project_root>/archive/backlog-done-YYYY-MM.md` for a `YYYY-MM` month."""
+    return project_root / "archive" / f"backlog-done-{month}.md"
+
+
+def render_fresh_archive(
+    project: str, month: str, blocks: List[Dict], rows: List[Dict]
+) -> str:
+    """Render a brand-new archive file for one month (codified structure)."""
+    year, mm = month.split("-")
+    month_name = _MONTH_NAMES.get(mm, mm)
+    out: List[str] = []
+    out.append("---")
+    out.append(f"title: {project} — Completed backlog ({month_name} {year})")
+    out.append(f"project: {project}")
+    out.append("type: backlog-archive")
+    out.append(f"created: {month}-01")
+    out.append("tags: [backlog, archive, ai-dev-team]")
+    out.append("---")
+    out.append("")
+    out.append(f"# Completed backlog items — {month_name} {year}")
+    out.append("")
+    out.append(
+        "Full prose of DONE backlog items, moved out of `BACKLOG.md` to keep it "
+        "compact."
+    )
+    out.append(
+        "Index + month grouping live in `BACKLOG.md` §Completed. Numbering "
+        "collisions are historical — see the item text."
+    )
+    out.append("")
+    out.append(ARCHIVE_BLOCKS_HEADER)
+    for block in blocks:
+        out.append("")
+        out.append(block_body_verbatim(block))
+    out.append("")
+    out.append(ARCHIVE_ROWS_HEADER)
+    for group in group_rows_by_table(rows):
+        out.append("")
+        out.append(group["header_line"])
+        if group["separator_line"] is not None:
+            out.append(group["separator_line"])
+        for row in group["rows"]:
+            out.append(row["raw_line"])
+    out.append("")
+    return "\n".join(out) + "\n"
+
+
+def group_rows_by_table(rows: List[Dict]) -> List[Dict]:
+    """Group done rows under their source table header, preserving order."""
+    groups: List[Dict] = []
+    index: Dict[str, Dict] = {}
+    for row in rows:
+        key = row.get("header_line") or ""
+        group = index.get(key)
+        if group is None:
+            group = {
+                "header_line": row.get("header_line") or "",
+                "separator_line": row.get("separator_line"),
+                "rows": [],
+            }
+            index[key] = group
+            groups.append(group)
+        group["rows"].append(row)
+    return groups
+
+
+def existing_block_identities(archive_text: str) -> set:
+    """Bare item labels of `### N.` write-ups already present in an archive."""
+    labels = set()
+    for line in archive_text.splitlines():
+        m = BLOCK_HEADER_RE.match(line)
+        if m:
+            labels.add(m.group(1))
+    return labels
+
+
+def existing_row_lines(archive_text: str) -> set:
+    """Verbatim done-row lines already present in an archive's rows section."""
+    present = set()
+    in_rows = False
+    for line in archive_text.splitlines():
+        if line.startswith("## "):
+            in_rows = line.startswith(ARCHIVE_ROWS_HEADER)
+            continue
+        if in_rows and line.lstrip().startswith("|"):
+            present.add(line)
+    return present
+
+
+def merge_into_archive(archive_text: str, blocks: List[Dict], rows: List[Dict]) -> str:
+    """Insert only-new entries into an existing archive, preserving its bytes.
+
+    Storage identity (spec §3.2): a block is keyed by its bare `item_label`, a
+    row by its verbatim line. Already-present entries are skipped (idempotent
+    no-clobber merge); new ones are appended into the matching section.
+    """
+    have_blocks = existing_block_identities(archive_text)
+    have_rows = existing_row_lines(archive_text)
+    new_blocks = [b for b in blocks if b["item_label"] not in have_blocks]
+    new_rows = [r for r in rows if r["raw_line"] not in have_rows]
+    if not new_blocks and not new_rows:
+        return archive_text
+
+    lines = archive_text.splitlines()
+    # Insert new write-ups at the end of the blocks section (before the rows
+    # header), new rows at the end of the rows section.
+    out: List[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        if line.startswith(ARCHIVE_ROWS_HEADER) and new_blocks:
+            # Append new blocks just before the rows-section header.
+            while out and out[-1].strip() == "":
+                out.pop()
+            for block in new_blocks:
+                out.append("")
+                out.append(block_body_verbatim(block))
+            out.append("")
+            out.append(line)
+            i += 1
+            continue
+        out.append(line)
+        i += 1
+
+    if new_blocks and not any(ln.startswith(ARCHIVE_ROWS_HEADER) for ln in lines):
+        # No rows section existed — append the blocks at file end.
+        while out and out[-1].strip() == "":
+            out.pop()
+        for block in new_blocks:
+            out.append("")
+            out.append(block_body_verbatim(block))
+
+    if new_rows:
+        while out and out[-1].strip() == "":
+            out.pop()
+        for group in group_rows_by_table(new_rows):
+            if group["header_line"] not in out:
+                out.append("")
+                out.append(group["header_line"])
+                if group["separator_line"] is not None:
+                    out.append(group["separator_line"])
+            for row in group["rows"]:
+                out.append(row["raw_line"])
+
+    return "\n".join(out) + "\n"
+
+
+def trim_backlog(text: str, archived_labels: set, archived_rows: set) -> str:
+    """Remove archived block write-ups + done rows from BACKLOG, keep the rest.
+
+    `archived_labels` = bare item labels of archived `### N.` blocks (header +
+    body dropped). `archived_rows` = verbatim done-row lines to drop. Open
+    blocks/rows and every non-`## P*`/`## Active priorities` section are kept.
+    """
+    lines = text.splitlines()
+    out: List[str] = []
+    in_block_section = False
+    in_active = False
+    dropping_block = False
+    for line in lines:
+        if line.startswith("## "):
+            in_block_section = line.startswith(BLOCK_SECTION_PREFIXES)
+            in_active = line.startswith(ACTIVE_PRIORITIES_PREFIX)
+            dropping_block = False
+            out.append(line)
+            continue
+        if in_block_section:
+            header_m = BLOCK_HEADER_RE.match(line)
+            if header_m:
+                dropping_block = header_m.group(1) in archived_labels
+                if dropping_block:
+                    continue
+            elif dropping_block:
+                continue
+            out.append(line)
+            continue
+        if in_active and line in archived_rows:
+            continue
+        out.append(line)
+    trimmed = "\n".join(out)
+    if text.endswith("\n") and not trimmed.endswith("\n"):
+        trimmed += "\n"
+    return trimmed
+
+
+def apply_archive(
+    project_root: Path, project: str, text: str, result: Dict, approved: List[str]
+) -> Tuple[int, List[str]]:
+    """Apply the archive move: write archives + trim BACKLOG. Returns (rc, msgs).
+
+    rc = 0 nothing-to-do, 1 changes applied, 2 unresolvable date.
+    """
+    blocks, rows = select_archive_set(result, approved)
+    if not blocks and not rows:
+        return 0, ["nothing to archive"]
+
+    # Resolve a month for every archived entry; a missing date is a hard error.
+    by_month_blocks: Dict[str, List[Dict]] = {}
+    for block in blocks:
+        month = month_of(block.get("_date"))
+        if month is None:
+            print(
+                f"error: no resolvable completion date for block "
+                f"#{block['item_label']}",
+                file=sys.stderr,
+            )
+            return 2, []
+        by_month_blocks.setdefault(month, []).append(block)
+
+    by_month_rows: Dict[str, List[Dict]] = {}
+    for row in rows:
+        month = month_of(row["date"])
+        if month is None:
+            print(
+                f"error: no resolvable completion date for row #{row['item_label']}",
+                file=sys.stderr,
+            )
+            return 2, []
+        by_month_rows.setdefault(month, []).append(row)
+
+    archive_dir = project_root / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    msgs: List[str] = []
+    for month in sorted(set(by_month_blocks) | set(by_month_rows)):
+        mblocks = by_month_blocks.get(month, [])
+        mrows = by_month_rows.get(month, [])
+        path = archive_month_path(project_root, month)
+        if path.exists():
+            merged = merge_into_archive(
+                path.read_text(encoding="utf-8"), mblocks, mrows
+            )
+            path.write_text(merged, encoding="utf-8")
+        else:
+            path.write_text(
+                render_fresh_archive(project, month, mblocks, mrows), encoding="utf-8"
+            )
+        msgs.append(f"{path.name}: {len(mblocks)} block(s) + {len(mrows)} row(s)")
+
+    archived_labels = {b["item_label"] for b in blocks}
+    archived_rows = {r["raw_line"] for r in rows}
+    trimmed = trim_backlog(text, archived_labels, archived_rows)
+    (project_root / "BACKLOG.md").write_text(trimmed, encoding="utf-8")
+
+    return 1, msgs
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -389,7 +741,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--apply",
         dest="apply",
         action="store_true",
-        help="write the working tree (later step; not yet implemented)",
+        help="write the working tree (archives + trimmed BACKLOG); never commits",
+    )
+    parser.add_argument(
+        "--archive-candidates",
+        dest="archive_candidates",
+        default="",
+        help=(
+            "comma-separated candidate item numbers the human APPROVED for "
+            "archival; candidates not listed stay open. Only meaningful with "
+            "--apply"
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -421,6 +783,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     result = classify(text)
+
+    if args.apply:
+        approved = parse_candidate_ids(args.archive_candidates)
+        rc, msgs = apply_archive(project_root, args.project, text, result, approved)
+        for msg in msgs:
+            print(msg)
+        return rc
+
     plan, archived_count = render_dry_run(result)
     print(plan)
     return 1 if archived_count or result["candidates"] else 0
