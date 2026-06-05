@@ -9443,7 +9443,56 @@ with tempfile.TemporaryDirectory() as td:
         print(f"(4) second --apply must be byte-identical no-op; snapshots differ:\n  {snap}\n  {snap2}")
         sys.exit(1)
 
-print("backlog_archive GOLDEN: dry-run candidates exactly {37,42,45,46,52,55,75} (#55/#75 likely-collision); --apply 37,42,45,46,52 archives approved+struck+#76-block (move not copy), {#40,#50,#55,#75} stay OPEN; index one line each #37/#45/#46/#52, four #42/#42a/#42b/#42c, two #76, #37 line sources PR #57; 2nd --apply byte-identical no-op; selftest X1/X2/X3 green")
+    # (5) AUDIT X1 regression guard (RED on the pre-X1-fix all-cell-✅-scan), with
+    # the real 898a8c0 golden hazard baked in: 5-col rows physically placed under a
+    # 4-col `# | Item | Status | Reason` header. Status is resolved per-row-arity
+    # (5→idx-3, 4→idx-2), NOT the header arity. Asserted end-to-end via --apply:
+    #   #991 (5-col, ✅ RESOLVED at idx-4 Rationale, `P2 queued` at idx-3 Status)
+    #        → MUST stay OPEN (the #77/#59 data-loss class).
+    #   #992 (5-col, ✅ CLOSED at idx-3 Status) → MUST archive (the #76 class).
+    #   #993 (5-col struck) → MUST archive (struck-only, guard stays narrow).
+    #   #994 (4-col sibling, `P2 queued` at idx-2 Status) → MUST stay OPEN.
+    synth = "\n".join([
+        "# BACKLOG",
+        "",
+        "## Active priorities",
+        "",
+        "| # | Item | Status | Reason |",
+        "|---|------|--------|--------|",
+        "| **994** | X1FOURCOLOPEN four-col open row | P2 queued | reason |",
+        "| **991** | X1OPENMARKER five-col open row | ax | P2 queued | "
+        "✅ RESOLVED 2026-05-31 discussion only |",
+        "| **992** | X1DONEMARKER five-col done row | ax | "
+        "**✅ CLOSED 2026-05-10 — done** | rationale (disc 2026-03-15) |",
+        "| ~~**993**~~ | X1STRUCKMARKER five-col struck done | ax | "
+        "**✅ DONE 2026-05-10** | r |",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as td5:
+        proj5 = Path(td5) / "repos" / "ai-dev-team"
+        proj5.mkdir(parents=True)
+        (proj5 / "BACKLOG.md").write_text(synth, encoding="utf-8")
+        ap5 = run(td5, "--apply")
+        bl5 = (proj5 / "BACKLOG.md").read_text()
+        open5 = bl5.split("## Completed")[0]
+        arch5 = "\n".join(a.read_text() for a in (proj5 / "archive").glob("backlog-done-*.md"))
+        if "X1OPENMARKER" not in open5:
+            print("(5) X1 regression: 5-col OPEN row with ✅ in idx-4 Rationale was LOST from open BACKLOG (data loss)")
+            sys.exit(1)
+        if "X1OPENMARKER" in arch5:
+            print("(5) X1 regression: 5-col OPEN row with ✅ in idx-4 Rationale was wrongly ARCHIVED (data loss)")
+            sys.exit(1)
+        if "X1FOURCOLOPEN" not in open5 or "X1FOURCOLOPEN" in arch5:
+            print("(5) X1 regression: 4-col sibling OPEN row (Status idx-2 'P2 queued') must stay OPEN")
+            sys.exit(1)
+        if "X1DONEMARKER" not in arch5 or "X1DONEMARKER" in open5:
+            print("(5) per-row-arity: 5-col done row (✅ at idx-3 Status) under a 4-col header MUST archive (#76 class)")
+            sys.exit(1)
+        if "X1STRUCKMARKER" not in arch5 or "X1STRUCKMARKER" in open5:
+            print("(5) X1 regression: the struck row must still archive (guard must stay narrow)")
+            sys.exit(1)
+
+print("backlog_archive GOLDEN: dry-run candidates exactly {37,42,45,46,52,55,75} (#55/#75 likely-collision); --apply 37,42,45,46,52 archives approved+struck+#76-block (move not copy), {#40,#50,#55,#75} stay OPEN; index one line each #37/#45/#46/#52, four #42/#42a/#42b/#42c, two #76, #37 line sources PR #57; 2nd --apply byte-identical no-op; per-row-arity Status (5-col ✅-at-idx-3 done row under a 4-col header archives, ✅-at-idx-4-Rationale row stays OPEN) (X1); selftest X1/X2/X3 + AUDIT-X1/X3 green")
 PYEOF
 }
 
