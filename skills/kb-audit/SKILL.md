@@ -7,9 +7,14 @@ argument-hint: "[--project <name>]"
 # /kb-audit — KB-vault drift report
 
 Explicit, opt-in surface over the offline KB-drift scanner
-(`tests/kb_drift_scan.py`, checks C1–C6). Runs Phase-0 KB discovery, invokes the
+(`tests/kb_drift_scan.py`, checks C1–C7). Runs Phase-0 KB discovery, invokes the
 scanner in `--summary` mode against the resolved vault + project, and presents
 the grouped digest. **REPORTS only — never edits the KB.**
+
+C7 (`C7_backlog_done_bloat`) fires when a project `BACKLOG.md` carries too many
+completed items inline; the C7 detail recommends running
+`python3 tests/backlog_archive.py <kb_root> --project <p> --dry-run` to review
+and archive them.
 
 ### Caveman activation in this flow
 

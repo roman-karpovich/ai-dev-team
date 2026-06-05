@@ -6097,6 +6097,8 @@ echo "KB-drift scanner pins:"
 check "kb-drift-scan-behavioral"                 check_kb_drift_scan_behavioral
 check "kb-drift-summary-behavioral"              check_kb_drift_summary_behavioral
 check "kb-drift C6 index-row bloat"              check_kb_drift_c6_index_row_bloat
+check "kb-drift C7 backlog bloat"                check_kb_drift_c7_backlog_bloat
+check "backlog-archiver"                         check_backlog_archiver_behavioral
 check "kb-drift whole-vault scope"               check_kb_drift_whole_vault_scope
 check "kb-drift C1 escaped-pipe alias"           check_kb_drift_c1_escaped_pipe_alias
 check "kb-audit-skill-contract"                  check_kb_audit_skill_contract
