@@ -766,17 +766,27 @@ def build_index(archives_by_month: Dict[str, str]) -> List[str]:
     for month in sorted(archives_by_month):
         blocks, rows = parse_archive_entries(archives_by_month[month])
         # Rows a candidate block coalesces away (exact bare-label match of a
-        # NON-auto block) are emitted on the block's line, not their own.
+        # NON-auto block) are emitted on the block's line, not their own. The
+        # coalesced line keeps the BLOCK title but sources `— PR #M` from the
+        # matched ROW's status cell (golden shape: `#37 — <block> — PR #57`,
+        # the PR sits in the done row, not the block prose).
+        coalesced_row_by_label: Dict[str, Dict] = {}
+        for row in rows:
+            coalesced_row_by_label.setdefault(row["item_label"], row)
         coalesced_row_labels = {
             b["item_label"]
             for b in blocks
-            if not block_is_auto(b)
-            and any(r["item_label"] == b["item_label"] for r in rows)
+            if not block_is_auto(b) and b["item_label"] in coalesced_row_by_label
         }
         out.append(f"#### {month}  →  [[backlog-done-{month}]]")
         for block in blocks:
             title = block_title(block)
-            pr = _pr_suffix(block["header"] + "\n" + "\n".join(block["body"]))
+            if block["item_label"] in coalesced_row_labels:
+                pr = _pr_suffix(
+                    coalesced_row_by_label[block["item_label"]]["status_cell"]
+                )
+            else:
+                pr = _pr_suffix(block["header"] + "\n" + "\n".join(block["body"]))
             out.append(f"- **#{block['item_label']}** — {title}{pr}")
         for row in rows:
             if row["item_label"] in coalesced_row_labels:
