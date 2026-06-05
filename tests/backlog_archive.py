@@ -69,7 +69,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 # Section-header PREFIX anchors (real headers carry suffixes — `## Active
 # priorities (post-convergence …)`, `## P1: High impact`, …), so matching is by
@@ -169,11 +169,47 @@ def _tokens(title: str) -> set:
     return {w for w in words if w not in _STOPWORDS}
 
 
-def parse_table_done(lines: List[str]) -> List[Dict]:
+def _detect_status_idx(cells: List[str]) -> Optional[int]:
+    """Status column index from a header row's cells (the `Status` cell)."""
+    for i, cell in enumerate(cells):
+        if cell.strip() == "Status":
+            return i
+    return None
+
+
+def _done_status_cell(cells: List[str], status_idx: Optional[int]) -> Optional[str]:
+    """The done-completion status cell of a data row, or None if the row is open.
+
+    A row is DONE iff some cell's stripped text *starts with* `✅` (independent of
+    the header-detected `status_idx` — this catches a non-struck `✅`-status row
+    even when its column does not line up with the table's detected ordinal, and
+    it never matches a MID-cell `✅ RESOLVED`/`✅ DONE` inside a Rationale cell,
+    so the #59/#77 false-positive guard stays intact). The first such cell is the
+    status/completion cell; when none starts with `✅` the header-detected
+    `status_idx` cell is used as a fallback only if IT starts with `✅`.
+    """
+    for cell in cells:
+        if strip_markup(cell).startswith("✅"):
+            return cell
+    if status_idx is not None and status_idx < len(cells):
+        cell = cells[status_idx]
+        if strip_markup(cell).startswith("✅"):
+            return cell
+    return None
+
+
+def parse_table_done(lines: Sequence[str]) -> List[Dict]:
     """Parse `## Active priorities` tables → list of done-row descriptors.
 
-    Walks every `## Active priorities`-prefixed section, finds each pipe table
-    inside it, detects the Status column from the header row, and records every
+    Walks every `## Active priorities`-prefixed section and finds each pipe table
+    inside it. The Status column is re-detected PER TABLE from that table's own
+    header row (the pipe row immediately preceding the `---` separator) — a 4-col
+    `# | Item | Status | Reason` table that follows a 5-col `# | Item | Axis |
+    Status | Rationale` one never inherits the 5-col table's ordinal. Done-ness
+    is decided by scanning every cell for one that *starts with* `✅` (so a
+    non-struck `✅`-status row is caught even where its column does not match the
+    detected ordinal, and a struck row survives even in a table with no literal
+    `Status` header), NOT by reading a single fixed `status_idx`. Records every
     DONE data row as `{item_label, number, title, date, status_cell}`.
     """
     rows: List[Dict] = []
@@ -181,44 +217,65 @@ def parse_table_done(lines: List[str]) -> List[Dict]:
     status_idx: Optional[int] = None  # detected per-table from its header row
     header_line: Optional[str] = None  # raw header row of the current table
     separator_line: Optional[str] = None  # raw separator row of the current table
+    prev_pipe_line: Optional[str] = None  # last pipe row seen (header candidate)
+    prev_pipe_cells: List[str] = []
+    seen_separator = False  # past the current table's separator → data rows
     for line in lines:
         if line.startswith("## "):
             in_section = line.startswith(ACTIVE_PRIORITIES_PREFIX)
             status_idx = None
             header_line = None
             separator_line = None
+            prev_pipe_line = None
+            prev_pipe_cells = []
+            seen_separator = False
             continue
         if not in_section:
             continue
         stripped = line.lstrip()
         if not stripped.startswith("|"):
             # A non-table line ends the current table; the next table re-detects
-            # its own Status column.
+            # its own Status column from its own header.
             if stripped == "":
                 continue
             status_idx = None
             header_line = None
             separator_line = None
+            prev_pipe_line = None
+            prev_pipe_cells = []
+            seen_separator = False
             continue
         cells = split_row(line)
         if is_separator_row(cells):
+            # The pipe row immediately before a separator is THIS table's header,
+            # regardless of whether a previous table already set `status_idx`.
+            if prev_pipe_line is not None:
+                status_idx = _detect_status_idx(prev_pipe_cells)
+                header_line = prev_pipe_line
             separator_line = line
+            seen_separator = True
+            prev_pipe_line = line
+            prev_pipe_cells = cells
             continue
-        if status_idx is None:
-            # Header row: detect the Status column by its cell text.
-            for i, cell in enumerate(cells):
-                if cell.strip() == "Status":
-                    status_idx = i
-                    break
-            header_line = line
+        if not seen_separator:
+            # A pipe row before this table's separator is (the candidate) header.
+            prev_pipe_line = line
+            prev_pipe_cells = cells
             continue
+        prev_pipe_line = line
+        prev_pipe_cells = cells
         if len(cells) <= 1:
             continue
-        status_cell = cells[status_idx] if status_idx < len(cells) else ""
         struck = bool(re.match(r"^\s*\|\s*~~", line))
-        status_done = strip_markup(status_cell).startswith("✅")
-        if not (struck or status_done):
+        status_cell = _done_status_cell(cells, status_idx)
+        if not (struck or status_cell is not None):
             continue
+        # For a struck row with no `✅` cell, fall back to the detected status
+        # cell (struck rows historically carry their date in the status cell).
+        if status_cell is None and status_idx is not None and status_idx < len(cells):
+            status_cell = cells[status_idx]
+        if status_cell is None:
+            status_cell = ""
         item_label = strip_markup(cells[0])
         title = cells[1] if len(cells) > 1 else ""
         date_m = DATE_RE.search(status_cell)
@@ -555,14 +612,34 @@ def group_rows_by_table(rows: List[Dict]) -> List[Dict]:
     return groups
 
 
+def block_storage_identity(header_line: str, item_label: str) -> Tuple[str, str, str]:
+    """Archive-storage identity of a `### N.` block (spec §3.2).
+
+    `(scheme, item_label, title)` where scheme is the literal `"block"`, the
+    item_label is the bare number/letter label, and the title is the markup-
+    stripped header text minus the leading `N.` and any trailing `✅ …` marker.
+    Keying on the FULL identity (not the bare `item_label`) keeps two DISTINCT
+    items that REUSE a number — same label, different title — as separate
+    archive entries; keying on `item_label` alone would silently collapse them
+    and the second item's prose would be lost on an idempotent merge (X1).
+    """
+    title = block_title({"header": header_line})
+    return ("block", item_label, title)
+
+
 def existing_block_identities(archive_text: str) -> set:
-    """Bare item labels of `### N.` write-ups already present in an archive."""
-    labels = set()
+    """Full storage identities of `### N.` write-ups already in an archive.
+
+    Returns a set of `(scheme, item_label, title)` tuples (spec §3.2), NOT bare
+    labels — see `block_storage_identity` for why a reused number must NOT
+    collapse two distinct write-ups on merge.
+    """
+    identities = set()
     for line in archive_text.splitlines():
         m = BLOCK_HEADER_RE.match(line)
         if m:
-            labels.add(m.group(1))
-    return labels
+            identities.add(block_storage_identity(line, m.group(1)))
+    return identities
 
 
 def existing_row_lines(archive_text: str) -> set:
@@ -581,13 +658,20 @@ def existing_row_lines(archive_text: str) -> set:
 def merge_into_archive(archive_text: str, blocks: List[Dict], rows: List[Dict]) -> str:
     """Insert only-new entries into an existing archive, preserving its bytes.
 
-    Storage identity (spec §3.2): a block is keyed by its bare `item_label`, a
-    row by its verbatim line. Already-present entries are skipped (idempotent
-    no-clobber merge); new ones are appended into the matching section.
+    Storage identity (spec §3.2): a block is keyed by its FULL
+    `(scheme, item_label, title)` identity, a row by its verbatim line.
+    Already-present entries are skipped (idempotent no-clobber merge); new ones
+    are appended into the matching section. Keying blocks on the full identity
+    (not the bare `item_label`) is what lets two DISTINCT items reusing a number
+    both survive a merge — see `block_storage_identity` (X1).
     """
     have_blocks = existing_block_identities(archive_text)
     have_rows = existing_row_lines(archive_text)
-    new_blocks = [b for b in blocks if b["item_label"] not in have_blocks]
+    new_blocks = [
+        b
+        for b in blocks
+        if block_storage_identity(b["header"], b["item_label"]) not in have_blocks
+    ]
     new_rows = [r for r in rows if r["raw_line"] not in have_rows]
     if not new_blocks and not new_rows:
         return archive_text
@@ -637,12 +721,17 @@ def merge_into_archive(archive_text: str, blocks: List[Dict], rows: List[Dict]) 
     return "\n".join(out) + "\n"
 
 
-def trim_backlog(text: str, archived_labels: set, archived_rows: set) -> str:
+def trim_backlog(text: str, archived_identities: set, archived_rows: set) -> str:
     """Remove archived block write-ups + done rows from BACKLOG, keep the rest.
 
-    `archived_labels` = bare item labels of archived `### N.` blocks (header +
-    body dropped). `archived_rows` = verbatim done-row lines to drop. Open
-    blocks/rows and every non-`## P*`/`## Active priorities` section are kept.
+    `archived_identities` = FULL `(scheme, item_label, title)` storage identities
+    of archived `### N.` blocks (header + body dropped). `archived_rows` =
+    verbatim done-row lines to drop. Keying the trim on the same full identity
+    the archive merge keys on guarantees the trim set and the archive-insert set
+    cannot diverge: a BACKLOG block is removed only if its exact identity was
+    archived, so a reused-number block whose distinct twin was archived is never
+    trimmed by mistake (X1). Open blocks/rows and every non-`## P*` /
+    `## Active priorities` section are kept.
     """
     lines = text.splitlines()
     out: List[str] = []
@@ -659,7 +748,8 @@ def trim_backlog(text: str, archived_labels: set, archived_rows: set) -> str:
         if in_block_section:
             header_m = BLOCK_HEADER_RE.match(line)
             if header_m:
-                dropping_block = header_m.group(1) in archived_labels
+                identity = block_storage_identity(line, header_m.group(1))
+                dropping_block = identity in archived_identities
                 if dropping_block:
                     continue
             elif dropping_block:
@@ -691,8 +781,44 @@ def parse_archive_entries(archive_text: str) -> Tuple[List[Dict], List[Dict]]:
     section: Optional[str] = None
     current: Optional[Dict] = None
     status_idx: Optional[int] = None
+    # One-row lookahead: a pipe row is only committed as a DATA row once the next
+    # line proves it is NOT a table header (i.e. not immediately followed by a
+    # `---` separator). This is what lets a SECOND table shape in the same rows
+    # section (its own header + separator) re-detect its Status column instead of
+    # the prior table's header being read as a data row → a garbage index line
+    # and a lost PR# (X3). Works whether tables are blank-separated or back-to-back.
+    pending: Optional[List[str]] = None  # held data-candidate row's cells
+    pending_line: Optional[str] = None
+
+    def flush_pending() -> None:
+        nonlocal pending, pending_line
+        if pending is None or pending_line is None:
+            pending, pending_line = None, None
+            return
+        cells = pending
+        if len(cells) > 1:
+            status_cell = _done_status_cell(cells, status_idx)
+            if (
+                status_cell is None
+                and status_idx is not None
+                and status_idx < len(cells)
+            ):
+                status_cell = cells[status_idx]
+            if status_cell is None:
+                status_cell = ""
+            rows.append(
+                {
+                    "item_label": strip_markup(cells[0]),
+                    "title": cells[1].strip() if len(cells) > 1 else "",
+                    "status_cell": status_cell,
+                    "raw_line": pending_line,
+                }
+            )
+        pending, pending_line = None, None
+
     for line in lines:
         if line.startswith("## "):
+            flush_pending()
             if line.startswith(ARCHIVE_BLOCKS_HEADER):
                 section = "blocks"
             elif line.startswith(ARCHIVE_ROWS_HEADER):
@@ -717,27 +843,20 @@ def parse_archive_entries(archive_text: str) -> Tuple[List[Dict], List[Dict]]:
         elif section == "rows":
             stripped = line.lstrip()
             if not stripped.startswith("|"):
+                flush_pending()
                 continue
             cells = split_row(line)
             if is_separator_row(cells):
+                # The pending pipe row was THIS table's header (a separator
+                # follows it): re-detect Status from it and discard it.
+                if pending is not None:
+                    status_idx = _detect_status_idx(pending)
+                pending, pending_line = None, None
                 continue
-            if status_idx is None:
-                for i, cell in enumerate(cells):
-                    if cell.strip() == "Status":
-                        status_idx = i
-                        break
-                continue
-            if len(cells) <= 1:
-                continue
-            status_cell = cells[status_idx] if status_idx < len(cells) else ""
-            rows.append(
-                {
-                    "item_label": strip_markup(cells[0]),
-                    "title": cells[1].strip() if len(cells) > 1 else "",
-                    "status_cell": status_cell,
-                    "raw_line": line,
-                }
-            )
+            # A new pipe row: the previously-pending row is confirmed DATA.
+            flush_pending()
+            pending, pending_line = cells, line
+    flush_pending()
     return blocks, rows
 
 
@@ -903,9 +1022,11 @@ def apply_archive(
             )
         msgs.append(f"{path.name}: {len(mblocks)} block(s) + {len(mrows)} row(s)")
 
-    archived_labels = {b["item_label"] for b in blocks}
+    archived_identities = {
+        block_storage_identity(b["header"], b["item_label"]) for b in blocks
+    }
     archived_rows = {r["raw_line"] for r in rows}
-    trimmed = trim_backlog(text, archived_labels, archived_rows)
+    trimmed = trim_backlog(text, archived_identities, archived_rows)
 
     # Regenerate the dated compact `## Completed` index from the MERGED archive
     # files (spec §3.2: rebuilt every run from the archives, never blind-appended
@@ -917,7 +1038,201 @@ def apply_archive(
     return 1, msgs
 
 
+def _selftest() -> int:
+    """Behavioral self-test for the audit fixes X1/X2/X3 (spec §3.2).
+
+    Each case is RED on the pre-fix code (the prior bug) and GREEN here. Run with
+    `python3 tests/backlog_archive.py --selftest`; returns 0 iff every assertion
+    holds, non-zero (with the failing case named) otherwise — a real test gate
+    that does not touch the filesystem.
+    """
+    failures: List[str] = []
+
+    def check(name: str, cond: bool, detail: str = "") -> None:
+        status = "PASS" if cond else "FAIL"
+        print(f"  [{status}] {name}{(' — ' + detail) if detail else ''}")
+        if not cond:
+            failures.append(name)
+
+    # --- X2: a non-struck `✅`-status done row in a 4-col table that FOLLOWS a
+    # 5-col table is detected + bucketed (per-table Status-column re-detection;
+    # done-ness by cell-scan, not a single inherited ordinal). Mirrors the real
+    # golden #76 row (`✅ CLOSED 2026-06-02`) read from the wrong column pre-fix.
+    print("X2 — non-struck ✅-status row in a 4-col table after a 5-col table:")
+    x2_text = "\n".join(
+        [
+            "## Active priorities",
+            "",
+            "### P1 five-col Status=col-3",
+            "",
+            "| # | Item | Axis | Status | Rationale |",
+            "|---|------|------|--------|-----------|",
+            "| ~~**5**~~ | five-col struck | ax | **✅ DONE 2026-04-10** | r |",
+            "",
+            "### P2 four-col Status=col-2",
+            "",
+            "| # | Item | Status | Reason |",
+            "|---|------|--------|--------|",
+            "| **76** | librarian cluster | **✅ CLOSED 2026-06-02 — done** | "
+            "process-truthfulness (disc 2026-05-31) |",
+            "| **59** | open item | P2 queued | discussion ✅ RESOLVED mid-cell "
+            "— NOT done |",
+        ]
+    )
+    x2_rows = parse_table_done(x2_text.splitlines())
+    x2_by_label = {r["item_label"]: r for r in x2_rows}
+    check(
+        "X2 #76 4-col done row detected",
+        "76" in x2_by_label,
+        f"labels={sorted(x2_by_label)}",
+    )
+    check(
+        "X2 #76 bucketed to status-cell completion month 2026-06",
+        x2_by_label.get("76", {}).get("date") == "2026-06-02",
+        f"date={x2_by_label.get('76', {}).get('date')}",
+    )
+    check(
+        "X2 #59 mid-cell ✅ RESOLVED stays OPEN (FP-guard)",
+        "59" not in x2_by_label,
+    )
+    # No-`Status`-header table must NOT silently drop a struck `| ~~` row.
+    x2_nostatus = "\n".join(
+        [
+            "## Active priorities",
+            "",
+            "| # | Item | State | Reason |",
+            "|---|------|-------|--------|",
+            "| ~~**77**~~ | struck done | done | r |",
+        ]
+    )
+    x2_ns_rows = parse_table_done(x2_nostatus.splitlines())
+    check(
+        "X2 struck row survives a no-Status-header table",
+        any(r["item_label"] == "77" for r in x2_ns_rows),
+        f"labels={sorted(r['item_label'] for r in x2_ns_rows)}",
+    )
+
+    # --- X1: two DISTINCT items reusing a number (different title) BOTH survive
+    # an idempotent merge — the second is not dropped by a bare-label dedup. ---
+    print("X1 — reused-number block both-preserved on merge:")
+    base_archive = "\n".join(
+        [
+            "---",
+            "title: x",
+            "---",
+            "# Completed",
+            "",
+            ARCHIVE_BLOCKS_HEADER,
+            "",
+            "### ~~12. Original twelve~~ ✅ DONE (2026-04-17)",
+            "",
+            "ORIGINAL_12_BODY content.",
+            "",
+            ARCHIVE_ROWS_HEADER,
+            "",
+        ]
+    )
+    reused_block = {
+        "item_label": "12",
+        "header": "### ~~12. Reused twelve different topic~~ ✅ DONE (2026-04-18)",
+        "body": ["", "REUSED_12_BODY_DIFFERENT content."],
+        "struck": True,
+    }
+    merged = merge_into_archive(base_archive, [reused_block], [])
+    check(
+        "X1 original #12 body preserved",
+        "ORIGINAL_12_BODY" in merged,
+    )
+    check(
+        "X1 reused #12 (different title) preserved, not deduped away",
+        "REUSED_12_BODY_DIFFERENT" in merged,
+    )
+    # An identity-equal re-merge is a true no-op (no clobber, no duplication).
+    remerged = merge_into_archive(merged, [reused_block], [])
+    check(
+        "X1 identity-equal re-merge is a no-op (no duplicate)",
+        remerged == merged and remerged.count("REUSED_12_BODY_DIFFERENT") == 1,
+    )
+    # trim only removes a BACKLOG block whose FULL identity was archived: the
+    # reused twin (archived) is dropped, an unrelated same-number block is kept.
+    backlog_two_twelves = "\n".join(
+        [
+            "## P1: section",
+            "",
+            "### ~~12. Reused twelve different topic~~ ✅ DONE (2026-04-18)",
+            "",
+            "REUSED_12_BODY_DIFFERENT content.",
+            "",
+            "### 12. Still-open twelve unrelated",
+            "",
+            "STILL_OPEN_12 — must stay.",
+        ]
+    )
+    trimmed = trim_backlog(
+        backlog_two_twelves,
+        {block_storage_identity(reused_block["header"], "12")},
+        set(),
+    )
+    check(
+        "X1 archived reused #12 trimmed from BACKLOG",
+        "REUSED_12_BODY_DIFFERENT" not in trimmed,
+    )
+    check(
+        "X1 same-number OPEN #12 (distinct title) NOT trimmed",
+        "STILL_OPEN_12" in trimmed,
+    )
+
+    # --- X3: a 2-table-shape archive rows section regenerates clean index lines
+    # (no `**##**` header-as-data garbage; the 2nd table's PR# is preserved). ---
+    print("X3 — multi-table-shape archive yields clean index lines:")
+    arch_two_shapes = "\n".join(
+        [
+            ARCHIVE_BLOCKS_HEADER,
+            "",
+            ARCHIVE_ROWS_HEADER,
+            "",
+            "| # | Item | Axis | Status | Rationale |",
+            "|---|------|------|--------|-----------|",
+            "| ~~**5**~~ | five-col item | ax | **✅ DONE 2026-04-10 — PR #50** | r |",
+            "",
+            "| # | Item | Status | Reason |",
+            "|---|------|--------|--------|",
+            "| ~~**6**~~ | four-col item | **✅ DONE 2026-04-11 — PR #6** | reason |",
+        ]
+    )
+    idx = build_index({"2026-04": arch_two_shapes})
+    check(
+        "X3 no garbage header-as-data index line",
+        not any("**##**" in ln for ln in idx),
+    )
+    check(
+        "X3 5-col table row indexed with its PR#",
+        any("**#5**" in ln and "PR #50" in ln for ln in idx),
+    )
+    check(
+        "X3 4-col table row indexed with its PR# (not lost)",
+        any("**#6**" in ln and "PR #6" in ln for ln in idx),
+    )
+    _, x3_rows = parse_archive_entries(arch_two_shapes)
+    check(
+        "X3 exactly the two real data rows parsed (no header rows)",
+        sorted(r["item_label"] for r in x3_rows) == ["5", "6"],
+        f"labels={sorted(r['item_label'] for r in x3_rows)}",
+    )
+
+    if failures:
+        print(f"\nSELFTEST FAILED: {len(failures)} assertion(s): {', '.join(failures)}")
+        return 1
+    print("\nSELFTEST OK: X1, X2, X3 all GREEN")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if "--selftest" in argv:
+        return _selftest()
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kb_root", help="KB vault root directory")
     parser.add_argument(
