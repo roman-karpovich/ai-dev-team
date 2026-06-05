@@ -9,9 +9,11 @@ never edits, the archiver never auto-guesses ambiguous items and never commits.
 `--apply [--archive-candidates <ids>]` writes the working tree: it moves the
 AUTO set plus the human-approved candidate blocks into
 `archive/backlog-done-YYYY-MM.md` (codified structure, prose byte-exact),
-trims those items out of `BACKLOG.md`, and merges idempotently on re-run
-(append only entries whose archive-storage identity is not already present;
-never clobber). It NEVER commits. (Index regeneration is a later step.)
+trims those items out of `BACKLOG.md`, regenerates the dated compact
+`## Completed` index from the merged archive files (one line per
+index-logical-identity; anti-bloat — never blind-appended), and merges
+idempotently on re-run (append only entries whose archive-storage identity is
+not already present; never clobber). It NEVER commits.
 
 Classification (spec §3.2) — AUTO set + CANDIDATES (human-approved):
 
@@ -85,6 +87,9 @@ BLOCK_HEADER_RE = re.compile(r"^###\s+(?:~~)?\s*(\d+[a-z]?)\.")
 # The own-status-line AUTO-DONE discriminator: the bold field `**Status: ✅`
 # matched ANYWHERE on the line (NOT line-start-pinned — #76's sits mid-line).
 OWN_STATUS_DONE_RE = re.compile(r"\*\*Status:\s*✅")
+
+# A `PR #M` reference, used to annotate index lines (`— PR #M`).
+PR_RE = re.compile(r"PR #(\d+)")
 
 # English stopwords dropped before the candidate title-overlap hint.
 _STOPWORDS = frozenset(
@@ -402,6 +407,16 @@ def render_dry_run(result: Dict) -> Tuple[str, int]:
 ARCHIVE_BLOCKS_HEADER = "## Done items (original write-ups)"
 ARCHIVE_ROWS_HEADER = "## Done items (Active-priorities table rows)"
 
+# BACKLOG `## Completed` index headers (codified 2026-06-04 structure).
+COMPLETED_HEADER_PREFIX = "## Completed"
+INDEX_HEADER = "### Done backlog items — index"
+COMPLETED_SPECS_HEADER = "### Completed specs"
+INDEX_COLLISION_NOTE = (
+    "Repeated `#N` lines are expected — reused numbers and letter-suffixed "
+    "sub-items (`#42a`/`#42b`) are historically distinct items; see the "
+    "archive prose."
+)
+
 _MONTH_NAMES = {
     "01": "January",
     "02": "February",
@@ -660,6 +675,170 @@ def trim_backlog(text: str, archived_labels: set, archived_rows: set) -> str:
     return trimmed
 
 
+def parse_archive_entries(archive_text: str) -> Tuple[List[Dict], List[Dict]]:
+    """Parse one archive file into its stored blocks + rows.
+
+    Reads the two codified sections — `## Done items (original write-ups)` and
+    `## Done items (Active-priorities table rows)` — back into `### N.` block
+    dicts (`{item_label, header, body, struck}`, same shape `parse_blocks`
+    yields) and done-row dicts (`{item_label, title, status_cell, raw_line}`).
+    The index is rebuilt from THESE entries every run (spec §3.2 "regenerated
+    from the archive files"), so it can never blind-append or bloat.
+    """
+    blocks: List[Dict] = []
+    rows: List[Dict] = []
+    lines = archive_text.splitlines()
+    section: Optional[str] = None
+    current: Optional[Dict] = None
+    status_idx: Optional[int] = None
+    for line in lines:
+        if line.startswith("## "):
+            if line.startswith(ARCHIVE_BLOCKS_HEADER):
+                section = "blocks"
+            elif line.startswith(ARCHIVE_ROWS_HEADER):
+                section = "rows"
+            else:
+                section = None
+            current = None
+            status_idx = None
+            continue
+        if section == "blocks":
+            header_m = BLOCK_HEADER_RE.match(line)
+            if header_m:
+                current = {
+                    "item_label": header_m.group(1),
+                    "header": line,
+                    "struck": line.startswith("### ~~"),
+                    "body": [],
+                }
+                blocks.append(current)
+            elif current is not None:
+                current["body"].append(line)
+        elif section == "rows":
+            stripped = line.lstrip()
+            if not stripped.startswith("|"):
+                continue
+            cells = split_row(line)
+            if is_separator_row(cells):
+                continue
+            if status_idx is None:
+                for i, cell in enumerate(cells):
+                    if cell.strip() == "Status":
+                        status_idx = i
+                        break
+                continue
+            if len(cells) <= 1:
+                continue
+            status_cell = cells[status_idx] if status_idx < len(cells) else ""
+            rows.append(
+                {
+                    "item_label": strip_markup(cells[0]),
+                    "title": cells[1].strip() if len(cells) > 1 else "",
+                    "status_cell": status_cell,
+                    "raw_line": line,
+                }
+            )
+    return blocks, rows
+
+
+def _pr_suffix(text: str) -> str:
+    """`— PR #M` suffix derived from a `PR #M` mention in `text`, else ``."""
+    m = PR_RE.search(text)
+    return f" — PR #{m.group(1)}" if m else ""
+
+
+def build_index(archives_by_month: Dict[str, str]) -> List[str]:
+    """Build the `### Done backlog items — index` body from archive files.
+
+    `archives_by_month` maps `YYYY-MM` → archive file text. Emits the index
+    header, then per month (sorted) a `#### YYYY-MM  →  [[backlog-done-YYYY-MM]]`
+    sub-header followed by ONE line per index-logical-identity (spec §3.2):
+
+    - an APPROVED-candidate block (non-auto: not struck, no own-status field)
+      coalesces with the done row of the SAME bare `item_label` → one line;
+    - an AUTO-DONE block (struck / own-status) does NOT coalesce with a
+      same-number done row → distinct lines;
+    - a block matched only to SUFFIXED rows of a different label does NOT
+      coalesce (block `42` vs rows `42a`/`42b`/`42c` → 4 distinct lines);
+    - letter-suffixed rows index distinctly (`#40a`/`#40b`, never a `#40`).
+    """
+    out: List[str] = [INDEX_HEADER, ""]
+    for month in sorted(archives_by_month):
+        blocks, rows = parse_archive_entries(archives_by_month[month])
+        # Rows a candidate block coalesces away (exact bare-label match of a
+        # NON-auto block) are emitted on the block's line, not their own.
+        coalesced_row_labels = {
+            b["item_label"]
+            for b in blocks
+            if not block_is_auto(b)
+            and any(r["item_label"] == b["item_label"] for r in rows)
+        }
+        out.append(f"#### {month}  →  [[backlog-done-{month}]]")
+        for block in blocks:
+            title = block_title(block)
+            pr = _pr_suffix(block["header"] + "\n" + "\n".join(block["body"]))
+            out.append(f"- **#{block['item_label']}** — {title}{pr}")
+        for row in rows:
+            if row["item_label"] in coalesced_row_labels:
+                continue
+            title = strip_markup(row["title"])
+            pr = _pr_suffix(row["status_cell"])
+            out.append(f"- **#{row['item_label']}** — {title}{pr}")
+        out.append("")
+    out.append(INDEX_COLLISION_NOTE)
+    out.append("")
+    return out
+
+
+def load_archives_by_month(project_root: Path) -> Dict[str, str]:
+    """Read every `archive/backlog-done-YYYY-MM.md` → {month: text}."""
+    archives: Dict[str, str] = {}
+    archive_dir = project_root / "archive"
+    if not archive_dir.is_dir():
+        return archives
+    for path in archive_dir.glob("backlog-done-*.md"):
+        m = re.search(r"backlog-done-(\d{4}-\d{2})\.md$", path.name)
+        if m:
+            archives[m.group(1)] = path.read_text(encoding="utf-8")
+    return archives
+
+
+def regenerate_completed_index(text: str, index_lines: List[str]) -> str:
+    """Rewrite BACKLOG `## Completed` with the regenerated index.
+
+    Replaces everything between the `## Completed` header and the
+    `### Completed specs` sub-list with the freshly built index (spec §3.2:
+    "regenerated from the archive files every run, never blind-appended"). The
+    `### Completed specs` sub-list and anything after it are kept verbatim. If
+    no `## Completed` section exists, the BACKLOG is returned unchanged.
+    """
+    lines = text.splitlines()
+    completed_idx: Optional[int] = None
+    for i, line in enumerate(lines):
+        if line.startswith(COMPLETED_HEADER_PREFIX):
+            completed_idx = i
+            break
+    if completed_idx is None:
+        return text
+
+    # Find where the kept tail (`### Completed specs` onward, or the next H2)
+    # begins so the regenerated index replaces only the index region.
+    tail_idx = len(lines)
+    for i in range(completed_idx + 1, len(lines)):
+        line = lines[i]
+        if line.startswith(COMPLETED_SPECS_HEADER) or line.startswith("## "):
+            tail_idx = i
+            break
+
+    head = lines[: completed_idx + 1]
+    tail = lines[tail_idx:]
+    rebuilt = [*head, "", *index_lines, *tail]
+    out = "\n".join(rebuilt)
+    if text.endswith("\n") and not out.endswith("\n"):
+        out += "\n"
+    return out
+
+
 def apply_archive(
     project_root: Path, project: str, text: str, result: Dict, approved: List[str]
 ) -> Tuple[int, List[str]]:
@@ -717,6 +896,12 @@ def apply_archive(
     archived_labels = {b["item_label"] for b in blocks}
     archived_rows = {r["raw_line"] for r in rows}
     trimmed = trim_backlog(text, archived_labels, archived_rows)
+
+    # Regenerate the dated compact `## Completed` index from the MERGED archive
+    # files (spec §3.2: rebuilt every run from the archives, never blind-appended
+    # → cannot bloat, a re-run never duplicates lines).
+    index_lines = build_index(load_archives_by_month(project_root))
+    trimmed = regenerate_completed_index(trimmed, index_lines)
     (project_root / "BACKLOG.md").write_text(trimmed, encoding="utf-8")
 
     return 1, msgs
