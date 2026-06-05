@@ -18,13 +18,20 @@ not already present; never clobber). It NEVER commits.
 Classification (spec §3.2) — AUTO set + CANDIDATES (human-approved):
 
   table_done — parse `## Active priorities` (PREFIX header match) pipe tables.
-    The Status column index is DETECTED FROM THE TABLE HEADER row (the `Status`
-    cell), NOT a fixed ordinal: the 5-col `# | Item | Axis | Status | Rationale`
-    has Status=col-4, the 4-col `# | Item | Status | Reason` has Status=col-3.
-    For each data row record {item_label, number (suffix-stripped 42a→42),
-    title (item-cell), date (first YYYY-MM-DD in the STATUS CELL), done?}. A row
-    is DONE iff it starts `^\s*\| ~~` OR its detected status cell begins
-    `✅` / `**✅`.
+    Rows are split MARKDOWN-AWARE (`split_table_pipes`): a backslash-escaped `\|`
+    and a pipe inside an inline-code span are NOT column boundaries, so a content
+    pipe cannot inflate a canonical arity (audit X4 — a naive `split("|")` turned
+    a 4-col OPEN row into a 5-col one that re-keyed onto a `✅`-leading Reason
+    fragment and was silently archived). The Status column index is then resolved
+    PER ROW from the row's OWN column count (`ROW_ARITY_STATUS_IDX` — 5-col
+    `# | Item | Axis | Status | Rationale` → idx-3, 4-col `# | Item | Status |
+    Reason` → idx-2), NOT the table header's arity, so a 5-col done row placed
+    under a 4-col header still keys on its own Status column. A row whose arity
+    matches NEITHER canonical schema (3, 6, …) is AMBIGUOUS → struck-only (never
+    re-read as done by a non-Status cell). For each data row record {item_label,
+    number (suffix-stripped 42a→42), title (item-cell), date (first YYYY-MM-DD in
+    the STATUS CELL), done?}. A row is DONE iff it starts `^\s*\| ~~` OR its
+    per-row-arity Status cell begins `✅` / `**✅`.
 
   `### N.` blocks — split `## P1/P2/P3` (PREFIX match) into blocks. Each is:
     * AUTO-DONE iff the header is struck (`### ~~`) OR a body line CONTAINS the
@@ -146,13 +153,81 @@ def is_contained(path: Path, root: Path) -> bool:
         return False
 
 
-def split_row(line: str) -> List[str]:
-    """Split a pipe-table row into its stripped cell texts.
+def target_escapes(target: Path, root: Path) -> bool:
+    """True iff a WRITE target is unsafe — a symlink, or escapes `root`.
 
-    Leading/trailing empty cells (from the bordering `|`) are dropped so the
-    list indices line up with the visible columns (`# | Item | … `).
+    Audit X5 (file-level companion to the X3 directory guard): the `archive/` dir
+    guard alone does not protect the individual write targets. A pre-planted
+    symlink AT a write path (`archive/backlog-done-YYYY-MM.md` or `BACKLOG.md`)
+    would be followed and the write would land at the symlink's out-of-tree
+    target. Refuse if `target` is itself a symlink, OR if its parent (resolved)
+    escapes `root`. The target itself need not pre-exist (a fresh month file
+    does not), so containment is checked on the parent directory.
     """
-    parts = line.split("|")
+    if target.is_symlink():
+        return True
+    return not is_contained(target.parent, root)
+
+
+def split_table_pipes(line: str) -> List[str]:
+    r"""Split a markdown table row on its CELL-SEPARATOR pipes only.
+
+    A `|` is a cell separator UNLESS it is (audit X4 — a naive `line.split("|")`
+    over-counted columns, collapsing a canonical 4-col OPEN row into a 5-col one
+    that re-keyed to a `✅`-leading Reason fragment and was silently archived):
+
+    * **Backslash-escaped** — preceded by an ODD run of `\\` (`\\|`). An EVEN run
+      (`\\\\|`) is an escaped backslash followed by a REAL separator. Parity-aware,
+      mirroring `kb_drift_scan.split_unescaped_pipes` (the repo's C6 cell-split).
+    * **Inside an inline-code span** — between a pair of backtick fences (`` `…|…` ``).
+      A pipe within `` `a | b` `` is content, not a column boundary. Spans are
+      matched left-to-right by equal-length backtick runs (CommonMark code-span
+      rule); an unterminated run leaves the rest of the line as plain text.
+
+    Returns the RAW segment texts (backslashes/backticks intact); the caller
+    `split_row` strips and drops the empty border cells.
+    """
+    segments: List[str] = []
+    start = 0
+    i = 0
+    n = len(line)
+    code_fence = 0  # length of the backtick run that opened the current code span
+    while i < n:
+        ch = line[i]
+        if ch == "`":
+            run = 1
+            while i + run < n and line[i + run] == "`":
+                run += 1
+            if code_fence == 0:
+                code_fence = run  # open a span
+            elif run == code_fence:
+                code_fence = 0  # close it (CommonMark: matching-length run)
+            i += run
+            continue
+        if ch == "|" and code_fence == 0:
+            bs = 0
+            j = i - 1
+            while j >= 0 and line[j] == "\\":
+                bs += 1
+                j -= 1
+            if bs % 2 == 0:
+                segments.append(line[start:i])
+                start = i + 1
+        i += 1
+    segments.append(line[start:])
+    return segments
+
+
+def split_row(line: str) -> List[str]:
+    r"""Split a pipe-table row into its stripped cell texts.
+
+    Uses `split_table_pipes` (markdown-table-aware — a backslash-escaped `\|` and
+    a pipe inside an inline-code span are NOT column boundaries, audit X4), so the
+    canonical {4,5}-col arities are not inflated by content pipes. Leading/trailing
+    empty cells (from the bordering `|`) are dropped so the list indices line up
+    with the visible columns (`# | Item | … `).
+    """
+    parts = split_table_pipes(line)
     # Drop the empty strings produced by the leading/trailing border pipes.
     if parts and parts[0].strip() == "":
         parts = parts[1:]
@@ -1022,6 +1097,23 @@ def apply_archive(
         return 2, []
     archive_dir.mkdir(parents=True, exist_ok=True)
 
+    # Audit X5: file-level symlink/containment guard on EVERY write target before
+    # any write — a pre-planted symlink at a month file or at BACKLOG.md would
+    # otherwise be followed out of tree. Refuse the whole run (exit 2, nothing
+    # written) if any target is unsafe, so a partial archive cannot leak.
+    backlog_path = project_root / "BACKLOG.md"
+    write_targets = [archive_month_path(project_root, m)
+                     for m in sorted(set(by_month_blocks) | set(by_month_rows))]
+    write_targets.append(backlog_path)
+    for target in write_targets:
+        if target_escapes(target, project_root):
+            print(
+                f"error: write target {target} is a symlink or escapes the "
+                f"project root {project_root}; refusing to write",
+                file=sys.stderr,
+            )
+            return 2, []
+
     msgs: List[str] = []
     for month in sorted(set(by_month_blocks) | set(by_month_rows)):
         mblocks = by_month_blocks.get(month, [])
@@ -1049,13 +1141,13 @@ def apply_archive(
     # → cannot bloat, a re-run never duplicates lines).
     index_lines = build_index(load_archives_by_month(project_root))
     trimmed = regenerate_completed_index(trimmed, index_lines)
-    (project_root / "BACKLOG.md").write_text(trimmed, encoding="utf-8")
+    backlog_path.write_text(trimmed, encoding="utf-8")
 
     return 1, msgs
 
 
 def _selftest() -> int:
-    """Behavioral self-test for the audit fixes X1/X2/X3 (spec §3.2).
+    """Behavioral self-test for the audit fixes X1/X2/X3/X4/X5 (spec §3.2).
 
     Each case is RED on the pre-fix code (the prior bug) and GREEN here. Run with
     `python3 tests/backlog_archive.py --selftest`; returns 0 iff every assertion
@@ -1240,6 +1332,196 @@ def _selftest() -> int:
         f"labels={sorted(x1ax_odd)}",
     )
 
+    # --- AUDIT X4 (CRITICAL — markdown-table-aware row split): a CONTENT pipe (a
+    # backslash-escaped `\|` OR a pipe inside an inline-code span) must NOT count
+    # as a column boundary. Pre-fix the naive `split("|")` inflated a canonical
+    # 4-col OPEN row to 5 apparent cells → re-keyed Status onto idx-3 (a
+    # `✅`-leading Reason fragment) → the OPEN row was classified DONE + archived +
+    # trimmed → DATA LOSS (the X1 class, re-introduced via per-row-arity). EVERY
+    # misparse vector below is asserted as "OPEN row MUST stay OPEN". ---
+    print("AUDIT-X4 — content pipes do not inflate arity; OPEN rows stay OPEN:")
+    # (a) 4-col OPEN row with an escaped `\|` AND a leading `✅` in the Reason cell.
+    x4_escaped = "\n".join(
+        [
+            "## Active priorities",
+            "",
+            "| # | Item | Status | Reason |",
+            "|---|------|--------|--------|",
+            r"| **36** | open escaped-pipe item | P2 queued | "
+            r"✅ RESOLVED 2026-05-31 \| extra note |",
+        ]
+    )
+    x4a_cells = split_row(
+        r"| **36** | open escaped-pipe item | P2 queued | "
+        r"✅ RESOLVED 2026-05-31 \| extra note |"
+    )
+    check(
+        "AUDIT-X4(a) escaped `\\|` keeps the row at 4 cells (not inflated to 5)",
+        len(x4a_cells) == 4,
+        f"cells={x4a_cells}",
+    )
+    x4a = {r["item_label"] for r in parse_table_done(x4_escaped.splitlines())}
+    check(
+        "AUDIT-X4(a) 4-col escaped-`\\|` + leading-✅-Reason OPEN row stays OPEN",
+        "36" not in x4a,
+        f"labels={sorted(x4a)}",
+    )
+    # (b) 4-col OPEN row whose Reason cell holds a pipe inside an inline-code span.
+    x4_codespan = "\n".join(
+        [
+            "## Active priorities",
+            "",
+            "| # | Item | Status | Reason |",
+            "|---|------|--------|--------|",
+            "| **38** | open code-span item | P2 queued | ✅ see `a | b` pipe |",
+        ]
+    )
+    x4b_cells = split_row(
+        "| **38** | open code-span item | P2 queued | ✅ see `a | b` pipe |"
+    )
+    check(
+        "AUDIT-X4(b) code-span `a | b` pipe keeps the row at 4 cells",
+        len(x4b_cells) == 4,
+        f"cells={x4b_cells}",
+    )
+    x4b = {r["item_label"] for r in parse_table_done(x4_codespan.splitlines())}
+    check(
+        "AUDIT-X4(b) 4-col code-span-pipe + leading-✅-Reason OPEN row stays OPEN",
+        "38" not in x4b,
+        f"labels={sorted(x4b)}",
+    )
+    # (c) ragged rows whose CORRECT arity is unknown (3-col / 6-col) → struck-only;
+    # a non-struck ✅-anywhere row must NOT be re-read as done.
+    x4_ragged = "\n".join(
+        [
+            "## Active priorities",
+            "",
+            "| # | Item | Status | Reason | Extra | More |",
+            "|---|------|--------|--------|-------|------|",
+            "| **41** | six-col open row | ✅ leads here | P2 queued | x | y |",
+            "| ~~**42**~~ | six-col struck row | r | r | r | r |",
+        ]
+    )
+    x4c = {r["item_label"] for r in parse_table_done(x4_ragged.splitlines())}
+    check(
+        "AUDIT-X4(c) unknown-arity (6-col) non-struck ✅ row stays OPEN",
+        "41" not in x4c,
+        f"labels={sorted(x4c)}",
+    )
+    check(
+        "AUDIT-X4(c) unknown-arity (6-col) struck row still done (struck-only)",
+        "42" in x4c,
+        f"labels={sorted(x4c)}",
+    )
+    # (d) the original X1 all-cell-✅ vector: a ✅ in a NON-Status cell of an OPEN
+    # row (4-col Reason idx-3, 5-col Rationale idx-4) must NOT classify done.
+    x4_x1class = "\n".join(
+        [
+            "## Active priorities",
+            "",
+            "| # | Item | Status | Reason |",
+            "|---|------|--------|--------|",
+            "| **43** | 4-col ✅-in-Reason open | P2 queued | ✅ RESOLVED 2026-04-30 |",
+            "",
+            "| # | Item | Axis | Status | Rationale |",
+            "|---|------|------|--------|-----------|",
+            "| **44** | 5-col ✅-in-Rationale open | ax | P2 queued | "
+            "✅ RESOLVED 2026-04-30 |",
+        ]
+    )
+    x4d = {r["item_label"] for r in parse_table_done(x4_x1class.splitlines())}
+    check(
+        "AUDIT-X4(d) X1 vector: ✅ in a non-Status cell (4-col + 5-col) stays OPEN",
+        "43" not in x4d and "44" not in x4d,
+        f"labels={sorted(x4d)}",
+    )
+    # (e) CONTROL — legitimate done rows still archive after the markdown-aware
+    # split: golden #76 (5-col under 4-col header, ✅ at idx-3 Status), a struck
+    # row, and a 4-col P2 done row (✅ at idx-2 Status).
+    x4_control = "\n".join(
+        [
+            "## Active priorities",
+            "",
+            "| # | Item | Status | Reason |",
+            "|---|------|--------|--------|",
+            "| **76** | five-col golden done | ax | "
+            "**✅ CLOSED 2026-06-02 — done** | rationale (disc 2026-05-31) |",
+            "| ~~**80**~~ | four-col struck done | done | r |",
+            "| **81** | four-col status-done | **✅ DONE 2026-04-15** | reason |",
+        ]
+    )
+    x4e = {r["item_label"]: r for r in parse_table_done(x4_control.splitlines())}
+    check(
+        "AUDIT-X4(e) control: golden #76 (idx-3 ✅) still archives, bucket 2026-06",
+        "76" in x4e and x4e["76"]["date"] == "2026-06-02",
+        f"labels={sorted(x4e)} date={x4e.get('76', {}).get('date')}",
+    )
+    check(
+        "AUDIT-X4(e) control: struck #80 still archives",
+        "80" in x4e,
+        f"labels={sorted(x4e)}",
+    )
+    check(
+        "AUDIT-X4(e) control: 4-col #81 (idx-2 ✅ Status) still archives",
+        "81" in x4e and x4e["81"]["date"] == "2026-04-15",
+        f"labels={sorted(x4e)} date={x4e.get('81', {}).get('date')}",
+    )
+
+    # --- AUDIT X5 (MEDIUM, below floor — file-level symlink guard): a pre-planted
+    # symlink AT a write target (the month file OR BACKLOG.md) must be refused
+    # (exit 2, nothing written through it). The X3 guard validated only the
+    # `archive/` directory; these targets sit below it. ---
+    print("AUDIT-X5 — file-level symlinked write targets are refused:")
+    with tempfile.TemporaryDirectory() as _x5td:
+        _proj = Path(_x5td) / "repos" / "ai-dev-team"
+        _proj.mkdir(parents=True)
+        (_proj / "BACKLOG.md").write_text(
+            "# BACKLOG\n\n## P1: section\n\n"
+            "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n",
+            encoding="utf-8",
+        )
+        (_proj / "archive").mkdir()  # a REAL dir → passes the X3 dir-level guard
+        _outside = Path(_x5td) / "OUTSIDE"
+        _outside.mkdir()
+        _victim = _outside / "victim.md"
+        _victim.write_text("ORIGINAL VICTIM\n", encoding="utf-8")
+        os.symlink(str(_victim), str(_proj / "archive" / "backlog-done-2026-04.md"))
+        _btext = (_proj / "BACKLOG.md").read_text()
+        _rc, _ = apply_archive(_proj, "ai-dev-team", _btext, classify(_btext), [])
+        check(
+            "AUDIT-X5 symlinked month-file target refused with exit 2",
+            _rc == 2,
+            f"rc={_rc}",
+        )
+        check(
+            "AUDIT-X5 outside victim file untouched (not written through symlink)",
+            _victim.read_text() == "ORIGINAL VICTIM\n",
+        )
+    with tempfile.TemporaryDirectory() as _x5td2:
+        _proj2 = Path(_x5td2) / "repos" / "ai-dev-team"
+        _proj2.mkdir(parents=True)
+        _outside2 = Path(_x5td2) / "OUTSIDE"
+        _outside2.mkdir()
+        _realbl = _outside2 / "real-backlog.md"
+        _realbl.write_text(
+            "# BACKLOG\n\n## P1: section\n\n"
+            "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n",
+            encoding="utf-8",
+        )
+        os.symlink(str(_realbl), str(_proj2 / "BACKLOG.md"))
+        (_proj2 / "archive").mkdir()
+        _btext2 = (_proj2 / "BACKLOG.md").read_text()
+        _rc2, _ = apply_archive(_proj2, "ai-dev-team", _btext2, classify(_btext2), [])
+        check(
+            "AUDIT-X5 symlinked BACKLOG.md target refused with exit 2",
+            _rc2 == 2,
+            f"rc={_rc2}",
+        )
+        check(
+            "AUDIT-X5 outside real-backlog untrimmed (not written through symlink)",
+            "BODY_5" in _realbl.read_text(),
+        )
+
     # --- AUDIT X3 (MEDIUM): a pre-existing `archive/` symlink whose target is
     # outside the project root MUST be refused (exit 2, nothing written) — pre-fix
     # `--apply` followed the symlink and wrote files outside the project tree. ---
@@ -1381,7 +1663,7 @@ def _selftest() -> int:
     if failures:
         print(f"\nSELFTEST FAILED: {len(failures)} assertion(s): {', '.join(failures)}")
         return 1
-    print("\nSELFTEST OK: X1, X2, X3 all GREEN")
+    print("\nSELFTEST OK: X1, X2, X3, X4, X5 all GREEN")
     return 0
 
 

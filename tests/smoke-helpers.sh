@@ -9317,9 +9317,14 @@ PYEOF
 # regenerated index has exactly ONE line each for #37/#45/#46/#52, FOUR lines for
 # #42/#42a/#42b/#42c, TWO #76 lines, and the #37 line sources `PR #57` from the
 # matched row; a second identical `--apply` is a byte-identical no-op. Layered with
-# the archiver's own `--selftest` (X1/X2/X3 merge-keying + per-table status-col).
+# the archiver's own `--selftest` (X1/X2/X3/X4/X5) and end-to-end --apply guards for
+# the markdown-table-aware row split (X4 — escaped `\|` / inline-code-span pipe /
+# ragged / all-cell-✅ OPEN rows MUST stay OPEN; a 4-col idx-2 done row still
+# archives) and the file-level symlink write-target guard (X5 — symlinked month
+# file / BACKLOG.md refused exit-2, nothing written through them).
 # Mutation-protected: any regression in classification (candidate set), coalescing
-# (index line counts), date-bucketing, or merge idempotency drives an assertion RED.
+# (index line counts), date-bucketing, merge idempotency, the row split, or the
+# symlink guard drives an assertion RED.
 check_backlog_archiver_behavioral() {
   local archiver="$PLUGIN_ROOT/tests/backlog_archive.py"
   local golden="$PLUGIN_ROOT/tests/fixtures/backlog-curator/golden-input-backlog.md"
@@ -9492,7 +9497,110 @@ with tempfile.TemporaryDirectory() as td:
             print("(5) X1 regression: the struck row must still archive (guard must stay narrow)")
             sys.exit(1)
 
-print("backlog_archive GOLDEN: dry-run candidates exactly {37,42,45,46,52,55,75} (#55/#75 likely-collision); --apply 37,42,45,46,52 archives approved+struck+#76-block (move not copy), {#40,#50,#55,#75} stay OPEN; index one line each #37/#45/#46/#52, four #42/#42a/#42b/#42c, two #76, #37 line sources PR #57; 2nd --apply byte-identical no-op; per-row-arity Status (5-col ✅-at-idx-3 done row under a 4-col header archives, ✅-at-idx-4-Rationale row stays OPEN) (X1); selftest X1/X2/X3 + AUDIT-X1/X3 green")
+    # (6) AUDIT X4 (CRITICAL) — markdown-table-aware row split: a CONTENT pipe (a
+    # backslash-escaped `\|` OR a pipe inside an inline-code span) must NOT inflate
+    # a canonical 4-col OPEN row into a 5-col one (which pre-fix re-keyed Status
+    # onto a `✅`-leading Reason fragment → the OPEN row was archived + trimmed →
+    # DATA LOSS). Asserted END-TO-END via --apply: EVERY misparse vector is an
+    # "OPEN row MUST stay OPEN" check (RED on the pre-fix naive split for X4ESCMARK),
+    # plus a control that legitimate done rows still archive.
+    #   X4ESCMARK  (4-col, escaped `\|` + leading-✅ Reason)        → MUST stay OPEN
+    #   X4CODEMARK (4-col, inline-code-span pipe + leading-✅ Reason) → MUST stay OPEN
+    #   X4RAGMARK  (6-col ragged, ✅ in a non-Status cell)           → MUST stay OPEN
+    #   X4ALLCELL  (5-col, ✅ in idx-4 Rationale — the X1 all-cell vector) → OPEN
+    #   X4DONEMARK (4-col, ✅ at idx-2 Status — control)             → MUST archive
+    synth6 = "\n".join([
+        "# BACKLOG",
+        "",
+        "## Active priorities",
+        "",
+        "| # | Item | Status | Reason |",
+        "|---|------|--------|--------|",
+        r"| **101** | X4ESCMARK escaped-pipe open | P2 queued | "
+        r"✅ RESOLVED 2026-05-31 \| extra note |",
+        "| **102** | X4CODEMARK code-span open | P2 queued | "
+        "✅ see `a | b` pipe |",
+        "| **103** | X4DONEMARK four-col status-done | "
+        "**✅ DONE 2026-04-15 — done** | reason |",
+        "",
+        "| # | Item | Axis | Status | Rationale |",
+        "|---|------|------|--------|-----------|",
+        "| **104** | X4ALLCELL five-col ✅-in-Rationale open | ax | P2 queued | "
+        "✅ RESOLVED 2026-04-30 discussion only |",
+        "",
+        "| # | Item | Status | Reason | Extra | More |",
+        "|---|------|--------|--------|-------|------|",
+        "| **105** | X4RAGMARK six-col ✅-non-status open | ✅ leads here | "
+        "P2 queued | x | y |",
+        "",
+    ])
+    with tempfile.TemporaryDirectory() as td6:
+        proj6 = Path(td6) / "repos" / "ai-dev-team"
+        proj6.mkdir(parents=True)
+        (proj6 / "BACKLOG.md").write_text(synth6, encoding="utf-8")
+        run(td6, "--apply")
+        bl6 = (proj6 / "BACKLOG.md").read_text()
+        open6 = bl6.split("## Completed")[0]
+        arch6 = "\n".join(a.read_text() for a in (proj6 / "archive").glob("backlog-done-*.md"))
+        for marker, why in (
+            ("X4ESCMARK", "4-col escaped `\\|` + leading-✅ Reason"),
+            ("X4CODEMARK", "4-col inline-code-span pipe + leading-✅ Reason"),
+            ("X4RAGMARK", "6-col ragged row with ✅ in a non-Status cell"),
+            ("X4ALLCELL", "5-col row with ✅ in idx-4 Rationale (X1 all-cell vector)"),
+        ):
+            if marker not in open6:
+                print(f"(6) X4 regression: OPEN row [{why}] was LOST from open BACKLOG (data loss)")
+                sys.exit(1)
+            if marker in arch6:
+                print(f"(6) X4 regression: OPEN row [{why}] was wrongly ARCHIVED (data loss)")
+                sys.exit(1)
+        # Control: a legitimate 4-col done row (✅ at idx-2 Status) STILL archives.
+        if "X4DONEMARK" not in arch6 or "X4DONEMARK" in open6:
+            print("(6) control: 4-col done row (✅ at idx-2 Status) MUST still archive after the markdown-aware split")
+            sys.exit(1)
+
+    # (7) AUDIT X5 (MEDIUM) — file-level symlink guard: a pre-planted symlink AT a
+    # write target (the month file OR BACKLOG.md) is refused (exit 2, nothing
+    # written through it), even when the `archive/` dir itself is a REAL dir that
+    # passes the X3 dir-level guard.
+    import os as _os
+    seed7 = ("# BACKLOG\n\n## P1: section\n\n"
+             "### ~~5. struck done~~ ✅ DONE (2026-04-10)\n\nBODY_5 content.\n")
+    with tempfile.TemporaryDirectory() as td7:
+        proj7 = Path(td7) / "repos" / "ai-dev-team"
+        proj7.mkdir(parents=True)
+        (proj7 / "BACKLOG.md").write_text(seed7, encoding="utf-8")
+        (proj7 / "archive").mkdir()  # REAL dir → passes the X3 dir-level guard
+        outside7 = Path(td7) / "OUTSIDE"
+        outside7.mkdir()
+        victim7 = outside7 / "victim.md"
+        victim7.write_text("ORIGINAL VICTIM\n", encoding="utf-8")
+        _os.symlink(str(victim7), str(proj7 / "archive" / "backlog-done-2026-04.md"))
+        ap7 = run(td7, "--apply")
+        if ap7.returncode != 2:
+            print(f"(7) X5: symlinked month-file write target must be refused (exit 2), got {ap7.returncode}")
+            sys.exit(1)
+        if victim7.read_text() != "ORIGINAL VICTIM\n":
+            print("(7) X5: outside victim file was written THROUGH the month-file symlink (escape)")
+            sys.exit(1)
+    with tempfile.TemporaryDirectory() as td7b:
+        proj7b = Path(td7b) / "repos" / "ai-dev-team"
+        proj7b.mkdir(parents=True)
+        outside7b = Path(td7b) / "OUTSIDE"
+        outside7b.mkdir()
+        realbl7 = outside7b / "real-backlog.md"
+        realbl7.write_text(seed7, encoding="utf-8")
+        _os.symlink(str(realbl7), str(proj7b / "BACKLOG.md"))
+        (proj7b / "archive").mkdir()
+        ap7b = run(td7b, "--apply")
+        if ap7b.returncode != 2:
+            print(f"(7) X5: symlinked BACKLOG.md write target must be refused (exit 2), got {ap7b.returncode}")
+            sys.exit(1)
+        if "BODY_5" not in realbl7.read_text():
+            print("(7) X5: outside real-backlog was trimmed THROUGH the BACKLOG.md symlink (escape)")
+            sys.exit(1)
+
+print("backlog_archive GOLDEN: dry-run candidates exactly {37,42,45,46,52,55,75} (#55/#75 likely-collision); --apply 37,42,45,46,52 archives approved+struck+#76-block (move not copy), {#40,#50,#55,#75} stay OPEN; index one line each #37/#45/#46/#52, four #42/#42a/#42b/#42c, two #76, #37 line sources PR #57; 2nd --apply byte-identical no-op; per-row-arity Status (5-col ✅-at-idx-3 done row under a 4-col header archives, ✅-at-idx-4-Rationale row stays OPEN) (X1); markdown-aware split keeps escaped-`\\|`/code-span/ragged/all-cell OPEN rows OPEN, 4-col idx-2 done row still archives (X4); file-level symlink write targets refused exit-2 (X5); selftest X1/X2/X3/X4/X5 + AUDIT-X1/X3/X4/X5 green")
 PYEOF
 }
 
