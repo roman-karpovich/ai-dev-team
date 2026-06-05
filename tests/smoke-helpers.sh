@@ -8977,7 +8977,7 @@ counts = {}
 for f in findings:
     short = f["class"].split("_", 1)[0]
     counts[short] = counts.get(short, 0) + 1
-present = [s for s in ("C1", "C2", "C3", "C4", "C5", "C6") if s in counts]
+present = [s for s in ("C1", "C2", "C3", "C4", "C5", "C6", "C7") if s in counts]
 want_counts = " ".join(f"{s}:{counts[s]}" for s in present)
 want_drift = (
     f"⚠ KB drift — {len(findings)} findings: {want_counts} "
@@ -9228,6 +9228,222 @@ if measure != 202:
     sys.exit(1)
 
 print("kb_drift_scan C6: 301-flag/300-clean strict boundary + detail measure; `-` bullet@9 (315) and `1.` ordered@10 (325) post-marker measure; non-index type:reference >300 NOT flagged (scope); unescaped-pipe cell 402 flags as ONE cell (not naive-split into two ≤300); no-frontmatter vault-index.md 441 flags via basename clause above the FM gate (X1) + control non-vault-index clean; split_unescaped_pipes parity unit — splits even `\\|`, not odd `\|`, and c6_table_row_measure splits a real `\\|` separator (201 not 402)")
+PYEOF
+}
+
+# Behavioral: C7 backlog-done-bloat (spec 2026-06-04-backlog-curator). Builds two
+# single-project vaults and pins the STRICT threshold boundary: a BACKLOG.md with
+# exactly C7_BLOAT_THRESHOLD (12) struck-done lines fires C7 in the `--summary`
+# headline (`C7:` token present), while one with 11 stays clean (no C7). Both the
+# struck section-header form (`^### ~~`) and the struck table-row form (`^\s*\| ~~`)
+# count toward the tally, and the BACKLOG carries NO frontmatter (proves C7 runs
+# above the frontmatter gate, alongside C6). Mutation-protected: drop the `>=`
+# threshold compare (fire on any count, or fire at 11) and the 11-struck clean
+# assertion goes RED; key the regex on a non-line-start pattern (so prose
+# `- ~~…~~` mentions count) and the low-FP boundary breaks.
+check_kb_drift_c7_backlog_bloat() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  python3 - "$scanner" <<'PYEOF'
+import subprocess, sys, tempfile
+from pathlib import Path
+
+scanner = sys.argv[1]
+
+
+def summary(struck_headers, struck_rows, prose_mentions=0):
+    """Build a single-project vault whose BACKLOG.md (NO frontmatter) carries the
+    given count of struck section headers + struck table rows + line-start-absent
+    prose `~~` mentions; return the `--summary` stdout."""
+    with tempfile.TemporaryDirectory() as td:
+        proj = Path(td) / "repos" / "ai-dev-team"
+        proj.mkdir(parents=True)
+        lines = ["# Backlog", ""]
+        for i in range(struck_headers):
+            lines.append(f"### ~~{i}. done~~ ✅ DONE (2026-04-17)")
+            lines.append("body")
+        if struck_rows:
+            lines += ["", "| # | Item | Status |", "|---|------|--------|"]
+            for i in range(struck_rows):
+                lines.append(f"| ~~**{100 + i}**~~ | done | ✅ DONE |")
+        for i in range(prose_mentions):
+            lines.append(f"- a ~~struck prose mention {i}~~ inline, not at line start")
+        (proj / "BACKLOG.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        r = subprocess.run(
+            [sys.executable, scanner, str(td), "--project", "ai-dev-team", "--summary"],
+            capture_output=True,
+            text=True,
+        )
+        return r.stdout
+
+
+# (1) STRICT threshold: exactly 12 struck items (>= C7_BLOAT_THRESHOLD) → C7 fires
+# in the headline; 11 stays clean. A `>` instead of `>=`, or any-count firing,
+# flips one of these.
+bloat = summary(12, 0)
+if "C7:" not in bloat.splitlines()[0]:
+    print(f"(1) 12 struck headers must fire C7 in headline, got: {bloat.splitlines()[0]!r}")
+    sys.exit(1)
+lean = summary(11, 0)
+if "C7:" in lean:
+    print(f"(1) 11 struck headers (< threshold) must NOT fire C7, got: {lean!r}")
+    sys.exit(1)
+
+# (2) Both struck forms count: 6 struck headers + 6 struck table rows = 12 → fires.
+mixed = summary(6, 6)
+if "C7:" not in mixed.splitlines()[0]:
+    print(f"(2) 6 headers + 6 struck rows (=12) must fire C7, got: {mixed.splitlines()[0]!r}")
+    sys.exit(1)
+
+# (3) Low-FP: 11 struck items + many `- ~~…~~` prose mentions (NOT line-start
+# struck markers) must stay clean — prose `~~` must not be counted toward C7.
+fp = summary(11, 0, prose_mentions=20)
+if "C7:" in fp:
+    print(f"(3) prose `- ~~…~~` mentions must NOT count toward C7, got: {fp!r}")
+    sys.exit(1)
+
+print("kb_drift_scan C7: 12-struck-fires / 11-clean strict threshold; header + table-row struck forms both count (6+6=12); no-frontmatter (above FM gate); prose `- ~~…~~` line-start-absent mentions NOT counted (low-FP)")
+PYEOF
+}
+
+# Behavioral: GOLDEN backlog-archiver (spec 2026-06-04-backlog-curator §6). Copies
+# the committed pre-cleanup golden BACKLOG (frozen ONCE as a static fixture from
+# the real pre-deep-clean backlog — NO vault reach in the test, cwd-independent) into a
+# temp project, then reproduces the 2026-06-04 human deep-clean and ID-anchors the
+# result: `--dry-run` CANDIDATE set is EXACTLY {37,42,45,46,52,55,75} (with #55/#75
+# hinted likely-collision); `--apply --archive-candidates 37,42,45,46,52` archives
+# the non-struck approved set {#37,#42,#45,#46,#52} + ALL struck `### ~~`/`| ~~`
+# items + the #76 own-status block, while {#40,#50,#55,#75} stay OPEN; the
+# regenerated index has exactly ONE line each for #37/#45/#46/#52, FOUR lines for
+# #42/#42a/#42b/#42c, TWO #76 lines, and the #37 line sources `PR #57` from the
+# matched row; a second identical `--apply` is a byte-identical no-op. Layered with
+# the archiver's own `--selftest` (X1/X2/X3 merge-keying + per-table status-col).
+# Mutation-protected: any regression in classification (candidate set), coalescing
+# (index line counts), date-bucketing, or merge idempotency drives an assertion RED.
+check_backlog_archiver_behavioral() {
+  local archiver="$PLUGIN_ROOT/tests/backlog_archive.py"
+  local golden="$PLUGIN_ROOT/tests/fixtures/backlog-curator/golden-input-backlog.md"
+  [ -f "$archiver" ] || { echo "$archiver missing"; return 1; }
+  [ -f "$golden" ] || { echo "$golden fixture missing"; return 1; }
+  # Layer 0: the archiver's embedded selftest (per-table Status-col detection +
+  # storage-identity merge keying — X1/X2/X3). Goes RED if that core regresses.
+  if ! python3 "$archiver" --selftest >/dev/null 2>&1; then
+    echo "backlog_archive.py --selftest failed"
+    return 1
+  fi
+  python3 - "$archiver" "$golden" <<'PYEOF'
+import hashlib, re, shutil, subprocess, sys, tempfile
+from pathlib import Path
+
+archiver, golden = sys.argv[1], sys.argv[2]
+
+
+def run(root, *extra):
+    return subprocess.run(
+        [sys.executable, archiver, str(root), "--project", "ai-dev-team", *extra],
+        capture_output=True,
+        text=True,
+    )
+
+
+with tempfile.TemporaryDirectory() as td:
+    proj = Path(td) / "repos" / "ai-dev-team"
+    proj.mkdir(parents=True)
+    shutil.copy(golden, proj / "BACKLOG.md")
+
+    # (1) --dry-run CANDIDATE set is EXACTLY {37,42,45,46,52,55,75}; #55/#75 are
+    # hinted likely-collision. A classification regression (number-match gate,
+    # struck/own-status discrimination) shifts this set.
+    dry = run(td, "--dry-run")
+    cand_sec = dry.stdout.split("CANDIDATES", 1)[1] if "CANDIDATES" in dry.stdout else ""
+    cand_ids = {int(x) for x in re.findall(r"#(\d+)", cand_sec)}
+    if cand_ids != {37, 42, 45, 46, 52, 55, 75}:
+        print(f"(1) candidate set must be {{37,42,45,46,52,55,75}}, got {sorted(cand_ids)}\n{cand_sec[:800]}")
+        sys.exit(1)
+    cand_lines = {}
+    for ln in cand_sec.splitlines():
+        m = re.search(r"#(\d+)\b", ln)
+        if m:
+            cand_lines[int(m.group(1))] = ln
+    for n in (55, 75):
+        if "likely-collision" not in cand_lines.get(n, ""):
+            print(f"(1) #{n} must be hinted likely-collision, got {cand_lines.get(n)!r}")
+            sys.exit(1)
+
+    # (2) Reproduce the human's 2026-06-04 approval: --apply the AUTO set + the
+    # five approved non-struck candidates {37,42,45,46,52}.
+    ap = run(td, "--apply", "--archive-candidates", "37,42,45,46,52")
+    if ap.returncode != 1:
+        print(f"(2) --apply with changes must exit 1, got {ap.returncode}; stderr={ap.stderr[:400]}")
+        sys.exit(1)
+    arch = sorted((proj / "archive").glob("backlog-done-*.md"))
+    archtxt = "\n".join(a.read_text() for a in arch)
+    bl = (proj / "BACKLOG.md").read_text()
+    openpart = bl.split("## Completed")[0]
+
+    # ID-anchored archived set: the five approved non-struck blocks are archived
+    # AND removed from the open part (move, not copy).
+    for n in (37, 42, 45, 46, 52):
+        if not re.search(rf"^### (~~)?{n}\.", archtxt, re.M):
+            print(f"(2) approved #{n} block must be archived, missing from archive")
+            sys.exit(1)
+        if re.search(rf"^### (~~)?{n}\.", openpart, re.M):
+            print(f"(2) approved #{n} block must be removed from open BACKLOG (move not copy)")
+            sys.exit(1)
+
+    # ALL struck items archived: none left in the open part.
+    if "### ~~" in openpart or re.search(r"^\s*\| ~~", openpart, re.M):
+        print("(2) all struck `### ~~`/`| ~~` items must be archived (none left in open part)")
+        sys.exit(1)
+
+    # The #76 own-status block ("Smoke-pin placement …") is archived even though
+    # it was never struck (mid-line `**Status: ✅` own-status discriminator).
+    if not re.search(r"^### 76\. Smoke-pin placement", archtxt, re.M):
+        print("(2) #76 own-status block must be archived")
+        sys.exit(1)
+
+    # Must-stay-OPEN set: #40/#50 (X12 FP-guards) + the un-approved collision
+    # candidates #55/#75 keep their OPEN headers in the trimmed BACKLOG.
+    for n in (40, 50, 55, 75):
+        if not re.search(rf"^### (~~)?{n}\.", openpart, re.M):
+            print(f"(2) #{n} must stay OPEN in the trimmed BACKLOG")
+            sys.exit(1)
+
+    # (3) Regenerated index: ONE line per logical item for the approved candidates
+    # (block+row coalesce) — #37/#45/#46/#52; FOUR distinct #42/#42a/#42b/#42c
+    # lines (block matched only to suffixed rows → no coalesce); TWO #76 lines
+    # (auto-block + same-number done row never coalesce). The #37 line carries the
+    # row's `PR #57` (coalesced PR sourced from the matched row).
+    idx = (
+        bl.split("### Done backlog items — index")[1].split("### Completed specs")[0]
+        if "Done backlog items — index" in bl
+        else ""
+    )
+    for lbl, want in (("#37", 1), ("#45", 1), ("#46", 1), ("#52", 1),
+                      ("#42", 1), ("#42a", 1), ("#42b", 1), ("#42c", 1), ("#76", 2)):
+        got = idx.count(f"**{lbl}**")
+        if got != want:
+            print(f"(3) index line count for {lbl}: want {want}, got {got}\n{idx[:1200]}")
+            sys.exit(1)
+    line37 = [ln for ln in idx.splitlines() if "**#37**" in ln]
+    if not line37 or "PR #57" not in line37[0]:
+        print(f"(3) #37 index line must carry `PR #57` from the matched row, got {line37}")
+        sys.exit(1)
+
+    # (4) Idempotency: a second identical --apply is a byte-identical no-op (exit 0,
+    # archives + BACKLOG unchanged).
+    snap = {f.name: hashlib.md5(f.read_bytes()).hexdigest() for f in [proj / "BACKLOG.md", *arch]}
+    ap2 = run(td, "--apply", "--archive-candidates", "37,42,45,46,52")
+    if ap2.returncode != 0:
+        print(f"(4) second identical --apply must be a no-op (exit 0), got {ap2.returncode}")
+        sys.exit(1)
+    arch2 = sorted((proj / "archive").glob("backlog-done-*.md"))
+    snap2 = {f.name: hashlib.md5(f.read_bytes()).hexdigest() for f in [proj / "BACKLOG.md", *arch2]}
+    if snap != snap2:
+        print(f"(4) second --apply must be byte-identical no-op; snapshots differ:\n  {snap}\n  {snap2}")
+        sys.exit(1)
+
+print("backlog_archive GOLDEN: dry-run candidates exactly {37,42,45,46,52,55,75} (#55/#75 likely-collision); --apply 37,42,45,46,52 archives approved+struck+#76-block (move not copy), {#40,#50,#55,#75} stay OPEN; index one line each #37/#45/#46/#52, four #42/#42a/#42b/#42c, two #76, #37 line sources PR #57; 2nd --apply byte-identical no-op; selftest X1/X2/X3 green")
 PYEOF
 }
 
