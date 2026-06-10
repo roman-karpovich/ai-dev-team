@@ -37,6 +37,7 @@ iteration: N
 created: YYYY-MM-DD
 evidence_class: <value>
 evidence_blockers: <YAML-list>
+claude_model: <exact model id>
 tags: [audit, <project>]
 ---
 

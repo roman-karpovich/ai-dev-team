@@ -1,0 +1,7 @@
+expected_classification: CLEAN_DUAL
+expected_exit: 0
+mode: spec
+expected_claude_model_arg: claude-fable
+expected_model_gate: MODEL_DEGRADED
+expected_claude_model: unknown
+notes: "synthetic; honest unknown fallback parses then fails prefix -> DEGRADED"
