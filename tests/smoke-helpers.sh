@@ -7108,6 +7108,7 @@ check_dispatch_response_classification() {
     return 1
   fi
   local d meta mode expected_class expected_exit project
+  local expected_model_arg expected_model_gate expected_claude_model
   local out_file rc got_class checked=0
   out_file=$(mktemp) || return 1
   for d in "$fixture_root"/*/*/; do
@@ -7120,6 +7121,20 @@ check_dispatch_response_classification() {
     mode=$(sed -n 's/^mode: *//p' "$meta")
     expected_class=$(sed -n 's/^expected_classification: *//p' "$meta")
     expected_exit=$(sed -n 's/^expected_exit: *//p' "$meta")
+    # Three OPTIONAL model-attestation meta keys (absent in the 43 legacy
+    # fixtures). `expected_claude_model_arg` drives the `--expected-claude-model`
+    # flag (threaded into ALL FOUR invocation arms via the `extra_args` shell
+    # array below — a single-arm patch would silently under-test one mode);
+    # `expected_model_gate` / `expected_claude_model` are asserted
+    # UNCONDITIONALLY in the python block (absent -> null), so the flag cannot
+    # leak into a legacy CLEAN fixture and silently return MISSING.
+    expected_model_arg=$(sed -n 's/^expected_claude_model_arg: *//p' "$meta")
+    expected_model_gate=$(sed -n 's/^expected_model_gate: *//p' "$meta")
+    expected_claude_model=$(sed -n 's/^expected_claude_model: *//p' "$meta")
+    local extra_args=()
+    if [ -n "$expected_model_arg" ]; then
+      extra_args=(--expected-claude-model "$expected_model_arg")
+    fi
     # Policy-gate fixtures: the ai-dev-team variant is invoked WITH
     # `--project ai-dev-team`; the consumer variant WITHOUT it.
     project=""
@@ -7133,12 +7148,14 @@ check_dispatch_response_classification() {
         python3 "$helper" --mode "$mode" \
           --raw-response-file "$d/raw-response.txt" \
           --audit-slug "fixture-$expected_class" --iteration 1 \
-          --findings-path "$d/findings.md" >"$out_file" 2>/dev/null
+          --findings-path "$d/findings.md" \
+          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       else
         python3 "$helper" --mode "$mode" \
           --raw-response-file "$d/raw-response.txt" \
           --audit-slug "fixture-$expected_class" --iteration 1 \
-          --findings-path "$d/findings.md" >"$out_file" 2>/dev/null
+          --findings-path "$d/findings.md" \
+          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       fi
       rc=$?
     else
@@ -7146,12 +7163,13 @@ check_dispatch_response_classification() {
         python3 "$helper" --mode "$mode" \
           --raw-response-file "$d/raw-response.txt" \
           --audit-slug "fixture-$expected_class" --iteration 1 \
-          --project "$project" >"$out_file" 2>/dev/null
+          --project "$project" \
+          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       else
         python3 "$helper" --mode "$mode" \
           --raw-response-file "$d/raw-response.txt" \
           --audit-slug "fixture-$expected_class" --iteration 1 \
-          >"$out_file" 2>/dev/null
+          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       fi
       rc=$?
     fi
@@ -7164,11 +7182,13 @@ check_dispatch_response_classification() {
     # python3 reading the JSON from a file (embedded newlines in the
     # newline-unsafe fixture mean a shell-variable round-trip would corrupt
     # the payload — read straight from disk).
-    if ! python3 - "$out_file" "$expected_class" "$d" "$project" <<'PY'
+    if ! python3 - "$out_file" "$expected_class" "$d" "$project" \
+        "$expected_model_gate" "$expected_claude_model" <<'PY'
 import json
 import sys
 
-out_file, expected_class, fixture_dir, project = sys.argv[1:5]
+(out_file, expected_class, fixture_dir, project,
+ expected_model_gate, expected_claude_model) = sys.argv[1:7]
 try:
     with open(out_file, "r", encoding="utf-8") as fh:
         j = json.load(fh)
@@ -7208,6 +7228,27 @@ if "clean-single-policy-gate" in fixture_dir:
             print(f"sub-fixture {fixture_dir}: policy_gate {pg!r}, "
                   f"expected null")
             sys.exit(1)
+
+# Model-attestation assertions (UNCONDITIONAL for every fixture, legacy
+# included). The meta keys are optional shell vars: an empty string means the
+# key was absent -> expected null. `expected_model_gate` guards against the
+# flag leaking into legacy CLEAN fixtures (would silently return MISSING);
+# `expected_claude_model` pins the informational parse value (an impl that
+# computes model_gate but mis-emits claude_model is caught here).
+want_gate = None if expected_model_gate in ("", "null") else expected_model_gate
+got_gate = j.get("model_gate")
+if got_gate != want_gate:
+    print(f"sub-fixture {fixture_dir}: model_gate {got_gate!r}, "
+          f"expected {want_gate!r}")
+    sys.exit(1)
+
+want_model = (None if expected_claude_model in ("", "null")
+              else expected_claude_model)
+got_model = j.get("claude_model")
+if got_model != want_model:
+    print(f"sub-fixture {fixture_dir}: claude_model {got_model!r}, "
+          f"expected {want_model!r}")
+    sys.exit(1)
 PY
     then
       rm -f "$out_file"
@@ -7216,11 +7257,11 @@ PY
     checked=$((checked + 1))
   done
   rm -f "$out_file"
-  if [ "$checked" != "43" ]; then
-    echo "expected 43 sub-fixtures, checked $checked"
+  if [ "$checked" != "55" ]; then
+    echo "expected 55 sub-fixtures, checked $checked"
     return 1
   fi
-  echo "dispatch-response classifier: 43/43 sub-fixtures classified correctly"
+  echo "dispatch-response classifier: 55/55 sub-fixtures classified correctly"
 }
 
 # Behavioral pin for the classifier's enum -> violation-blocker phrasing
