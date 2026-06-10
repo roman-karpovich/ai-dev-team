@@ -483,7 +483,7 @@ The cross-auditor returns findings inline (no KB writes in spec mode).
 
 #### 3.5a Cross-auditor return-contract gate
 
-Before the CRITICAL/HIGH triage below runs, **apply the §3.5b-2 recovery algorithm** to the cross-auditor's raw inline return. This is callsite 1 of the 6 §3.5b-2 callsites — the feature spec-audit Pass 2 spawn. Capture the raw return to `<spec-path>.contract-violation-iter<N>-attempt<M>.raw.txt` per §3.5b-1, invoke `hooks/lib/check_dispatch_response.py --mode spec` (add `--project ai-dev-team` when the spec frontmatter resolves `project: ai-dev-team`), and branch on the classifier exit code per §3.5b-2 step 4. The classifier output **gates** whether the triage below runs: only an Exit-0 `policy_gate: null` PROCEED reaches the CRITICAL/HIGH triage; an Exit-0 `policy_gate: STOP_AND_DISCUSS` raises the §3.5b-2a banner, an Exit-1 violation enters the §3.5b-2b retry-outcome matrix, and an Exit-2 classifier crash raises the §3.5b-2c classifier-crash banner.
+Before the CRITICAL/HIGH triage below runs, **apply the §3.5b-2 recovery algorithm** to the cross-auditor's raw inline return. This is callsite 1 of the 6 §3.5b-2 callsites — the feature spec-audit Pass 2 spawn. Capture the raw return to `<spec-path>.contract-violation-iter<N>-attempt<M>.raw.txt` per §3.5b-1, invoke `hooks/lib/check_dispatch_response.py --mode spec --expected-claude-model claude-fable` (add `--project ai-dev-team` when the spec frontmatter resolves `project: ai-dev-team`), and branch on the classifier exit code per §3.5b-2 step 4. The classifier output **gates** whether the triage below runs: only an Exit-0 `policy_gate: null` PROCEED reaches the CRITICAL/HIGH triage; an Exit-0 `policy_gate: STOP_AND_DISCUSS` raises the §3.5b-2a banner, an Exit-1 violation enters the §3.5b-2b retry-outcome matrix, and an Exit-2 classifier crash raises the §3.5b-2c classifier-crash banner.
 
 **If CRITICAL or HIGH findings:**
 1. Present findings to user
@@ -592,7 +592,7 @@ On atomic-write failure — disk full, permission denied, read-only filesystem, 
 Automates the recovery path that §3.5b's Contract-violation rule formerly carved out. After **every** cross-auditor return at any of the 6 callsites (§2.2 of the source spec — feature spec audit, feature code audit Pass 2 spawn, feature code-audit triage-loop re-spawn, feature Continue-mode resume re-spawn, standalone `/cross-audit` initial dispatch, standalone Phase 5 re-audit re-spawn), the orchestrator runs this sequence. All capture paths carry the `-attempt<M>` suffix per §3.5b-1 so an attempt-2 retry never overwrites attempt-1 evidence.
 
 1. **Capture the raw response atomically** as a `contract-violation-iter<N>-attempt<M>.raw.txt` file per §3.5b-1. On atomic-write failure (disk full, permission denied, read-only filesystem, or pre-existing target) → jump to the **capture-failure banner** (§3.5b-2c) and STOP.
-2. **Invoke the classifier** — `python3 hooks/lib/check_dispatch_response.py --mode <spec|code|full> --raw-response-file <captured-.raw.txt-path> --audit-slug <slug> --iteration <N>` plus `--findings-path <path>` for code/full mode, plus `--project ai-dev-team` ONLY when the resolved spec frontmatter has `project: ai-dev-team`. Read the JSON from stdout, the exit code, and stderr.
+2. **Invoke the classifier** — `python3 hooks/lib/check_dispatch_response.py --mode <spec|code|full> --raw-response-file <captured-.raw.txt-path> --audit-slug <slug> --iteration <N> --expected-claude-model claude-fable` plus `--findings-path <path>` for code/full mode, plus `--project ai-dev-team` ONLY when the resolved spec frontmatter has `project: ai-dev-team`. Read the JSON from stdout, the exit code, and stderr.
 3. **(Standalone mode only)** Write the sidecar JSON atomically at `contract-violation-iter<N>-attempt<M>.json` per §3.5b-1. The sidecar shape is **exit-code aware** — the orchestrator reads step 2's exit code first: for exit 0/1 (the classifier ran and produced a JSON) `classifier_output` is populated from step 2's stdout JSON and `classifier_exit` records `0`/`1`; for exit 2 (classifier crash — empty stdout, no JSON) `classifier_output` is `null`, `classifier_exit` is `2`, and `classifier_stderr` carries the classifier's stderr (truncated to 1000 chars). On sidecar-write failure → capture-failure banner (§3.5b-2c) and STOP.
 4. **Branch on the classifier exit code:**
    - **Exit `2`** (classifier crash — the classifier's own failure; we cannot tell whether the response was valid) → **classifier-crash banner** (§3.5b-2c).
@@ -706,6 +706,51 @@ The classifier gate prevented findings from being read, so there is no per-findi
 **Which option?**
 
 ---
+
+##### 3.5b-2e Model-attestation gate
+
+Fires on classifier **exit 0** when the classifier JSON carries `model_gate` non-null (set only when `--expected-claude-model claude-fable` was passed AND the classification is `CLEAN_*`; violations and exit-1 supersede — their retry machinery runs first, and the gate is re-evaluated on a recovered-clean retry's JSON). The two gate values: `MODEL_ATTESTATION_MISSING` (the cross-auditor's `claude_model` line is absent/malformed) and `MODEL_DEGRADED` (attested model does not start with `claude-fable` — e.g. a silent Fable→Opus fallback at spawn, or `claude_model: unknown`).
+
+**Exit-0 decision table.** Evaluated ON the §3.5b-2 step-4 exit-0 branch, **policy_gate FIRST, model_gate SECOND**, before the evidence copy into spec frontmatter:
+
+| policy_gate | model_gate | route |
+|---|---|---|
+| null | null | PROCEED (unchanged) |
+| null | set | model-gate protocol below |
+| STOP_AND_DISCUSS | null | §3.5b-2a banner (unchanged) |
+| STOP_AND_DISCUSS | set | §3.5b-2a banner FIRST, with one preamble line added: `Note: model_gate=<value> also fired (attested <claimed>).` After the policy-gate resolution: a re-spawn re-evaluates BOTH gates on the new JSON; an accept-single_model outcome falls through to the model-gate protocol on the SAME JSON |
+
+**Model-gate protocol:**
+
+- `MODEL_ATTESTATION_MISSING` → ONE transport retry with **identical params** (the agent forgot the line; does NOT consume `*_audit_iteration`). The retry's response is captured by the universal §3.5b-2 step-1 capture under the existing `contract-violation-iter<N>-attempt<M>.raw.txt` stem — the clean-response-under-a-`contract-violation-*`-name overload is pre-existing §3.5b-2 behavior, deliberately kept; no new stem. Still MISSING after the retry → banner below. MISSING-retry outcome cases: clean + match → PROCEED; clean + still MISSING → banner; clean + DEGRADED → banner (degraded phrasing); exit-1 violation → §3.5b-2b matrix with the retry budget consumed (terminal banner row); exit-2 → §3.5b-2c classifier-crash banner.
+- `MODEL_DEGRADED` → banner immediately (no auto-retry — the user decides; the fallback may be transient OR a quota outage).
+
+**Retry accounting (shared with §3.5b-1, no parallel counter).** The model-gate MISSING retry IS a §3.5b-1 attempt: it uses the next `-attempt<M>` index (normally attempt2) and the same capture-path scheme — never overwrites prior captures. The ONE-transport-retry budget is **per (callsite, iteration)** and SHARED across §3.5b-2b violation retries, §3.5b-2a Matrix-B re-spawns, and this gate. If attempt2 is already consumed (e.g. an exit-1 violation retry recovered to CLEAN but attestation is missing) → skip the retry, banner directly.
+
+**Banner** (AWAITING YOUR INPUT, mirrors §3.5b-2a). **Option 1 is BUDGET-state-conditional** — the discriminator is whether the shared transport attempt2 is consumed, NOT the gate value. It applies identically to `MODEL_DEGRADED` AND `MODEL_ATTESTATION_MISSING` (a DEGRADED entry can arrive budget-spent: MISSING → transport retry → clean+DEGRADED, or an exit-1 violation retry recovering to clean+DEGRADED). attempt2 UNCONSUMED → Option 1 = "Re-spawn cross-auditor" (consumes attempt2). attempt2 CONSUMED → Option 1 = "Retry from scratch" — a new SEMANTIC iteration consuming `*_audit_iteration`, NOT a third transport attempt (attempt3 is forbidden; the unbounded same-gate re-spawn loop is the failure mode this precondition kills). Every budget-exhausted banner (MISSING-after-retry AND DEGRADED-after-retry alike) lists both capture paths (`...-attempt1.raw.txt`, `...-attempt2.raw.txt`) in its summary, mirroring the §3.5b-2d terminal-banner shape.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Model attestation gate fired — `model_gate=<value>`. Cross-auditor attested `<claimed>`; the audit half is expected to run `claude-fable*`. iter=`<N>`.
+
+[If attempt2 consumed:] Captures: `<raw-path-attempt-1>`, `<raw-path-attempt-2>`.
+
+Options:
+
+1. **Re-spawn cross-auditor** (attempt2 unconsumed) / **Retry from scratch** (attempt2 consumed — a new semantic iteration consuming `*_audit_iteration`; attempt3 is forbidden) — the outcome is re-evaluated by the same gate, bounded per the rule above.
+2. **Accept degraded run** — the findings stay valid (the Opus half ran, not an absent half); record the Log directive and proceed. The evidence enum is untouched.
+3. **STOP and discuss** — pause; review Fable quota / outage.
+
+**Which option?**
+
+---
+
+**Log grammar (FEATURE MODE — append-only spec Log, written for every gate firing AND for the chosen action; the standalone flow has no spec Log and uses the §Standalone mapping sidecar+workdoc destinations in `skills/cross-audit/SKILL.md`):**
+
+`- YYYY-MM-DD: model_degraded — cross-auditor attested <claimed>; expected claude-fable*; iter=<N>; action=<respawn|accepted|stopped>`
+
+`<claimed>` is sanitized via the §3.5b Orchestrator blocker sanitization rule before embedding. Match-success runs log nothing (no noise; the sidecar JSON already carries `claude_model`).
 
 ### 3.5c Stop criteria
 
@@ -947,7 +992,7 @@ Spawn `cross-auditor` with mode: full on the diff (dual-model). Parameters:
 
 If `project_type` resolves to `None`, the cross-auditor normalizes the R-rule filter to `"all"` per `references/code-quality-rules.md` Trigger A, emits a degraded warning header in the findings document at the H1 bullet block (per `agents/cross-auditor.md` §R-rule cluster gate "Warning emit location"), and runs the filter as usual — rules with `applies_to: ["all"]` continue to load; rules with project-specific `applies_to` lists do not match. This is by design — silent skip ships R-rules dead. To activate full project-specific R-rule loading, set `project_type:` in spec frontmatter (recommended), in the project's `.ai-dev-team.local.yml`, or in `.ai-dev-team.yml`.
 
-**Cross-auditor return-contract gate (callsite 2).** When the cross-auditor returns for round `N`, **apply the §3.5b-2 recovery algorithm** before the Log marker is written. This is callsite 2 of the 6 §3.5b-2 callsites — the feature code-audit Pass 2 initial spawn. Capture the raw return to `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.raw.txt` per §3.5b-1, invoke `hooks/lib/check_dispatch_response.py --mode full --findings-path <kb>/repos/<project>/security/<audit_slug>-findings.md` (add `--project ai-dev-team` when the spec frontmatter resolves `project: ai-dev-team`), and branch on the classifier exit code per §3.5b-2 step 4. The classifier output **gates** whether the iteration Log marker below is written: only an Exit-0 `policy_gate: null` PROCEED writes the marker with the round's `evidence=<value>; blockers=[...]`; an Exit-0 `policy_gate: STOP_AND_DISCUSS` raises the §3.5b-2a banner, an Exit-1 violation enters the §3.5b-2b retry-outcome matrix, and an Exit-2 classifier crash raises the §3.5b-2c classifier-crash banner.
+**Cross-auditor return-contract gate (callsite 2).** When the cross-auditor returns for round `N`, **apply the §3.5b-2 recovery algorithm** before the Log marker is written. This is callsite 2 of the 6 §3.5b-2 callsites — the feature code-audit Pass 2 initial spawn. Capture the raw return to `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.raw.txt` per §3.5b-1, invoke `hooks/lib/check_dispatch_response.py --mode full --findings-path <kb>/repos/<project>/security/<audit_slug>-findings.md --expected-claude-model claude-fable` (add `--project ai-dev-team` when the spec frontmatter resolves `project: ai-dev-team`), and branch on the classifier exit code per §3.5b-2 step 4. The classifier output **gates** whether the iteration Log marker below is written: only an Exit-0 `policy_gate: null` PROCEED writes the marker with the round's `evidence=<value>; blockers=[...]`; an Exit-0 `policy_gate: STOP_AND_DISCUSS` raises the §3.5b-2a banner, an Exit-1 violation enters the §3.5b-2b retry-outcome matrix, and an Exit-2 classifier crash raises the §3.5b-2c classifier-crash banner.
 
 The cross-auditor persists code findings in KB. After the cross-auditor
 returns findings for round `N`, write this Log marker immediately. Do

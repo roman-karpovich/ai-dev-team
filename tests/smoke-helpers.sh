@@ -4131,6 +4131,63 @@ check_cross_auditor_model_attestation_contract() {
   echo "cross-auditor model-attestation contract OK (model: fable; claude_model emit rule + output-format key; sentinel count==1)"
 }
 
+check_model_attestation_skill_coupling() {
+  local agent='agents/cross-auditor.md'
+  local feat='skills/feature/SKILL.md'
+  local standalone='skills/cross-audit/SKILL.md'
+  test -f "$agent" || { echo "$agent missing"; return 1; }
+  test -f "$feat" || { echo "$feat missing"; return 1; }
+  test -f "$standalone" || { echo "$standalone missing"; return 1; }
+
+  # (a) Bidirectional model<->flag coupling. Read cross-auditor frontmatter model
+  #     value; if 'fable' the expected-flag prefix is claude-fable, if 'opus' the
+  #     flag must be claude-opus or absent everywhere. No silent drift.
+  local model_val expected_prefix
+  model_val=$(sed -n 's/^model: *//p' "$agent" | head -1)
+  if [ "$model_val" = "fable" ]; then
+    expected_prefix='claude-fable'
+  elif [ "$model_val" = "opus" ]; then
+    expected_prefix='claude-opus'
+  else
+    echo "$agent unexpected model frontmatter value '$model_val' (expected fable or opus)"
+    return 1
+  fi
+
+  # (b) Per file, count of RUNNABLE invocation lines == count of those also
+  #     carrying --expected-claude-model <prefix>. The runnable matcher requires a
+  #     verb prefix (python3 / invoke, optional backtick) so the §3.5b parser-id
+  #     prose line (noun phrase, no verb) is excluded by construction. The bare
+  #     matcher `check_dispatch_response.py --mode` is FORBIDDEN here — it would
+  #     count the parser-id sentence. Empirical baseline: feature=3, standalone=1.
+  local runnable_re='(python3|invoke) `?(hooks/lib/)?check_dispatch_response\.py --mode'
+  local f n_run n_flag
+  for f in "$feat:3" "$standalone:1"; do
+    local file="${f%:*}" baseline="${f#*:}"
+    n_run=$(grep -cE "$runnable_re" "$file")
+    [ "$n_run" = "$baseline" ] \
+      || { echo "$file runnable classifier-invocation count $n_run != expected baseline $baseline"; return 1; }
+    n_flag=$(grep -E "$runnable_re" "$file" | grep -cF -- "--expected-claude-model $expected_prefix")
+    [ "$n_flag" = "$n_run" ] \
+      || { echo "$file: $n_flag of $n_run runnable invocations carry '--expected-claude-model $expected_prefix' (must equal — a flagless callsite literal remains)"; return 1; }
+  done
+
+  # (c) Standalone persistence: workdoc-line clause present, no resurrected
+  #     model_gate_action sidecar-field clause (X12/X15 — the sidecar write was
+  #     unimplementable; the post-action record is a workdoc-iterN line only).
+  grep -qF -- '- Model attestation: ' "$standalone" \
+    || { echo "$standalone missing standalone workdoc-line persistence clause '- Model attestation: '"; return 1; }
+  if grep -qF 'model_gate_action' "$standalone"; then
+    echo "$standalone reintroduces forbidden 'model_gate_action' sidecar-field clause (X15 — collides with no-overwrite seal)"
+    return 1
+  fi
+
+  # (d) Feature SKILL.md carries the §3.5b-2e Log grammar literal.
+  grep -qF 'model_degraded — cross-auditor attested' "$feat" \
+    || { echo "$feat missing §3.5b-2e Log grammar literal 'model_degraded — cross-auditor attested'"; return 1; }
+
+  echo "model-attestation skill coupling OK (model: $model_val -> $expected_prefix; feature 3/3 + standalone 1/1 flagged; workdoc-line clause present, no sidecar field; Log grammar present)"
+}
+
 check_smoke_proves_manifest_canonical() {
   local manifest="tests/smoke-proves-manifest.txt"
   # (a) file exists
