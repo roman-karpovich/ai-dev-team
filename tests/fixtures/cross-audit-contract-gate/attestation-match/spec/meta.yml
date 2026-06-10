@@ -1,0 +1,7 @@
+expected_classification: CLEAN_DUAL
+expected_exit: 0
+mode: spec
+expected_claude_model_arg: claude-fable
+expected_model_gate: null
+expected_claude_model: claude-fable-5
+notes: "synthetic; attested model matches expected prefix -> no gate"

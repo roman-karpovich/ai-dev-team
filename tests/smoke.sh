@@ -1358,13 +1358,15 @@ check_banner_convention_doc_valid() {
 # feature-mode contract-violation terminal banner, and the §Implement
 # continuous-parallel-diff-audits opt-in banner.
 check_feature_awaiting_count_17() {
+  # 35 includes the §3.5b-2e model-attestation gate banner added by spec
+  # 2026-06-10-fable-cross-auditor-attestation Step 3.
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "34" ]; then
-    echo "feature AWAITING count=$n expected 34"
+  if [ "$n" != "35" ]; then
+    echo "feature AWAITING count=$n expected 35"
     return 1
   fi
-  echo "feature AWAITING count=34 OK"
+  echo "feature AWAITING count=35 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1380,13 +1382,15 @@ check_feature_approval_count_1() {
 
 # (d) cross-audit SKILL.md must have exactly 1 AWAITING banner line.
 check_cross_audit_awaiting_count_1() {
+  # 5 includes the Standalone model-attestation gate banner added by spec
+  # 2026-06-10-fable-cross-auditor-attestation Step 3.
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/cross-audit/SKILL.md)
-  if [ "$n" != "4" ]; then
-    echo "cross-audit AWAITING count=$n expected 4"
+  if [ "$n" != "5" ]; then
+    echo "cross-audit AWAITING count=$n expected 5"
     return 1
   fi
-  echo "cross-audit AWAITING count=4 OK"
+  echo "cross-audit AWAITING count=5 OK"
 }
 
 # (e) research SKILL.md must have exactly 4 AWAITING banner lines.
@@ -1515,7 +1519,7 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 34 — includes the
+# (r) ruler-prefix count matches total banner count (expected 36 — includes the
 # §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1,
 # the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2,
 # the §3.5c audit-iteration-cap banner added by spec 2026-05-13-cap-banner-and-empirical-verification Step 2,
@@ -1525,7 +1529,9 @@ check_approval_required_unique_repo_wide() {
 # standalone recovery banners (classifier-crash + project-policy gate) added
 # by that spec's code-audit iter-1 X4 fix, the §3.5b-2d feature-mode
 # contract-violation terminal banner added by that spec's code-audit iter-2 X8 fix,
-# and the §Implement continuous-parallel-diff-audits opt-in banner).
+# the §Implement continuous-parallel-diff-audits opt-in banner, and the 2
+# model-attestation gate banners (feature §3.5b-2e + standalone) added by spec
+# 2026-06-10-fable-cross-auditor-attestation Step 3).
 check_awaiting_ruler_prefix_count_matches() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1534,21 +1540,23 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "34" ]; then
-    echo "ruler-prefix count=$c expected 34"
+  if [ "$c" != "36" ]; then
+    echo "ruler-prefix count=$c expected 36"
     return 1
   fi
-  echo "ruler-prefix count=34 OK"
+  echo "ruler-prefix count=36 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 45 — includes
+# (s) each banner has trailing bold question within 15 lines (expected 47 — includes
 # the feature Attack-surface profile and STRIDE-lite slot prompts, the §3.5c
 # audit-iteration-cap banner, the 3 §3.5b-2 recovery banners added by spec
 # 2026-05-15-cross-auditor-contract-gate-automation Step 6, the §3.4d
 # standalone terminal banner added by that spec's Step 8, the 2 standalone
 # recovery banners added by that spec's code-audit iter-1 X4 fix, the
 # §3.5b-2d feature-mode terminal banner added by that spec's code-audit iter-2 X8 fix,
-# and the §Implement continuous-parallel-diff-audits opt-in banner).
+# the §Implement continuous-parallel-diff-audits opt-in banner, and the 2
+# model-attestation gate banners (feature §3.5b-2e + standalone) added by spec
+# 2026-06-10-fable-cross-auditor-attestation Step 3).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1559,11 +1567,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "45" ]; then
-    echo "trailing-bold-present-each count=$c expected 45"
+  if [ "$c" != "47" ]; then
+    echo "trailing-bold-present-each count=$c expected 47"
     return 1
   fi
-  echo "trailing-bold-present-each=45 OK"
+  echo "trailing-bold-present-each=47 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -4105,6 +4113,8 @@ check "codex_audit_dispatch_helper_propagates_exit_code" check_codex_audit_dispa
 check "codex_audit_dispatch_helper_arg_validation"       check_codex_audit_dispatch_helper_arg_validation
 check "cross_auditor_uses_async_codex_dispatch"           check_cross_auditor_uses_async_codex_dispatch
 check "cross_auditor_codex_effort_default_xhigh_kept"     check_cross_auditor_codex_effort_default_xhigh_kept
+check "cross-auditor-model-attestation-contract"         check_cross_auditor_model_attestation_contract
+check "model-attestation-skill-coupling"                 check_model_attestation_skill_coupling
 check "cross_auditor_codex_cwd_override_async_dispatch"   check_cross_auditor_codex_cwd_proximity
 echo
 

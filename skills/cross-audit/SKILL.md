@@ -204,13 +204,13 @@ When cross-auditor completes:
 Standalone `/cross-audit` runs the same return-contract recovery as the feature flow. After the cross-auditor returns (Phase 1-2 initial dispatch — callsite 5 — and Phase 5 re-audit re-spawn — callsite 6), the orchestrator:
 
 1. **Captures the raw response atomically** to `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.raw.txt` per the §3.5b-1 atomic-write protocol in `skills/feature/SKILL.md`.
-2. **Invokes the classifier** — `invoke hooks/lib/check_dispatch_response.py --mode <spec|code|full> --raw-response-file <captured-.raw.txt-path> --audit-slug <slug> --iteration <N>` (plus `--findings-path <path>` for code/full mode). The `--project` flag is passed ONLY when KB-discovery resolution finds `.ai-dev-team.*yml project: ai-dev-team` — standalone callsites do not assume `ai-dev-team` otherwise.
+2. **Invokes the classifier** — `invoke hooks/lib/check_dispatch_response.py --mode <spec|code|full> --raw-response-file <captured-.raw.txt-path> --audit-slug <slug> --iteration <N> --expected-claude-model claude-fable` (plus `--findings-path <path>` for code/full mode). The `--project` flag is passed ONLY when KB-discovery resolution finds `.ai-dev-team.*yml project: ai-dev-team` — standalone callsites do not assume `ai-dev-team` otherwise.
 3. **Writes a sidecar JSON** atomically at `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.json` AFTER classification — standalone mode has no spec frontmatter to write `*_audit_evidence` into, so the **two-file pair** (`.raw.txt` + sidecar JSON) is the persistent record. The sidecar shape is **exit-code aware** — the orchestrator reads step 2's exit code first: on classifier exit 0/1 the `classifier_output` field is the classifier's stdout JSON and `classifier_exit` records `0`/`1`; on classifier exit 2 (crash — empty stdout, no JSON) `classifier_output` is `null`, `classifier_exit` is `2`, and `classifier_stderr` carries the classifier's stderr truncated to 1000 chars. The `raw_response` field carries the raw response embedded inline when its byte count ≤ 65536 (64 KiB), or `null` plus a `raw_response_path` reference otherwise (independent of the classifier exit code — the raw response is captured in step 1, before classification). On sidecar-write failure → capture-failure banner (the §3.5b-2c capture-failure banner in `skills/feature/SKILL.md`) and STOP.
 4. **Branches on the classifier exit code** — the same four-way branch as the feature skills/feature/SKILL.md §3.5b-2 recovery algorithm (step 4), adapted for standalone mode (no spec frontmatter; the `.raw.txt` + sidecar JSON pair is the persistent record):
    - **Exit `2`** (classifier crash — empty stdout, no JSON; the classifier's own failure) → the **standalone classifier-crash banner** below. This is a single-attempt diagnostic — it does NOT use the two-attempt §3.4d template, because an exit-2 crash on the initial dispatch produced no classifier JSON to populate `attempt-1`/`attempt-2` with.
-   - **Exit `0` AND `policy_gate: null`** → **PROCEED** to the findings.md read (step 1 above).
+   - **Exit `0` AND `policy_gate: null`** → evaluate the **model-attestation gate** (`model_gate`, set when `--expected-claude-model claude-fable` was passed AND the classification is `CLEAN_*`) BEFORE the Phase 1 findings read: `model_gate: null` → **PROCEED** to the findings.md read (step 1 above); `model_gate: MODEL_ATTESTATION_MISSING` → ONE identical-params transport retry FIRST (sharing the §3.5b-2b retry budget; SKIP the retry if attempt2 is already consumed and go straight to the banner), and only if still MISSING/non-null after the retry → the **standalone model-attestation gate banner** below; `model_gate: MODEL_DEGRADED` → the **standalone model-attestation gate banner** below immediately (no auto-retry — the user decides). (When `policy_gate: STOP_AND_DISCUSS` co-fires with a non-null `model_gate`, see the co-fire mapping in the standalone project-policy gate banner below — the policy banner fires first.)
    - **Exit `0` AND `policy_gate: STOP_AND_DISCUSS`** (arises standalone when `--project ai-dev-team` was passed and the classification is `CLEAN_SINGLE`) → the **standalone project-policy gate banner** below.
-   - **Exit `1`** (any of the 10 violation classifications) → enter the §3.5b-2b retry-outcome matrix (one bounded TRANSPORT retry). If the retry recovers (`CLEAN_DUAL`, or consumer-project `CLEAN_SINGLE`), PROCEED. If the retry is an unrecovered SAME-violation / DIFFERENT-violation, OR the retry's classifier itself crashes (classifier exit-2 on the retry — §3.5b-2b Matrix A's third terminal row), route to the §3.4d standalone terminal banner below. The retry's classifier-exit-2 outcome is NOT the same as an exit-2 on the INITIAL dispatch: an initial-dispatch crash produced no classifier JSON and uses the single-attempt classifier-crash banner above; a crash on the RETRY has an attempt-1 violation classification to present and routes to the two-attempt §3.4d banner.
+   - **Exit `1`** (any of the 10 violation classifications) → enter the §3.5b-2b retry-outcome matrix (one bounded TRANSPORT retry). If the retry recovers (`CLEAN_DUAL`, or consumer-project `CLEAN_SINGLE`), re-evaluate the **model-attestation gate** on the recovered-clean retry's JSON (identically to the exit-0 branch above): `model_gate: null` → PROCEED; a non-null `model_gate` → the **standalone model-attestation gate banner** below INSTEAD of PROCEEDing (the violation retry already consumed attempt2, so the shared transport budget is spent — the banner's Option 1 is "Retry from scratch" per its budget rule). If the retry is an unrecovered SAME-violation / DIFFERENT-violation, OR the retry's classifier itself crashes (classifier exit-2 on the retry — §3.5b-2b Matrix A's third terminal row), route to the §3.4d standalone terminal banner below. The retry's classifier-exit-2 outcome is NOT the same as an exit-2 on the INITIAL dispatch: an initial-dispatch crash produced no classifier JSON and uses the single-attempt classifier-crash banner above; a crash on the RETRY has an attempt-1 violation classification to present and routes to the two-attempt §3.4d banner.
 
 #### Standalone classifier-crash banner
 
@@ -246,13 +246,40 @@ Cross-audit returned `CLEAN_SINGLE` — Claude-only audit (Codex stalled with re
 
 Options:
 
-1. **Re-spawn cross-auditor** to retry Codex (may take 8-15 min; TRANSPORT retry). Re-spawn outcome governed by the §3.5b-2b Matrix B branch — `CLEAN_DUAL` recovers and the audit PROCEEDs; `CLEAN_SINGLE` again re-renders this banner; a violation routes to the §3.4d standalone terminal banner.
+1. **Re-spawn cross-auditor** to retry Codex (may take 8-15 min; TRANSPORT retry). Re-spawn outcome governed by the §3.5b-2b Matrix B branch — `CLEAN_DUAL` recovers, and the audit PROCEEDs only when the **model-attestation gate** re-evaluated on the recovered JSON returns `model_gate: null` (a non-null `model_gate` routes to the standalone model-attestation gate banner below instead — attempt2 consumed, so its Option 1 is "Retry from scratch"); `CLEAN_SINGLE` again re-renders this banner; a violation routes to the §3.4d standalone terminal banner.
 2. **Accept single_model** for this audit — proceed to Phase 3 triage with the Claude-only findings; the sidecar JSON records `CLEAN_SINGLE` as the audit evidence.
 3. **Abandon this audit** — no findings recorded; consider escalating the Codex outage.
 
 **Which option?**
 
 ---
+
+**Co-fire with a non-null `model_gate`** (the classifier returned `CLEAN_SINGLE` policy gate AND a model-attestation gate fired on the same JSON): the policy banner above fires FIRST, with one preamble line added — `Note: model_gate=<value> also fired (attested <claimed>).` The three policy options then map onto the model gate: **Re-spawn cross-auditor** → the recovered JSON re-evaluates BOTH gates (if the model gate then fires with attempt2 consumed → the model-gate banner fires directly per its budget rule); **Accept single_model** → the model-gate protocol fires on the SAME JSON before the Phase 1 findings read; **Abandon this audit** → the flow terminates and the `model_gate` value is reported in the abandon summary.
+
+#### Standalone model-attestation gate banner
+
+Reached on classifier **exit 0** with `policy_gate: null` and a non-null `model_gate` (`--expected-claude-model claude-fable` was passed and the attested model is missing/degraded), evaluated BEFORE the Phase 1 findings read. Standalone has no spec frontmatter; the persistent record splits by WHEN the value is known (see below). Same 3 options as the feature §3.5b-2e banner, with the same BUDGET-state-conditional Option 1 — the discriminator is whether the shared transport attempt2 is consumed, NOT the gate value (applies identically to `MODEL_DEGRADED` and `MODEL_ATTESTATION_MISSING`; the MISSING path takes ONE transport retry with identical params first, sharing the §3.5b-2b retry budget). attempt2 UNCONSUMED → Option 1 = "Re-spawn cross-auditor" (consumes attempt2); attempt2 CONSUMED → Option 1 = "Retry from scratch" — a new audit run, NOT a third transport attempt (attempt3 forbidden). A budget-exhausted banner lists both capture paths in its summary.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Model attestation gate fired — `model_gate=<value>`. Cross-auditor attested `<claimed>`; the audit half is expected to run `claude-fable*`. iter=`<N>`.
+
+[If attempt2 consumed:] Captures: `<raw-path-attempt-1>` + `<sidecar-path-attempt-1>`, `<raw-path-attempt-2>` + `<sidecar-path-attempt-2>`.
+
+Options:
+
+1. **Re-spawn cross-auditor** (attempt2 unconsumed) / **Retry from scratch** (attempt2 consumed — a new audit run; attempt3 forbidden) — the outcome is re-evaluated by the same gate.
+2. **Accept degraded run** — the findings stay valid (the Opus half ran, not an absent half); proceed to Phase 3 triage.
+3. **Abandon this audit** — no findings recorded; review Fable quota / outage.
+
+**Which option?**
+
+---
+
+**Persistence (X12/X15 — no new sidecar field).** The gate inputs (`claude_model`, `model_gate`) are already inside the sidecar JSON's embedded `classifier_output` — sealed at step-3 classification time under the atomic no-overwrite protocol; there is NO new sidecar field carrying the chosen action (such a write is unimplementable — the action is chosen in step 4, AFTER the sidecar is sealed; the re-write would raise `PreExistingCaptureTarget`). The POST-action record lands ONLY in the audit workdoc `<audit_slug>-workdoc-iter<N>.md` (orchestrator-written after the banner choice, no overwrite constraint):
+
+`- Model attestation: <claimed> vs <expected> → <gate> → action=<action>`
 
 #### §3.4d Standalone terminal banner
 

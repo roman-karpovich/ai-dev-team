@@ -2,7 +2,7 @@
 name: cross-auditor
 # 40k: Ordo Hereticus inquisitor — see docs/wh40k-cast.md
 description: Runs parallel Claude + Codex audit and consolidates findings. Use proactively when /cross-audit is invoked, or when spawned as part of the dev team audit phase.
-model: opus
+model: fable
 effort: xhigh
 background: true
 isolation: worktree
@@ -140,7 +140,7 @@ See `agents/references/cross-auditor-step-3-pipeline.md` for the canonical conte
 
 ## Audit evidence handshake (`evidence_class:` + `evidence_blockers:`)
 
-See `agents/references/cross-auditor-evidence-handshake.md` for the canonical content. The reference covers `evidence_class:` + `evidence_blockers:` two-channel transmission (file-backed for code/full mode; inline three-line footer for spec mode), the binary emit allowlist (`dual_model | single_model` only — orchestrator-only values `self_fallback / contract_violated / skipped` never emitted by this agent), the YAML-safety serialization rule for blocker strings (newline→space + truncate-to-199 + single-quote escape + single-quoted form), the spec-mode return contract (sentinel marker + canonical 3-line EOF-adjacent footer), and the §Sentinel-obfuscation rule (self-anchoring carve-out for cross-audits of this agent file).
+See `agents/references/cross-auditor-evidence-handshake.md` for the canonical content. The reference covers `evidence_class:` + `evidence_blockers:` two-channel transmission (file-backed for code/full mode; inline three-line footer for spec mode), the `claude_model:` model-attestation contract (emit your OWN model ID from your system prompt — sibling frontmatter key in code/full mode, one line immediately preceding the sentinel in spec mode; `unknown` fallback), the binary emit allowlist (`dual_model | single_model` only — orchestrator-only values `self_fallback / contract_violated / skipped` never emitted by this agent), the YAML-safety serialization rule for blocker strings (newline→space + truncate-to-199 + single-quote escape + single-quoted form), the spec-mode return contract (sentinel marker + canonical 3-line EOF-adjacent footer), and the §Sentinel-obfuscation rule (self-anchoring carve-out for cross-audits of this agent file).
 
 ## Step 4: Write Output Documents
 

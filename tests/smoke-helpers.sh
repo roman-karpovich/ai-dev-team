@@ -4073,12 +4073,12 @@ check_cross_auditor_uses_async_codex_dispatch() {
     || { echo "$agent_ref missing BashOutput in body (count=$count, expected >= 2)"; return 1; }
 
   local model_line effort_line
-  model_line=$(grep -nF 'model: opus' "$agent" | head -1 | cut -d: -f1)
+  model_line=$(grep -nF 'model: fable' "$agent" | head -1 | cut -d: -f1)
   effort_line=$(grep -nF 'effort: xhigh' "$agent" | head -1 | cut -d: -f1)
-  [ -n "$model_line" ] || { echo "$agent missing 'model: opus' in frontmatter"; return 1; }
+  [ -n "$model_line" ] || { echo "$agent missing 'model: fable' in frontmatter"; return 1; }
   [ -n "$effort_line" ] || { echo "$agent missing 'effort: xhigh' in frontmatter"; return 1; }
   [ "$effort_line" = "$((model_line + 1))" ] \
-    || { echo "$agent 'effort: xhigh' must immediately follow 'model: opus' (model@$model_line, effort@$effort_line)"; return 1; }
+    || { echo "$agent 'effort: xhigh' must immediately follow 'model: fable' (model@$model_line, effort@$effort_line)"; return 1; }
 
   # Fail-open wording lives in §Codex dispatch + §Step 1 result paragraph — both moved to ref.
   count=$(grep -cF 'codex_audit_dispatch.sh exits non-zero' "$agent_ref")
@@ -4102,6 +4102,90 @@ check_cross_auditor_codex_effort_default_xhigh_kept() {
   grep -qF 'Defaults to `xhigh` when absent' "$agent" \
     || { echo "$agent missing codex_reasoning_effort xhigh default docstring"; return 1; }
   echo "cross-auditor preserves codex_reasoning_effort default xhigh docstring"
+}
+
+check_cross_auditor_model_attestation_contract() {
+  local agent='agents/cross-auditor.md'
+  local handshake='agents/references/cross-auditor-evidence-handshake.md'
+  local outfmt='agents/references/cross-auditor-output-format.md'
+  # (a) cross-auditor frontmatter pins the Fable upgrade.
+  grep -qF 'model: fable' "$agent" \
+    || { echo "$agent missing 'model: fable' in frontmatter (Phase 1 Fable upgrade)"; return 1; }
+  # (b) handshake doc carries the claude_model emit rule: sentinel-adjacency
+  #     ('immediately preceding'), 'unknown' fallback, and system-prompt source.
+  grep -qF 'immediately preceding' "$handshake" \
+    || { echo "$handshake missing 'immediately preceding' (spec-mode claude_model sentinel-adjacency rule)"; return 1; }
+  grep -qF 'claude_model: unknown' "$handshake" \
+    || { echo "$handshake missing 'claude_model: unknown' fallback in attestation contract"; return 1; }
+  grep -qF 'system prompt' "$handshake" \
+    || { echo "$handshake missing system-prompt-source clause in attestation contract"; return 1; }
+  # (c) output-format findings.md template carries the claude_model: frontmatter key.
+  grep -qF 'claude_model:' "$outfmt" \
+    || { echo "$outfmt findings.md template missing 'claude_model:' frontmatter key"; return 1; }
+  # (d) the canonical spaced sentinel literal count in the handshake doc stays exactly 1
+  #     (only the fenced template may carry it; mid-prose references use obfuscated forms).
+  local ca_sent
+  ca_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$handshake")
+  [ "$ca_sent" = "1" ] \
+    || { echo "$handshake canonical-spaced sentinel literal must appear EXACTLY ONCE (got $ca_sent) — attestation prose must use obfuscated forms"; return 1; }
+  echo "cross-auditor model-attestation contract OK (model: fable; claude_model emit rule + output-format key; sentinel count==1)"
+}
+
+check_model_attestation_skill_coupling() {
+  local agent='agents/cross-auditor.md'
+  local feat='skills/feature/SKILL.md'
+  local standalone='skills/cross-audit/SKILL.md'
+  test -f "$agent" || { echo "$agent missing"; return 1; }
+  test -f "$feat" || { echo "$feat missing"; return 1; }
+  test -f "$standalone" || { echo "$standalone missing"; return 1; }
+
+  # (a) Bidirectional model<->flag coupling. Read cross-auditor frontmatter model
+  #     value; if 'fable' the expected-flag prefix is claude-fable, if 'opus' the
+  #     flag must be claude-opus or absent everywhere. No silent drift.
+  local model_val expected_prefix
+  model_val=$(sed -n 's/^model: *//p' "$agent" | head -1)
+  if [ "$model_val" = "fable" ]; then
+    expected_prefix='claude-fable'
+  elif [ "$model_val" = "opus" ]; then
+    expected_prefix='claude-opus'
+  else
+    echo "$agent unexpected model frontmatter value '$model_val' (expected fable or opus)"
+    return 1
+  fi
+
+  # (b) Per file, count of RUNNABLE invocation lines == count of those also
+  #     carrying --expected-claude-model <prefix>. The runnable matcher requires a
+  #     verb prefix (python3 / invoke, optional backtick) so the §3.5b parser-id
+  #     prose line (noun phrase, no verb) is excluded by construction. The bare
+  #     matcher `check_dispatch_response.py --mode` is FORBIDDEN here — it would
+  #     count the parser-id sentence. Empirical baseline: feature=3, standalone=1.
+  local runnable_re='(python3|invoke) `?(hooks/lib/)?check_dispatch_response\.py --mode'
+  local f n_run n_flag
+  for f in "$feat:3" "$standalone:1"; do
+    local file="${f%:*}" baseline="${f#*:}"
+    n_run=$(grep -cE "$runnable_re" "$file")
+    [ "$n_run" = "$baseline" ] \
+      || { echo "$file runnable classifier-invocation count $n_run != expected baseline $baseline"; return 1; }
+    n_flag=$(grep -E "$runnable_re" "$file" | grep -cF -- "--expected-claude-model $expected_prefix")
+    [ "$n_flag" = "$n_run" ] \
+      || { echo "$file: $n_flag of $n_run runnable invocations carry '--expected-claude-model $expected_prefix' (must equal — a flagless callsite literal remains)"; return 1; }
+  done
+
+  # (c) Standalone persistence: workdoc-line clause present, no resurrected
+  #     model_gate_action sidecar-field clause (X12/X15 — the sidecar write was
+  #     unimplementable; the post-action record is a workdoc-iterN line only).
+  grep -qF -- '- Model attestation: ' "$standalone" \
+    || { echo "$standalone missing standalone workdoc-line persistence clause '- Model attestation: '"; return 1; }
+  if grep -qF 'model_gate_action' "$standalone"; then
+    echo "$standalone reintroduces forbidden 'model_gate_action' sidecar-field clause (X15 — collides with no-overwrite seal)"
+    return 1
+  fi
+
+  # (d) Feature SKILL.md carries the §3.5b-2e Log grammar literal.
+  grep -qF 'model_degraded — cross-auditor attested' "$feat" \
+    || { echo "$feat missing §3.5b-2e Log grammar literal 'model_degraded — cross-auditor attested'"; return 1; }
+
+  echo "model-attestation skill coupling OK (model: $model_val -> $expected_prefix; feature 3/3 + standalone 1/1 flagged; workdoc-line clause present, no sidecar field; Log grammar present)"
 }
 
 check_smoke_proves_manifest_canonical() {
@@ -7108,6 +7192,7 @@ check_dispatch_response_classification() {
     return 1
   fi
   local d meta mode expected_class expected_exit project
+  local expected_model_arg expected_model_gate expected_claude_model
   local out_file rc got_class checked=0
   out_file=$(mktemp) || return 1
   for d in "$fixture_root"/*/*/; do
@@ -7120,6 +7205,20 @@ check_dispatch_response_classification() {
     mode=$(sed -n 's/^mode: *//p' "$meta")
     expected_class=$(sed -n 's/^expected_classification: *//p' "$meta")
     expected_exit=$(sed -n 's/^expected_exit: *//p' "$meta")
+    # Three OPTIONAL model-attestation meta keys (absent in the 43 legacy
+    # fixtures). `expected_claude_model_arg` drives the `--expected-claude-model`
+    # flag (threaded into ALL FOUR invocation arms via the `extra_args` shell
+    # array below — a single-arm patch would silently under-test one mode);
+    # `expected_model_gate` / `expected_claude_model` are asserted
+    # UNCONDITIONALLY in the python block (absent -> null), so the flag cannot
+    # leak into a legacy CLEAN fixture and silently return MISSING.
+    expected_model_arg=$(sed -n 's/^expected_claude_model_arg: *//p' "$meta")
+    expected_model_gate=$(sed -n 's/^expected_model_gate: *//p' "$meta")
+    expected_claude_model=$(sed -n 's/^expected_claude_model: *//p' "$meta")
+    local extra_args=()
+    if [ -n "$expected_model_arg" ]; then
+      extra_args=(--expected-claude-model "$expected_model_arg")
+    fi
     # Policy-gate fixtures: the ai-dev-team variant is invoked WITH
     # `--project ai-dev-team`; the consumer variant WITHOUT it.
     project=""
@@ -7133,12 +7232,14 @@ check_dispatch_response_classification() {
         python3 "$helper" --mode "$mode" \
           --raw-response-file "$d/raw-response.txt" \
           --audit-slug "fixture-$expected_class" --iteration 1 \
-          --findings-path "$d/findings.md" >"$out_file" 2>/dev/null
+          --findings-path "$d/findings.md" \
+          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       else
         python3 "$helper" --mode "$mode" \
           --raw-response-file "$d/raw-response.txt" \
           --audit-slug "fixture-$expected_class" --iteration 1 \
-          --findings-path "$d/findings.md" >"$out_file" 2>/dev/null
+          --findings-path "$d/findings.md" \
+          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       fi
       rc=$?
     else
@@ -7146,12 +7247,13 @@ check_dispatch_response_classification() {
         python3 "$helper" --mode "$mode" \
           --raw-response-file "$d/raw-response.txt" \
           --audit-slug "fixture-$expected_class" --iteration 1 \
-          --project "$project" >"$out_file" 2>/dev/null
+          --project "$project" \
+          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       else
         python3 "$helper" --mode "$mode" \
           --raw-response-file "$d/raw-response.txt" \
           --audit-slug "fixture-$expected_class" --iteration 1 \
-          >"$out_file" 2>/dev/null
+          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       fi
       rc=$?
     fi
@@ -7164,11 +7266,13 @@ check_dispatch_response_classification() {
     # python3 reading the JSON from a file (embedded newlines in the
     # newline-unsafe fixture mean a shell-variable round-trip would corrupt
     # the payload — read straight from disk).
-    if ! python3 - "$out_file" "$expected_class" "$d" "$project" <<'PY'
+    if ! python3 - "$out_file" "$expected_class" "$d" "$project" \
+        "$expected_model_gate" "$expected_claude_model" <<'PY'
 import json
 import sys
 
-out_file, expected_class, fixture_dir, project = sys.argv[1:5]
+(out_file, expected_class, fixture_dir, project,
+ expected_model_gate, expected_claude_model) = sys.argv[1:7]
 try:
     with open(out_file, "r", encoding="utf-8") as fh:
         j = json.load(fh)
@@ -7208,6 +7312,27 @@ if "clean-single-policy-gate" in fixture_dir:
             print(f"sub-fixture {fixture_dir}: policy_gate {pg!r}, "
                   f"expected null")
             sys.exit(1)
+
+# Model-attestation assertions (UNCONDITIONAL for every fixture, legacy
+# included). The meta keys are optional shell vars: an empty string means the
+# key was absent -> expected null. `expected_model_gate` guards against the
+# flag leaking into legacy CLEAN fixtures (would silently return MISSING);
+# `expected_claude_model` pins the informational parse value (an impl that
+# computes model_gate but mis-emits claude_model is caught here).
+want_gate = None if expected_model_gate in ("", "null") else expected_model_gate
+got_gate = j.get("model_gate")
+if got_gate != want_gate:
+    print(f"sub-fixture {fixture_dir}: model_gate {got_gate!r}, "
+          f"expected {want_gate!r}")
+    sys.exit(1)
+
+want_model = (None if expected_claude_model in ("", "null")
+              else expected_claude_model)
+got_model = j.get("claude_model")
+if got_model != want_model:
+    print(f"sub-fixture {fixture_dir}: claude_model {got_model!r}, "
+          f"expected {want_model!r}")
+    sys.exit(1)
 PY
     then
       rm -f "$out_file"
@@ -7216,11 +7341,11 @@ PY
     checked=$((checked + 1))
   done
   rm -f "$out_file"
-  if [ "$checked" != "43" ]; then
-    echo "expected 43 sub-fixtures, checked $checked"
+  if [ "$checked" != "55" ]; then
+    echo "expected 55 sub-fixtures, checked $checked"
     return 1
   fi
-  echo "dispatch-response classifier: 43/43 sub-fixtures classified correctly"
+  echo "dispatch-response classifier: 55/55 sub-fixtures classified correctly"
 }
 
 # Behavioral pin for the classifier's enum -> violation-blocker phrasing
