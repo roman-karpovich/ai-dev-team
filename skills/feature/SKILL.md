@@ -628,8 +628,8 @@ When the initial classifier exit = 1 (any violation), the recovery algorithm dis
 
 | Initial class | Retry class | Final `*_audit_evidence` | Final `*_audit_blockers` |
 |---|---|---|---|
-| Any violation | `CLEAN_DUAL` | `dual_model` | `[]` |
-| Any violation | `CLEAN_SINGLE` (consumer project) | `single_model` | `['codex audit unavailable: <reason>']` |
+| Any violation | `CLEAN_DUAL` | `dual_model` (write gated on `model_gate: null` — see note) | `[]` |
+| Any violation | `CLEAN_SINGLE` (consumer project) | `single_model` (write gated on `model_gate: null` — see note) | `['codex audit unavailable: <reason>']` |
 | Any violation | `CLEAN_SINGLE` (ai-dev-team) | gated by §3.5b-2a (Re-spawn / STOP / Accept — per user choice) | per user choice |
 | Any violation | SAME violation classification | `contract_violated` | `['<initial-blocker>']` (verbatim — same defect both attempts) |
 | Any violation | DIFFERENT violation classification | `contract_violated` | `['<retry-blocker>']` (retry phrasing wins; initial recorded in Log per §3.5b Historical-event storage rule) |
@@ -639,12 +639,14 @@ When the initial classifier exit = 1 (any violation), the recovery algorithm dis
 
 | Initial (policy-gated) | Re-spawn class | Final `*_audit_evidence` | Final `*_audit_blockers` |
 |---|---|---|---|
-| `CLEAN_SINGLE` + policy gate | `CLEAN_DUAL` | `dual_model` | `[]` |
+| `CLEAN_SINGLE` + policy gate | `CLEAN_DUAL` | `dual_model` (write gated on `model_gate: null` — see note) | `[]` |
 | `CLEAN_SINGLE` + policy gate | `CLEAN_SINGLE` (Codex still stalled) | re-render §3.5b-2a banner with attempt-2 reason | per final user choice |
 | `CLEAN_SINGLE` + policy gate | Any violation (one of 10) | `contract_violated` | `['<retry-blocker>']` |
 | `CLEAN_SINGLE` + policy gate | classifier exit-2 (crash) | `contract_violated` | `['classifier crash on §3.5b-2a re-spawn: <stderr-excerpt>; initial CLEAN_SINGLE preserved at <raw-path-attempt-1>']` |
 
 The SAME-violation, DIFFERENT-violation, and classifier-exit-2-on-retry cases route to the AWAITING YOUR INPUT terminal banner (the standalone terminal banner in skills/cross-audit/SKILL.md §3.4d for standalone mode, or the feature-mode contract-violation terminal banner §3.5b-2d for feature-flow — NOT the per-finding triage banner, which has no findings to present when the classifier gate blocked the read). All blocker phrasing is sanitized through the §3.5b Orchestrator blocker sanitization rule before being recorded. **Two distinct blocker sources, by outcome:** the clean path (`CLEAN_DUAL` → `[]`; `CLEAN_SINGLE` consumer → Codex-fail-open reason) records the classifier's `blockers_yaml` field verbatim; the `contract_violated` path records the classifier's `violation_blocker` phrasing per the source rule above. `blockers_yaml` MUST NOT be used as the blocker source on the `contract_violated` path — for most violation classes it is `[]`, which would erase the active violation phrasing that §3.5b's Historical-event storage rule requires. Classifier `stderr` excerpts in the exit-2 rows are also orchestrator-sanitized before embedding.
+
+**Clean-recovery rows re-evaluate `model_gate` (note for Matrix A `→ CLEAN_DUAL` / `→ CLEAN_SINGLE (consumer)` rows and Matrix B `→ CLEAN_DUAL` row).** When a retry / re-spawn recovers to a clean classification, the final `*_audit_evidence` write is gated on `model_gate: null` per §3.5b-2e — the gate is re-evaluated on the **recovered-clean retry's JSON**, identically to the §3.5b-2 step-4 exit-0 branch. `model_gate: null` → write the final evidence as the matrix row specifies; a non-null `model_gate` on the recovered-clean retry JSON → route to the §3.5b-2e model-attestation gate INSTEAD of writing the evidence. Because the violation retry / policy-gate re-spawn already consumed attempt2, the shared transport budget is spent, so §3.5b-2e skips its MISSING retry and raises the banner directly (Option 1 = "Retry from scratch", per the budget-conditional rule).
 
 ##### 3.5b-2c Capture-failure and classifier-crash banners
 
@@ -1075,7 +1077,7 @@ the rationale `false positive — both auditors erred: <explanation>`.
    - `NO_TESTS`: use the Verify NO_TESTS manual sign-off rules, then
      continue.
 7. Re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`.
-7a. **Apply the §3.5b-2 recovery algorithm** to this re-spawn's classifier output before the Log marker append below — this is callsite 3 of the 6 §3.5b-2 callsites (the code-audit triage-loop re-spawn). The project-policy gate (§3.5b-2a) and retry-outcome matrix (§3.5b-2b) apply identically. Classifier output gates whether step 8 fires (Exit-0 `policy_gate: null` PROCEED) or §3.5b-2b/2c routes to a banner.
+7a. **Apply the §3.5b-2 recovery algorithm** to this re-spawn's classifier output before the Log marker append below — this is callsite 3 of the 6 §3.5b-2 callsites (the code-audit triage-loop re-spawn). The project-policy gate (§3.5b-2a), retry-outcome matrix (§3.5b-2b), and model-attestation gate (§3.5b-2e) apply identically. Classifier output gates whether step 8 fires (Exit-0 `policy_gate: null` with `model_gate: null` PROCEED — a non-null `model_gate` routes to the §3.5b-2e model-attestation gate) or §3.5b-2b/2c routes to a banner.
 8. After the cross-auditor returns, append:
 `- YYYY-MM-DD: code audit iteration=N+1; fixed_ids=[...]; accepted_ids=[...]`
 
@@ -1269,7 +1271,7 @@ Edge cases:
      |---|---|
      | `code audit passed` | Skip straight to hand-off. Code audit already complete. |
      | `code audit: no auditable files in diff; skipping` | Skip to hand-off — deterministic empty-diff skip already applied. |
-     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. **Apply the §3.5b-2 recovery algorithm** (callsite 4 of 6) to the re-spawn's classifier output before resuming the triage loop; project-policy gate (§3.5b-2a) and retry-outcome matrix (§3.5b-2b) apply identically. |
+     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. **Apply the §3.5b-2 recovery algorithm** (callsite 4 of 6) to the re-spawn's classifier output before resuming the triage loop; project-policy gate (§3.5b-2a), retry-outcome matrix (§3.5b-2b), and model-attestation gate (§3.5b-2e) apply identically. |
      | `code audit iteration=N` (without a later `decisions recorded` or `passed` marker) | Round N findings were returned but triage is pending — **do not** re-spawn the cross-auditor. Re-read the findings file at `<kb>/repos/<project>/security/<slug>-code-findings.md`, collect the findings whose status is `OPEN` or `REOPENED`, re-present them to the user, and resume the §Code audit triage loop from step 1 with those findings. |
      | No code-audit Log entry at all | Fresh code-audit run: re-run the verifier first to confirm the baseline is still green (defensive), then spawn `iteration=1` with `previously_fixed=[]` and `accepted_ids=[]`. |
 
