@@ -4073,12 +4073,12 @@ check_cross_auditor_uses_async_codex_dispatch() {
     || { echo "$agent_ref missing BashOutput in body (count=$count, expected >= 2)"; return 1; }
 
   local model_line effort_line
-  model_line=$(grep -nF 'model: opus' "$agent" | head -1 | cut -d: -f1)
+  model_line=$(grep -nF 'model: fable' "$agent" | head -1 | cut -d: -f1)
   effort_line=$(grep -nF 'effort: xhigh' "$agent" | head -1 | cut -d: -f1)
-  [ -n "$model_line" ] || { echo "$agent missing 'model: opus' in frontmatter"; return 1; }
+  [ -n "$model_line" ] || { echo "$agent missing 'model: fable' in frontmatter"; return 1; }
   [ -n "$effort_line" ] || { echo "$agent missing 'effort: xhigh' in frontmatter"; return 1; }
   [ "$effort_line" = "$((model_line + 1))" ] \
-    || { echo "$agent 'effort: xhigh' must immediately follow 'model: opus' (model@$model_line, effort@$effort_line)"; return 1; }
+    || { echo "$agent 'effort: xhigh' must immediately follow 'model: fable' (model@$model_line, effort@$effort_line)"; return 1; }
 
   # Fail-open wording lives in §Codex dispatch + §Step 1 result paragraph — both moved to ref.
   count=$(grep -cF 'codex_audit_dispatch.sh exits non-zero' "$agent_ref")
@@ -4102,6 +4102,33 @@ check_cross_auditor_codex_effort_default_xhigh_kept() {
   grep -qF 'Defaults to `xhigh` when absent' "$agent" \
     || { echo "$agent missing codex_reasoning_effort xhigh default docstring"; return 1; }
   echo "cross-auditor preserves codex_reasoning_effort default xhigh docstring"
+}
+
+check_cross_auditor_model_attestation_contract() {
+  local agent='agents/cross-auditor.md'
+  local handshake='agents/references/cross-auditor-evidence-handshake.md'
+  local outfmt='agents/references/cross-auditor-output-format.md'
+  # (a) cross-auditor frontmatter pins the Fable upgrade.
+  grep -qF 'model: fable' "$agent" \
+    || { echo "$agent missing 'model: fable' in frontmatter (Phase 1 Fable upgrade)"; return 1; }
+  # (b) handshake doc carries the claude_model emit rule: sentinel-adjacency
+  #     ('immediately preceding'), 'unknown' fallback, and system-prompt source.
+  grep -qF 'immediately preceding' "$handshake" \
+    || { echo "$handshake missing 'immediately preceding' (spec-mode claude_model sentinel-adjacency rule)"; return 1; }
+  grep -qF 'claude_model: unknown' "$handshake" \
+    || { echo "$handshake missing 'claude_model: unknown' fallback in attestation contract"; return 1; }
+  grep -qF 'system prompt' "$handshake" \
+    || { echo "$handshake missing system-prompt-source clause in attestation contract"; return 1; }
+  # (c) output-format findings.md template carries the claude_model: frontmatter key.
+  grep -qF 'claude_model:' "$outfmt" \
+    || { echo "$outfmt findings.md template missing 'claude_model:' frontmatter key"; return 1; }
+  # (d) the canonical spaced sentinel literal count in the handshake doc stays exactly 1
+  #     (only the fenced template may carry it; mid-prose references use obfuscated forms).
+  local ca_sent
+  ca_sent=$(grep -cF '# CROSS-AUDIT EVIDENCE FOOTER' "$handshake")
+  [ "$ca_sent" = "1" ] \
+    || { echo "$handshake canonical-spaced sentinel literal must appear EXACTLY ONCE (got $ca_sent) — attestation prose must use obfuscated forms"; return 1; }
+  echo "cross-auditor model-attestation contract OK (model: fable; claude_model emit rule + output-format key; sentinel count==1)"
 }
 
 check_smoke_proves_manifest_canonical() {
