@@ -681,7 +681,16 @@ check_dev_workflow_git_canonical() {
 # check. A guard that uses merge-base --is-ancestor at callsites 1-4 (instead of
 # strict equality), that drops ancestor-mode at callsite 5, that is anchored at
 # fewer than 5 callsites, or that loses the step-4c / step-6 banner literals MUST
-# fail this pin. $1 = path (real SKILL.md OR negative fixture).
+# fail this pin. Beyond the 5 anchor lines this pin ALSO validates the SHARED
+# §3.5d ALGORITHM BODY (the definition lines, not the callsite anchors): the body
+# `**Callsites 1-4**` rule MUST carry strict `HEAD == pre_spawn_head` and MUST NOT
+# have mutated to merge-base --is-ancestor; the body `**Callsite 5 ONLY**` rule
+# MUST NOT carry strict `HEAD == pre_spawn_head` (strict-injection into callsite 5
+# would false-green legit append-only fixups) and MUST carry merge-base
+# --is-ancestor; and the X1 Implement-phase expected_branch / not-main pre-spawn
+# gate (callsites 2-5) MUST be present in both the precondition and the
+# continue-gate (a regression dropping it MUST fail this pin). $1 = path (real
+# SKILL.md OR negative fixture).
 check_branch_guard_callsites() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
@@ -714,7 +723,48 @@ check_branch_guard_callsites() {
     || { echo "$path missing step-6 'no-auto-reset --hard base-divergence banner' literal"; return 1; }
   grep -qF -- 'HEAD-moved-on-correct-branch hard-stop' "$path" \
     || { echo "$path missing step-4c 'HEAD-moved-on-correct-branch hard-stop' literal"; return 1; }
-  echo "$path branch-guard anchored at 5 callsites; strict HEAD==pre_spawn_head for 1-4; merge-base --is-ancestor for 5 only; step-4c + step-6 banner literals present"
+  # (5) SHARED §3.5d BODY — callsites-1-4 algorithm rule (the '**Callsites 1-4**'
+  #     definition line, NOT a callsite anchor) MUST carry strict
+  #     'HEAD == pre_spawn_head' AND MUST NOT have mutated to ancestor-mode. This
+  #     catches a body strict->ancestor mutation that the per-anchor checks above
+  #     would miss (anchors and body are distinct lines).
+  local body14
+  body14=$(grep -F -- '**Callsites 1-4**' "$path")
+  [ -n "$body14" ] \
+    || { echo "$path missing §3.5d body '**Callsites 1-4**' rule line"; return 1; }
+  printf '%s\n' "$body14" | grep -qF -- 'HEAD == pre_spawn_head' \
+    || { echo "$path §3.5d body callsites-1-4 rule missing strict 'HEAD == pre_spawn_head'"; return 1; }
+  if printf '%s\n' "$body14" | grep -qF -- 'merge-base --is-ancestor'; then
+    echo "$path §3.5d body callsites-1-4 rule wrongly mutated to 'merge-base --is-ancestor' (must be strict-equality)"
+    return 1
+  fi
+  # (6) SHARED §3.5d BODY — callsite-5 algorithm rule (the '**Callsite 5 ONLY**'
+  #     definition line) MUST carry merge-base --is-ancestor AND MUST NOT carry
+  #     strict 'HEAD == pre_spawn_head' (strict-ABSENCE — mirror of the callsite
+  #     1-4 ancestor-absence check above). Injecting strict into callsite 5 would
+  #     false-positive on legit append-only fixup commits, so it is a violation.
+  local body5
+  body5=$(grep -F -- '**Callsite 5 ONLY**' "$path")
+  [ -n "$body5" ] \
+    || { echo "$path missing §3.5d body '**Callsite 5 ONLY**' rule line"; return 1; }
+  printf '%s\n' "$body5" | grep -qF -- 'merge-base --is-ancestor' \
+    || { echo "$path §3.5d body callsite-5 rule missing 'merge-base --is-ancestor' (diff-audit ancestor-mode)"; return 1; }
+  if printf '%s\n' "$body5" | grep -qF -- 'HEAD == pre_spawn_head'; then
+    echo "$path §3.5d body callsite-5 rule wrongly carries strict 'HEAD == pre_spawn_head' (callsite 5 is ancestor-mode; strict would false-green append-only fixups)"
+    return 1
+  fi
+  # (7) X1 Implement-phase expected_branch / not-main gate (callsites 2-5). The
+  #     pre-spawn precondition AND the continue-gate expected_branch term MUST be
+  #     present — a regression dropping either re-opens the 'orchestrator ALREADY
+  #     on main/master pre-spawn' false-green. The literals are matched in the
+  #     §3.5d body (not the anchors).
+  grep -qF -- 'Implement-phase pre-spawn precondition (callsites 2-5 ONLY)' "$path" \
+    || { echo "$path missing X1 pre-spawn precondition 'Implement-phase pre-spawn precondition (callsites 2-5 ONLY)'"; return 1; }
+  grep -qF -- 'pre_spawn_branch ∉ {main, master}' "$path" \
+    || { echo "$path missing X1 expected_branch/not-main literal 'pre_spawn_branch ∉ {main, master}'"; return 1; }
+  grep -qF -- 'blocks on branch AND HEAD AND expected_branch' "$path" \
+    || { echo "$path missing X1 continue-gate expected_branch term 'blocks on branch AND HEAD AND expected_branch'"; return 1; }
+  echo "$path branch-guard anchored at 5 callsites; strict HEAD==pre_spawn_head for 1-4 (anchors + body); merge-base --is-ancestor for 5 only (anchors + body); callsite-5 strict-absence enforced; X1 expected_branch/not-main gate present in precondition + continue-gate; step-4c + step-6 banner literals present"
 }
 
 # --- Cross-auditor read-only-git contract (spec 2026-06-16-cross-auditor-worktree-branch-guard §3.2) ---
