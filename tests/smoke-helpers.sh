@@ -688,9 +688,12 @@ check_dev_workflow_git_canonical() {
 # MUST NOT carry strict `HEAD == pre_spawn_head` (strict-injection into callsite 5
 # would false-green legit append-only fixups) and MUST carry merge-base
 # --is-ancestor; and the X1 Implement-phase expected_branch / not-main pre-spawn
-# gate (callsites 2-5) MUST be present in both the precondition and the
-# continue-gate (a regression dropping it MUST fail this pin). $1 = path (real
-# SKILL.md OR negative fixture).
+# gate (callsites 2-5) MUST be present in both the precondition AND the continue-gate
+# — validated SAME-LINE (line-extract each body line, assert the full predicate ON
+# THAT line), NOT via title-level or file-wide-literal greps: gutting the precondition
+# body MUST fail even though the not-main literal survives on the step-3 back-reference
+# lines, and gutting the continue-gate body MUST fail even though its title phrase
+# survives (X3). $1 = path (real SKILL.md OR negative fixture).
 check_branch_guard_callsites() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
@@ -753,18 +756,38 @@ check_branch_guard_callsites() {
     echo "$path §3.5d body callsite-5 rule wrongly carries strict 'HEAD == pre_spawn_head' (callsite 5 is ancestor-mode; strict would false-green append-only fixups)"
     return 1
   fi
-  # (7) X1 Implement-phase expected_branch / not-main gate (callsites 2-5). The
-  #     pre-spawn precondition AND the continue-gate expected_branch term MUST be
-  #     present — a regression dropping either re-opens the 'orchestrator ALREADY
-  #     on main/master pre-spawn' false-green. The literals are matched in the
-  #     §3.5d body (not the anchors).
-  grep -qF -- 'Implement-phase pre-spawn precondition (callsites 2-5 ONLY)' "$path" \
-    || { echo "$path missing X1 pre-spawn precondition 'Implement-phase pre-spawn precondition (callsites 2-5 ONLY)'"; return 1; }
-  grep -qF -- 'pre_spawn_branch ∉ {main, master}' "$path" \
-    || { echo "$path missing X1 expected_branch/not-main literal 'pre_spawn_branch ∉ {main, master}'"; return 1; }
-  grep -qF -- 'blocks on branch AND HEAD AND expected_branch' "$path" \
-    || { echo "$path missing X1 continue-gate expected_branch term 'blocks on branch AND HEAD AND expected_branch'"; return 1; }
-  echo "$path branch-guard anchored at 5 callsites; strict HEAD==pre_spawn_head for 1-4 (anchors + body); merge-base --is-ancestor for 5 only (anchors + body); callsite-5 strict-absence enforced; X1 expected_branch/not-main gate present in precondition + continue-gate; step-4c + step-6 banner literals present"
+  # (7) X1 Implement-phase pre-spawn PRECONDITION body line (callsites 2-5). Extract
+  #     the precondition body line by its unique title locator, then assert the full
+  #     gate predicate ON THAT LINE: BOTH 'pre_spawn_branch == expected_branch' AND the
+  #     not-main 'pre_spawn_branch ∉ {main, master}'. SAME-LINE so a gutted precondition
+  #     body (X3 escape a) fails here — the not-main literal ALSO appears on the step-3
+  #     back-reference lines (callsites 1-4 / callsite 5 body), so a file-wide grep would
+  #     false-green on a gutted precondition. The not-main predicate MUST sit on the
+  #     precondition line itself, not be satisfied by a descriptive back-reference.
+  local precond
+  precond=$(grep -F -- 'Implement-phase pre-spawn precondition (callsites 2-5 ONLY)' "$path")
+  [ -n "$precond" ] \
+    || { echo "$path missing X1 pre-spawn precondition title 'Implement-phase pre-spawn precondition (callsites 2-5 ONLY)'"; return 1; }
+  printf '%s\n' "$precond" | grep -qF -- 'pre_spawn_branch == expected_branch' \
+    || { echo "$path X1 pre-spawn precondition body line missing 'pre_spawn_branch == expected_branch' (gutted precondition body)"; return 1; }
+  printf '%s\n' "$precond" | grep -qF -- 'pre_spawn_branch ∉ {main, master}' \
+    || { echo "$path X1 pre-spawn precondition body line missing not-main 'pre_spawn_branch ∉ {main, master}' (gutted precondition body; back-references elsewhere do NOT satisfy this)"; return 1; }
+  # (8) X1 CONTINUE-GATE body line (callsites 2-5). Extract the continue-gate line by
+  #     its unique title locator, then assert the full predicate ON THAT LINE: BOTH the
+  #     expected_branch term '!= `expected_branch` OR' AND the not-main term
+  #     'pre_spawn_branch ∈ {main, master}'. SAME-LINE so a gutted continue-gate body
+  #     (X3 escape b) fails here — the title phrase 'blocks on branch AND HEAD AND
+  #     expected_branch' would survive a file-wide grep even after the body terms are
+  #     gutted. The body terms (∈, != `expected_branch`) are unique to this line.
+  local contgate
+  contgate=$(grep -F -- 'blocks on branch AND HEAD AND expected_branch' "$path")
+  [ -n "$contgate" ] \
+    || { echo "$path missing X1 continue-gate title 'blocks on branch AND HEAD AND expected_branch'"; return 1; }
+  printf '%s\n' "$contgate" | grep -qF -- '!= `expected_branch` OR' \
+    || { echo "$path X1 continue-gate body line missing expected_branch term '!= \`expected_branch\` OR' (gutted continue-gate body; title alone does not satisfy this)"; return 1; }
+  printf '%s\n' "$contgate" | grep -qF -- 'pre_spawn_branch ∈ {main, master}' \
+    || { echo "$path X1 continue-gate body line missing not-main term 'pre_spawn_branch ∈ {main, master}' (gutted continue-gate body; title alone does not satisfy this)"; return 1; }
+  echo "$path branch-guard anchored at 5 callsites; strict HEAD==pre_spawn_head for 1-4 (anchors + body); merge-base --is-ancestor for 5 only (anchors + body); callsite-5 strict-absence enforced; X1 gate same-line in precondition body (==expected_branch + ∉{main,master}) AND continue-gate body (!=expected_branch + ∈{main,master}); step-4c + step-6 banner literals present"
 }
 
 # --- Cross-auditor read-only-git contract (spec 2026-06-16-cross-auditor-worktree-branch-guard §3.2) ---
