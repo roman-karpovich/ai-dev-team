@@ -882,7 +882,7 @@ There are two distinct degrade paths with two distinct triggers and **opposite**
 
 ## Retired rules
 
-Retired 2026-05-25 to reduce cognitive load on the rule cluster. Numbering preserved (R5–R14 unchanged); future rules use R16+.
+Retired 2026-05-25 to reduce cognitive load on the rule cluster. Numbering preserved (R5–R14 unchanged); R16 added 2026-06-16; future rules use R17+.
 
 - **R4 — Branch prefix matches change nature** — canonical content lives in `CLAUDE.md` §Contribution flow and `skills/feature/references/developer-workflow.md` §Git Workflow (branch-name pattern, pre-commit assertion, post-merge bug flow).
 - **R15 — Fix-application verifies audit's file:line claims empirically before edit** — canonical content migrated to `skills/feature/references/developer-workflow.md` §Fix application discipline. Producer-side counterpart at `agents/cross-auditor.md` §Step 2.5 Empirical claim verification.
