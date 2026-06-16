@@ -327,3 +327,9 @@ check_smoke_helper_pwp_allowlist_scanner_self_test behavioral
 #   the strict-HEAD (callsites 1-4) vs merge-base --is-ancestor (callsite 5)
 #   split + the step-4c/step-6 banner literals → prompt-text.
 check_branch_guard_callsites prompt-text
+
+# Cross-auditor read-only-git contract (spec 2026-06-16-cross-auditor-worktree-branch-guard §3.2):
+#   pins the defense-in-depth constraint in agents/cross-auditor.md scoped to the
+#   PRIMARY working_directory, with the PR-mode gh pr checkout carve-out preserved
+#   (catches a global-checkout-ban regression) → prompt-text.
+check_cross_auditor_read_only_git_contract prompt-text

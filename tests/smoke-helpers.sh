@@ -717,6 +717,34 @@ check_branch_guard_callsites() {
   echo "$path branch-guard anchored at 5 callsites; strict HEAD==pre_spawn_head for 1-4; merge-base --is-ancestor for 5 only; step-4c + step-6 banner literals present"
 }
 
+# --- Cross-auditor read-only-git contract (spec 2026-06-16-cross-auditor-worktree-branch-guard §3.2) ---
+# Pins the defense-in-depth constraint in agents/cross-auditor.md that the agent
+# treats the caller's PRIMARY working_directory as read-only for git state. Strong
+# enough to catch a global-checkout-ban regression: the constraint MUST stay scoped
+# to the primary working_directory AND preserve the PR-mode `gh pr checkout` carve-out
+# (which runs in the agent's OWN isolated worktree). A wording regression to a blanket
+# "no checkout anywhere" — which would break PR mode — MUST fail this pin. $1 = path
+# (real cross-auditor.md OR negative fixture).
+check_cross_auditor_read_only_git_contract() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # Extract the single constraint line carrying the load-bearing literal (one bullet).
+  local line
+  line=$(grep -F -- 'read-only for git state' "$path")
+  # (1) The 'read-only for git state' constraint literal is present.
+  [ -n "$line" ] \
+    || { echo "$path missing §3.2 'read-only for git state' constraint literal"; return 1; }
+  # (2) Same bullet scopes the constraint to the PRIMARY working_directory (so it is
+  #     not a global ban) — keys on 'primary `working_directory`'.
+  printf '%s\n' "$line" | grep -qF -- 'primary `working_directory`' \
+    || { echo "$path §3.2 constraint not scoped to 'primary \`working_directory\`' (reads as a global git-state ban)"; return 1; }
+  # (3) Same bullet preserves the PR-mode 'gh pr checkout' carve-out (so a blanket
+  #     no-checkout regression — which would break PR mode — fails here).
+  printf '%s\n' "$line" | grep -qF -- 'gh pr checkout' \
+    || { echo "$path §3.2 constraint dropped the PR-mode 'gh pr checkout' carve-out (blanket no-checkout would break PR mode)"; return 1; }
+  echo "$path §3.2 read-only-git contract: literal present, scoped to primary working_directory, PR-mode gh pr checkout carve-out preserved"
+}
+
 check_feature_skill_git_references_canonical() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
