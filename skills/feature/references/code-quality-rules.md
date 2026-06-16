@@ -67,6 +67,11 @@ rules:
     category: security
     applies_to: [backend]
     enforced_by: [cross-auditor:security]
+  - id: R16
+    short: least-code-first-ladder
+    category: quality
+    applies_to: [all]
+    enforced_by: [none]
 ---
 
 # Code Quality Rules
@@ -811,6 +816,30 @@ def get_order(request, order_id):
 
 ---
 
+## R16 — Least-code-first ladder
+
+**Rule**: satisfy the approved spec with the least new production code that
+preserves clarity and repo conventions; necessity is judged against the spec,
+not re-litigated.
+
+**Why**: agents over-solve narrow steps with wrappers, abstractions, or deps;
+passing code leaves extra API surface and review context no spec asked for.
+
+**How to apply**:
+
+1. Stop at the first rung that satisfies the approved spec: no new production
+   code; existing repo helper/pattern; stdlib; native platform/framework;
+   existing dependency; minimal new implementation.
+2. Add no speculative abstractions, wrappers, extension points, or deps for
+   expected future work; new deps need current-spec justification.
+3. If a deliberate shortcut creates a real ceiling, comment the ceiling and
+   upgrade trigger.
+4. R16 governs production-code volume only. Test strength/scope stay under
+   R3/R6, never relaxed by least-code.
+5. If deletion is the implementation, apply R1 for dead-code/test cleanup.
+
+---
+
 ## Taxonomy
 
 The frontmatter `rules:` block at the top of this file is the source of truth for rule metadata. Consumers (dev-agents, `spec-compliance-checker`, `cross-auditor`) parse the index, filter by the active spec's `project_type`, and only process rules whose `applies_to` list matches.
@@ -845,7 +874,7 @@ read_body_sections_for(applicable)
 
 There are two distinct degrade paths with two distinct triggers and **opposite** outcomes. The contract names them explicitly so consumer agents do not converge on different defaults.
 
-**Trigger A — `project_type` is missing or unknown**. Consumer was invoked without an orchestrator-threaded `project_type` value (legacy invocation, ad-hoc use, configuration drift). Set `project_type` internally to the literal string `"all"` and run the filter normally. Result: rules with `applies_to: [all]` load (R1–R3 and R5–R8 plus any cluster rules currently flipped to `[all]`, e.g. R11 and R13); rules with `applies_to: [backend]` (or any audience-restricted list that does not contain `"all"`) do NOT load. Worked example: `filter(rules, "all")` returns the `[all]`-audience set — at present R1–R3 + R5–R8 plus R11 and R13 (9 rules). The audience-restricted cluster members (R9, R10, R12, R14 are `[backend]`) do NOT load under Trigger A — that is the intended backwards-compat semantics ("`[all]`-audience rules always load", not "every rule always loads"). The asymmetry is deliberate.
+**Trigger A — `project_type` is missing or unknown**. Consumer was invoked without an orchestrator-threaded `project_type` value (legacy invocation, ad-hoc use, configuration drift). Set `project_type` internally to the literal string `"all"` and run the filter normally. Result: rules with `applies_to: [all]` load (R1–R3 and R5–R8 plus any cluster rules currently flipped to `[all]`, e.g. R11 and R13); rules with `applies_to: [backend]` (or any audience-restricted list that does not contain `"all"`) do NOT load. Worked example: `filter(rules, "all")` returns the `[all]`-audience set — at present R1–R3 + R5–R8 plus R11 and R13 and R16 (10 rules). The audience-restricted cluster members (R9, R10, R12, R14 are `[backend]`) do NOT load under Trigger A — that is the intended backwards-compat semantics ("`[all]`-audience rules always load", not "every rule always loads"). The asymmetry is deliberate.
 
 **Trigger B — frontmatter `rules:` block fails to parse**. The YAML is malformed, the `rules:` field is missing, or `parse_frontmatter` raises. Consumer cannot determine `applies_to` for any rule. In this path, emit a one-line warning to stderr (`⚠️ code-quality-rules.md frontmatter rules block failed to parse — loading all body sections regardless of applies_to`) and load every `## R<N>` body section verbatim, ignoring the filter entirely. Worked example: a future contributor accidentally introduces a YAML indentation error in the `rules:` block — Trigger B fires, every rule body section loads (including audience-restricted rules that should NOT have loaded for the active project_type) until the parse error is fixed.
 
@@ -853,7 +882,7 @@ There are two distinct degrade paths with two distinct triggers and **opposite**
 
 ## Retired rules
 
-Retired 2026-05-25 to reduce cognitive load on the rule cluster. Numbering preserved (R5–R14 unchanged); future rules use R16+.
+Retired 2026-05-25 to reduce cognitive load on the rule cluster. Numbering preserved (R5–R14 unchanged); R16 added 2026-06-16; future rules use R17+.
 
 - **R4 — Branch prefix matches change nature** — canonical content lives in `CLAUDE.md` §Contribution flow and `skills/feature/references/developer-workflow.md` §Git Workflow (branch-name pattern, pre-commit assertion, post-merge bug flow).
 - **R15 — Fix-application verifies audit's file:line claims empirically before edit** — canonical content migrated to `skills/feature/references/developer-workflow.md` §Fix application discipline. Producer-side counterpart at `agents/cross-auditor.md` §Step 2.5 Empirical claim verification.

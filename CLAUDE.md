@@ -10,7 +10,7 @@ Axes (federation, not hierarchy):
 - **Ideation** — `/investigate`, `/research` (direction picking, brainstorming)
 - **Orchestration** — `/feature` spec-driven flow (the discipline backbone)
 - **Verification** — `/cross-audit` (Claude+Codex halves + deterministic probes)
-- **Code-quality conventions** — `skills/feature/references/code-quality-rules.md` R1-R14 for dev-agents (quality R1-R8 + security R9-R14; R4 retired)
+- **Code-quality conventions** — `skills/feature/references/code-quality-rules.md` R1-R16 for dev-agents (quality R1-R8 + R16 + security R9-R14; R4/R15 retired)
 - **Context persistence** — KB vault (specs, findings, research) across sessions
 - **Self-protection** — smoke harness + hooks
 
