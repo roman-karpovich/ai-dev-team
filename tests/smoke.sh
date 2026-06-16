@@ -2779,6 +2779,8 @@ check_smoke_helper_git_dev_workflow_mutated_body_rejected() {
 
 # Positive invocations — 3 rows per spec §3.4 invariants table.
 check "check_dev_workflow_git_canonical" check_dev_workflow_git_canonical skills/feature/references/developer-workflow.md
+check "check_branch_guard_callsites" check_branch_guard_callsites skills/feature/SKILL.md
+check "check_cross_auditor_read_only_git_contract" check_cross_auditor_read_only_git_contract agents/cross-auditor.md
 check "check_feature_skill_git_references_canonical" check_feature_skill_git_references_canonical skills/feature/SKILL.md
 check "check_overview_git_references_canonical" check_overview_git_references_canonical docs/AI_Dev_Team_Overview.md
 # Negative invocations — 2 original + 3 audit (X1/X2/X3) rows.
