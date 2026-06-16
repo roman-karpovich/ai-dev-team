@@ -716,16 +716,41 @@ check_branch_guard_callsites() {
       return 1
     fi
   done
-  # (3) 'merge-base --is-ancestor' wording present for callsite 5 ONLY.
+  # (3) Callsite-5 ANCHOR is ancestor-mode. The anchor line legitimately carries a
+  #     CONTRAST back-reference "callsites 1-4 use strict `HEAD == pre_spawn_head`", so a
+  #     naive strict-ABSENCE check would false-positive on the real file. Instead assert
+  #     the FULL CONTIGUOUS mode-declaration clause verbatim — which pins ancestor-mode as
+  #     the callsite-5 primary AND pins the strict mention as the contrastive back-ref in
+  #     its exact position — then bound the strict mention to that single legit occurrence
+  #     (count == 1). A strict-INJECTION into the callsite-5 anchor adds a SECOND strict
+  #     occurrence outside the contiguous contrast span, so the count rises to 2 and fails
+  #     (R2-class anchor strict-injection escape; the prior pin missed this on the anchor).
   line=$(grep -F -- "**branch-guard (callsite 5" "$path")
-  printf '%s\n' "$line" | grep -qF -- 'merge-base --is-ancestor' \
-    || { echo "$path callsite-5 missing 'merge-base --is-ancestor' wording (diff-audit ancestor-mode)"; return 1; }
+  printf '%s\n' "$line" | grep -qF -- 'callsite 5 ONLY uses `merge-base --is-ancestor`; callsites 1-4 use strict `HEAD == pre_spawn_head`' \
+    || { echo "$path callsite-5 anchor missing the contiguous mode-declaration clause 'callsite 5 ONLY uses \`merge-base --is-ancestor\`; callsites 1-4 use strict \`HEAD == pre_spawn_head\`' (ancestor-mode primary + strict contrast back-ref)"; return 1; }
+  local c5_strict
+  c5_strict=$(printf '%s\n' "$line" | awk '{print gsub(/HEAD == pre_spawn_head/, "")}')
+  [ "$c5_strict" = "1" ] \
+    || { echo "$path callsite-5 anchor carries $c5_strict 'HEAD == pre_spawn_head' occurrences (expected exactly 1 — the legit contrast back-ref; a strict-injection into the ancestor-mode callsite-5 anchor adds a second and is a violation)"; return 1; }
   # (4) The no-auto-reset --hard base-divergence banner literal (step 6) AND the
-  #     HEAD-moved-on-correct-branch hard-stop literal (step 4c).
-  grep -qF -- 'no-auto-reset --hard base-divergence banner' "$path" \
-    || { echo "$path missing step-6 'no-auto-reset --hard base-divergence banner' literal"; return 1; }
-  grep -qF -- 'HEAD-moved-on-correct-branch hard-stop' "$path" \
-    || { echo "$path missing step-4c 'HEAD-moved-on-correct-branch hard-stop' literal"; return 1; }
+  #     HEAD-moved-on-correct-branch hard-stop literal (step 4c). BOTH literals
+  #     ALSO appear as descriptive back-references elsewhere (the step-4c literal
+  #     is back-referenced at the callsite-5 anchor block, line ~918), so a
+  #     file-wide grep would false-green on a gutted real definition (X4-class
+  #     loose-substring escape). Line-extract each by its UNIQUE step-title locator
+  #     and assert the literal ON THAT EXTRACTED DEFINITION LINE — the back-references
+  #     live on other lines and cannot satisfy a per-line assertion.
+  local step6 step4c
+  step6=$(grep -F -- '**Local-base divergence is NOT auto-reset.**' "$path")
+  [ -n "$step6" ] \
+    || { echo "$path missing §3.5d step-6 title '**Local-base divergence is NOT auto-reset.**'"; return 1; }
+  printf '%s\n' "$step6" | grep -qF -- 'no-auto-reset --hard base-divergence banner' \
+    || { echo "$path step-6 definition line missing 'no-auto-reset --hard base-divergence banner' literal (gutted step-6; back-references elsewhere do NOT satisfy this)"; return 1; }
+  step4c=$(grep -F -- '**(4c) Branch correct but HEAD check fails**' "$path")
+  [ -n "$step4c" ] \
+    || { echo "$path missing §3.5d step-4c title '**(4c) Branch correct but HEAD check fails**'"; return 1; }
+  printf '%s\n' "$step4c" | grep -qF -- 'this is the **HEAD-moved-on-correct-branch hard-stop**' \
+    || { echo "$path step-4c definition line missing contiguous 'this is the **HEAD-moved-on-correct-branch hard-stop**' clause (gutted step-4c; the callsite-5 back-reference does NOT satisfy this)"; return 1; }
   # (5) SHARED §3.5d BODY — callsites-1-4 algorithm rule (the '**Callsites 1-4**'
   #     definition line, NOT a callsite anchor) MUST carry strict
   #     'HEAD == pre_spawn_head' AND MUST NOT have mutated to ancestor-mode. This
@@ -756,38 +781,45 @@ check_branch_guard_callsites() {
     echo "$path §3.5d body callsite-5 rule wrongly carries strict 'HEAD == pre_spawn_head' (callsite 5 is ancestor-mode; strict would false-green append-only fixups)"
     return 1
   fi
-  # (7) X1 Implement-phase pre-spawn PRECONDITION body line (callsites 2-5). Extract
-  #     the precondition body line by its unique title locator, then assert the full
-  #     gate predicate ON THAT LINE: BOTH 'pre_spawn_branch == expected_branch' AND the
-  #     not-main 'pre_spawn_branch ∉ {main, master}'. SAME-LINE so a gutted precondition
-  #     body (X3 escape a) fails here — the not-main literal ALSO appears on the step-3
-  #     back-reference lines (callsites 1-4 / callsite 5 body), so a file-wide grep would
-  #     false-green on a gutted precondition. The not-main predicate MUST sit on the
-  #     precondition line itself, not be satisfied by a descriptive back-reference.
+  # (7) X1 Implement-phase pre-spawn PRECONDITION body line (callsites 2-5). DEFINITIVE
+  #     fix for the X4 escape: 'pre_spawn_branch == expected_branch' appears TWICE on the
+  #     precondition line (the REAL assert clause + a trailing descriptive back-reference
+  #     "the enforced gate for the step-3 callsites-2-5 `pre_spawn_branch == expected_branch`
+  #     invariant"). A loose same-line grep for that substring cannot tell them apart, so
+  #     deleting the REAL assert term keeps the pin green (X4). Instead, extract the
+  #     precondition line by its unique title locator and assert the FULL CONTIGUOUS
+  #     real-assert clause verbatim as ONE grep -qF — the contiguous span
+  #     "BEFORE the spawn, assert ... AND `pre_spawn_branch ∉ {main, master}`." is UNIQUE
+  #     on the line (the back-reference is NOT contiguous-identical), so both the
+  #     duplicate-substring (X4) and missing-leg escapes die. The contiguous clause carries
+  #     BOTH legs (== expected_branch AND ∉ {main, master}); deleting either breaks the span.
   local precond
   precond=$(grep -F -- 'Implement-phase pre-spawn precondition (callsites 2-5 ONLY)' "$path")
   [ -n "$precond" ] \
     || { echo "$path missing X1 pre-spawn precondition title 'Implement-phase pre-spawn precondition (callsites 2-5 ONLY)'"; return 1; }
-  printf '%s\n' "$precond" | grep -qF -- 'pre_spawn_branch == expected_branch' \
-    || { echo "$path X1 pre-spawn precondition body line missing 'pre_spawn_branch == expected_branch' (gutted precondition body)"; return 1; }
-  printf '%s\n' "$precond" | grep -qF -- 'pre_spawn_branch ∉ {main, master}' \
-    || { echo "$path X1 pre-spawn precondition body line missing not-main 'pre_spawn_branch ∉ {main, master}' (gutted precondition body; back-references elsewhere do NOT satisfy this)"; return 1; }
-  # (8) X1 CONTINUE-GATE body line (callsites 2-5). Extract the continue-gate line by
-  #     its unique title locator, then assert the full predicate ON THAT LINE: BOTH the
-  #     expected_branch term '!= `expected_branch` OR' AND the not-main term
-  #     'pre_spawn_branch ∈ {main, master}'. SAME-LINE so a gutted continue-gate body
-  #     (X3 escape b) fails here — the title phrase 'blocks on branch AND HEAD AND
-  #     expected_branch' would survive a file-wide grep even after the body terms are
-  #     gutted. The body terms (∈, != `expected_branch`) are unique to this line.
+  printf '%s\n' "$precond" | grep -qF -- 'BEFORE the spawn, assert `pre_spawn_branch == expected_branch` AND `pre_spawn_branch ∉ {main, master}`.' \
+    || { echo "$path X1 pre-spawn precondition body line missing the full contiguous real-assert clause 'BEFORE the spawn, assert \`pre_spawn_branch == expected_branch\` AND \`pre_spawn_branch ∉ {main, master}\`.' (gutted real assert; the same-line descriptive back-reference is NOT contiguous-identical and does NOT satisfy this)"; return 1; }
+  # (8) CONTINUE-GATE body line (callsites 2-5). DEFINITIVE fix for the X5 escape: the
+  #     gate's TITLE claims it "blocks on branch AND HEAD AND expected_branch", but the
+  #     prior pin asserted ONLY the X1-added legs (expected_branch / not-main) and NOT the
+  #     gate's PRIMARY legs (`branch != pre_spawn_branch` and the step-3 HEAD condition).
+  #     Deleting those two primary legs from the line kept the pin green (X5) — re-opening
+  #     the ORIGINAL incident class (cross-auditor leaves primary on main / HEAD moved) at
+  #     the meta-test level. Instead, extract the continue-gate line by its unique title
+  #     locator and assert the FULL CONTIGUOUS gate predicate verbatim as ONE grep -qF —
+  #     a single span that enumerates ALL FOUR legs the title claims: the branch leg
+  #     (branch != `pre_spawn_branch`), the HEAD leg (step-3 HEAD condition is unsatisfied),
+  #     the expected_branch leg (!= `expected_branch`), and the not-main leg
+  #     (`pre_spawn_branch ∈ {main, master}`). The contiguous span is UNIQUE on the line;
+  #     deleting ANY leg breaks the span, so the missing-leg escape (X5) dies and the title
+  #     can no longer survive a file-wide grep after the body is gutted.
   local contgate
   contgate=$(grep -F -- 'blocks on branch AND HEAD AND expected_branch' "$path")
   [ -n "$contgate" ] \
     || { echo "$path missing X1 continue-gate title 'blocks on branch AND HEAD AND expected_branch'"; return 1; }
-  printf '%s\n' "$contgate" | grep -qF -- '!= `expected_branch` OR' \
-    || { echo "$path X1 continue-gate body line missing expected_branch term '!= \`expected_branch\` OR' (gutted continue-gate body; title alone does not satisfy this)"; return 1; }
-  printf '%s\n' "$contgate" | grep -qF -- 'pre_spawn_branch ∈ {main, master}' \
-    || { echo "$path X1 continue-gate body line missing not-main term 'pre_spawn_branch ∈ {main, master}' (gutted continue-gate body; title alone does not satisfy this)"; return 1; }
-  echo "$path branch-guard anchored at 5 callsites; strict HEAD==pre_spawn_head for 1-4 (anchors + body); merge-base --is-ancestor for 5 only (anchors + body); callsite-5 strict-absence enforced; X1 gate same-line in precondition body (==expected_branch + ∉{main,master}) AND continue-gate body (!=expected_branch + ∈{main,master}); step-4c + step-6 banner literals present"
+  printf '%s\n' "$contgate" | grep -qF -- 'NEVER continue the per-step loop / Log / checkoff while ANY of: the branch != `pre_spawn_branch`; the callsite'"'"'s step-3 HEAD condition is unsatisfied; or (**callsites 2-5 ONLY**) `pre_spawn_branch` (and hence the current branch) != `expected_branch` OR `pre_spawn_branch ∈ {main, master}`.' \
+    || { echo "$path continue-gate body line missing the full contiguous gate predicate enumerating ALL legs (branch != \`pre_spawn_branch\`; step-3 HEAD condition; != \`expected_branch\`; ∈ {main, master}) — gutting ANY leg (X5 missing-leg escape) or relying on the title alone does NOT satisfy this"; return 1; }
+  echo "$path branch-guard anchored at 5 callsites; strict HEAD==pre_spawn_head for 1-4 (anchors + body); merge-base --is-ancestor for 5 only (anchors + body); callsite-5 strict-absence enforced; step-4c + step-6 banner literals asserted on their definition lines (not file-wide); pre-spawn precondition asserts the full contiguous real-assert clause verbatim (X4-proof); continue-gate asserts the full contiguous predicate enumerating ALL legs branch+HEAD+expected_branch+not-main verbatim (X5-proof)"
 }
 
 # --- Cross-auditor read-only-git contract (spec 2026-06-16-cross-auditor-worktree-branch-guard §3.2) ---
