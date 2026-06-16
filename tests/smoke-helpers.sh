@@ -4467,13 +4467,13 @@ except yaml.YAMLError as exc:
     print(f"{path}: frontmatter YAML parse failed (assertion a): {exc}", file=sys.stderr)
     sys.exit(1)
 
-# (a) frontmatter parses and rules is a list of length 8
+# (a) frontmatter parses and rules is a list of length 14 (R1-R3, R5-R14, R16)
 rules = fm.get("rules") if isinstance(fm, dict) else None
 if not isinstance(rules, list):
     print(f"{path}: frontmatter `rules:` is not a list (assertion a)", file=sys.stderr)
     sys.exit(1)
-if len(rules) != 13:
-    print(f"{path}: rules length={len(rules)}, expected 13 (assertion a)", file=sys.stderr)
+if len(rules) != 14:
+    print(f"{path}: rules length={len(rules)}, expected 14 (assertion a)", file=sys.stderr)
     sys.exit(1)
 
 required_fields = {"id", "short", "category", "applies_to", "enforced_by"}
@@ -4545,13 +4545,14 @@ for entry in rules:
 # the [all]-audience set. Was 8 before any cluster audience flips; 9 after
 # PR-D Step 3 flipped R11 to [all]; 10 after PR-D Step 4 flipped R13 to [all];
 # 11 after R15 added by 2026-05-13-cap-banner-and-empirical-verification;
-# back to 9 after 2026-05-25 retirement of R4 and R15 (both were [all]).
+# back to 9 after 2026-05-25 retirement of R4 and R15 (both were [all]);
+# 10 after R16 (least-code-first-ladder, [all]) added 2026-06-16.
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_all = trigger_a_filter(rules, "all")
-if len(filtered_all) != 9:
-    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 9 (assertion i)", file=sys.stderr)
+if len(filtered_all) != 10:
+    print(f"{path}: Trigger A filter with project_type=all returned {len(filtered_all)}, expected 10 (assertion i)", file=sys.stderr)
     sys.exit(1)
 
 # (j) per-rule golden mapping — imported from shared module so the same dict is
@@ -4758,24 +4759,26 @@ for rid in cluster_ids:
         print(f"{path}: {rid} body missing Radaro AND/OR POL-ENG-AIDEV-001 anchor (both required) (assertion e)", file=sys.stderr)
         sys.exit(1)
 
-# (f) backend filter returns 13 (R1..R3 + R5..R8 [all] + R9..R14 [backend]).
-# Was 15 before 2026-05-25 retirement of R4 ([all]) and R15 ([all]).
+# (f) backend filter returns 14 (R1..R3 + R5..R8 [all] + R16 [all] + R9..R14 [backend]).
+# Was 15 before 2026-05-25 retirement of R4 ([all]) and R15 ([all]);
+# 14 after R16 (least-code-first-ladder, [all]) added 2026-06-16.
 def trigger_a_filter(rules_list, project_type):
     return [r for r in rules_list if "all" in r["applies_to"] or project_type in r["applies_to"]]
 
 filtered_backend = trigger_a_filter(rules, "backend")
-if len(filtered_backend) != 13:
-    print(f"{path}: backend filter returned {len(filtered_backend)}, expected 13 (assertion f)", file=sys.stderr)
+if len(filtered_backend) != 14:
+    print(f"{path}: backend filter returned {len(filtered_backend)}, expected 14 (assertion f)", file=sys.stderr)
     sys.exit(1)
 
 # (g) smart_contract filter returns the [all]-audience set. Was 8 before any
 # cluster audience flips; 9 after PR-D Step 3 flipped R11 to [all]; 10 after
 # PR-D Step 4 flipped R13 to [all]; 11 after R15 was added by
 # 2026-05-13-cap-banner-and-empirical-verification; back to 9 after
-# 2026-05-25 retirement of R4 and R15.
+# 2026-05-25 retirement of R4 and R15; 10 after R16
+# (least-code-first-ladder, [all]) added 2026-06-16.
 filtered_sc = trigger_a_filter(rules, "smart_contract")
-if len(filtered_sc) != 9:
-    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 9 (assertion g)", file=sys.stderr)
+if len(filtered_sc) != 10:
+    print(f"{path}: smart_contract filter returned {len(filtered_sc)}, expected 10 (assertion g)", file=sys.stderr)
     sys.exit(1)
 
 # (h) Per-rule canonical-pattern presence — Good code block ONLY (block-level
