@@ -67,6 +67,11 @@ rules:
     category: security
     applies_to: [backend]
     enforced_by: [cross-auditor:security]
+  - id: R16
+    short: least-code-first-ladder
+    category: quality
+    applies_to: [all]
+    enforced_by: [none]
 ---
 
 # Code Quality Rules
@@ -808,6 +813,30 @@ def get_order(request, order_id):
     )
     return JsonResponse(serialize(order))
 ```
+
+---
+
+## R16 — Least-code-first ladder
+
+**Rule**: satisfy the approved spec with the least new production code that
+preserves clarity and repo conventions; necessity is judged against the spec,
+not re-litigated.
+
+**Why**: agents over-solve narrow steps with wrappers, abstractions, or deps;
+passing code leaves extra API surface and review context no spec asked for.
+
+**How to apply**:
+
+1. Stop at the first rung that satisfies the approved spec: no new production
+   code; existing repo helper/pattern; stdlib; native platform/framework;
+   existing dependency; minimal new implementation.
+2. Add no speculative abstractions, wrappers, extension points, or deps for
+   expected future work; new deps need current-spec justification.
+3. If a deliberate shortcut creates a real ceiling, comment the ceiling and
+   upgrade trigger.
+4. R16 governs production-code volume only. Test strength/scope stay under
+   R3/R6, never relaxed by least-code.
+5. If deletion is the implementation, apply R1 for dead-code/test cleanup.
 
 ---
 

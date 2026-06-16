@@ -29,6 +29,7 @@ R_RULE_GOLDEN_TABLE = {
     "R12": ("security", ["backend"], ["cross-auditor:security"]),
     "R13": ("security", ["all"],     ["cross-auditor:security"]),  # PR-D Step 4 — was [backend]
     "R14": ("security", ["backend"], ["cross-auditor:security"]),
+    "R16": ("quality",  ["all"],     ["none"]),
 }
 
 # Per-rule expected applies_to list consumed by `check_security_cluster_rules_present`'s
