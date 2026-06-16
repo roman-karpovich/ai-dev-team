@@ -321,3 +321,18 @@ check_pwp_devworkflow_allowlist prompt-text
 check_pwp_codex_sandbox_config prompt-text
 check_pwp_codex_allowlist prompt-text
 check_smoke_helper_pwp_allowlist_scanner_self_test behavioral
+
+# Orchestrator branch-guard (spec 2026-06-16-cross-auditor-worktree-branch-guard):
+#   pins the §3.5d branch-guard prose in SKILL.md across 5 callsites, including
+#   the strict-HEAD (callsites 1-4) vs merge-base --is-ancestor (callsite 5)
+#   split + the step-4c/step-6 banner literals, plus the X1 expected_branch/not-main
+#   gate validated SAME-LINE on the precondition body AND continue-gate body lines
+#   (a title/file-wide grep would false-green a gutted gate via back-references) →
+#   prompt-text.
+check_branch_guard_callsites prompt-text
+
+# Cross-auditor read-only-git contract (spec 2026-06-16-cross-auditor-worktree-branch-guard §3.2):
+#   pins the defense-in-depth constraint in agents/cross-auditor.md scoped to the
+#   PRIMARY working_directory, with the PR-mode gh pr checkout carve-out preserved
+#   (catches a global-checkout-ban regression) → prompt-text.
+check_cross_auditor_read_only_git_contract prompt-text
