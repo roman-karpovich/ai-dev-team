@@ -674,6 +674,49 @@ check_dev_workflow_git_canonical() {
   echo "$path has canonical §Git Workflow (heading + Pre-commit assertion + Post-merge bug flow + body pins)"
 }
 
+# --- Orchestrator branch-guard (spec 2026-06-16-cross-auditor-worktree-branch-guard) ---
+# Pins the §3.5d orchestrator branch-guard prose in skills/feature/SKILL.md. The
+# guard wraps EVERY cross-auditor return in /feature (5 callsites). Strong enough
+# to detect a BROKEN strict/ancestor split — NOT a generic "guard present once"
+# check. A guard that uses merge-base --is-ancestor at callsites 1-4 (instead of
+# strict equality), that drops ancestor-mode at callsite 5, that is anchored at
+# fewer than 5 callsites, or that loses the step-4c / step-6 banner literals MUST
+# fail this pin. $1 = path (real SKILL.md OR negative fixture).
+check_branch_guard_callsites() {
+  local path="$1"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # (1) Guard prose anchored at all FIVE callsites (callsite 1..5).
+  local n
+  for n in 1 2 3 4 5; do
+    grep -qF -- "**branch-guard (callsite ${n}" "$path" \
+      || { echo "$path missing branch-guard callsite-${n} anchor"; return 1; }
+  done
+  # (2) Strict 'HEAD == pre_spawn_head' wording present for callsites 1-4, and
+  #     each of those callsite lines MUST NOT carry the ancestor wording (an
+  #     ancestor-mode-everywhere regression fails here). Per-callsite line extract.
+  local line
+  for n in 1 2 3 4; do
+    line=$(grep -F -- "**branch-guard (callsite ${n}" "$path")
+    printf '%s\n' "$line" | grep -qF -- 'HEAD == pre_spawn_head' \
+      || { echo "$path callsite-${n} missing strict 'HEAD == pre_spawn_head' wording"; return 1; }
+    if printf '%s\n' "$line" | grep -qF -- 'merge-base --is-ancestor'; then
+      echo "$path callsite-${n} wrongly uses 'merge-base --is-ancestor' (callsites 1-4 are strict-equality)"
+      return 1
+    fi
+  done
+  # (3) 'merge-base --is-ancestor' wording present for callsite 5 ONLY.
+  line=$(grep -F -- "**branch-guard (callsite 5" "$path")
+  printf '%s\n' "$line" | grep -qF -- 'merge-base --is-ancestor' \
+    || { echo "$path callsite-5 missing 'merge-base --is-ancestor' wording (diff-audit ancestor-mode)"; return 1; }
+  # (4) The no-auto-reset --hard base-divergence banner literal (step 6) AND the
+  #     HEAD-moved-on-correct-branch hard-stop literal (step 4c).
+  grep -qF -- 'no-auto-reset --hard base-divergence banner' "$path" \
+    || { echo "$path missing step-6 'no-auto-reset --hard base-divergence banner' literal"; return 1; }
+  grep -qF -- 'HEAD-moved-on-correct-branch hard-stop' "$path" \
+    || { echo "$path missing step-4c 'HEAD-moved-on-correct-branch hard-stop' literal"; return 1; }
+  echo "$path branch-guard anchored at 5 callsites; strict HEAD==pre_spawn_head for 1-4; merge-base --is-ancestor for 5 only; step-4c + step-6 banner literals present"
+}
+
 check_feature_skill_git_references_canonical() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }

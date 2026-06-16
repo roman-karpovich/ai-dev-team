@@ -321,3 +321,9 @@ check_pwp_devworkflow_allowlist prompt-text
 check_pwp_codex_sandbox_config prompt-text
 check_pwp_codex_allowlist prompt-text
 check_smoke_helper_pwp_allowlist_scanner_self_test behavioral
+
+# Orchestrator branch-guard (spec 2026-06-16-cross-auditor-worktree-branch-guard):
+#   pins the §3.5d branch-guard prose in SKILL.md across 5 callsites, including
+#   the strict-HEAD (callsites 1-4) vs merge-base --is-ancestor (callsite 5)
+#   split + the step-4c/step-6 banner literals → prompt-text.
+check_branch_guard_callsites prompt-text
