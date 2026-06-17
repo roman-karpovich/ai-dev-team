@@ -3725,7 +3725,7 @@ check_finding_claims_helper_flags_known_wrong_fixture() {
     || { echo "missing X3 LINE-OUT-OF-RANGE diagnostic"; printf '%s\n' "$out"; return 1; }
   printf '%s\n' "$out" | grep -qE '^X4: FILE-MISSING nonexistent/path\.md' \
     || { echo "missing X4 FILE-MISSING diagnostic"; printf '%s\n' "$out"; return 1; }
-  printf '%s\n' "$out" | grep -qE '^X5: OK agents/cross-auditor\.md:113' \
+  printf '%s\n' "$out" | grep -qE '^X5: OK agents/cross-auditor\.md:112' \
     || { echo "missing X5 OK diagnostic (control case — helper must not false-positive)"; printf '%s\n' "$out"; return 1; }
   printf '%s\n' "$out" | grep -qF 'Total: 5 findings, 4 mismatches' \
     || { echo "missing summary line 'Total: 5 findings, 4 mismatches'"; printf '%s\n' "$out"; return 1; }

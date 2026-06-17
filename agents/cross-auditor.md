@@ -5,7 +5,6 @@ description: Runs parallel Claude + Codex audit and consolidates findings. Use p
 model: opus
 effort: xhigh
 background: true
-isolation: worktree
 tools: Read, Grep, Glob, Bash, BashOutput, KillShell
 maxTurns: 50
 ---
@@ -34,7 +33,7 @@ You receive a prompt with:
 - **accepted_ids**: list of finding IDs the user marked ACCEPTED — preserve their status, do not re-report, do not flip to FIXED
 - **iteration**: iteration number (default: 1)
 - **next_finding_id** (spec mode only, optional): integer — the next finding ID to allocate. When provided, start the ID sequence here instead of X1. Used to prevent ID collisions across spec audit rounds when no findings doc exists on disk.
-- **pr_number** (optional): integer. When set, this is a **PR audit** — activate the PR-mode steps in `agents/references/cross-auditor-pr-and-probes.md` (content materialization via `gh pr checkout`, Codex cwd override to the isolated worktree, `pr_files` persistence). Unset → legacy behavior.
+- **pr_number** (optional): integer. When set, this is a **PR audit** — activate the PR-mode steps in `agents/references/cross-auditor-pr-and-probes.md` (content materialization via `gh pr checkout`, Codex cwd override to the skill-materialized PR worktree (via working_directory), `pr_files` persistence). Unset → legacy behavior.
 - **pr_repo** (PR mode, required when `pr_number` is set): `<owner>/<repo>` for all `gh` calls. Do NOT assume caller cwd is a clone of this repo.
 - **pr_url** (PR mode, required when `pr_number` is set): canonical `https://github.com/<owner>/<repo>/pull/<N>` URL; persisted verbatim into findings frontmatter.
 - **pr_head_oid** (PR mode, required when `pr_number` is set): `headRefOid` captured by the skill Phase 0.5 before content materialization. Used to detect force-push between preflight and checkout, and persisted into findings frontmatter so the publish action can detect audit-time-vs-publish-time force-push.
@@ -94,7 +93,7 @@ Only statuses may be updated on existing entries; finding content is append-only
 **Transitions**: `OPEN → FIXED` (human fixes) → `VERIFIED` (re-audit confirms) or `REOPENED` (re-audit rejects fix) → `FIXED` (human re-fixes)
 Also valid: `OPEN|REOPENED → ACCEPTED` (intentional by design) or `OPEN|REOPENED → DEFERRED` (address later)
 
-## Step 0 (PR mode only): Materialize PR content into the isolated worktree
+## Step 0 (PR mode only): Materialize PR content into the skill-materialized PR worktree
 
 See `agents/references/cross-auditor-pr-and-probes.md` for the canonical content. Runs only when `pr_number` is set; covers `gh pr checkout` + `pr_head_oid` force-push detection + `pr_files` build via `${CLAUDE_PLUGIN_ROOT}/hooks/lib/build_pr_files.sh` (canonical YAML shape with `is_submodule` resolved from `git ls-tree` mode `160000` gitlink detection).
 

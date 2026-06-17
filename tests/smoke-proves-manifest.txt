@@ -96,6 +96,7 @@ check_cross_audit_agent_handles_range_spec prompt-text
 check_cross_audit_pr_mode_skill_worktree prompt-text
 check_cross_audit_worktree_flag prompt-text
 check_cross_audit_worktree_cleanup_on_error prompt-text
+check_cross_auditor_no_forced_isolation prompt-text
 
 # AGENTS.md proactive-read and repo-convention pins
 check_feature_skill_step1_reads_repo_conventions prompt-text

@@ -987,6 +987,20 @@ check_cross_audit_worktree_cleanup_on_error() {
   echo "$path: both skill-owned worktree cleanups (\$PR_WT + \$WT) registered, each path-var-tied + distinct from --materialize"
 }
 
+# 10d. In-place default (spec 2026-06-17-cross-auditor-in-place-audit-default §3.4.1). The cross-auditor
+#      no longer declares `isolation: worktree`; the harness must NOT force a worktree, so default audits
+#      run in-place. FRONTMATTER-SCOPED (the leading `---`…`---` block via awk c==1) — the words
+#      "isolation"/"worktree" legitimately appear in BODY prose (PR-mode rewords), so a file-wide grep
+#      would false-fail. Mutant: re-adding `isolation:` to the frontmatter → FAIL; clean tree → PASS.
+check_cross_auditor_no_forced_isolation() {
+  local path='agents/cross-auditor.md'
+  if awk '/^---$/{c++;next} c==1' "$path" | grep -q '^isolation:'; then
+    echo "$path: frontmatter MUST NOT declare an 'isolation:' key (in-place audit is the default; the harness must not force a worktree — §3.4.1)"
+    return 1
+  fi
+  echo "$path: frontmatter has no 'isolation:' key — in-place default preserved"
+}
+
 # 11. publish.md exists + contains all required tokens (including verbatim 403 predicate).
 check_publish_md_tokens() {
   local f='skills/cross-audit/references/publish.md'
@@ -1364,6 +1378,7 @@ check "cross-auditor.md Codex cwd override proximity"                     check_
 check "cross-audit SKILL.md PR-mode skill-owned worktree (\$PR_WT)"        check_cross_audit_pr_mode_skill_worktree
 check "cross-audit SKILL.md --worktree opt-in flag (\$WT)"                 check_cross_audit_worktree_flag
 check "cross-audit SKILL.md worktree cleanup-on-error (\$PR_WT + \$WT)"    check_cross_audit_worktree_cleanup_on_error
+check "cross-auditor.md frontmatter has no forced isolation"              check_cross_auditor_no_forced_isolation
 check "publish.md contains all required tokens"                           check_publish_md_tokens
 check "hooks/docs exempt Phase 3 decision keywords"                       check_hooks_docs_phase3_exemption
 check "cross-audit README.md documents pr mode"                           check_readme_cross_audit_pr
