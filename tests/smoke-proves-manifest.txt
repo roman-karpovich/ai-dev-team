@@ -92,6 +92,11 @@ check_cross_audit_resolve_range_path_filter behavioral
 check_cross_audit_skill_parses_ref_range prompt-text
 check_cross_audit_agent_handles_range_spec prompt-text
 
+# Skill-owned worktree lifecycle (in-place default; PR / --worktree / --materialize triggers)
+check_cross_audit_pr_mode_skill_worktree prompt-text
+check_cross_audit_worktree_flag prompt-text
+check_cross_audit_worktree_cleanup_on_error prompt-text
+
 # AGENTS.md proactive-read and repo-convention pins
 check_feature_skill_step1_reads_repo_conventions prompt-text
 check_feature_skill_step2_forbids_ambiguity prompt-text

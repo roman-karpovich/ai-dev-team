@@ -936,6 +936,57 @@ print("cross-auditor-codex-dispatch.md Codex cwd override proximity OK")
 PY
 }
 
+# 10a-c. Skill-owned worktree lifecycle pins (spec 2026-06-17-cross-auditor-in-place-audit-default
+#   §3.4.2/§3.4.3/§3.4.4). In-place is the default; the skill creates a worktree EXPLICITLY in
+#   exactly three triggers — PR mode ($PR_WT), --worktree flag ($WT), --materialize (/tmp/cross-audit-
+#   <audit_slug>). After this spec `git worktree add` occurs 4× and `working_directory:` ≥2× in
+#   SKILL.md, so a naive two-grep impl false-greens on the --materialize / sibling lines even if the
+#   pinned lifecycle's clause is deleted. These pins are therefore PATH-VAR-TIED: each keys on the
+#   exact `"$PR_WT"` / `"$WT"` literal (genuinely distinct — `"$WT"` is NOT a substring of `"$PR_WT"`
+#   under grep -F, and neither matches the /tmp/cross-audit-<audit_slug> --materialize path), so
+#   deleting the pinned clause FAILs WITH the --materialize text AND the sibling lifecycle intact.
+
+# 10a. PR-mode skill-owned worktree: the PR dispatch MUST materialize a worktree tied to $PR_WT
+#      (git worktree add --detach "$PR_WT" HEAD) AND pass working_directory: $PR_WT at it. Path-var-
+#      tied to $PR_WT — distinct from the --materialize /tmp path AND the --worktree $WT path (X5).
+check_cross_audit_pr_mode_skill_worktree() {
+  local path='skills/cross-audit/SKILL.md'
+  grep -qF 'git worktree add --detach "$PR_WT" HEAD' "$path" \
+    || { echo "$path: PR-mode skill worktree missing 'git worktree add --detach \"\$PR_WT\" HEAD' (the \$PR_WT-tied create — NOT the --materialize /tmp path, NOT the --worktree \$WT path)"; return 1; }
+  grep -qF 'working_directory: $PR_WT' "$path" \
+    || { echo "$path: PR-mode dispatch does not pass 'working_directory: \$PR_WT' at the materialized PR worktree"; return 1; }
+  echo "$path: PR-mode skill-owned worktree create (\$PR_WT) + working_directory:\$PR_WT present, path-var-tied"
+}
+
+# 10b. --worktree opt-in flag: §Argument Parsing Flags list MUST document `--worktree` AND map it to a
+#      $WT-tied skill-owned materialization (git worktree add --detach "$WT" HEAD) + working_directory: $WT.
+#      Path-var-tied to $WT — distinct from the --materialize /tmp path AND the PR-mode $PR_WT path (X5).
+check_cross_audit_worktree_flag() {
+  local path='skills/cross-audit/SKILL.md'
+  # The --worktree flag is documented as a bullet in the §Argument Parsing Flags list.
+  grep -qF '`--worktree` →' "$path" \
+    || { echo "$path: §Argument Parsing Flags list missing the '\`--worktree\` →' flag bullet"; return 1; }
+  grep -qF 'git worktree add --detach "$WT" HEAD' "$path" \
+    || { echo "$path: --worktree flag missing 'git worktree add --detach \"\$WT\" HEAD' (the \$WT-tied create — NOT the --materialize /tmp path, NOT the PR-mode \$PR_WT path)"; return 1; }
+  grep -qF 'working_directory: $WT' "$path" \
+    || { echo "$path: --worktree flag does not pass 'working_directory: \$WT' at the materialized worktree"; return 1; }
+  echo "$path: --worktree flag documented + \$WT-tied skill worktree create + working_directory:\$WT present, path-var-tied"
+}
+
+# 10c. Cleanup-on-error (leak regression, two-clause). `git worktree remove --force` ALREADY exists in
+#      the pre-existing --materialize text (/tmp/cross-audit-<audit_slug>), so a file-wide grep false-
+#      greens even if BOTH new cleanups are dropped. This pin requires a `git worktree remove --force`
+#      cleanup tied to (a) the PR-mode path var $PR_WT AND (b) the --worktree path var $WT — each its
+#      own clause, each distinct from the --materialize /tmp cleanup (X1, two-clause).
+check_cross_audit_worktree_cleanup_on_error() {
+  local path='skills/cross-audit/SKILL.md'
+  grep -qF 'git worktree remove --force "$PR_WT"' "$path" \
+    || { echo "$path: PR-mode lifecycle missing 'git worktree remove --force \"\$PR_WT\"' cleanup (leak — NOT the pre-existing --materialize /tmp cleanup)"; return 1; }
+  grep -qF 'git worktree remove --force "$WT"' "$path" \
+    || { echo "$path: --worktree lifecycle missing 'git worktree remove --force \"\$WT\"' cleanup (leak — NOT the pre-existing --materialize /tmp cleanup)"; return 1; }
+  echo "$path: both skill-owned worktree cleanups (\$PR_WT + \$WT) registered, each path-var-tied + distinct from --materialize"
+}
+
 # 11. publish.md exists + contains all required tokens (including verbatim 403 predicate).
 check_publish_md_tokens() {
   local f='skills/cross-audit/references/publish.md'
@@ -1310,6 +1361,9 @@ check "cross-audit SKILL.md documents standalone publish"                 check_
 check "cross-auditor.md input/output YAML block has all 5 pr_files keys"  check_cross_auditor_pr_yaml_block
 check "cross-auditor.md uses gh pr checkout"                              check_cross_auditor_gh_pr_checkout
 check "cross-auditor.md Codex cwd override proximity"                     check_cross_auditor_codex_cwd_proximity
+check "cross-audit SKILL.md PR-mode skill-owned worktree (\$PR_WT)"        check_cross_audit_pr_mode_skill_worktree
+check "cross-audit SKILL.md --worktree opt-in flag (\$WT)"                 check_cross_audit_worktree_flag
+check "cross-audit SKILL.md worktree cleanup-on-error (\$PR_WT + \$WT)"    check_cross_audit_worktree_cleanup_on_error
 check "publish.md contains all required tokens"                           check_publish_md_tokens
 check "hooks/docs exempt Phase 3 decision keywords"                       check_hooks_docs_phase3_exemption
 check "cross-audit README.md documents pr mode"                           check_readme_cross_audit_pr
@@ -2643,8 +2697,8 @@ check_multi_gh_account_absent() {
     || { echo "absence #7c FAIL: ### Resolve pr_number subsection missing from skills/cross-audit/SKILL.md"; return 1; }
   grep -qF '### Fetch pr_changed_files (authoritative, paginated)' skills/cross-audit/SKILL.md \
     || { echo "absence #7d FAIL: ### Fetch pr_changed_files subsection missing from skills/cross-audit/SKILL.md"; return 1; }
-  grep -qF 'gh pr checkout <pr_number> --force --repo <pr_repo>' agents/references/cross-auditor-pr-and-probes.md \
-    || { echo "absence #7e FAIL: bare gh pr checkout form missing from agents/references/cross-auditor-pr-and-probes.md"; return 1; }
+  grep -qF 'gh pr checkout <pr_number> --detach --force --repo <pr_repo>' agents/references/cross-auditor-pr-and-probes.md \
+    || { echo "absence #7e FAIL: --detach --force gh pr checkout form missing from agents/references/cross-auditor-pr-and-probes.md"; return 1; }
   grep -qF 'gh pr view <N> --repo <pr_repo> --json headRefOid' skills/cross-audit/references/publish.md \
     || { echo "absence #7f FAIL: force-push gh pr view missing from publish.md"; return 1; }
   grep -qF 'gh api --include --repo <pr_repo>' skills/cross-audit/references/publish.md \

@@ -6,15 +6,15 @@ This file holds the canonical content for the `## Step 0 (PR mode only): Materia
 
 Runs only when `pr_number` is set. Skip entirely otherwise.
 
-The caller's cwd is **not** a safe source of audit content — it may be on a different branch, have uncommitted work, or (for fork PRs) lack the fork head commits entirely. All PR audit content lives in this agent's isolated worktree.
+The caller's cwd is **not** a safe source of audit content — it may be on a different branch, have uncommitted work, or (for fork PRs) lack the fork head commits entirely. All PR audit content lives in the PR worktree provided via `working_directory` (skill-materialized).
 
-1. Inside the isolated worktree, before any file read, run `gh pr checkout`:
+1. Inside the PR worktree provided via `working_directory` (skill-materialized), before any file read, run `gh pr checkout`:
 
    ```
-   gh pr checkout <pr_number> --force --repo <pr_repo>
+   gh pr checkout <pr_number> --detach --force --repo <pr_repo>
    ```
 
-   `--force` lets the checkout proceed over local state; `--repo <pr_repo>` makes `gh` fetch the fork remote automatically for fork PRs. The worktree HEAD is now the PR head commit.
+   `--detach` checks out the PR head commit without touching any branch ref (branch refs are shared across all worktrees of one repo, so a non-detached checkout could force-reset a branch the primary worktree holds); `--force` lets the checkout proceed over local state; `--repo <pr_repo>` makes `gh` fetch the fork remote automatically for fork PRs. The worktree HEAD is now the PR head commit (detached).
 2. Verify the checkout landed on the expected commit:
    ```
    test "$(git rev-parse HEAD)" = "<pr_head_oid>"
@@ -46,7 +46,7 @@ The caller's cwd is **not** a safe source of audit content — it may be on a di
 
 ## Step 0.5: Probe dispatch (runs inside materialized worktree)
 
-Per spec 2026-04-21-probe-e-diff-scope-leak §3.5 (X2 resolution — dispatch pivoted from skill Phase 1.5 into this agent so probes read the Step-0-materialized PR worktree, not the caller's cwd). For spec/code mode (no PR), Step 0 is a no-op and Step 0.5 runs against the caller's cwd.
+Per spec 2026-04-21-probe-e-diff-scope-leak §3.5 (X2 resolution — dispatch pivoted from skill Phase 1.5 into this agent so probes read the Step-0-materialized PR worktree, not the caller's cwd). For spec/code mode (no PR), Step 0 is a no-op and Step 0.5 runs against `working_directory` (the content root — caller cwd in-place, or the materialized worktree for `--materialize`/`--worktree`).
 
 Runs after Step 0 (PR materialization, if PR mode) and BEFORE Step 1 (Codex launch). Produces three in-memory outputs consumed later in `agents/references/cross-auditor-step-3-pipeline.md` §Step 3 Consolidation:
 
