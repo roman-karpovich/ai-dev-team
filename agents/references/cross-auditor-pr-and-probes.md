@@ -1,8 +1,8 @@
 # Cross-auditor: Step 0 (PR mode only) + Step 0.5 — Probe dispatch
 
-This file holds the canonical content for the `## Step 0 (PR mode only): Materialize PR content into the isolated worktree` and `## Step 0.5: Probe dispatch (runs inside materialized worktree)` sections of `agents/cross-auditor.md`. The hub keeps a one-line pointer per spec 2026-05-10-cross-auditor-bloat-refactor §3.5; the body below was moved verbatim from the hub during Step 6 of that refactor, with three internal directional references rewritten per §3.5a + the Step 4 design decision sweep deliverable (each `Step 3 Consolidation` / `Step 3 stage 4.5` mention now points at the canonical reference file `agents/references/cross-auditor-step-3-pipeline.md`).
+This file holds the canonical content for the `## Step 0 (PR mode only): Materialize PR content into the skill-materialized PR worktree` and `## Step 0.5: Probe dispatch (runs inside materialized worktree)` sections of `agents/cross-auditor.md`. The hub keeps a one-line pointer per spec 2026-05-10-cross-auditor-bloat-refactor §3.5; the body below was moved verbatim from the hub during Step 6 of that refactor, with three internal directional references rewritten per §3.5a + the Step 4 design decision sweep deliverable (each `Step 3 Consolidation` / `Step 3 stage 4.5` mention now points at the canonical reference file `agents/references/cross-auditor-step-3-pipeline.md`).
 
-## Step 0 (PR mode only): Materialize PR content into the isolated worktree
+## Step 0 (PR mode only): Materialize PR content into the skill-materialized PR worktree
 
 Runs only when `pr_number` is set. Skip entirely otherwise.
 

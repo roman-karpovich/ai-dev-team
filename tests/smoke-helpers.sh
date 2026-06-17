@@ -827,7 +827,7 @@ check_branch_guard_callsites() {
 # treats the caller's PRIMARY working_directory as read-only for git state. Strong
 # enough to catch a global-checkout-ban regression: the constraint MUST stay scoped
 # to the primary working_directory AND preserve the PR-mode `gh pr checkout` carve-out
-# (which runs in the agent's OWN isolated worktree). A wording regression to a blanket
+# (which runs in the skill-materialized PR worktree (via working_directory)). A wording regression to a blanket
 # "no checkout anywhere" — which would break PR mode — MUST fail this pin. $1 = path
 # (real cross-auditor.md OR negative fixture).
 check_cross_auditor_read_only_git_contract() {

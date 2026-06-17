@@ -975,16 +975,20 @@ check_cross_audit_worktree_flag() {
 
 # 10c. Cleanup-on-error (leak regression, two-clause). `git worktree remove --force` ALREADY exists in
 #      the pre-existing --materialize text (/tmp/cross-audit-<audit_slug>), so a file-wide grep false-
-#      greens even if BOTH new cleanups are dropped. This pin requires a `git worktree remove --force`
-#      cleanup tied to (a) the PR-mode path var $PR_WT AND (b) the --worktree path var $WT — each its
-#      own clause, each distinct from the --materialize /tmp cleanup (X1, two-clause).
+#      greens even if BOTH new cleanups are dropped. ALSO: asserting the bare command alone would let a
+#      success-only-cleanup regression (drop "on completion OR error" → error-path leak) pass — the very
+#      thing this pin is named to guard. So each clause keys on the CONTIGUOUS literal binding the
+#      on-completion-OR-error TRIGGER to the command: (a) the PR-mode path var $PR_WT AND (b) the
+#      --worktree path var $WT — each its own clause, each distinct from the --materialize /tmp cleanup
+#      (X1, two-clause). The substring matches both SKILL.md:129 ("Register …", capital R after the list
+#      dash) and :41 ("register …", lowercase mid-sentence) since the literal starts at "cleanup".
 check_cross_audit_worktree_cleanup_on_error() {
   local path='skills/cross-audit/SKILL.md'
-  grep -qF 'git worktree remove --force "$PR_WT"' "$path" \
-    || { echo "$path: PR-mode lifecycle missing 'git worktree remove --force \"\$PR_WT\"' cleanup (leak — NOT the pre-existing --materialize /tmp cleanup)"; return 1; }
-  grep -qF 'git worktree remove --force "$WT"' "$path" \
-    || { echo "$path: --worktree lifecycle missing 'git worktree remove --force \"\$WT\"' cleanup (leak — NOT the pre-existing --materialize /tmp cleanup)"; return 1; }
-  echo "$path: both skill-owned worktree cleanups (\$PR_WT + \$WT) registered, each path-var-tied + distinct from --materialize"
+  grep -qF 'cleanup on completion OR error: `git worktree remove --force "$PR_WT"`' "$path" \
+    || { echo "$path: PR-mode lifecycle missing the on-error-triggered 'cleanup on completion OR error: \`git worktree remove --force \"\$PR_WT\"\`' (a success-only cleanup leaks on the error path — NOT the pre-existing --materialize /tmp cleanup)"; return 1; }
+  grep -qF 'cleanup on completion OR error: `git worktree remove --force "$WT"`' "$path" \
+    || { echo "$path: --worktree lifecycle missing the on-error-triggered 'cleanup on completion OR error: \`git worktree remove --force \"\$WT\"\`' (a success-only cleanup leaks on the error path — NOT the pre-existing --materialize /tmp cleanup)"; return 1; }
+  echo "$path: both skill-owned worktree cleanups (\$PR_WT + \$WT) registered with the on-completion-OR-error trigger, each path-var-tied + distinct from --materialize"
 }
 
 # 10d. In-place default (spec 2026-06-17-cross-auditor-in-place-audit-default §3.4.1). The cross-auditor
