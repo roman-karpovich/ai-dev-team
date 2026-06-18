@@ -38,6 +38,7 @@ Caveman compression is mandatory in this flow. The wire prefix `[COMPRESSION:ter
 - `--force-publish-stale` → (publish only) bypasses the force-push preflight when the current PR `headRefOid` has diverged from the audit-time `pr_head_oid`. Records the stale OID in `head_oid_at_publish` for audit trail. See `references/publish.md`.
 - `--republish <ids>` → (publish only) forces re-posting IDs already present in a `published_to` record for the same PR URL. Adds a new record.
 - `--materialize=worktree` → (ref-range mode only) create a temporary worktree at `refB` (`git worktree add /tmp/cross-audit-<audit_slug> <refB>`) so the cross-auditor reads file content from `refB` rather than the current working tree. Cleanup: `git worktree remove --force` + `rm -rf` at audit end (best-effort). Default off (no materialization). Anti-combinations: PR mode + `--materialize` → hard-stop ("PR mode already materializes via `gh pr checkout`; `--materialize` is for ref-range only"); non-ref-range scope + `--materialize` → warn ("`--materialize` is a no-op outside ref-range mode") and proceed.
+- `--worktree` → (any mode: default / `--diff` / `--mode *` / ref-range) snapshot-isolate the current tree into a skill-owned worktree so the user can keep editing while the audit runs. Mechanics: `WT=$(mktemp -d) && git worktree add --detach "$WT" HEAD` (snapshot of **committed HEAD**; `mktemp -d` not a slug-derived path so it never collides on repeat same-day runs), pass `working_directory: $WT` to the cross-auditor, register cleanup on completion OR error: `git worktree remove --force "$WT"` then `rm -rf "$WT"` (best-effort — failure logged, not fatal). This reuses the same skill-owned worktree lifecycle as PR mode (`$PR_WT`) and `--materialize` (`/tmp/cross-audit-<audit_slug>`) — one mechanism, three triggers. **Snapshot semantics**: `--worktree` audits the **committed HEAD** state; uncommitted / working-tree changes in the primary are NOT carried into the worktree (`git worktree add` checks out a committed ref). To audit uncommitted work, either commit first, or run in-place (default) and accept live-file reads. **Requires a git repo**: if the caller cwd is not inside a git repo, hard-stop with remediation "`--worktree` needs a git repo; omit it to run in-place" — do NOT silently fall back (the user explicitly asked for isolation). Anti-combinations: `--worktree` + `--materialize=worktree` → `--materialize` wins (it also selects ref `refB`); emit one warning `--worktree is redundant with --materialize; using --materialize (refB)` and proceed; `--worktree` + PR mode → redundant no-op (PR mode already materializes a worktree); emit one warning `--worktree is redundant in PR mode (already worktree-isolated)` and proceed.
 
 **Removed-flag hard-fail** (per `docs/cut-spec-policy.md`). If `$ARGUMENTS` contains either of the flags below, hard-stop with the corresponding canonical error message — do NOT attempt to interpret the argument or silently drop it:
 
@@ -77,7 +78,7 @@ Runs only when `$ARGUMENTS` selected the `pr <N>` / `pr owner/repo#<N>` / `pr <u
 
 1. **`gh` authentication**: `gh auth status`. Absent or unauthenticated → stop with remediation `gh auth login` / `gh auth refresh -s repo`. Never pretend the audit ran.
 2. **REST rate budget**: `gh api rate_limit -q '.rate.remaining'`. If `remaining < 50`, stop with the output of `gh api rate_limit` (reset time included). Audit + publish together consume ≈3-5 REST calls.
-3. **cwd-repo matches pr_repo**: once `pr_repo` is resolved (see below), run `gh repo view --json nameWithOwner -q '.nameWithOwner'` inside the caller's cwd. If that value ≠ `pr_repo`, stop with remediation "Run `/cross-audit pr <N>` from a clone of `<pr_repo>` (currently in `<cwd_repo>`)". Rationale: the cross-auditor's isolated worktree is derived from caller's cwd; `gh pr checkout` only succeeds when the local repo targets `pr_repo`.
+3. **cwd-repo matches pr_repo**: once `pr_repo` is resolved (see below), run `gh repo view --json nameWithOwner -q '.nameWithOwner'` inside the caller's cwd. If that value ≠ `pr_repo`, stop with remediation "Run `/cross-audit pr <N>` from a clone of `<pr_repo>` (currently in `<cwd_repo>`)". Rationale: the skill materializes the PR worktree from the caller's cwd via `git worktree add`; `gh pr checkout` only succeeds when the local repo targets `pr_repo`.
 
 ### Resolve pr_number / pr_repo / pr_url / headRefOid
 
@@ -119,6 +120,16 @@ In addition to the fields documented in Phase 1-2 below, thread:
 
 The cross-auditor persists all five into findings frontmatter (plus a `pr_files` list with per-file `is_submodule` resolved inside the worktree). Publish reads those fields back from KB — it never re-runs Phase 0.5 itself.
 
+### PR-mode worktree materialization (skill-owned — replaces harness isolation)
+
+PR mode is **mandatory worktree-isolated** (not user-disableable): `gh pr checkout --force` is destructive, so an in-place PR audit would clobber the caller's checkout. The skill materializes a dedicated worktree from the caller's repo (preflight 3 above already guarantees it is a clone of `pr_repo`) and threads it as `working_directory`, mirroring the `--materialize=worktree` lifecycle. BEFORE spawning the cross-auditor in Phase 1-2:
+
+- `PR_WT=$(mktemp -d) && git worktree add --detach "$PR_WT" HEAD` — use `mktemp -d` for the path, NOT `/tmp/cross-audit-<audit_slug>-pr`: PR mode skips legacy scope parsing so `audit_slug` is undefined at PR dispatch, and a fixed slug-derived path would collide on same-day repeat PR audits / stale leftovers. The `--detach` keeps HEAD off any branch ref (branch refs are shared across all worktrees of one repo, so a non-detached checkout could force-reset a branch the primary worktree holds).
+- Pass `working_directory: $PR_WT` to the cross-auditor (the agent's Step 0 then runs `gh pr checkout <pr_number> --detach --force --repo <pr_repo>` inside it).
+- Register cleanup on completion OR error: `git worktree remove --force "$PR_WT"` then `rm -rf "$PR_WT"` (best-effort — failure logged, not fatal), identical to the `--materialize` cleanup contract.
+
+`--worktree` + PR mode is a redundant no-op (PR mode already materializes a worktree) — emit the warning documented in §Argument Parsing Flags and proceed without a second worktree.
+
 ---
 
 ## Phase 1-2: Background Audit + Consolidation
@@ -142,6 +153,8 @@ From `$ARGUMENTS` derive:
 - **audit_slug**: `YYYY-MM-DD-<scope-slug>` (new audit) or extracted from the existing findings filename (re-audit — see Phase 0). For ref-range mode: `YYYY-MM-DD-range-<sanitized-refA>__<sanitized-refB>` where sanitization replaces `[^a-zA-Z0-9._-]` with `-` and caps each half at 60 chars (produced by `cross_audit_resolve_range.sh`'s `slug_pair` output).
 
 ### Step 2: Launch cross-auditor agent in background
+
+**Standalone in-place warning (A2 — emit BEFORE dispatch).** When standalone `/cross-audit` runs in-place — the caller cwd IS a git repo AND no worktree mode is active (NOT PR mode, NOT `--materialize=worktree`, NOT `--worktree`) — emit one loud line before the dispatch: `⚠️ In-place audit: running in the primary checkout. The §3.2 read-only-git contract is the only safeguard — there is NO automatic branch restore on this path. Use /feature's flow, or commit first / pass --worktree, if you want the guard.` This standalone path has no §3.5d orchestrator branch-guard; the contract is the front-line defense. Omit the line entirely when a worktree mode is active (the worktree is the physical barrier) or when cwd is not a git repo.
 
 ```
 Cross-audit the following scope.

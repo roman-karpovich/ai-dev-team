@@ -5,7 +5,6 @@ description: Runs parallel Claude + Codex audit and consolidates findings. Use p
 model: opus
 effort: xhigh
 background: true
-isolation: worktree
 tools: Read, Grep, Glob, Bash, BashOutput, KillShell
 maxTurns: 50
 ---
@@ -27,14 +26,14 @@ You receive a prompt with:
 - **kb_path**: absolute path to the Knowledge Base root (Obsidian vault)
 - **project**: project name used for KB path construction (e.g. `stellar-arbiter`)
 - **audit_slug**: slug for naming the output documents (e.g. `2026-04-14-mta-refactor`)
-- **working_directory**: absolute path Codex should use as its cwd (required — typically the caller's cwd). If omitted, fall back to process cwd and log a warning to the workdoc header.
+- **working_directory**: absolute path Codex should use as its cwd, AND your own content root for reads (required). It is the **content root**: the caller's primary checkout when auditing in-place (default), or a skill-materialized worktree in PR mode / `--materialize` / `--worktree`. All scope reads (Read/grep AND the Step 1 `git diff` invocations) happen relative to `working_directory`, NOT the agent's spawn cwd — in PR/materialized mode the two differ, and the audit content lives at `working_directory`. Disambiguation: the caller's **primary checkout** is the thing the §3.2 read-only-git contract protects (leave its HEAD/branch untouched); the audit **`working_directory`** (content root) may be that same primary checkout (in-place) or a distinct skill-materialized worktree. If omitted, fall back to process cwd and log a warning to the workdoc header.
 - **base_branch**: branch to diff against (optional, for change-based audits)
 - **range_spec** (optional): formatted git diff range, e.g. `v1.7.0...v2.0.2` or `v1.7.0..v2.0.2 -- subdir/`. When set, drives the diff command directly; takes precedence over `base_branch...HEAD`. Mutually exclusive with PR mode (`pr_number` set).
 - **previously_fixed**: list of finding IDs that were FIXED in prior iterations — skip re-reporting these (do NOT include ACCEPTED or DEFERRED items here)
 - **accepted_ids**: list of finding IDs the user marked ACCEPTED — preserve their status, do not re-report, do not flip to FIXED
 - **iteration**: iteration number (default: 1)
 - **next_finding_id** (spec mode only, optional): integer — the next finding ID to allocate. When provided, start the ID sequence here instead of X1. Used to prevent ID collisions across spec audit rounds when no findings doc exists on disk.
-- **pr_number** (optional): integer. When set, this is a **PR audit** — activate the PR-mode steps in `agents/references/cross-auditor-pr-and-probes.md` (content materialization via `gh pr checkout`, Codex cwd override to the isolated worktree, `pr_files` persistence). Unset → legacy behavior.
+- **pr_number** (optional): integer. When set, this is a **PR audit** — activate the PR-mode steps in `agents/references/cross-auditor-pr-and-probes.md` (content materialization via `gh pr checkout`, Codex cwd override to the skill-materialized PR worktree (via working_directory), `pr_files` persistence). Unset → legacy behavior.
 - **pr_repo** (PR mode, required when `pr_number` is set): `<owner>/<repo>` for all `gh` calls. Do NOT assume caller cwd is a clone of this repo.
 - **pr_url** (PR mode, required when `pr_number` is set): canonical `https://github.com/<owner>/<repo>/pull/<N>` URL; persisted verbatim into findings frontmatter.
 - **pr_head_oid** (PR mode, required when `pr_number` is set): `headRefOid` captured by the skill Phase 0.5 before content materialization. Used to detect force-push between preflight and checkout, and persisted into findings frontmatter so the publish action can detect audit-time-vs-publish-time force-push.
@@ -94,7 +93,7 @@ Only statuses may be updated on existing entries; finding content is append-only
 **Transitions**: `OPEN → FIXED` (human fixes) → `VERIFIED` (re-audit confirms) or `REOPENED` (re-audit rejects fix) → `FIXED` (human re-fixes)
 Also valid: `OPEN|REOPENED → ACCEPTED` (intentional by design) or `OPEN|REOPENED → DEFERRED` (address later)
 
-## Step 0 (PR mode only): Materialize PR content into the isolated worktree
+## Step 0 (PR mode only): Materialize PR content into the skill-materialized PR worktree
 
 See `agents/references/cross-auditor-pr-and-probes.md` for the canonical content. Runs only when `pr_number` is set; covers `gh pr checkout` + `pr_head_oid` force-push detection + `pr_files` build via `${CLAUDE_PLUGIN_ROOT}/hooks/lib/build_pr_files.sh` (canonical YAML shape with `is_submodule` resolved from `git ls-tree` mode `160000` gitlink detection).
 
@@ -154,4 +153,4 @@ See `agents/references/cross-auditor-output-format.md` for the canonical content
 - Do NOT filter out `previously_fixed` items before consolidation — they are verified in Step 4. Skip items from `accepted_ids` (ACCEPTED/DEFERRED — don't re-report these as new findings).
 - workdoc-iter<N>.md is a NEW file per iteration — never overwrite a previous iter workdoc. Each iteration produces a new file (e.g. `<slug>-workdoc-iter2.md`, `<slug>-workdoc-iter3.md`).
 - findings.md is append-only for new findings; only statuses of existing entries are updated.
-- **Treat the caller's primary `working_directory` as read-only for git state.** Reading is `git diff` / `git show` / `git log` only; do NOT run `git checkout`, `git switch`, `git reset`, `git branch -f`, or any other branch-mutating git command in the primary `working_directory`, and do NO "restore to main" cleanup of the primary checkout — leave its HEAD and branch exactly as the orchestrator left them. (This bans branch-mutating git in the **primary** `working_directory` only; it does NOT forbid the documented PR-mode Step 0 `gh pr checkout <pr> --force`, which runs inside this agent's OWN isolated worktree, never the primary checkout — see `agents/references/cross-auditor-pr-and-probes.md`.)
+- **Treat the caller's primary `working_directory` as read-only for git state.** Reading is `git diff` / `git show` / `git log` only; do NOT run `git checkout`, `git switch`, `git reset`, `git branch -f`, or any other branch-mutating git command in the primary `working_directory`, and do NO "restore to main" cleanup of the primary checkout — leave its HEAD and branch exactly as the orchestrator left them. (This bans branch-mutating git in the **primary** `working_directory` only; it does NOT forbid the documented PR-mode Step 0 `gh pr checkout <pr> --detach --force`, which runs inside the skill-materialized PR worktree (passed via `working_directory`), never the primary checkout — see `agents/references/cross-auditor-pr-and-probes.md`.)
