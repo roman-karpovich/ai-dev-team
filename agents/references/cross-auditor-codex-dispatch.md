@@ -16,12 +16,12 @@ Codex audits run via the `${CLAUDE_PLUGIN_ROOT}/hooks/lib/codex_audit_dispatch.s
 
 **IMPORTANT**: Launch Codex FIRST in the background so both audits run in parallel.
 
-**Step 1a — Build the prompt text** using the appropriate template below (substitute all `[placeholders]`). For diff mode, first run `git diff --name-only <range_spec>` (or `<base_branch>...HEAD`) and include the resulting file list.
+**Step 1a — Build the prompt text** using the appropriate template below (substitute all `[placeholders]`). For diff mode, first run `git diff --name-only <range_spec>` (or `<base_branch>...HEAD`) in `working_directory` (the content root — caller cwd in-place, or the skill-materialized worktree for PR/`--materialize`/`--worktree`), NOT the agent's spawn cwd, and include the resulting file list.
 
 **Step 1b — Write prompt to a temp file and launch Codex in background**:
 1. Write the prompt text to a temp file via `Bash`: `PROMPT_FILE=$(mktemp) && cat > "$PROMPT_FILE" << 'CODEX_PROMPT_EOF' ... CODEX_PROMPT_EOF`
 2. Set `CODEX_MODEL` (from `codex_model` input if provided, else `gpt-5.5`) and `CODEX_EFFORT` (from `codex_reasoning_effort` if provided, else `xhigh`).
-3. In **PR mode** (`pr_number` set), use the absolute path of this agent's isolated worktree post-`gh pr checkout` as `CODEX_WD`. In non-PR mode, use `working_directory`.
+3. In **PR mode** (`pr_number` set), `working_directory` IS the skill-materialized PR worktree (post-`gh pr checkout`); use it as `CODEX_WD`. In non-PR mode, also use `working_directory`.
 4. Set `OUTPUT_FILE` to a temp path: `OUTPUT_FILE=$(mktemp)`.
 5. Launch via `Bash(run_in_background: true)`: `bash "${CLAUDE_PLUGIN_ROOT}/hooks/lib/codex_audit_dispatch.sh" "$CODEX_WD" "$OUTPUT_FILE" "$CODEX_MODEL" "$CODEX_EFFORT" < "$PROMPT_FILE"`
 6. Save the returned `shell_id` as `shell_id_codex`.
@@ -73,7 +73,7 @@ Before reporting any finding, verify the file:line claim by re-reading the actua
 ```
 
 For **diff mode**: scope the audit to changed files only.
-When `range_spec` is set, run `git diff --name-only <range_spec>` (single shell-quoted string; may include `-- <path>` suffix). Otherwise when `base_branch` is set, run `git diff --name-only <base_branch>...HEAD` (legacy behavior).
+When `range_spec` is set, run `git diff --name-only <range_spec>` (single shell-quoted string; may include `-- <path>` suffix) in `working_directory` (the content root — caller cwd in-place, or the skill-materialized worktree for PR/`--materialize`/`--worktree`), NOT the agent's spawn cwd. Otherwise when `base_branch` is set, run `git diff --name-only <base_branch>...HEAD` in `working_directory` (legacy behavior).
 Include the resulting file list as "Files to audit" in the prompt template above before writing the prompt to `$PROMPT_FILE`.
 
 **Step 1 result at Step 3**: at the start of Step 3 Consolidation, poll `BashOutput(shell_id_codex)` until status is `completed`, `failed`, or `killed`. On `completed`: read `$OUTPUT_FILE` for Codex's final response. **If `codex_audit_dispatch.sh exits non-zero` (BashOutput status `failed` or non-zero exit code from polling)**: capture the stderr output, call `KillShell(shell_id_codex)`, mark Codex status FAILED in the workdoc header, proceed with Claude-only audit. Prepend to the consolidated findings: `⚠️ WARNING: Codex audit unavailable (<error reason>). All findings are single-source (Claude only). Re-run when Codex CLI dispatch is restored.`

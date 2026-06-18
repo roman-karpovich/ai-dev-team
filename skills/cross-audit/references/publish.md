@@ -8,7 +8,7 @@ Publish is orthogonal to the status state machine — it does NOT flip OPEN→FI
 
 ## 1. Runtime context (preamble)
 
-- **cwd**: publish runs in the caller's cwd. The cross-auditor's isolated worktree is typically gone by publish time — do NOT assume it exists, and do NOT `git ls-tree` or otherwise read the worktree. Caller cwd is not assumed to be a clone of `pr_repo`.
+- **cwd**: publish runs in the caller's cwd. The cross-auditor's skill-materialized PR worktree is typically gone by publish time — do NOT assume it exists, and do NOT `git ls-tree` or otherwise read the worktree. Caller cwd is not assumed to be a clone of `pr_repo`.
 - **KB reads only**: all routing metadata (`pr_files`, `pr_head_oid`, `pr_url`, `pr_repo`) comes from the findings doc frontmatter resolved from `audit_slug`. Publish reads findings content + `pr_files` from KB; that is the single source of truth.
 - **All gh api calls pass --repo <pr_repo> AND --include**: `--repo` decouples the call from cwd; `--include` captures the HTTP status line + response headers so the failure matrix (below) can deterministically branch on status + `X-RateLimit-Remaining`. A plain `gh api` without `--include` cannot distinguish the rate-limit and permission-denied 403 cases.
 - **Response parser**: `--include` output is `HTTP/<ver> <code>\n<header lines>\n\n<json body>`. Parse:

@@ -21,7 +21,7 @@ expected_helper_output: |
   X2 MISMATCH skills/feature/SKILL.md:42 (cap banner literal at L561, L42 is frontmatter terminator)
   X3 LINE-OUT-OF-RANGE agents/cross-auditor.md:9999 (file has 146 lines)
   X4 FILE-MISSING nonexistent/path.md (path does not exist)
-  X5 OK agents/cross-auditor.md:113 (Step 2 H2 actually at L113 — control case)
+  X5 OK agents/cross-auditor.md:112 (Step 2 H2 actually at L112 — control case)
   Total: 5 findings, 4 mismatches; exit 1.
 ---
 
@@ -84,7 +84,7 @@ expected_helper_output: |
 ### [X5] Control — claim should verify OK
 - **Severity**: HIGH
 - **Found by**: Only Claude
-- **File**: agents/cross-auditor.md:113
+- **File**: agents/cross-auditor.md:112
 - **Description**: The Step 2 H2 sits at this line — literal `## Step 2: Claude Audit (you)` expected and present.
 - **Fix**: None — control case for OK path; helper must NOT flag this one.
 - **Sources**: [claude]
