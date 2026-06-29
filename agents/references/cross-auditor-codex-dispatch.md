@@ -66,6 +66,7 @@ Mode: spec
 Read the spec file at: [spec_path]
 [If workdoc_path provided]: Also read the execution workdoc at: [workdoc_path]
   Review it for: completeness of planned fields, coherence with the spec, and sound step sequencing.
+[If the spec carries grill_status: ran and a ## Decisions table]: consume the ## Decisions table as a backstop input. For each row, verify the evidence-ref citation RESOLVES — the cited path/line/literal actually exists (NOT semantic adequacy of the evidence, which stays the user's call). Inspect deferred branches (advisory — grill never gates). Report grill-overlap separately.
 Focus areas: completeness, clarity, sequencing, correctness, dependency mapping, verification coverage, scope, risk
 [Severity ladder for spec mode]. Report [allowed_severities] only.
 For each finding: spec section/step reference, description, concrete fix suggestion.

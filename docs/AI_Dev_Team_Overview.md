@@ -77,6 +77,7 @@ Phase 1 — Planning
   [Lead] searches KB for relevant context ──────────→ KB context summary
          reads codebase ──────────────────────────→ codebase summary
          writes spec draft → saves to KB/repos/<project>/design/
+         optional: [grill] interview gate hardens the DRAFT before approval (opt-in, off by default; DRAFT → [grill] → APPROVED)
          if needed: [Librarian] updates MOC
   ──── STOP: developer approves the spec ────
 

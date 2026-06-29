@@ -1431,15 +1431,17 @@ check_banner_convention_doc_valid() {
 # feature-mode contract-violation terminal banner, and the §Implement
 # continuous-parallel-diff-audits opt-in banner.
 check_feature_awaiting_count_17() {
-  # 35 includes the §3.5b-2e model-attestation gate banner added by spec
-  # 2026-06-10-fable-cross-auditor-attestation Step 3.
+  # 36 includes the §3.5b-2e model-attestation gate banner added by spec
+  # 2026-06-10-fable-cross-auditor-attestation Step 3, plus the ## Grill mode
+  # standalone spec-resolution banner added by the grill-feature-gate code-audit
+  # X1 fix.
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "35" ]; then
-    echo "feature AWAITING count=$n expected 35"
+  if [ "$n" != "36" ]; then
+    echo "feature AWAITING count=$n expected 36"
     return 1
   fi
-  echo "feature AWAITING count=35 OK"
+  echo "feature AWAITING count=36 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1592,7 +1594,7 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 36 — includes the
+# (r) ruler-prefix count matches total banner count (expected 37 — includes the
 # §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1,
 # the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2,
 # the §3.5c audit-iteration-cap banner added by spec 2026-05-13-cap-banner-and-empirical-verification Step 2,
@@ -1604,7 +1606,8 @@ check_approval_required_unique_repo_wide() {
 # contract-violation terminal banner added by that spec's code-audit iter-2 X8 fix,
 # the §Implement continuous-parallel-diff-audits opt-in banner, and the 2
 # model-attestation gate banners (feature §3.5b-2e + standalone) added by spec
-# 2026-06-10-fable-cross-auditor-attestation Step 3).
+# 2026-06-10-fable-cross-auditor-attestation Step 3, and the ## Grill mode
+# standalone spec-resolution banner added by the grill-feature-gate code-audit X1 fix).
 check_awaiting_ruler_prefix_count_matches() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1613,14 +1616,14 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "36" ]; then
-    echo "ruler-prefix count=$c expected 36"
+  if [ "$c" != "37" ]; then
+    echo "ruler-prefix count=$c expected 37"
     return 1
   fi
-  echo "ruler-prefix count=36 OK"
+  echo "ruler-prefix count=37 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 47 — includes
+# (s) each banner has trailing bold question within 15 lines (expected 48 — includes
 # the feature Attack-surface profile and STRIDE-lite slot prompts, the §3.5c
 # audit-iteration-cap banner, the 3 §3.5b-2 recovery banners added by spec
 # 2026-05-15-cross-auditor-contract-gate-automation Step 6, the §3.4d
@@ -1629,7 +1632,8 @@ check_awaiting_ruler_prefix_count_matches() {
 # §3.5b-2d feature-mode terminal banner added by that spec's code-audit iter-2 X8 fix,
 # the §Implement continuous-parallel-diff-audits opt-in banner, and the 2
 # model-attestation gate banners (feature §3.5b-2e + standalone) added by spec
-# 2026-06-10-fable-cross-auditor-attestation Step 3).
+# 2026-06-10-fable-cross-auditor-attestation Step 3, and the ## Grill mode
+# standalone spec-resolution banner added by the grill-feature-gate code-audit X1 fix).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1640,11 +1644,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "47" ]; then
-    echo "trailing-bold-present-each count=$c expected 47"
+  if [ "$c" != "48" ]; then
+    echo "trailing-bold-present-each count=$c expected 48"
     return 1
   fi
-  echo "trailing-bold-present-each=47 OK"
+  echo "trailing-bold-present-each=48 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -5667,6 +5671,79 @@ check "dispatch-response-violation-blocker-mapping"        check_dispatch_respon
 check "repo-findings-path-coherence"                       check_repo_findings_path_coherence
 check "audit-iteration-hard-cap-recognition"               check_audit_iteration_hard_cap_recognition
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
+echo
+
+# --- Grill protocol reference pins (spec 2026-06-29-grill-feature-gate, Step 1) ---
+# Structure floor for skills/feature/references/grill-protocol.md (helpers in
+# tests/smoke-helpers.sh): Decisions column set + order, three mechanics, route
+# enum, `changed-sections: none` valid.
+echo "Grill protocol reference pins:"
+check "grill-protocol-decisions-schema-columns"  check_grill_protocol_decisions_schema_columns
+check "grill-protocol-three-mechanics-named"     check_grill_protocol_three_mechanics_named
+check "grill-protocol-route-enum"                check_grill_protocol_route_enum
+check "grill-protocol-changed-sections-none-valid" check_grill_protocol_changed_sections_none_valid
+echo
+
+# --- Grill gate sub-phase pins (spec 2026-06-29-grill-feature-gate, Step 2) ---
+# Structure floor for the grill gate wired into skills/feature/SKILL.md (helpers in
+# tests/smoke-helpers.sh): placement before the Step 3 approval HARD GATE, the `off
+# by default` opt-in framing, and the neutral-suggest never-blocks/never-auto-runs
+# contract.
+echo "Grill gate sub-phase pins:"
+check "grill-gate-before-approval"     check_skill_grill_gate_before_approval
+check "grill-gate-off-by-default"      check_skill_grill_gate_off_by_default
+check "grill-gate-suggest-never-blocks" check_skill_grill_gate_suggest_never_blocks
+echo
+
+# --- Grill-aware spec cross-audit pins (spec 2026-06-29-grill-feature-gate, Step 3) ---
+# Structure floor for the grill-aware Step 3.5 spec cross-audit (helpers in
+# tests/smoke-helpers.sh): §3.5 names the grill-aware Decisions consumption +
+# evidence-ref resolvability, states grill NEVER gates, keeps the audit MANDATORY by
+# default with the Skip path preserved; both cross-auditor reference halves name the
+# Decisions / evidence-ref-resolvability clause (dual-model backstop not half-blind).
+echo "Grill-aware spec cross-audit pins:"
+check "grill-aware-spec-audit"            check_skill_grill_aware_spec_audit
+check "grill-never-gates-spec-audit"      check_skill_grill_never_gates_spec_audit
+check "spec-audit-mandatory-skip-preserved" check_skill_spec_audit_mandatory_skip_preserved
+check "cross-auditor-spec-mode-grill-aware" check_cross_auditor_spec_mode_grill_aware
+echo
+
+# --- Grill write-back surface pins (spec 2026-06-29-grill-feature-gate, Step 4) ---
+# Structure floor for the grill write-back surface in skills/feature/references/
+# spec-template.md (helpers in tests/smoke-helpers.sh): the ## Decisions table on the
+# fixed 7-column schema, the grill_status / grill_date / grill_coverage frontmatter, the
+# `changed-sections: none` valid value, and the non-degraded boundary note. The
+# cross-consistency pin asserts the Decisions column set MATCHES grill-protocol.md
+# exactly (column-set equality), so the schema cannot drift between its two homes.
+echo "Grill write-back surface pins:"
+check "spec-template-decisions-schema"            check_spec_template_decisions_schema
+check "spec-template-grill-frontmatter"           check_spec_template_grill_frontmatter
+check "spec-template-changed-sections-none-valid" check_spec_template_changed_sections_none_valid
+check "spec-template-grill-non-degraded-note"     check_spec_template_grill_non_degraded_note
+check "decisions-schema-cross-consistency"        check_decisions_schema_cross_consistency
+echo
+
+# --- Grill in the KB-layout reference pins (spec 2026-06-29-grill-feature-gate, Step 5) ---
+# Structure floor for grill documented in docs/kb-layout.md (helpers in
+# tests/smoke-helpers.sh): the `no new state token` zero-migration literal and the three
+# grill frontmatter fields. The third pin (grill-degraded-predicate-negative) is the
+# load-bearing X1/X5 guard — REGION-SCOPED in skills/feature/SKILL.md (the ## Status mode
+# region + the ### 3.5b degraded-predicate region), NOT file-wide, since grill_status
+# legitimately appears in the Step-2 grill gate + §3.5 grill-aware prose. It asserts the
+# degraded predicate / Status-mode render reference no grill field (§3.5.1 anti-creep).
+echo "Grill KB-layout reference pins:"
+check "kb-layout-grill-no-new-state-token"  check_kb_layout_grill_no_new_state_token
+check "kb-layout-grill-frontmatter"         check_kb_layout_grill_frontmatter
+check "grill-degraded-predicate-negative"   check_skill_degraded_predicate_no_grill
+echo
+
+# --- Grill mode handler + skipped write-path pins (X1/X2 code-audit fix) ---
+# Structure floor for the standalone `## Grill mode` H2 handler (X1: spec resolution +
+# DRAFT-only precondition) and the grill_status: skipped explicit-decline write path
+# (X2) in skills/feature/SKILL.md (helpers in tests/smoke-helpers.sh).
+echo "Grill mode handler + skipped write-path pins:"
+check "grill-mode-handler-exists"        check_skill_grill_mode_handler_exists
+check "grill-status-skipped-write-path"  check_skill_grill_status_skipped_write_path
 echo
 
 # --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---

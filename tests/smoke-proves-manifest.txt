@@ -342,3 +342,66 @@ check_branch_guard_callsites prompt-text
 #   PRIMARY working_directory, with the PR-mode gh pr checkout carve-out preserved
 #   (catches a global-checkout-ban regression) → prompt-text.
 check_cross_auditor_read_only_git_contract prompt-text
+
+# Grill protocol reference (spec 2026-06-29-grill-feature-gate Step 1):
+#   structure floor for skills/feature/references/grill-protocol.md — Decisions
+#   column set + exact order, the three load-bearing mechanics, the coarse route
+#   enum {routine, domain_input}, and the `changed-sections: none` valid value.
+#   All pin literal markdown prose / table structure → prompt-text.
+check_grill_protocol_decisions_schema_columns prompt-text
+check_grill_protocol_three_mechanics_named prompt-text
+check_grill_protocol_route_enum prompt-text
+check_grill_protocol_changed_sections_none_valid prompt-text
+
+# Grill gate sub-phase (spec 2026-06-29-grill-feature-gate Step 2):
+#   structure floor for the grill gate wired into skills/feature/SKILL.md —
+#   placement before the Step 3 approval HARD GATE, the `off by default` opt-in
+#   framing, and the neutral-suggest never-blocks/never-auto-runs contract.
+#   All pin literal markdown prose / section order → prompt-text.
+check_skill_grill_gate_before_approval prompt-text
+check_skill_grill_gate_off_by_default prompt-text
+check_skill_grill_gate_suggest_never_blocks prompt-text
+
+# Grill-aware spec cross-audit (spec 2026-06-29-grill-feature-gate Step 3):
+#   structure floor for the grill-aware Step 3.5 spec cross-audit — §3.5 (region-
+#   scoped) names the grill-aware ## Decisions consumption + evidence-ref
+#   resolvability, states grill NEVER gates, keeps the audit MANDATORY by default
+#   with the Skip path preserved; both cross-auditor reference halves (Claude
+#   mode-focus + Codex dispatch template) name the Decisions/evidence-ref clause.
+#   All pin literal markdown prose / section order → prompt-text.
+check_skill_grill_aware_spec_audit prompt-text
+check_skill_grill_never_gates_spec_audit prompt-text
+check_skill_spec_audit_mandatory_skip_preserved prompt-text
+check_cross_auditor_spec_mode_grill_aware prompt-text
+
+# Grill write-back surface (spec 2026-06-29-grill-feature-gate Step 4):
+#   structure floor for skills/feature/references/spec-template.md — the ## Decisions
+#   table on the fixed 7-column schema, the grill_status / grill_date / grill_coverage
+#   frontmatter, the `changed-sections: none` valid value, the non-degraded boundary
+#   note, and the cross-consistency pin asserting the Decisions column set matches
+#   grill-protocol.md exactly. All pin literal markdown prose / table structure / YAML
+#   frontmatter → prompt-text.
+check_spec_template_decisions_schema prompt-text
+check_spec_template_grill_frontmatter prompt-text
+check_spec_template_changed_sections_none_valid prompt-text
+check_spec_template_grill_non_degraded_note prompt-text
+check_decisions_schema_cross_consistency prompt-text
+
+# Grill in the KB-layout reference (spec 2026-06-29-grill-feature-gate Step 5):
+#   structure floor for grill documented in docs/kb-layout.md — the `no new state token`
+#   zero-migration literal and the grill_status / grill_date / grill_coverage frontmatter
+#   fields. The grill-degraded-predicate-negative pin is the load-bearing X1/X5 guard:
+#   region-scoped in skills/feature/SKILL.md (## Status mode + ### 3.5b regions), it asserts
+#   the *_audit_evidence degraded predicate / Status-mode render reference no grill field.
+#   All assert literal markdown prose / YAML frontmatter docs → prompt-text.
+check_kb_layout_grill_no_new_state_token prompt-text
+check_kb_layout_grill_frontmatter prompt-text
+check_skill_degraded_predicate_no_grill prompt-text
+
+# Grill mode handler + skipped write-path (X1/X2 code-audit fix on 2026-06-29-grill-feature-gate):
+#   structure floor for the standalone ## Grill mode H2 handler (X1: spec resolution +
+#   DRAFT-only precondition) and the grill_status: skipped explicit-decline write path
+#   (X2) in skills/feature/SKILL.md. Both pin literal markdown prose / section order →
+#   prompt-text.
+check_skill_grill_mode_handler_exists prompt-text
+check_skill_grill_status_skipped_write_path prompt-text

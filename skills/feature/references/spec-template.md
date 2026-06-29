@@ -37,6 +37,14 @@ spec_audit_evidence: null
 spec_audit_blockers: []
 code_audit_evidence: null
 code_audit_blockers: []
+# Grill gate (optional DRAFT-hardening interview — see skills/feature/references/grill-protocol.md).
+# Non-degraded boundary: grill_status: skipped is NON-DEGRADED (grill is optional),
+# DISTINCT from *_audit_evidence: skipped, which IS degraded under SKILL.md §3.5b. The
+# two `skipped` tokens live under different keys and never collide; grill keys define NO
+# degraded flag (the degraded predicate / Status-mode render MUST NOT reference them).
+grill_status: null    # ran | skipped; null/absent = legacy_unknown (grill is optional)
+grill_date: null      # YYYY-MM-DD when grill ran; null when skipped
+grill_coverage: null  # visited/total/deferred of the MAPPED branches (advisory, never a gate); null when skipped
 tags: [spec, {project-name}]
 ---
 
@@ -117,6 +125,26 @@ New env vars, settings, or constants.
 | Risk | Source | Severity | Mitigation |
 |------|--------|----------|------------|
 | ...  | ...    | ...      | ...        |
+
+## Decisions
+
+Populated by the grill gate — the optional DRAFT-hardening interview (see
+`skills/feature/references/grill-protocol.md`). When grill did not run, this section
+is absent or empty. Fixed schema, columns in this exact order (must match
+`grill-protocol.md` §4):
+
+| decision-id | question | confirmed-answer | route | evidence-ref | numeric-example | changed-sections |
+|-------------|----------|------------------|-------|--------------|-----------------|------------------|
+| D1 | {the decision question} | {the confirmed answer} | routine | none | none | none |
+| D2 | {a contested question} | {the confirmed answer} | domain_input | path/to/file.rs:42 (`SYMBOL`) | deposit1 + deposit2 = 300 | §3.4 |
+
+- `changed-sections: none` is a **VALID value** — some decisions confirm that no
+  section changes; never fake a bogus section ref, record `none` honestly.
+- A row is **CONTESTED iff**: the user disagreed, OR the route changed, OR numeric
+  derivation was required, OR code evidence changed the answer, OR a deferred / unknown
+  answer was chosen.
+- **Contested rows** MUST carry non-empty `evidence-ref` AND `numeric-example`.
+  **All rows** (contested or not) MUST carry `confirmed-answer` AND `changed-sections`.
 
 ## 4. Dependencies
 
