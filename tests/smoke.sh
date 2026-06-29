@@ -5669,6 +5669,17 @@ check "audit-iteration-hard-cap-recognition"               check_audit_iteration
 check "audit-iteration-hard-cap-recognition-mutation-protected" check_audit_iteration_hard_cap_recognition_mutation_protected
 echo
 
+# --- Grill protocol reference pins (spec 2026-06-29-grill-feature-gate, Step 1) ---
+# Structure floor for skills/feature/references/grill-protocol.md (helpers in
+# tests/smoke-helpers.sh): Decisions column set + order, three mechanics, route
+# enum, `changed-sections: none` valid.
+echo "Grill protocol reference pins:"
+check "grill-protocol-decisions-schema-columns"  check_grill_protocol_decisions_schema_columns
+check "grill-protocol-three-mechanics-named"     check_grill_protocol_three_mechanics_named
+check "grill-protocol-route-enum"                check_grill_protocol_route_enum
+check "grill-protocol-changed-sections-none-valid" check_grill_protocol_changed_sections_none_valid
+echo
+
 # --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---
 # Pins per spec §3.5: literal-presence checks for the contract surfaces, plus
 # one fixture-driven behavioral pin that exercises the YAML emit-safety rule

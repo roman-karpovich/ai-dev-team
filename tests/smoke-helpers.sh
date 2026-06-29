@@ -10724,3 +10724,67 @@ check_smoke_helper_pwp_allowlist_scanner_self_test() {
   rm -rf "$tmpd"
   echo "allowlist scanner self-test: 18 forbidden fixtures rejected (incl X2 trailing-orch, X3 synonym-verb, X4 non-direct, X6 cross-clause/sentence orch, X7 substring-allow, X8 log-verb classes), 4 compliant accepted (orch-subject + multi-clause + same-clause-orch); scanner has teeth"
 }
+
+# --- Grill protocol reference (spec 2026-06-29-grill-feature-gate, Step 1) ---
+# Structure-floor pins for skills/feature/references/grill-protocol.md. They lock
+# the canonical interview contract: the fixed Decisions column set + order, the
+# three load-bearing mechanics, the coarse route enum, and the `changed-sections:
+# none` valid value. The grill-aware Step 3.5 cross-audit verifies citation
+# RESOLVABILITY and the user judges answer quality — these pins are the floor only
+# (per spec §3.5 "No machine handshake parser for v1").
+GRILL_PROTOCOL='skills/feature/references/grill-protocol.md'
+
+# (1) Decisions table header carries the seven columns in the exact canonical
+# order. Anchors on the header row (the `|`-prefixed line containing decision-id),
+# normalizes pipe/whitespace, and compares the extracted column sequence against
+# the canonical 7-tuple — asserts presence AND order, robust to cell spacing.
+check_grill_protocol_decisions_schema_columns() {
+  local f="$GRILL_PROTOCOL"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local got expected
+  expected='decision-id | question | confirmed-answer | route | evidence-ref | numeric-example | changed-sections'
+  got=$(grep -F 'decision-id' "$f" | grep -E '^\|' | head -1 \
+    | sed -E 's/^\|//; s/\|$//' \
+    | awk -F'|' '{out=""; for(i=1;i<=NF;i++){gsub(/^[ \t]+|[ \t]+$/,"",$i); out=(i==1?$i:out" | "$i)} print out}')
+  if [ "$got" != "$expected" ]; then
+    echo "grill-protocol.md Decisions column set/order mismatch: got [$got] expected [$expected]"
+    return 1
+  fi
+  echo "grill-protocol.md Decisions schema: 7 columns present in canonical order"
+}
+
+# (2) All three load-bearing mechanics named by their canonical literals.
+check_grill_protocol_three_mechanics_named() {
+  local f="$GRILL_PROTOCOL"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local m
+  for m in 'recommended-answer-per-question' \
+           'explore-codebase-instead-of-ask' \
+           'numeric-worked-examples-on-contested-points'; do
+    grep -qF "$m" "$f" || { echo "grill-protocol.md missing mechanic literal: $m"; return 1; }
+  done
+  echo "grill-protocol.md names all three load-bearing mechanics"
+}
+
+# (3) Coarse route enum is the two-value `{routine, domain_input}` set (NOT numeric
+# confidence). Pins the combined enum literal so a drift to a single token or a
+# numeric label fails.
+check_grill_protocol_route_enum() {
+  local f="$GRILL_PROTOCOL"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF '{routine, domain_input}' "$f" \
+    || { echo "grill-protocol.md missing route enum literal '{routine, domain_input}'"; return 1; }
+  echo "grill-protocol.md route enum {routine, domain_input} present"
+}
+
+# (4) `changed-sections: none` is named a VALID value (not merely mentioned): the
+# line carrying the literal must also carry the word "valid" (case-insensitive).
+check_grill_protocol_changed_sections_none_valid() {
+  local f="$GRILL_PROTOCOL"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'changed-sections: none' "$f" \
+    || { echo "grill-protocol.md missing 'changed-sections: none' literal"; return 1; }
+  grep -iF 'changed-sections: none' "$f" | grep -qiF 'valid' \
+    || { echo "grill-protocol.md does not mark 'changed-sections: none' as a VALID value"; return 1; }
+  echo "grill-protocol.md marks 'changed-sections: none' as valid"
+}

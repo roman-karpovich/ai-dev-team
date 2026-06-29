@@ -342,3 +342,13 @@ check_branch_guard_callsites prompt-text
 #   PRIMARY working_directory, with the PR-mode gh pr checkout carve-out preserved
 #   (catches a global-checkout-ban regression) → prompt-text.
 check_cross_auditor_read_only_git_contract prompt-text
+
+# Grill protocol reference (spec 2026-06-29-grill-feature-gate Step 1):
+#   structure floor for skills/feature/references/grill-protocol.md — Decisions
+#   column set + exact order, the three load-bearing mechanics, the coarse route
+#   enum {routine, domain_input}, and the `changed-sections: none` valid value.
+#   All pin literal markdown prose / table structure → prompt-text.
+check_grill_protocol_decisions_schema_columns prompt-text
+check_grill_protocol_three_mechanics_named prompt-text
+check_grill_protocol_route_enum prompt-text
+check_grill_protocol_changed_sections_none_valid prompt-text
