@@ -40,6 +40,7 @@ Parse `$ARGUMENTS` to determine the mode:
 | `extend <description>` | **Extend** | Append a new step to the active spec's Implementation Checklist + workdoc (scope addition) |
 | `new <description> --follows-up <spec-path>` | **New (follow-up)** | Like **New**, but links the new spec to a prior one via `follows_up` |
 | `discard [spec-path]` | **Discard** | Delete feature branch + set spec DISCARDED (explicit; not tied to hand-off) |
+| `grill [spec-path]` | **Grill** | Optional interactive interview gate hardening a DRAFT spec before approval |
 
 **Removed-flag hard-fail** (per `docs/cut-spec-policy.md`). If `$ARGUMENTS` contains `--from-investigation`, hard-stop with `ERROR: --from-investigation was removed in cut spec design/2026-04-27-cut-from-investigation.md. Read that spec for the migration path.` Do NOT route the input through any of the existing modes.
 
@@ -404,6 +405,28 @@ STRIDE-lite (6/6) — EoP. What bug could let an unprivileged caller perform a p
 Free-form. Empty / `skip` → `eop: null`. Otherwise serialize via `yaml.safe_dump` / `js-yaml dump` — NOT manual string concatenation.
 
 After all 6 banners, the orchestrator writes `## 1.2 STRIDE-lite threat model` section into the spec with the collected `stride_lite` answers (serialized via library safe-dump), appends one Log line `- YYYY-MM-DD: stride-lite threat model recorded (spoofing=<truthy?>; tampering=<truthy?>; repudiation=<truthy?>; info_disclosure=<truthy?>; dos=<truthy?>; eop=<truthy?>)`, and proceeds to Step 3 HARD GATE.
+
+### Grill gate — optional DRAFT-hardening sub-phase
+
+Grill is **off by default**. It is a DRAFT-hardening sub-phase placed `DRAFT → [grill] → APPROVED` — NOT a new state-machine token (status enum unchanged, zero migration). It runs HERE, after spec drafting + slot-filling and before the Step 3 approval HARD GATE, so approval reflects the grilled spec. Most specs never grill.
+
+**Mutate-then-validate ordering.** Grill MUTATES the spec (removes over-builds, flips decisions); the Step 3.5 cross-audit VALIDATES the settled spec. Grill before audit so the gold-standard audit runs last on what ships — cheaper to move a decision than to re-audit a diff.
+
+**Invocation (opt-in).** `/feature grill [spec-path]` — runs the gate inline now, or standalone later on any existing DRAFT. Off by default; never auto-runs.
+
+**Neutral auto-suggest — never blocks, never gates, no repeat prompts.** When high-risk signals fire — `project_type: smart_contract`, OR §1.1 `external_input: true`, OR the spec description/title hits `payment / auth / migration / irreversible / consensus` — surface ONE neutral one-line suggestion that the optional grill is available, e.g.:
+
+```
+Optional grill gate available (high-risk signals: <which>). Run `/feature grill` or skip.
+```
+
+Single non-repeating suggestion: no blocking, no gating, no re-prompt, never auto-runs. The user runs grill or skips; either way the flow proceeds to Step 3.
+
+**Interactive + INLINE.** The interview runs inline in the main conversation, human in the loop — NOT a backgrounded subagent, NOT the `agents/investigator.md` debate engine (a round-based debate is the wrong control structure for an interview).
+
+**What grill does** — see `skills/feature/references/grill-protocol.md` for the full interview discipline (branch-map traversal, the 3 load-bearing mechanics, coarse route, Decisions write-back schema, coverage / termination, `--focus`, cadence). Do NOT restate it here. Output folds back per that write-back contract: a `## Decisions` table, risk deltas into §3.6 Risks, a §9 Log line, and `grill_status` / `grill_date` / `grill_coverage` frontmatter.
+
+**grill_status: skipped when not run** — a first-class non-degraded value (grill is optional). Grill NEVER gates approval or audit; `grill_coverage` deferred branches are advisory only. Skipping is not a degraded state.
 
 ### Step 3 — Get approval
 

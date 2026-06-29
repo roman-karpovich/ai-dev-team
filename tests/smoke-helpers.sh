@@ -10788,3 +10788,59 @@ check_grill_protocol_changed_sections_none_valid() {
     || { echo "grill-protocol.md does not mark 'changed-sections: none' as a VALID value"; return 1; }
   echo "grill-protocol.md marks 'changed-sections: none' as valid"
 }
+
+# --- Grill gate sub-phase in /feature SKILL.md (spec 2026-06-29-grill-feature-gate, Step 2) ---
+# Structure floor for the grill gate sub-phase wired into skills/feature/SKILL.md.
+# Pin the load-bearing flow contracts: placement BEFORE the Step 3 approval HARD
+# GATE (grill hardens the DRAFT before approval reflects it), the `off by default`
+# opt-in framing, and the neutral-suggest never-blocks / never-auto-runs contract.
+# The grill section is region-extracted (header → next `### `) for the literal
+# pins, NOT file-wide grep — later steps add `grill`-prose elsewhere in SKILL.md.
+
+# (1) The grill gate section header sits BEFORE the Step 3 approval HARD GATE.
+# Region/order assertion: line of `### Grill gate` < line of the `<HARD-GATE>` tag.
+# Catches a regression that moves grill after approval (which would let approval
+# ratify an un-grilled spec — the whole point is approval reflects the grilled spec).
+check_skill_grill_gate_before_approval() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local grill_ln gate_ln
+  grill_ln=$(grep -nF '### Grill gate' "$f" | head -1 | cut -d: -f1)
+  gate_ln=$(grep -nF '<HARD-GATE>' "$f" | head -1 | cut -d: -f1)
+  [ -n "$grill_ln" ] || { echo "SKILL.md missing '### Grill gate' section header"; return 1; }
+  [ -n "$gate_ln" ] || { echo "SKILL.md missing '<HARD-GATE>' approval anchor"; return 1; }
+  if [ "$grill_ln" -ge "$gate_ln" ]; then
+    echo "SKILL.md grill gate (line $grill_ln) not before approval HARD GATE (line $gate_ln)"
+    return 1
+  fi
+  echo "SKILL.md grill gate at line $grill_ln precedes approval HARD GATE at line $gate_ln"
+}
+
+# (2) The grill gate section carries the `off by default` opt-in framing
+# (case-insensitive). Region-scoped to the grill section, NOT a file-wide grep.
+check_skill_grill_gate_off_by_default() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local section
+  section=$(awk '/^### Grill gate/{cap=1;print;next} cap&&/^### /{exit} cap{print}' "$f")
+  printf '%s\n' "$section" | grep -qiF 'off by default' \
+    || { echo "SKILL.md grill gate section missing 'off by default' literal"; return 1; }
+  echo "SKILL.md grill gate section states 'off by default'"
+}
+
+# (3) The neutral auto-suggest contract: it surfaces a suggestion but never blocks
+# and never auto-runs. Region-scoped. Locks the anti-creep-to-mandatory copy so a
+# regression cannot quietly turn the suggestion into a gate or an auto-run.
+check_skill_grill_gate_suggest_never_blocks() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local section
+  section=$(awk '/^### Grill gate/{cap=1;print;next} cap&&/^### /{exit} cap{print}' "$f")
+  printf '%s\n' "$section" | grep -qiF 'auto-suggest' \
+    || { echo "SKILL.md grill gate section missing neutral 'auto-suggest' contract"; return 1; }
+  printf '%s\n' "$section" | grep -qiF 'never blocks' \
+    || { echo "SKILL.md grill gate suggest does not state 'never blocks'"; return 1; }
+  printf '%s\n' "$section" | grep -qiF 'never auto-runs' \
+    || { echo "SKILL.md grill gate suggest does not state 'never auto-runs'"; return 1; }
+  echo "SKILL.md grill gate neutral suggest never blocks / never auto-runs"
+}

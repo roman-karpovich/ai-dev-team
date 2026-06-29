@@ -5680,6 +5680,17 @@ check "grill-protocol-route-enum"                check_grill_protocol_route_enum
 check "grill-protocol-changed-sections-none-valid" check_grill_protocol_changed_sections_none_valid
 echo
 
+# --- Grill gate sub-phase pins (spec 2026-06-29-grill-feature-gate, Step 2) ---
+# Structure floor for the grill gate wired into skills/feature/SKILL.md (helpers in
+# tests/smoke-helpers.sh): placement before the Step 3 approval HARD GATE, the `off
+# by default` opt-in framing, and the neutral-suggest never-blocks/never-auto-runs
+# contract.
+echo "Grill gate sub-phase pins:"
+check "grill-gate-before-approval"     check_skill_grill_gate_before_approval
+check "grill-gate-off-by-default"      check_skill_grill_gate_off_by_default
+check "grill-gate-suggest-never-blocks" check_skill_grill_gate_suggest_never_blocks
+echo
+
 # --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---
 # Pins per spec §3.5: literal-presence checks for the contract surfaces, plus
 # one fixture-driven behavioral pin that exercises the YAML emit-safety rule

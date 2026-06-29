@@ -352,3 +352,12 @@ check_grill_protocol_decisions_schema_columns prompt-text
 check_grill_protocol_three_mechanics_named prompt-text
 check_grill_protocol_route_enum prompt-text
 check_grill_protocol_changed_sections_none_valid prompt-text
+
+# Grill gate sub-phase (spec 2026-06-29-grill-feature-gate Step 2):
+#   structure floor for the grill gate wired into skills/feature/SKILL.md —
+#   placement before the Step 3 approval HARD GATE, the `off by default` opt-in
+#   framing, and the neutral-suggest never-blocks/never-auto-runs contract.
+#   All pin literal markdown prose / section order → prompt-text.
+check_skill_grill_gate_before_approval prompt-text
+check_skill_grill_gate_off_by_default prompt-text
+check_skill_grill_gate_suggest_never_blocks prompt-text
