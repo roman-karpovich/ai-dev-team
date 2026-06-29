@@ -10724,3 +10724,426 @@ check_smoke_helper_pwp_allowlist_scanner_self_test() {
   rm -rf "$tmpd"
   echo "allowlist scanner self-test: 18 forbidden fixtures rejected (incl X2 trailing-orch, X3 synonym-verb, X4 non-direct, X6 cross-clause/sentence orch, X7 substring-allow, X8 log-verb classes), 4 compliant accepted (orch-subject + multi-clause + same-clause-orch); scanner has teeth"
 }
+
+# --- Grill protocol reference (spec 2026-06-29-grill-feature-gate, Step 1) ---
+# Structure-floor pins for skills/feature/references/grill-protocol.md. They lock
+# the canonical interview contract: the fixed Decisions column set + order, the
+# three load-bearing mechanics, the coarse route enum, and the `changed-sections:
+# none` valid value. The grill-aware Step 3.5 cross-audit verifies citation
+# RESOLVABILITY and the user judges answer quality — these pins are the floor only
+# (per spec §3.5 "No machine handshake parser for v1").
+GRILL_PROTOCOL='skills/feature/references/grill-protocol.md'
+
+# (1) Decisions table header carries the seven columns in the exact canonical
+# order. Anchors on the header row (the `|`-prefixed line containing decision-id),
+# normalizes pipe/whitespace, and compares the extracted column sequence against
+# the canonical 7-tuple — asserts presence AND order, robust to cell spacing.
+check_grill_protocol_decisions_schema_columns() {
+  local f="$GRILL_PROTOCOL"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local got expected
+  expected='decision-id | question | confirmed-answer | route | evidence-ref | numeric-example | changed-sections'
+  got=$(grep -F 'decision-id' "$f" | grep -E '^\|' | head -1 \
+    | sed -E 's/^\|//; s/\|$//' \
+    | awk -F'|' '{out=""; for(i=1;i<=NF;i++){gsub(/^[ \t]+|[ \t]+$/,"",$i); out=(i==1?$i:out" | "$i)} print out}')
+  if [ "$got" != "$expected" ]; then
+    echo "grill-protocol.md Decisions column set/order mismatch: got [$got] expected [$expected]"
+    return 1
+  fi
+  echo "grill-protocol.md Decisions schema: 7 columns present in canonical order"
+}
+
+# (2) All three load-bearing mechanics named by their canonical literals.
+check_grill_protocol_three_mechanics_named() {
+  local f="$GRILL_PROTOCOL"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local m
+  for m in 'recommended-answer-per-question' \
+           'explore-codebase-instead-of-ask' \
+           'numeric-worked-examples-on-contested-points'; do
+    grep -qF "$m" "$f" || { echo "grill-protocol.md missing mechanic literal: $m"; return 1; }
+  done
+  echo "grill-protocol.md names all three load-bearing mechanics"
+}
+
+# (3) Coarse route enum is the two-value `{routine, domain_input}` set (NOT numeric
+# confidence). Pins the combined enum literal so a drift to a single token or a
+# numeric label fails.
+check_grill_protocol_route_enum() {
+  local f="$GRILL_PROTOCOL"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF '{routine, domain_input}' "$f" \
+    || { echo "grill-protocol.md missing route enum literal '{routine, domain_input}'"; return 1; }
+  echo "grill-protocol.md route enum {routine, domain_input} present"
+}
+
+# (4) `changed-sections: none` is named a VALID value (not merely mentioned): the
+# line carrying the literal must also carry the word "valid" (case-insensitive).
+check_grill_protocol_changed_sections_none_valid() {
+  local f="$GRILL_PROTOCOL"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'changed-sections: none' "$f" \
+    || { echo "grill-protocol.md missing 'changed-sections: none' literal"; return 1; }
+  grep -iF 'changed-sections: none' "$f" | grep -qiF 'valid' \
+    || { echo "grill-protocol.md does not mark 'changed-sections: none' as a VALID value"; return 1; }
+  echo "grill-protocol.md marks 'changed-sections: none' as valid"
+}
+
+# --- Grill gate sub-phase in /feature SKILL.md (spec 2026-06-29-grill-feature-gate, Step 2) ---
+# Structure floor for the grill gate sub-phase wired into skills/feature/SKILL.md.
+# Pin the load-bearing flow contracts: placement BEFORE the Step 3 approval HARD
+# GATE (grill hardens the DRAFT before approval reflects it), the `off by default`
+# opt-in framing, and the neutral-suggest never-blocks / never-auto-runs contract.
+# The grill section is region-extracted (header → next `### `) for the literal
+# pins, NOT file-wide grep — later steps add `grill`-prose elsewhere in SKILL.md.
+
+# (1) The grill gate section header sits BEFORE the Step 3 approval HARD GATE.
+# Region/order assertion: line of `### Grill gate` < line of the `<HARD-GATE>` tag.
+# Catches a regression that moves grill after approval (which would let approval
+# ratify an un-grilled spec — the whole point is approval reflects the grilled spec).
+check_skill_grill_gate_before_approval() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local grill_ln gate_ln
+  grill_ln=$(grep -nF '### Grill gate' "$f" | head -1 | cut -d: -f1)
+  gate_ln=$(grep -nF '<HARD-GATE>' "$f" | head -1 | cut -d: -f1)
+  [ -n "$grill_ln" ] || { echo "SKILL.md missing '### Grill gate' section header"; return 1; }
+  [ -n "$gate_ln" ] || { echo "SKILL.md missing '<HARD-GATE>' approval anchor"; return 1; }
+  if [ "$grill_ln" -ge "$gate_ln" ]; then
+    echo "SKILL.md grill gate (line $grill_ln) not before approval HARD GATE (line $gate_ln)"
+    return 1
+  fi
+  echo "SKILL.md grill gate at line $grill_ln precedes approval HARD GATE at line $gate_ln"
+}
+
+# (2) The grill gate section carries the `off by default` opt-in framing
+# (case-insensitive). Region-scoped to the grill section, NOT a file-wide grep.
+check_skill_grill_gate_off_by_default() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local section
+  section=$(awk '/^### Grill gate/{cap=1;print;next} cap&&/^### /{exit} cap{print}' "$f")
+  printf '%s\n' "$section" | grep -qiF 'off by default' \
+    || { echo "SKILL.md grill gate section missing 'off by default' literal"; return 1; }
+  echo "SKILL.md grill gate section states 'off by default'"
+}
+
+# (3) The neutral auto-suggest contract: it surfaces a suggestion but never blocks
+# and never auto-runs. Region-scoped. Locks the anti-creep-to-mandatory copy so a
+# regression cannot quietly turn the suggestion into a gate or an auto-run.
+check_skill_grill_gate_suggest_never_blocks() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local section
+  section=$(awk '/^### Grill gate/{cap=1;print;next} cap&&/^### /{exit} cap{print}' "$f")
+  printf '%s\n' "$section" | grep -qiF 'auto-suggest' \
+    || { echo "SKILL.md grill gate section missing neutral 'auto-suggest' contract"; return 1; }
+  printf '%s\n' "$section" | grep -qiF 'never blocks' \
+    || { echo "SKILL.md grill gate suggest does not state 'never blocks'"; return 1; }
+  printf '%s\n' "$section" | grep -qiF 'never auto-runs' \
+    || { echo "SKILL.md grill gate suggest does not state 'never auto-runs'"; return 1; }
+  echo "SKILL.md grill gate neutral suggest never blocks / never auto-runs"
+}
+
+# --- Grill-aware spec cross-audit (spec 2026-06-29-grill-feature-gate, Step 3) ---
+# Structure floor for the grill-aware Step 3.5 spec cross-audit. The grill-aware
+# clause is region-scoped to SKILL.md §3.5 (`### Step 3.5` → next `### `), NOT a
+# file-wide grep — the Step 2 grill gate section carries `grill_status` / `never
+# gates` prose that would false-pass a file-wide check. The reference-file pin
+# asserts BOTH cross-auditor halves (Claude mode-focus + Codex dispatch template)
+# name the Decisions/evidence-ref-resolvability clause, so the dual-model backstop
+# is not half-blind.
+SKILL_MD='skills/feature/SKILL.md'
+
+# §3.5 region extractor: from `### Step 3.5` to the next 3-hash header (`### 3.5b`).
+# `#### `-level subsections (Pass 1 / Pass 2 / 3.5a) stay inside the region.
+_grill_skill_35_region() {
+  awk '/^### Step 3\.5 /{cap=1;print;next} cap&&/^### /{exit} cap{print}' "$SKILL_MD"
+}
+
+# (1) §3.5 names the grill-aware Decisions consumption AND the evidence-ref
+# resolvability contract. Catches a regression that drops grill-awareness from the
+# spec audit (the backstop) or weakens it from citation-resolvability to nothing.
+check_skill_grill_aware_spec_audit() {
+  test -f "$SKILL_MD" || { echo "$SKILL_MD missing"; return 1; }
+  local region; region=$(_grill_skill_35_region)
+  printf '%s\n' "$region" | grep -qF 'grill-aware' \
+    || { echo "SKILL.md §3.5 missing 'grill-aware' literal"; return 1; }
+  printf '%s\n' "$region" | grep -qF '## Decisions' \
+    || { echo "SKILL.md §3.5 grill-aware clause does not name '## Decisions' consumption"; return 1; }
+  printf '%s\n' "$region" | grep -qF 'evidence-ref' \
+    || { echo "SKILL.md §3.5 grill-aware clause does not name 'evidence-ref'"; return 1; }
+  printf '%s\n' "$region" | grep -qF 'RESOLVES' \
+    || { echo "SKILL.md §3.5 grill-aware clause does not require evidence-ref citations RESOLVE"; return 1; }
+  echo "SKILL.md §3.5 grill-aware: consumes ## Decisions + verifies evidence-ref RESOLVES"
+}
+
+# (2) §3.5 states grill NEVER gates. Region-scoped: `never gates` also appears in
+# the Step 2 grill gate section (`never blocks, never gates` + `Grill NEVER gates
+# approval or audit`), so a file-wide grep would false-pass even if the §3.5 site
+# lost it. Catches the slide where `deferred > 0` becomes a Step 3.5 fail.
+check_skill_grill_never_gates_spec_audit() {
+  test -f "$SKILL_MD" || { echo "$SKILL_MD missing"; return 1; }
+  local region; region=$(_grill_skill_35_region)
+  printf '%s\n' "$region" | grep -qiF 'never gates' \
+    || { echo "SKILL.md §3.5 does not state grill NEVER gates"; return 1; }
+  echo "SKILL.md §3.5 states grill NEVER gates (deferred>0 advisory, never a fail)"
+}
+
+# (3) §3.5 keeps the spec audit MANDATORY by default AND the Skip path preserved —
+# the X3 anti-regression. Asserts all three load-bearing literals co-locate at the
+# §3.5 site: `MANDATORY by default`, `preserved`, and the recorded skip evidence
+# `spec_audit_evidence: skipped`. Catches a regression that removes the Skip path
+# or quietly drops the mandatory-by-default framing when grill ran.
+check_skill_spec_audit_mandatory_skip_preserved() {
+  test -f "$SKILL_MD" || { echo "$SKILL_MD missing"; return 1; }
+  local region; region=$(_grill_skill_35_region)
+  printf '%s\n' "$region" | grep -qiF 'MANDATORY by default' \
+    || { echo "SKILL.md §3.5 missing 'MANDATORY by default' framing"; return 1; }
+  printf '%s\n' "$region" | grep -qiF 'preserved' \
+    || { echo "SKILL.md §3.5 does not state the Skip path is preserved"; return 1; }
+  printf '%s\n' "$region" | grep -qF 'spec_audit_evidence: skipped' \
+    || { echo "SKILL.md §3.5 Skip path does not record 'spec_audit_evidence: skipped'"; return 1; }
+  echo "SKILL.md §3.5 spec audit MANDATORY by default + Skip path preserved (records skipped)"
+}
+
+# (4) BOTH cross-auditor reference files name the grill Decisions / evidence-ref
+# resolvability clause — the hub `agents/cross-auditor.md` delegates spec-mode focus
+# to these references, so if either half lost the clause the dual-model backstop
+# would be half-blind to the Decisions table. Asserts the three clause literals
+# (`## Decisions`, `evidence-ref`, `RESOLVES`) in each file.
+check_cross_auditor_spec_mode_grill_aware() {
+  local f
+  for f in 'agents/references/cross-auditor-mode-focus.md' \
+           'agents/references/cross-auditor-codex-dispatch.md'; do
+    test -f "$f" || { echo "$f missing"; return 1; }
+    grep -qF '## Decisions' "$f" \
+      || { echo "$f spec-mode grill clause does not name '## Decisions'"; return 1; }
+    grep -qF 'evidence-ref' "$f" \
+      || { echo "$f spec-mode grill clause does not name 'evidence-ref'"; return 1; }
+    grep -qF 'RESOLVES' "$f" \
+      || { echo "$f spec-mode grill clause does not require evidence-ref citations RESOLVE"; return 1; }
+  done
+  echo "cross-auditor spec-mode grill clause present in BOTH Claude + Codex reference files"
+}
+
+# --- Grill write-back surface in spec-template.md (spec 2026-06-29-grill-feature-gate, Step 4) ---
+# Structure floor for the grill write-back surface added to
+# skills/feature/references/spec-template.md: the `## Decisions` table on the fixed
+# 7-column schema, the grill_status / grill_date / grill_coverage frontmatter, the
+# `changed-sections: none` valid value, and the non-degraded boundary note (the two
+# `skipped` tokens differ by key). The cross-consistency pin asserts the Decisions
+# column set MATCHES grill-protocol.md exactly (column-set equality, not mere presence) —
+# the schema's two homes (canonical protocol + author template) cannot drift apart.
+SPEC_TEMPLATE='skills/feature/references/spec-template.md'
+
+# Shared extractor: normalize the Decisions table header row of $1 to the canonical
+# ` | `-joined column tuple (the pipe-prefixed header line carrying decision-id, with
+# per-cell whitespace stripped). Emits empty output when no header row exists.
+_grill_decisions_columns() {
+  grep -F 'decision-id' "$1" | grep -E '^\|' | head -1 \
+    | sed -E 's/^\|//; s/\|$//' \
+    | awk -F'|' '{out=""; for(i=1;i<=NF;i++){gsub(/^[ \t]+|[ \t]+$/,"",$i); out=(i==1?$i:out" | "$i)} print out}'
+}
+
+# (1) spec-template.md carries the `## Decisions` header AND the full 7-column tuple in
+# canonical order. Catches a regression that drops the section header or drops/reorders/
+# renames any column of the write-back schema authors copy into a real spec.
+check_spec_template_decisions_schema() {
+  local f="$SPEC_TEMPLATE"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF '## Decisions' "$f" || { echo "$f missing '## Decisions' section header"; return 1; }
+  local got expected
+  expected='decision-id | question | confirmed-answer | route | evidence-ref | numeric-example | changed-sections'
+  got=$(_grill_decisions_columns "$f")
+  if [ "$got" != "$expected" ]; then
+    echo "spec-template.md Decisions column set/order mismatch: got [$got] expected [$expected]"
+    return 1
+  fi
+  echo "spec-template.md Decisions schema: ## Decisions header + 7 columns in canonical order"
+}
+
+# (2) The grill frontmatter fields are present in the YAML frontmatter block (region-
+# scoped to the leading `---`…`---`, so a stray body mention cannot satisfy the pin).
+check_spec_template_grill_frontmatter() {
+  local f="$SPEC_TEMPLATE"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local fm
+  fm=$(awk 'NR==1&&/^---$/{cap=1;next} cap&&/^---$/{exit} cap{print}' "$f")
+  local k
+  for k in 'grill_status:' 'grill_date:' 'grill_coverage:'; do
+    printf '%s\n' "$fm" | grep -qF "$k" \
+      || { echo "spec-template.md frontmatter missing $k"; return 1; }
+  done
+  echo "spec-template.md frontmatter carries grill_status / grill_date / grill_coverage"
+}
+
+# (3) `changed-sections: none` is named a VALID value (the line carrying the literal
+# also carries `valid`, case-insensitive) — authors record `none` honestly, never fake a
+# bogus section ref.
+check_spec_template_changed_sections_none_valid() {
+  local f="$SPEC_TEMPLATE"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'changed-sections: none' "$f" \
+    || { echo "spec-template.md missing 'changed-sections: none' literal"; return 1; }
+  grep -iF 'changed-sections: none' "$f" | grep -qiF 'valid' \
+    || { echo "spec-template.md does not mark 'changed-sections: none' as a VALID value"; return 1; }
+  echo "spec-template.md marks 'changed-sections: none' as valid"
+}
+
+# (4) The non-degraded boundary note: one line states grill_status: skipped is
+# NON-DEGRADED, the note contrasts it with the degraded *_audit_evidence: skipped, and
+# states the two keys are different (never collide). Catches a regression that drops the
+# boundary, which would let grill_status leak into the degraded predicate.
+check_spec_template_grill_non_degraded_note() {
+  local f="$SPEC_TEMPLATE"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -iF 'non-degraded' "$f" | grep -qiF 'grill_status' \
+    || { echo "spec-template.md missing 'grill_status: skipped is non-degraded' note"; return 1; }
+  grep -qF '*_audit_evidence' "$f" \
+    || { echo "spec-template.md non-degraded note does not contrast with *_audit_evidence"; return 1; }
+  grep -qiF 'different key' "$f" \
+    || { echo "spec-template.md non-degraded note does not state the keys are different (never collide)"; return 1; }
+  echo "spec-template.md non-degraded note: grill_status skipped non-degraded, distinct from *_audit_evidence (different keys)"
+}
+
+# (5) CROSS-CONSISTENCY (spec §5 Step 4 mandate): the Decisions column set in
+# spec-template.md MATCHES grill-protocol.md EXACTLY — column-set equality, not mere
+# presence. Extracts both header tuples and compares, so the schema's two homes (the
+# canonical protocol and the author-facing template) can never drift apart.
+check_decisions_schema_cross_consistency() {
+  local sp="$SPEC_TEMPLATE" gp="$GRILL_PROTOCOL"
+  test -f "$sp" || { echo "$sp missing"; return 1; }
+  test -f "$gp" || { echo "$gp missing"; return 1; }
+  local sp_cols gp_cols
+  sp_cols=$(_grill_decisions_columns "$sp")
+  gp_cols=$(_grill_decisions_columns "$gp")
+  [ -n "$sp_cols" ] || { echo "spec-template.md has no Decisions header row to extract"; return 1; }
+  [ -n "$gp_cols" ] || { echo "grill-protocol.md has no Decisions header row to extract"; return 1; }
+  if [ "$sp_cols" != "$gp_cols" ]; then
+    echo "Decisions column set differs: spec-template.md [$sp_cols] vs grill-protocol.md [$gp_cols]"
+    return 1
+  fi
+  echo "Decisions column set matches exactly between spec-template.md and grill-protocol.md"
+}
+
+# --- Grill in the canonical KB-layout reference (spec 2026-06-29-grill-feature-gate, Step 5) ---
+# Structure floor for the grill documentation added to docs/kb-layout.md (the canonical
+# state-machine + frontmatter reference): grill is a DRAFT-hardening SUB-PHASE that adds
+# no new status token (zero migration), and it carries three optional frontmatter fields.
+# The third pin (degraded-predicate-negative) is the load-bearing X1/X5 guard — it lives
+# in SKILL.md, region-scoped, never file-wide.
+KB_LAYOUT='docs/kb-layout.md'
+
+# (1) kb-layout.md carries the `no new state token` literal — grill is a sub-phase, NOT a
+# status value, so the DRAFT|APPROVED|… enum is unchanged and there is zero migration.
+# Catches a regression that drops the zero-migration assertion (or worse, promotes grill to
+# a real state token). This is the step's RED literal (failing_test_cmd greps for it).
+check_kb_layout_grill_no_new_state_token() {
+  local f="$KB_LAYOUT"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'no new state token' "$f" \
+    || { echo "kb-layout.md missing 'no new state token' literal (grill is a sub-phase, zero migration)"; return 1; }
+  echo "kb-layout.md documents grill adds 'no new state token' (zero migration)"
+}
+
+# (2) kb-layout.md documents the three grill frontmatter fields. Catches a regression that
+# drops any of grill_status / grill_date / grill_coverage from the canonical frontmatter
+# reference (which the orchestrator + librarian consume).
+check_kb_layout_grill_frontmatter() {
+  local f="$KB_LAYOUT"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local k
+  for k in 'grill_status' 'grill_date' 'grill_coverage'; do
+    grep -qF "$k" "$f" \
+      || { echo "kb-layout.md missing grill frontmatter field doc: $k"; return 1; }
+  done
+  echo "kb-layout.md documents grill frontmatter fields grill_status / grill_date / grill_coverage"
+}
+
+# (3) X1/X5 LOAD-BEARING NEGATIVE PIN — the entire structural protection for the §3.5.1
+# anti-creep-to-mandatory boundary. The canonical `*_audit_evidence` degraded predicate
+# (§3.5b) AND the Status-mode degraded render in skills/feature/SKILL.md MUST NOT reference
+# any grill field: grill_status: skipped is non-degraded (grill is optional) and lives under
+# a DIFFERENT key, so letting grill_status / grill_coverage leak into the degraded predicate
+# or the Status-mode render would slide grill toward de-facto-mandatory.
+#
+# REGION-SCOPED, NOT file-wide. grill_status legitimately appears elsewhere in SKILL.md (the
+# Step-2 grill gate section + the §3.5 grill-aware Pass 2 prose), so a file-wide forbidden-form
+# grep would FALSE-FAIL. Extract the `## Status mode` region and the `### 3.5b` region with the
+# same awk idiom as check_skill_renderer_evidence_flag_wired / check_skill_legacy_null_reader_
+# semantics, then assert grill_status / grill_coverage are ABSENT from each. Each region is
+# anchored on a known degraded-predicate literal FIRST, so a broken extraction (empty region)
+# FAILS the pin rather than vacuously passing the negative assertion.
+check_skill_degraded_predicate_no_grill() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local status_region b35_region
+  status_region=$(awk '/^## Status mode/{flag=1; next} flag && /^## /{exit} flag' "$f")
+  b35_region=$(awk '/^### 3\.5b/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  # Anchor: each region must actually contain its degraded-predicate surface, else the
+  # negative assertions below would vacuously pass on a broken extraction.
+  printf '%s' "$status_region" | grep -qF '*_audit_evidence' \
+    || { echo "Status-mode region empty / anchor missing — cannot region-scope grill-absence check"; return 1; }
+  printf '%s' "$b35_region" | grep -qF '∈ {single_model, self_fallback, contract_violated, skipped}' \
+    || { echo "§3.5b region empty / degraded-predicate missing — cannot region-scope grill-absence check"; return 1; }
+  # NEGATIVE: no grill field inside either degraded-predicate surface.
+  if printf '%s' "$status_region" | grep -qE 'grill_status|grill_coverage'; then
+    echo "Status-mode degraded render references a grill field (grill_status/grill_coverage) — grill MUST NOT enter the degraded predicate (§3.5.1 anti-creep)"
+    return 1
+  fi
+  if printf '%s' "$b35_region" | grep -qE 'grill_status|grill_coverage'; then
+    echo "§3.5b degraded predicate references a grill field (grill_status/grill_coverage) — grill MUST NOT enter the degraded predicate (§3.5.1 anti-creep)"
+    return 1
+  fi
+  echo "SKILL.md degraded predicate (§3.5b) + Status-mode render reference no grill field (region-scoped; grill_status legit elsewhere)"
+}
+
+# --- Grill mode handler + skipped write-path (X1/X2 code-audit fix on 2026-06-29-grill-feature-gate) ---
+# Structure floor for the standalone `## Grill mode` H2 handler (X1) and the
+# grill_status: skipped explicit-decline write path (X2) in skills/feature/SKILL.md.
+
+# (X1) A `## Grill mode` H2 handler section exists and names the load-bearing
+# standalone-dispatch contract: spec resolution + the DRAFT-only precondition.
+# (X3) The precondition is a non-DRAFT CATCH-ALL ("any other status -> refuse"),
+# NOT a brittle enumerated refuse-list — so BLOCKED and any future enum value route
+# to a defined refuse path. Region-extracted (header -> next REAL `## ` handler),
+# NOT file-wide, since `grill` prose lives all over SKILL.md. The exit guard skips
+# the inline `## ⏸ AWAITING YOUR INPUT` banner (it sits between the header and the
+# step-3 precondition), so the region covers the whole handler incl. step 3. Catches
+# a regression that drops the standalone handler (leaving `/feature grill [spec-path]`
+# dispatch undefined) OR that reverts the precondition to an enumerated list (leaving
+# non-listed statuses like BLOCKED undefined).
+check_skill_grill_mode_handler_exists() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qxF '## Grill mode' "$f" \
+    || { echo "SKILL.md missing '## Grill mode' H2 handler section (X1)"; return 1; }
+  local region
+  region=$(awk '/^## Grill mode/{flag=1; next} flag && /^## / && !/AWAITING YOUR INPUT/{exit} flag' "$f")
+  printf '%s\n' "$region" | grep -qiF 'resolve the target spec' \
+    || { echo "SKILL.md '## Grill mode' handler does not name spec resolution"; return 1; }
+  printf '%s\n' "$region" | grep -qF 'DRAFT' \
+    || { echo "SKILL.md '## Grill mode' handler does not name the DRAFT precondition"; return 1; }
+  printf '%s\n' "$region" | grep -qiE 'any other status.*refuse' \
+    || { echo "SKILL.md '## Grill mode' precondition is not a non-DRAFT catch-all (expected 'any other status ... refuse', not an enumerated refuse-list — BLOCKED/future enum would fall through) (X3)"; return 1; }
+  echo "SKILL.md '## Grill mode' H2 handler present (names spec resolution + DRAFT precondition; non-DRAFT catch-all refusal)"
+}
+
+# (X2) The `### Grill gate` section ties grill_status: skipped to the EXPLICIT-DECLINE
+# path AND states the orchestrator actually WRITES it (the framing was orphaned: it
+# said "skipped when not run" but no step wrote the value). Region-scoped to the
+# `### Grill gate` section (header -> next `### `), since grill_status appears elsewhere.
+# Catches a regression back to the orphaned "skipped when not run" framing.
+check_skill_grill_status_skipped_write_path() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local section
+  section=$(awk '/^### Grill gate/{cap=1;print;next} cap&&/^### /{exit} cap{print}' "$f")
+  [ -n "$section" ] || { echo "SKILL.md missing '### Grill gate' section for skipped write-path pin"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'explicit-decline' \
+    || { echo "SKILL.md grill gate does not tie grill_status: skipped to the explicit-decline path (X2)"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'writes `grill_status: skipped`' \
+    || { echo "SKILL.md grill gate does not state the orchestrator WRITES grill_status: skipped on decline (X2)"; return 1; }
+  echo "SKILL.md grill gate ties grill_status: skipped to the explicit-decline write path"
+}

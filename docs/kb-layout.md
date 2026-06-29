@@ -52,6 +52,29 @@ Valid transitions:
 - `DISCARDED`: work thrown away via explicit `/feature discard`; spec preserved for reference
 - `DONE` *(legacy)*: read-only synonym of `VERIFIED` for specs predating 2026-04-17
 
+### Grill — DRAFT-hardening sub-phase (no new state token)
+
+`grill` is an opt-in interview gate that hardens a DRAFT spec before the Step 3
+APPROVAL HARD GATE (`DRAFT → [grill] → APPROVED`). It is a **sub-phase**, not a
+status value: grill adds **no new state token** to the enum above — the
+`DRAFT | APPROVED | AUDIT_PASSED | …` set and its transitions are unchanged, so
+there is **zero migration**. Grill is off by default, most specs never run it,
+and it **never gates** approval or audit. Full discipline lives in
+`skills/feature/SKILL.md` (gate wiring) + `skills/feature/references/grill-protocol.md`.
+
+A grilled spec records three optional frontmatter fields (all advisory):
+
+- `grill_status: ran | skipped` — `null` / absent on legacy specs = `legacy_unknown`.
+- `grill_date: YYYY-MM-DD` — `null` when skipped.
+- `grill_coverage: visited/total/deferred` — of the branches WE MAPPED only; **advisory, never blocking** (an honesty signal, not a completeness metric).
+
+`grill_status: skipped` is a first-class **non-degraded** value (grill is
+optional). This is **distinct from** `*_audit_evidence: skipped`, which **is**
+degraded under `skills/feature/SKILL.md` §3.5b — the two `skipped` tokens live
+under **different keys** (`grill_status` vs `*_audit_evidence`) and never
+collide. The `*_audit_evidence` degraded predicate and the Status-mode degraded
+render reference **no** grill field (`grill_status` / `grill_coverage`).
+
 ### Audit Findings frontmatter
 ```yaml
 ---
