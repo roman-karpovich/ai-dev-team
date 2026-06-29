@@ -11026,3 +11026,75 @@ check_decisions_schema_cross_consistency() {
   fi
   echo "Decisions column set matches exactly between spec-template.md and grill-protocol.md"
 }
+
+# --- Grill in the canonical KB-layout reference (spec 2026-06-29-grill-feature-gate, Step 5) ---
+# Structure floor for the grill documentation added to docs/kb-layout.md (the canonical
+# state-machine + frontmatter reference): grill is a DRAFT-hardening SUB-PHASE that adds
+# no new status token (zero migration), and it carries three optional frontmatter fields.
+# The third pin (degraded-predicate-negative) is the load-bearing X1/X5 guard — it lives
+# in SKILL.md, region-scoped, never file-wide.
+KB_LAYOUT='docs/kb-layout.md'
+
+# (1) kb-layout.md carries the `no new state token` literal — grill is a sub-phase, NOT a
+# status value, so the DRAFT|APPROVED|… enum is unchanged and there is zero migration.
+# Catches a regression that drops the zero-migration assertion (or worse, promotes grill to
+# a real state token). This is the step's RED literal (failing_test_cmd greps for it).
+check_kb_layout_grill_no_new_state_token() {
+  local f="$KB_LAYOUT"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'no new state token' "$f" \
+    || { echo "kb-layout.md missing 'no new state token' literal (grill is a sub-phase, zero migration)"; return 1; }
+  echo "kb-layout.md documents grill adds 'no new state token' (zero migration)"
+}
+
+# (2) kb-layout.md documents the three grill frontmatter fields. Catches a regression that
+# drops any of grill_status / grill_date / grill_coverage from the canonical frontmatter
+# reference (which the orchestrator + librarian consume).
+check_kb_layout_grill_frontmatter() {
+  local f="$KB_LAYOUT"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local k
+  for k in 'grill_status' 'grill_date' 'grill_coverage'; do
+    grep -qF "$k" "$f" \
+      || { echo "kb-layout.md missing grill frontmatter field doc: $k"; return 1; }
+  done
+  echo "kb-layout.md documents grill frontmatter fields grill_status / grill_date / grill_coverage"
+}
+
+# (3) X1/X5 LOAD-BEARING NEGATIVE PIN — the entire structural protection for the §3.5.1
+# anti-creep-to-mandatory boundary. The canonical `*_audit_evidence` degraded predicate
+# (§3.5b) AND the Status-mode degraded render in skills/feature/SKILL.md MUST NOT reference
+# any grill field: grill_status: skipped is non-degraded (grill is optional) and lives under
+# a DIFFERENT key, so letting grill_status / grill_coverage leak into the degraded predicate
+# or the Status-mode render would slide grill toward de-facto-mandatory.
+#
+# REGION-SCOPED, NOT file-wide. grill_status legitimately appears elsewhere in SKILL.md (the
+# Step-2 grill gate section + the §3.5 grill-aware Pass 2 prose), so a file-wide forbidden-form
+# grep would FALSE-FAIL. Extract the `## Status mode` region and the `### 3.5b` region with the
+# same awk idiom as check_skill_renderer_evidence_flag_wired / check_skill_legacy_null_reader_
+# semantics, then assert grill_status / grill_coverage are ABSENT from each. Each region is
+# anchored on a known degraded-predicate literal FIRST, so a broken extraction (empty region)
+# FAILS the pin rather than vacuously passing the negative assertion.
+check_skill_degraded_predicate_no_grill() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local status_region b35_region
+  status_region=$(awk '/^## Status mode/{flag=1; next} flag && /^## /{exit} flag' "$f")
+  b35_region=$(awk '/^### 3\.5b/{flag=1; next} flag && /^### / {exit} flag' "$f")
+  # Anchor: each region must actually contain its degraded-predicate surface, else the
+  # negative assertions below would vacuously pass on a broken extraction.
+  printf '%s' "$status_region" | grep -qF '*_audit_evidence' \
+    || { echo "Status-mode region empty / anchor missing — cannot region-scope grill-absence check"; return 1; }
+  printf '%s' "$b35_region" | grep -qF '∈ {single_model, self_fallback, contract_violated, skipped}' \
+    || { echo "§3.5b region empty / degraded-predicate missing — cannot region-scope grill-absence check"; return 1; }
+  # NEGATIVE: no grill field inside either degraded-predicate surface.
+  if printf '%s' "$status_region" | grep -qE 'grill_status|grill_coverage'; then
+    echo "Status-mode degraded render references a grill field (grill_status/grill_coverage) — grill MUST NOT enter the degraded predicate (§3.5.1 anti-creep)"
+    return 1
+  fi
+  if printf '%s' "$b35_region" | grep -qE 'grill_status|grill_coverage'; then
+    echo "§3.5b degraded predicate references a grill field (grill_status/grill_coverage) — grill MUST NOT enter the degraded predicate (§3.5.1 anti-creep)"
+    return 1
+  fi
+  echo "SKILL.md degraded predicate (§3.5b) + Status-mode render reference no grill field (region-scoped; grill_status legit elsewhere)"
+}

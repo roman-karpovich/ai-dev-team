@@ -386,3 +386,14 @@ check_spec_template_grill_frontmatter prompt-text
 check_spec_template_changed_sections_none_valid prompt-text
 check_spec_template_grill_non_degraded_note prompt-text
 check_decisions_schema_cross_consistency prompt-text
+
+# Grill in the KB-layout reference (spec 2026-06-29-grill-feature-gate Step 5):
+#   structure floor for grill documented in docs/kb-layout.md — the `no new state token`
+#   zero-migration literal and the grill_status / grill_date / grill_coverage frontmatter
+#   fields. The grill-degraded-predicate-negative pin is the load-bearing X1/X5 guard:
+#   region-scoped in skills/feature/SKILL.md (## Status mode + ### 3.5b regions), it asserts
+#   the *_audit_evidence degraded predicate / Status-mode render reference no grill field.
+#   All assert literal markdown prose / YAML frontmatter docs → prompt-text.
+check_kb_layout_grill_no_new_state_token prompt-text
+check_kb_layout_grill_frontmatter prompt-text
+check_skill_degraded_predicate_no_grill prompt-text

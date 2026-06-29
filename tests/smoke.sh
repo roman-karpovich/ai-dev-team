@@ -5719,6 +5719,20 @@ check "spec-template-grill-non-degraded-note"     check_spec_template_grill_non_
 check "decisions-schema-cross-consistency"        check_decisions_schema_cross_consistency
 echo
 
+# --- Grill in the KB-layout reference pins (spec 2026-06-29-grill-feature-gate, Step 5) ---
+# Structure floor for grill documented in docs/kb-layout.md (helpers in
+# tests/smoke-helpers.sh): the `no new state token` zero-migration literal and the three
+# grill frontmatter fields. The third pin (grill-degraded-predicate-negative) is the
+# load-bearing X1/X5 guard — REGION-SCOPED in skills/feature/SKILL.md (the ## Status mode
+# region + the ### 3.5b degraded-predicate region), NOT file-wide, since grill_status
+# legitimately appears in the Step-2 grill gate + §3.5 grill-aware prose. It asserts the
+# degraded predicate / Status-mode render reference no grill field (§3.5.1 anti-creep).
+echo "Grill KB-layout reference pins:"
+check "kb-layout-grill-no-new-state-token"  check_kb_layout_grill_no_new_state_token
+check "kb-layout-grill-frontmatter"         check_kb_layout_grill_frontmatter
+check "grill-degraded-predicate-negative"   check_skill_degraded_predicate_no_grill
+echo
+
 # --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---
 # Pins per spec §3.5: literal-presence checks for the contract surfaces, plus
 # one fixture-driven behavioral pin that exercises the YAML emit-safety rule
