@@ -361,3 +361,15 @@ check_grill_protocol_changed_sections_none_valid prompt-text
 check_skill_grill_gate_before_approval prompt-text
 check_skill_grill_gate_off_by_default prompt-text
 check_skill_grill_gate_suggest_never_blocks prompt-text
+
+# Grill-aware spec cross-audit (spec 2026-06-29-grill-feature-gate Step 3):
+#   structure floor for the grill-aware Step 3.5 spec cross-audit — §3.5 (region-
+#   scoped) names the grill-aware ## Decisions consumption + evidence-ref
+#   resolvability, states grill NEVER gates, keeps the audit MANDATORY by default
+#   with the Skip path preserved; both cross-auditor reference halves (Claude
+#   mode-focus + Codex dispatch template) name the Decisions/evidence-ref clause.
+#   All pin literal markdown prose / section order → prompt-text.
+check_skill_grill_aware_spec_audit prompt-text
+check_skill_grill_never_gates_spec_audit prompt-text
+check_skill_spec_audit_mandatory_skip_preserved prompt-text
+check_cross_auditor_spec_mode_grill_aware prompt-text

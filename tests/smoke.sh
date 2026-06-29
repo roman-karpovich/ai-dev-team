@@ -5691,6 +5691,19 @@ check "grill-gate-off-by-default"      check_skill_grill_gate_off_by_default
 check "grill-gate-suggest-never-blocks" check_skill_grill_gate_suggest_never_blocks
 echo
 
+# --- Grill-aware spec cross-audit pins (spec 2026-06-29-grill-feature-gate, Step 3) ---
+# Structure floor for the grill-aware Step 3.5 spec cross-audit (helpers in
+# tests/smoke-helpers.sh): §3.5 names the grill-aware Decisions consumption +
+# evidence-ref resolvability, states grill NEVER gates, keeps the audit MANDATORY by
+# default with the Skip path preserved; both cross-auditor reference halves name the
+# Decisions / evidence-ref-resolvability clause (dual-model backstop not half-blind).
+echo "Grill-aware spec cross-audit pins:"
+check "grill-aware-spec-audit"            check_skill_grill_aware_spec_audit
+check "grill-never-gates-spec-audit"      check_skill_grill_never_gates_spec_audit
+check "spec-audit-mandatory-skip-preserved" check_skill_spec_audit_mandatory_skip_preserved
+check "cross-auditor-spec-mode-grill-aware" check_cross_auditor_spec_mode_grill_aware
+echo
+
 # --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---
 # Pins per spec §3.5: literal-presence checks for the contract surfaces, plus
 # one fixture-driven behavioral pin that exercises the YAML emit-safety rule

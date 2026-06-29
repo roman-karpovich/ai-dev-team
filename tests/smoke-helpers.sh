@@ -10844,3 +10844,85 @@ check_skill_grill_gate_suggest_never_blocks() {
     || { echo "SKILL.md grill gate suggest does not state 'never auto-runs'"; return 1; }
   echo "SKILL.md grill gate neutral suggest never blocks / never auto-runs"
 }
+
+# --- Grill-aware spec cross-audit (spec 2026-06-29-grill-feature-gate, Step 3) ---
+# Structure floor for the grill-aware Step 3.5 spec cross-audit. The grill-aware
+# clause is region-scoped to SKILL.md §3.5 (`### Step 3.5` → next `### `), NOT a
+# file-wide grep — the Step 2 grill gate section carries `grill_status` / `never
+# gates` prose that would false-pass a file-wide check. The reference-file pin
+# asserts BOTH cross-auditor halves (Claude mode-focus + Codex dispatch template)
+# name the Decisions/evidence-ref-resolvability clause, so the dual-model backstop
+# is not half-blind.
+SKILL_MD='skills/feature/SKILL.md'
+
+# §3.5 region extractor: from `### Step 3.5` to the next 3-hash header (`### 3.5b`).
+# `#### `-level subsections (Pass 1 / Pass 2 / 3.5a) stay inside the region.
+_grill_skill_35_region() {
+  awk '/^### Step 3\.5 /{cap=1;print;next} cap&&/^### /{exit} cap{print}' "$SKILL_MD"
+}
+
+# (1) §3.5 names the grill-aware Decisions consumption AND the evidence-ref
+# resolvability contract. Catches a regression that drops grill-awareness from the
+# spec audit (the backstop) or weakens it from citation-resolvability to nothing.
+check_skill_grill_aware_spec_audit() {
+  test -f "$SKILL_MD" || { echo "$SKILL_MD missing"; return 1; }
+  local region; region=$(_grill_skill_35_region)
+  printf '%s\n' "$region" | grep -qF 'grill-aware' \
+    || { echo "SKILL.md §3.5 missing 'grill-aware' literal"; return 1; }
+  printf '%s\n' "$region" | grep -qF '## Decisions' \
+    || { echo "SKILL.md §3.5 grill-aware clause does not name '## Decisions' consumption"; return 1; }
+  printf '%s\n' "$region" | grep -qF 'evidence-ref' \
+    || { echo "SKILL.md §3.5 grill-aware clause does not name 'evidence-ref'"; return 1; }
+  printf '%s\n' "$region" | grep -qF 'RESOLVES' \
+    || { echo "SKILL.md §3.5 grill-aware clause does not require evidence-ref citations RESOLVE"; return 1; }
+  echo "SKILL.md §3.5 grill-aware: consumes ## Decisions + verifies evidence-ref RESOLVES"
+}
+
+# (2) §3.5 states grill NEVER gates. Region-scoped: `never gates` also appears in
+# the Step 2 grill gate section (`never blocks, never gates` + `Grill NEVER gates
+# approval or audit`), so a file-wide grep would false-pass even if the §3.5 site
+# lost it. Catches the slide where `deferred > 0` becomes a Step 3.5 fail.
+check_skill_grill_never_gates_spec_audit() {
+  test -f "$SKILL_MD" || { echo "$SKILL_MD missing"; return 1; }
+  local region; region=$(_grill_skill_35_region)
+  printf '%s\n' "$region" | grep -qiF 'never gates' \
+    || { echo "SKILL.md §3.5 does not state grill NEVER gates"; return 1; }
+  echo "SKILL.md §3.5 states grill NEVER gates (deferred>0 advisory, never a fail)"
+}
+
+# (3) §3.5 keeps the spec audit MANDATORY by default AND the Skip path preserved —
+# the X3 anti-regression. Asserts all three load-bearing literals co-locate at the
+# §3.5 site: `MANDATORY by default`, `preserved`, and the recorded skip evidence
+# `spec_audit_evidence: skipped`. Catches a regression that removes the Skip path
+# or quietly drops the mandatory-by-default framing when grill ran.
+check_skill_spec_audit_mandatory_skip_preserved() {
+  test -f "$SKILL_MD" || { echo "$SKILL_MD missing"; return 1; }
+  local region; region=$(_grill_skill_35_region)
+  printf '%s\n' "$region" | grep -qiF 'MANDATORY by default' \
+    || { echo "SKILL.md §3.5 missing 'MANDATORY by default' framing"; return 1; }
+  printf '%s\n' "$region" | grep -qiF 'preserved' \
+    || { echo "SKILL.md §3.5 does not state the Skip path is preserved"; return 1; }
+  printf '%s\n' "$region" | grep -qF 'spec_audit_evidence: skipped' \
+    || { echo "SKILL.md §3.5 Skip path does not record 'spec_audit_evidence: skipped'"; return 1; }
+  echo "SKILL.md §3.5 spec audit MANDATORY by default + Skip path preserved (records skipped)"
+}
+
+# (4) BOTH cross-auditor reference files name the grill Decisions / evidence-ref
+# resolvability clause — the hub `agents/cross-auditor.md` delegates spec-mode focus
+# to these references, so if either half lost the clause the dual-model backstop
+# would be half-blind to the Decisions table. Asserts the three clause literals
+# (`## Decisions`, `evidence-ref`, `RESOLVES`) in each file.
+check_cross_auditor_spec_mode_grill_aware() {
+  local f
+  for f in 'agents/references/cross-auditor-mode-focus.md' \
+           'agents/references/cross-auditor-codex-dispatch.md'; do
+    test -f "$f" || { echo "$f missing"; return 1; }
+    grep -qF '## Decisions' "$f" \
+      || { echo "$f spec-mode grill clause does not name '## Decisions'"; return 1; }
+    grep -qF 'evidence-ref' "$f" \
+      || { echo "$f spec-mode grill clause does not name 'evidence-ref'"; return 1; }
+    grep -qF 'RESOLVES' "$f" \
+      || { echo "$f spec-mode grill clause does not require evidence-ref citations RESOLVE"; return 1; }
+  done
+  echo "cross-auditor spec-mode grill clause present in BOTH Claude + Codex reference files"
+}
