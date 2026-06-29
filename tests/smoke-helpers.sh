@@ -10927,6 +10927,25 @@ check_cross_auditor_spec_mode_grill_aware() {
   echo "cross-auditor spec-mode grill clause present in BOTH Claude + Codex reference files"
 }
 
+# (5) BOTH cross-auditor reference files carry the codebase-grounded + numeric spec-mode
+# upgrade (spec 2026-06-29-cross-auditor-spec-mode-codebase-grounded). The hub
+# `agents/cross-auditor.md` delegates spec-mode focus to these references, so if either
+# half lacked the upgrade the dual-model backstop would be half-blind to the
+# code-grounded + numeric defect class. Asserts the two pinned shared anchors
+# (`Codebase-grounded verification`, lowercase `numeric worked example`) in each file.
+check_cross_auditor_spec_mode_codebase_grounded() {
+  local f
+  for f in 'agents/references/cross-auditor-mode-focus.md' \
+           'agents/references/cross-auditor-codex-dispatch.md'; do
+    test -f "$f" || { echo "$f missing"; return 1; }
+    grep -qF 'Codebase-grounded verification' "$f" \
+      || { echo "$f spec-mode upgrade does not name 'Codebase-grounded verification'"; return 1; }
+    grep -qF 'numeric worked example' "$f" \
+      || { echo "$f spec-mode upgrade does not require a 'numeric worked example'"; return 1; }
+  done
+  echo "cross-auditor spec-mode codebase-grounded + numeric clause present in BOTH Claude + Codex reference files"
+}
+
 # --- Grill write-back surface in spec-template.md (spec 2026-06-29-grill-feature-gate, Step 4) ---
 # Structure floor for the grill write-back surface added to
 # skills/feature/references/spec-template.md: the `## Decisions` table on the fixed
