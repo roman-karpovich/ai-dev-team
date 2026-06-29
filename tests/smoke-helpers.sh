@@ -11105,21 +11105,29 @@ check_skill_degraded_predicate_no_grill() {
 
 # (X1) A `## Grill mode` H2 handler section exists and names the load-bearing
 # standalone-dispatch contract: spec resolution + the DRAFT-only precondition.
-# Region-extracted (header -> next `## `), NOT file-wide, since `grill` prose lives
-# all over SKILL.md. Catches a regression that drops the standalone handler, leaving
-# `/feature grill [spec-path]` dispatch (resolution / precondition / return) undefined.
+# (X3) The precondition is a non-DRAFT CATCH-ALL ("any other status -> refuse"),
+# NOT a brittle enumerated refuse-list — so BLOCKED and any future enum value route
+# to a defined refuse path. Region-extracted (header -> next REAL `## ` handler),
+# NOT file-wide, since `grill` prose lives all over SKILL.md. The exit guard skips
+# the inline `## ⏸ AWAITING YOUR INPUT` banner (it sits between the header and the
+# step-3 precondition), so the region covers the whole handler incl. step 3. Catches
+# a regression that drops the standalone handler (leaving `/feature grill [spec-path]`
+# dispatch undefined) OR that reverts the precondition to an enumerated list (leaving
+# non-listed statuses like BLOCKED undefined).
 check_skill_grill_mode_handler_exists() {
   local f='skills/feature/SKILL.md'
   test -f "$f" || { echo "$f missing"; return 1; }
   grep -qxF '## Grill mode' "$f" \
     || { echo "SKILL.md missing '## Grill mode' H2 handler section (X1)"; return 1; }
   local region
-  region=$(awk '/^## Grill mode/{flag=1; next} flag && /^## /{exit} flag' "$f")
+  region=$(awk '/^## Grill mode/{flag=1; next} flag && /^## / && !/AWAITING YOUR INPUT/{exit} flag' "$f")
   printf '%s\n' "$region" | grep -qiF 'resolve the target spec' \
     || { echo "SKILL.md '## Grill mode' handler does not name spec resolution"; return 1; }
   printf '%s\n' "$region" | grep -qF 'DRAFT' \
     || { echo "SKILL.md '## Grill mode' handler does not name the DRAFT precondition"; return 1; }
-  echo "SKILL.md '## Grill mode' H2 handler present (names spec resolution + DRAFT precondition)"
+  printf '%s\n' "$region" | grep -qiE 'any other status.*refuse' \
+    || { echo "SKILL.md '## Grill mode' precondition is not a non-DRAFT catch-all (expected 'any other status ... refuse', not an enumerated refuse-list — BLOCKED/future enum would fall through) (X3)"; return 1; }
+  echo "SKILL.md '## Grill mode' H2 handler present (names spec resolution + DRAFT precondition; non-DRAFT catch-all refusal)"
 }
 
 # (X2) The `### Grill gate` section ties grill_status: skipped to the EXPLICIT-DECLINE
