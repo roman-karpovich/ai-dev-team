@@ -10926,3 +10926,103 @@ check_cross_auditor_spec_mode_grill_aware() {
   done
   echo "cross-auditor spec-mode grill clause present in BOTH Claude + Codex reference files"
 }
+
+# --- Grill write-back surface in spec-template.md (spec 2026-06-29-grill-feature-gate, Step 4) ---
+# Structure floor for the grill write-back surface added to
+# skills/feature/references/spec-template.md: the `## Decisions` table on the fixed
+# 7-column schema, the grill_status / grill_date / grill_coverage frontmatter, the
+# `changed-sections: none` valid value, and the non-degraded boundary note (the two
+# `skipped` tokens differ by key). The cross-consistency pin asserts the Decisions
+# column set MATCHES grill-protocol.md exactly (column-set equality, not mere presence) —
+# the schema's two homes (canonical protocol + author template) cannot drift apart.
+SPEC_TEMPLATE='skills/feature/references/spec-template.md'
+
+# Shared extractor: normalize the Decisions table header row of $1 to the canonical
+# ` | `-joined column tuple (the pipe-prefixed header line carrying decision-id, with
+# per-cell whitespace stripped). Emits empty output when no header row exists.
+_grill_decisions_columns() {
+  grep -F 'decision-id' "$1" | grep -E '^\|' | head -1 \
+    | sed -E 's/^\|//; s/\|$//' \
+    | awk -F'|' '{out=""; for(i=1;i<=NF;i++){gsub(/^[ \t]+|[ \t]+$/,"",$i); out=(i==1?$i:out" | "$i)} print out}'
+}
+
+# (1) spec-template.md carries the `## Decisions` header AND the full 7-column tuple in
+# canonical order. Catches a regression that drops the section header or drops/reorders/
+# renames any column of the write-back schema authors copy into a real spec.
+check_spec_template_decisions_schema() {
+  local f="$SPEC_TEMPLATE"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF '## Decisions' "$f" || { echo "$f missing '## Decisions' section header"; return 1; }
+  local got expected
+  expected='decision-id | question | confirmed-answer | route | evidence-ref | numeric-example | changed-sections'
+  got=$(_grill_decisions_columns "$f")
+  if [ "$got" != "$expected" ]; then
+    echo "spec-template.md Decisions column set/order mismatch: got [$got] expected [$expected]"
+    return 1
+  fi
+  echo "spec-template.md Decisions schema: ## Decisions header + 7 columns in canonical order"
+}
+
+# (2) The grill frontmatter fields are present in the YAML frontmatter block (region-
+# scoped to the leading `---`…`---`, so a stray body mention cannot satisfy the pin).
+check_spec_template_grill_frontmatter() {
+  local f="$SPEC_TEMPLATE"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local fm
+  fm=$(awk 'NR==1&&/^---$/{cap=1;next} cap&&/^---$/{exit} cap{print}' "$f")
+  local k
+  for k in 'grill_status:' 'grill_date:' 'grill_coverage:'; do
+    printf '%s\n' "$fm" | grep -qF "$k" \
+      || { echo "spec-template.md frontmatter missing $k"; return 1; }
+  done
+  echo "spec-template.md frontmatter carries grill_status / grill_date / grill_coverage"
+}
+
+# (3) `changed-sections: none` is named a VALID value (the line carrying the literal
+# also carries `valid`, case-insensitive) — authors record `none` honestly, never fake a
+# bogus section ref.
+check_spec_template_changed_sections_none_valid() {
+  local f="$SPEC_TEMPLATE"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qF 'changed-sections: none' "$f" \
+    || { echo "spec-template.md missing 'changed-sections: none' literal"; return 1; }
+  grep -iF 'changed-sections: none' "$f" | grep -qiF 'valid' \
+    || { echo "spec-template.md does not mark 'changed-sections: none' as a VALID value"; return 1; }
+  echo "spec-template.md marks 'changed-sections: none' as valid"
+}
+
+# (4) The non-degraded boundary note: one line states grill_status: skipped is
+# NON-DEGRADED, the note contrasts it with the degraded *_audit_evidence: skipped, and
+# states the two keys are different (never collide). Catches a regression that drops the
+# boundary, which would let grill_status leak into the degraded predicate.
+check_spec_template_grill_non_degraded_note() {
+  local f="$SPEC_TEMPLATE"
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -iF 'non-degraded' "$f" | grep -qiF 'grill_status' \
+    || { echo "spec-template.md missing 'grill_status: skipped is non-degraded' note"; return 1; }
+  grep -qF '*_audit_evidence' "$f" \
+    || { echo "spec-template.md non-degraded note does not contrast with *_audit_evidence"; return 1; }
+  grep -qiF 'different key' "$f" \
+    || { echo "spec-template.md non-degraded note does not state the keys are different (never collide)"; return 1; }
+  echo "spec-template.md non-degraded note: grill_status skipped non-degraded, distinct from *_audit_evidence (different keys)"
+}
+
+# (5) CROSS-CONSISTENCY (spec §5 Step 4 mandate): the Decisions column set in
+# spec-template.md MATCHES grill-protocol.md EXACTLY — column-set equality, not mere
+# presence. Extracts both header tuples and compares, so the schema's two homes (the
+# canonical protocol and the author-facing template) can never drift apart.
+check_decisions_schema_cross_consistency() {
+  local sp="$SPEC_TEMPLATE" gp="$GRILL_PROTOCOL"
+  test -f "$sp" || { echo "$sp missing"; return 1; }
+  test -f "$gp" || { echo "$gp missing"; return 1; }
+  local sp_cols gp_cols
+  sp_cols=$(_grill_decisions_columns "$sp")
+  gp_cols=$(_grill_decisions_columns "$gp")
+  [ -n "$sp_cols" ] || { echo "spec-template.md has no Decisions header row to extract"; return 1; }
+  [ -n "$gp_cols" ] || { echo "grill-protocol.md has no Decisions header row to extract"; return 1; }
+  if [ "$sp_cols" != "$gp_cols" ]; then
+    echo "Decisions column set differs: spec-template.md [$sp_cols] vs grill-protocol.md [$gp_cols]"
+    return 1
+  fi
+  echo "Decisions column set matches exactly between spec-template.md and grill-protocol.md"
+}

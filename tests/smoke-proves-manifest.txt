@@ -373,3 +373,16 @@ check_skill_grill_aware_spec_audit prompt-text
 check_skill_grill_never_gates_spec_audit prompt-text
 check_skill_spec_audit_mandatory_skip_preserved prompt-text
 check_cross_auditor_spec_mode_grill_aware prompt-text
+
+# Grill write-back surface (spec 2026-06-29-grill-feature-gate Step 4):
+#   structure floor for skills/feature/references/spec-template.md — the ## Decisions
+#   table on the fixed 7-column schema, the grill_status / grill_date / grill_coverage
+#   frontmatter, the `changed-sections: none` valid value, the non-degraded boundary
+#   note, and the cross-consistency pin asserting the Decisions column set matches
+#   grill-protocol.md exactly. All pin literal markdown prose / table structure / YAML
+#   frontmatter → prompt-text.
+check_spec_template_decisions_schema prompt-text
+check_spec_template_grill_frontmatter prompt-text
+check_spec_template_changed_sections_none_valid prompt-text
+check_spec_template_grill_non_degraded_note prompt-text
+check_decisions_schema_cross_consistency prompt-text

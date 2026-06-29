@@ -5704,6 +5704,21 @@ check "spec-audit-mandatory-skip-preserved" check_skill_spec_audit_mandatory_ski
 check "cross-auditor-spec-mode-grill-aware" check_cross_auditor_spec_mode_grill_aware
 echo
 
+# --- Grill write-back surface pins (spec 2026-06-29-grill-feature-gate, Step 4) ---
+# Structure floor for the grill write-back surface in skills/feature/references/
+# spec-template.md (helpers in tests/smoke-helpers.sh): the ## Decisions table on the
+# fixed 7-column schema, the grill_status / grill_date / grill_coverage frontmatter, the
+# `changed-sections: none` valid value, and the non-degraded boundary note. The
+# cross-consistency pin asserts the Decisions column set MATCHES grill-protocol.md
+# exactly (column-set equality), so the schema cannot drift between its two homes.
+echo "Grill write-back surface pins:"
+check "spec-template-decisions-schema"            check_spec_template_decisions_schema
+check "spec-template-grill-frontmatter"           check_spec_template_grill_frontmatter
+check "spec-template-changed-sections-none-valid" check_spec_template_changed_sections_none_valid
+check "spec-template-grill-non-degraded-note"     check_spec_template_grill_non_degraded_note
+check "decisions-schema-cross-consistency"        check_decisions_schema_cross_consistency
+echo
+
 # --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---
 # Pins per spec §3.5: literal-presence checks for the contract surfaces, plus
 # one fixture-driven behavioral pin that exercises the YAML emit-safety rule
