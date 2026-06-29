@@ -11098,3 +11098,44 @@ check_skill_degraded_predicate_no_grill() {
   fi
   echo "SKILL.md degraded predicate (§3.5b) + Status-mode render reference no grill field (region-scoped; grill_status legit elsewhere)"
 }
+
+# --- Grill mode handler + skipped write-path (X1/X2 code-audit fix on 2026-06-29-grill-feature-gate) ---
+# Structure floor for the standalone `## Grill mode` H2 handler (X1) and the
+# grill_status: skipped explicit-decline write path (X2) in skills/feature/SKILL.md.
+
+# (X1) A `## Grill mode` H2 handler section exists and names the load-bearing
+# standalone-dispatch contract: spec resolution + the DRAFT-only precondition.
+# Region-extracted (header -> next `## `), NOT file-wide, since `grill` prose lives
+# all over SKILL.md. Catches a regression that drops the standalone handler, leaving
+# `/feature grill [spec-path]` dispatch (resolution / precondition / return) undefined.
+check_skill_grill_mode_handler_exists() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  grep -qxF '## Grill mode' "$f" \
+    || { echo "SKILL.md missing '## Grill mode' H2 handler section (X1)"; return 1; }
+  local region
+  region=$(awk '/^## Grill mode/{flag=1; next} flag && /^## /{exit} flag' "$f")
+  printf '%s\n' "$region" | grep -qiF 'resolve the target spec' \
+    || { echo "SKILL.md '## Grill mode' handler does not name spec resolution"; return 1; }
+  printf '%s\n' "$region" | grep -qF 'DRAFT' \
+    || { echo "SKILL.md '## Grill mode' handler does not name the DRAFT precondition"; return 1; }
+  echo "SKILL.md '## Grill mode' H2 handler present (names spec resolution + DRAFT precondition)"
+}
+
+# (X2) The `### Grill gate` section ties grill_status: skipped to the EXPLICIT-DECLINE
+# path AND states the orchestrator actually WRITES it (the framing was orphaned: it
+# said "skipped when not run" but no step wrote the value). Region-scoped to the
+# `### Grill gate` section (header -> next `### `), since grill_status appears elsewhere.
+# Catches a regression back to the orphaned "skipped when not run" framing.
+check_skill_grill_status_skipped_write_path() {
+  local f='skills/feature/SKILL.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  local section
+  section=$(awk '/^### Grill gate/{cap=1;print;next} cap&&/^### /{exit} cap{print}' "$f")
+  [ -n "$section" ] || { echo "SKILL.md missing '### Grill gate' section for skipped write-path pin"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'explicit-decline' \
+    || { echo "SKILL.md grill gate does not tie grill_status: skipped to the explicit-decline path (X2)"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'writes `grill_status: skipped`' \
+    || { echo "SKILL.md grill gate does not state the orchestrator WRITES grill_status: skipped on decline (X2)"; return 1; }
+  echo "SKILL.md grill gate ties grill_status: skipped to the explicit-decline write path"
+}

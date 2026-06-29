@@ -1431,15 +1431,17 @@ check_banner_convention_doc_valid() {
 # feature-mode contract-violation terminal banner, and the §Implement
 # continuous-parallel-diff-audits opt-in banner.
 check_feature_awaiting_count_17() {
-  # 35 includes the §3.5b-2e model-attestation gate banner added by spec
-  # 2026-06-10-fable-cross-auditor-attestation Step 3.
+  # 36 includes the §3.5b-2e model-attestation gate banner added by spec
+  # 2026-06-10-fable-cross-auditor-attestation Step 3, plus the ## Grill mode
+  # standalone spec-resolution banner added by the grill-feature-gate code-audit
+  # X1 fix.
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "35" ]; then
-    echo "feature AWAITING count=$n expected 35"
+  if [ "$n" != "36" ]; then
+    echo "feature AWAITING count=$n expected 36"
     return 1
   fi
-  echo "feature AWAITING count=35 OK"
+  echo "feature AWAITING count=36 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1592,7 +1594,7 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 36 — includes the
+# (r) ruler-prefix count matches total banner count (expected 37 — includes the
 # §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1,
 # the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2,
 # the §3.5c audit-iteration-cap banner added by spec 2026-05-13-cap-banner-and-empirical-verification Step 2,
@@ -1604,7 +1606,8 @@ check_approval_required_unique_repo_wide() {
 # contract-violation terminal banner added by that spec's code-audit iter-2 X8 fix,
 # the §Implement continuous-parallel-diff-audits opt-in banner, and the 2
 # model-attestation gate banners (feature §3.5b-2e + standalone) added by spec
-# 2026-06-10-fable-cross-auditor-attestation Step 3).
+# 2026-06-10-fable-cross-auditor-attestation Step 3, and the ## Grill mode
+# standalone spec-resolution banner added by the grill-feature-gate code-audit X1 fix).
 check_awaiting_ruler_prefix_count_matches() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1613,14 +1616,14 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "36" ]; then
-    echo "ruler-prefix count=$c expected 36"
+  if [ "$c" != "37" ]; then
+    echo "ruler-prefix count=$c expected 37"
     return 1
   fi
-  echo "ruler-prefix count=36 OK"
+  echo "ruler-prefix count=37 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 47 — includes
+# (s) each banner has trailing bold question within 15 lines (expected 48 — includes
 # the feature Attack-surface profile and STRIDE-lite slot prompts, the §3.5c
 # audit-iteration-cap banner, the 3 §3.5b-2 recovery banners added by spec
 # 2026-05-15-cross-auditor-contract-gate-automation Step 6, the §3.4d
@@ -1629,7 +1632,8 @@ check_awaiting_ruler_prefix_count_matches() {
 # §3.5b-2d feature-mode terminal banner added by that spec's code-audit iter-2 X8 fix,
 # the §Implement continuous-parallel-diff-audits opt-in banner, and the 2
 # model-attestation gate banners (feature §3.5b-2e + standalone) added by spec
-# 2026-06-10-fable-cross-auditor-attestation Step 3).
+# 2026-06-10-fable-cross-auditor-attestation Step 3, and the ## Grill mode
+# standalone spec-resolution banner added by the grill-feature-gate code-audit X1 fix).
 check_banner_trailing_bold_present_each() {
   local c
   c=$(cat skills/feature/SKILL.md skills/cross-audit/SKILL.md skills/research/SKILL.md skills/investigate/SKILL.md | awk '
@@ -1640,11 +1644,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "47" ]; then
-    echo "trailing-bold-present-each count=$c expected 47"
+  if [ "$c" != "48" ]; then
+    echo "trailing-bold-present-each count=$c expected 48"
     return 1
   fi
-  echo "trailing-bold-present-each=47 OK"
+  echo "trailing-bold-present-each=48 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -5731,6 +5735,15 @@ echo "Grill KB-layout reference pins:"
 check "kb-layout-grill-no-new-state-token"  check_kb_layout_grill_no_new_state_token
 check "kb-layout-grill-frontmatter"         check_kb_layout_grill_frontmatter
 check "grill-degraded-predicate-negative"   check_skill_degraded_predicate_no_grill
+echo
+
+# --- Grill mode handler + skipped write-path pins (X1/X2 code-audit fix) ---
+# Structure floor for the standalone `## Grill mode` H2 handler (X1: spec resolution +
+# DRAFT-only precondition) and the grill_status: skipped explicit-decline write path
+# (X2) in skills/feature/SKILL.md (helpers in tests/smoke-helpers.sh).
+echo "Grill mode handler + skipped write-path pins:"
+check "grill-mode-handler-exists"        check_skill_grill_mode_handler_exists
+check "grill-status-skipped-write-path"  check_skill_grill_status_skipped_write_path
 echo
 
 # --- Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28) ---

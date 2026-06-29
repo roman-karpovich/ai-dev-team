@@ -397,3 +397,11 @@ check_decisions_schema_cross_consistency prompt-text
 check_kb_layout_grill_no_new_state_token prompt-text
 check_kb_layout_grill_frontmatter prompt-text
 check_skill_degraded_predicate_no_grill prompt-text
+
+# Grill mode handler + skipped write-path (X1/X2 code-audit fix on 2026-06-29-grill-feature-gate):
+#   structure floor for the standalone ## Grill mode H2 handler (X1: spec resolution +
+#   DRAFT-only precondition) and the grill_status: skipped explicit-decline write path
+#   (X2) in skills/feature/SKILL.md. Both pin literal markdown prose / section order →
+#   prompt-text.
+check_skill_grill_mode_handler_exists prompt-text
+check_skill_grill_status_skipped_write_path prompt-text
