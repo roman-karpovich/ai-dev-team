@@ -10931,8 +10931,11 @@ check_cross_auditor_spec_mode_grill_aware() {
 # upgrade (spec 2026-06-29-cross-auditor-spec-mode-codebase-grounded). The hub
 # `agents/cross-auditor.md` delegates spec-mode focus to these references, so if either
 # half lacked the upgrade the dual-model backstop would be half-blind to the
-# code-grounded + numeric defect class. Asserts the two pinned shared anchors
-# (`Codebase-grounded verification`, lowercase `numeric worked example`) in each file.
+# code-grounded + numeric defect class. Asserts the three pinned shared anchors
+# (`Codebase-grounded verification`, lowercase `numeric worked example`, and
+# `Bounding (no over-reach)`) in each file. The third anchor (added per code-audit X2)
+# locks the over-reach guardrail clause — which bounds the absent→HIGH rule, incl. the
+# create-carve-out — so it cannot be silently deleted while the pin stays green.
 check_cross_auditor_spec_mode_codebase_grounded() {
   local f
   for f in 'agents/references/cross-auditor-mode-focus.md' \
@@ -10942,8 +10945,10 @@ check_cross_auditor_spec_mode_codebase_grounded() {
       || { echo "$f spec-mode upgrade does not name 'Codebase-grounded verification'"; return 1; }
     grep -qF 'numeric worked example' "$f" \
       || { echo "$f spec-mode upgrade does not require a 'numeric worked example'"; return 1; }
+    grep -qF 'Bounding (no over-reach)' "$f" \
+      || { echo "$f spec-mode upgrade does not carry the 'Bounding (no over-reach)' guardrail"; return 1; }
   done
-  echo "cross-auditor spec-mode codebase-grounded + numeric clause present in BOTH Claude + Codex reference files"
+  echo "cross-auditor spec-mode codebase-grounded + numeric + over-reach-guardrail clause present in BOTH Claude + Codex reference files"
 }
 
 # --- Grill write-back surface in spec-template.md (spec 2026-06-29-grill-feature-gate, Step 4) ---
