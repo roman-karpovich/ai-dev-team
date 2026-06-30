@@ -373,6 +373,7 @@ check_skill_grill_aware_spec_audit prompt-text
 check_skill_grill_never_gates_spec_audit prompt-text
 check_skill_spec_audit_mandatory_skip_preserved prompt-text
 check_cross_auditor_spec_mode_grill_aware prompt-text
+check_cross_auditor_spec_mode_codebase_grounded prompt-text
 
 # Grill write-back surface (spec 2026-06-29-grill-feature-gate Step 4):
 #   structure floor for skills/feature/references/spec-template.md — the ## Decisions
