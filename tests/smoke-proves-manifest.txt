@@ -63,6 +63,8 @@ check_lint_empty_stdin behavioral
 check_lint_non_edit_tool behavioral
 check_lint_missing_file behavioral
 check_no_shell_true behavioral
+check_lint_json_not_reformatted behavioral
+check_lint_formatters_extension_gated behavioral
 
 # stop-check hook
 check_stop_check_hook_registered behavioral
