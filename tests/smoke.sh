@@ -5706,6 +5706,7 @@ check "grill-aware-spec-audit"            check_skill_grill_aware_spec_audit
 check "grill-never-gates-spec-audit"      check_skill_grill_never_gates_spec_audit
 check "spec-audit-mandatory-skip-preserved" check_skill_spec_audit_mandatory_skip_preserved
 check "cross-auditor-spec-mode-grill-aware" check_cross_auditor_spec_mode_grill_aware
+check "cross-auditor-spec-mode-codebase-grounded" check_cross_auditor_spec_mode_codebase_grounded
 echo
 
 # --- Grill write-back surface pins (spec 2026-06-29-grill-feature-gate, Step 4) ---
