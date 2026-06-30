@@ -363,10 +363,146 @@ check_no_shell_true() {
   echo "post-edit-lint: no shell=True OK"
 }
 
+# Behavioral (fake-ruff shim, host-independent): a formatter must NOT run on a
+# .json edited in a python-rooted repo (ruff corrupts JSON), but MUST still run
+# on a .py edit. Ships RED against the unfixed hook (no extension gate yet).
+check_lint_json_not_reformatted() {
+  # Subshell so the cleanup `trap ... EXIT` is scoped here (a RETURN trap would
+  # persist and re-fire on later function returns, tripping `set -u` on `$d`).
+  (
+    d=$(mktemp -d) || { echo "mktemp failed"; exit 1; }
+    trap 'rm -rf "$d"' EXIT
+    mkdir -p "$d/bin" "$d/repo"
+
+    # Fake `ruff`: exit 0 on --version; on `format <f>` record a sentinel and
+    # append a corrupting comma (simulates ruff appending a trailing comma -> invalid JSON).
+    cat > "$d/bin/ruff" <<EOF
+#!/bin/sh
+case "\$1" in
+  --version) echo "ruff fake 0.0.0"; exit 0 ;;
+  format) shift; touch "$d/ran-\$(basename "\$1")"; printf ',' >> "\$1"; exit 0 ;;
+  *) exit 0 ;;
+esac
+EOF
+    chmod +x "$d/bin/ruff"
+    : > "$d/repo/pyproject.toml"
+
+    # NEGATIVE: a valid .json edit must stay byte-identical + json.load-valid.
+    printf '%s' '{"name": "x", "value": 1}' > "$d/repo/data.json"
+    cp "$d/repo/data.json" "$d/data.json.orig"
+    echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$d/repo/data.json\"}}" \
+      | PATH="$d/bin:$PATH" python3 "$PLUGIN_ROOT/hooks/post-edit-lint" >/dev/null 2>&1
+    if ! cmp -s "$d/repo/data.json" "$d/data.json.orig"; then
+      echo "post-edit-lint: .json was reformatted (bytes changed) — formatter corrupted it"
+      exit 1
+    fi
+    if ! python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$d/repo/data.json" 2>/dev/null; then
+      echo "post-edit-lint: .json no longer valid JSON after the hook"
+      exit 1
+    fi
+
+    # POSITIVE (mandatory): a .py edit MUST still invoke the formatter.
+    printf '%s\n' 'x=1' > "$d/repo/mod.py"
+    echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$d/repo/mod.py\"}}" \
+      | PATH="$d/bin:$PATH" python3 "$PLUGIN_ROOT/hooks/post-edit-lint" >/dev/null 2>&1
+    if [ ! -e "$d/ran-mod.py" ]; then
+      echo "post-edit-lint: .py edit did not invoke the formatter (positive case) — gate too broad"
+      exit 1
+    fi
+
+    echo "post-edit-lint: .json edit byte-identical + valid; .py edit still formatted OK"
+  )
+}
+
+# Structure floor (ruff-independent, AST-based — NOT substring): `ast.parse` the
+# hook and assert the `run(["ruff", "format", rel], ...)` call is lexically nested
+# under an `if ext in RUFF_BLACK_EXTS:` gate, and that RUFF_BLACK_EXTS lists
+# .py/.pyi and excludes .json. AST closes the substring-fragility class (code-audit
+# X1): a comment mentioning "ruff format" no longer matches, and the gate is
+# verified as a single `ext in RUFF_BLACK_EXTS` Compare dominating the call — not
+# two decoupled token checks in a line window. NOT a polarity claim (that is the
+# behavioral pin's job) — an owned-set floor. Ships RED against the unfixed hook.
+check_lint_formatters_extension_gated() {
+  python3 - "$PLUGIN_ROOT/hooks/post-edit-lint" <<'PY'
+import ast, sys
+
+tree = ast.parse(open(sys.argv[1]).read())
+
+def is_ruff_format_call(node):
+    # run(["ruff", "format", ...], ...) — first arg a list literal beginning
+    # with the string constants "ruff", "format".
+    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "run" and node.args):
+        return False
+    first = node.args[0]
+    if not (isinstance(first, ast.List) and len(first.elts) >= 2):
+        return False
+    a, b = first.elts[0], first.elts[1]
+    return (isinstance(a, ast.Constant) and a.value == "ruff"
+            and isinstance(b, ast.Constant) and b.value == "format")
+
+def is_ruff_gate(node):
+    # if ext in RUFF_BLACK_EXTS:
+    if not isinstance(node, ast.If):
+        return False
+    t = node.test
+    return (isinstance(t, ast.Compare)
+            and isinstance(t.left, ast.Name) and t.left.id == "ext"
+            and len(t.ops) == 1 and isinstance(t.ops[0], ast.In)
+            and len(t.comparators) == 1
+            and isinstance(t.comparators[0], ast.Name)
+            and t.comparators[0].id == "RUFF_BLACK_EXTS")
+
+# 1) RUFF_BLACK_EXTS definition: must contain .py/.pyi, must NOT contain .json.
+ext_vals = None
+for n in ast.walk(tree):
+    if isinstance(n, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "RUFF_BLACK_EXTS" for t in n.targets):
+        if isinstance(n.value, ast.Set):
+            ext_vals = {e.value for e in n.value.elts if isinstance(e, ast.Constant)}
+        break
+if ext_vals is None:
+    print("FAIL: no `RUFF_BLACK_EXTS = {...}` set assignment found")
+    sys.exit(1)
+if not ({".py", ".pyi"} <= ext_vals):
+    print("FAIL: RUFF_BLACK_EXTS must contain .py and .pyi:", sorted(ext_vals))
+    sys.exit(1)
+if ".json" in ext_vals:
+    print("FAIL: RUFF_BLACK_EXTS must EXCLUDE .json:", sorted(ext_vals))
+    sys.exit(1)
+
+# 2) every ruff-format call must be lexically nested under an `if ext in
+#    RUFF_BLACK_EXTS:` body (the gate dominates the call).
+all_calls = [n for n in ast.walk(tree) if is_ruff_format_call(n)]
+if not all_calls:
+    print('FAIL: no `run(["ruff", "format", ...])` call found in the hook')
+    sys.exit(1)
+
+gated = set()
+for n in ast.walk(tree):
+    if is_ruff_gate(n):
+        for stmt in n.body:
+            for sub in ast.walk(stmt):
+                if is_ruff_format_call(sub):
+                    gated.add(id(sub))
+
+for c in all_calls:
+    if id(c) not in gated:
+        print("FAIL: ruff format not gated by `if ext in RUFF_BLACK_EXTS` "
+              "(line %d)" % getattr(c, "lineno", -1))
+        sys.exit(1)
+
+print("post-edit-lint: ruff format AST-gated under `if ext in RUFF_BLACK_EXTS` "
+      "(.py/.pyi owned, .json excluded) OK")
+PY
+}
+
 check "post-edit-lint empty stdin"        check_lint_empty_stdin
 check "post-edit-lint non-Edit tool"      check_lint_non_edit_tool
 check "post-edit-lint missing file"       check_lint_missing_file
 check "post-edit-lint no shell=True"      check_no_shell_true
+check "post-edit-lint json-not-reformatted"       check_lint_json_not_reformatted
+check "post-edit-lint formatters-extension-gated" check_lint_formatters_extension_gated
 echo
 
 # --- stop-check hook ---

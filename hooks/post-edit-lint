@@ -14,6 +14,40 @@ except ModuleNotFoundError:
     tomllib = None
 
 
+# Per-tool owned file extensions. A mutating formatter runs only on a file whose
+# extension it owns; an edit to any other extension skips that tool, so a
+# JSON/Markdown/TOML edit is never rewritten (and corrupted) by a Python tool.
+RUFF_BLACK_EXTS = {".py", ".pyi"}
+CARGO_FMT_EXTS = {".rs"}
+GOFMT_EXTS = {".go"}
+PRETTIER_EXTS = {
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".cjs",
+    ".mjs",
+    ".mts",
+    ".cts",
+    ".vue",
+    ".json",
+    ".json5",
+    ".jsonc",
+    ".css",
+    ".scss",
+    ".less",
+    ".html",
+    ".md",
+    ".markdown",
+    ".mdx",
+    ".yaml",
+    ".yml",
+    ".graphql",
+    ".gql",
+}
+ESLINT_EXTS = {".js", ".jsx", ".ts", ".tsx", ".cjs", ".mjs", ".mts", ".cts", ".vue"}
+
+
 def find_project_root(file_path):
     """Walk up from file_path to find project root and detect language."""
     p = Path(file_path).resolve()
@@ -196,12 +230,14 @@ def main():
         sys.exit(0)
 
     rel = os.path.relpath(file_path, project_root)
+    ext = Path(file_path).suffix.lower()
     messages = []
 
     try:
         if lang == "rust":
-            # Auto-format in place (silent)
-            run(["cargo", "fmt", "--", rel], project_root)
+            # Auto-format in place (silent) — only on a file cargo fmt owns.
+            if ext in CARGO_FMT_EXTS:
+                run(["cargo", "fmt", "--", rel], project_root)
             # Scope cargo clippy via -p <pkg>; skip virtual-workspace-root orphans.
             clippy_cmd = cargo_clippy_cmd(file_path)
             if clippy_cmd:
@@ -219,24 +255,25 @@ def main():
                         messages.append("cargo clippy:\n" + "\n".join(relevant))
 
         elif lang == "python":
-            # Detect formatter
-            has_ruff = run(["ruff", "--version"], project_root)[0] == 0
-            has_black = run(["black", "--version"], project_root)[0] == 0
+            rc, out = 0, ""
+            if ext in RUFF_BLACK_EXTS:
+                # Detect formatter
+                has_ruff = run(["ruff", "--version"], project_root)[0] == 0
+                has_black = run(["black", "--version"], project_root)[0] == 0
 
-            if has_ruff:
-                run(["ruff", "format", rel], project_root)
-                rc, out = run(["ruff", "check", rel], project_root)
-            elif has_black:
-                run(["black", rel], project_root)
-                rc, out = run(["flake8", rel], project_root)
-            else:
-                sys.exit(0)
+                if has_ruff:
+                    run(["ruff", "format", rel], project_root)
+                    rc, out = run(["ruff", "check", rel], project_root)
+                elif has_black:
+                    run(["black", rel], project_root)
+                    rc, out = run(["flake8", rel], project_root)
 
             if rc != 0 and out:
                 messages.append("Linter:\n" + out[:800])
 
         elif lang == "go":
-            run(["gofmt", "-w", rel], project_root)
+            if ext in GOFMT_EXTS:
+                run(["gofmt", "-w", rel], project_root)
             rc, out = run(["go", "vet", "./..."], project_root)
             if rc != 0 and out:
                 relevant = [line for line in out.splitlines() if rel in line]
@@ -250,9 +287,9 @@ def main():
                 sys.exit(0)
             all_deps = {**pkg.get("devDependencies", {}), **pkg.get("dependencies", {})}
 
-            if "prettier" in all_deps:
+            if "prettier" in all_deps and ext in PRETTIER_EXTS:
                 run(["npx", "prettier", "--write", rel], project_root)
-            if "eslint" in all_deps:
+            if "eslint" in all_deps and ext in ESLINT_EXTS:
                 rc, out = run(["npx", "eslint", rel], project_root)
                 if rc != 0 and out:
                     messages.append("ESLint:\n" + out[:800])
