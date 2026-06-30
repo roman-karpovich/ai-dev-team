@@ -363,10 +363,96 @@ check_no_shell_true() {
   echo "post-edit-lint: no shell=True OK"
 }
 
+# Behavioral (fake-ruff shim, host-independent): a formatter must NOT run on a
+# .json edited in a python-rooted repo (ruff corrupts JSON), but MUST still run
+# on a .py edit. Ships RED against the unfixed hook (no extension gate yet).
+check_lint_json_not_reformatted() {
+  # Subshell so the cleanup `trap ... EXIT` is scoped here (a RETURN trap would
+  # persist and re-fire on later function returns, tripping `set -u` on `$d`).
+  (
+    d=$(mktemp -d) || { echo "mktemp failed"; exit 1; }
+    trap 'rm -rf "$d"' EXIT
+    mkdir -p "$d/bin" "$d/repo"
+
+    # Fake `ruff`: exit 0 on --version; on `format <f>` record a sentinel and
+    # append a corrupting comma (simulates ruff appending a trailing comma -> invalid JSON).
+    cat > "$d/bin/ruff" <<EOF
+#!/bin/sh
+case "\$1" in
+  --version) echo "ruff fake 0.0.0"; exit 0 ;;
+  format) shift; touch "$d/ran-\$(basename "\$1")"; printf ',' >> "\$1"; exit 0 ;;
+  *) exit 0 ;;
+esac
+EOF
+    chmod +x "$d/bin/ruff"
+    : > "$d/repo/pyproject.toml"
+
+    # NEGATIVE: a valid .json edit must stay byte-identical + json.load-valid.
+    printf '%s' '{"name": "x", "value": 1}' > "$d/repo/data.json"
+    cp "$d/repo/data.json" "$d/data.json.orig"
+    echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$d/repo/data.json\"}}" \
+      | PATH="$d/bin:$PATH" python3 "$PLUGIN_ROOT/hooks/post-edit-lint" >/dev/null 2>&1
+    if ! cmp -s "$d/repo/data.json" "$d/data.json.orig"; then
+      echo "post-edit-lint: .json was reformatted (bytes changed) — formatter corrupted it"
+      exit 1
+    fi
+    if ! python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$d/repo/data.json" 2>/dev/null; then
+      echo "post-edit-lint: .json no longer valid JSON after the hook"
+      exit 1
+    fi
+
+    # POSITIVE (mandatory): a .py edit MUST still invoke the formatter.
+    printf '%s\n' 'x=1' > "$d/repo/mod.py"
+    echo "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$d/repo/mod.py\"}}" \
+      | PATH="$d/bin:$PATH" python3 "$PLUGIN_ROOT/hooks/post-edit-lint" >/dev/null 2>&1
+    if [ ! -e "$d/ran-mod.py" ]; then
+      echo "post-edit-lint: .py edit did not invoke the formatter (positive case) — gate too broad"
+      exit 1
+    fi
+
+    echo "post-edit-lint: .json edit byte-identical + valid; .py edit still formatted OK"
+  )
+}
+
+# Structure floor (ruff-independent): the python owned-extension set must list
+# .py/.pyi and EXCLUDE .json, and an `ext` membership gate must sit near the
+# `ruff format` invocation. NOT a polarity claim (that is the behavioral pin's
+# job) — just an owned-set floor. Ships RED against the unfixed hook.
+check_lint_formatters_extension_gated() {
+  python3 - "$PLUGIN_ROOT/hooks/post-edit-lint" <<'PY'
+import re, sys
+lines = open(sys.argv[1]).read().splitlines()
+
+def has(ln, tok):
+    return ('"%s"' % tok) in ln or ("'%s'" % tok) in ln
+
+py_set = next((ln for ln in lines if has(ln, ".pyi") and has(ln, ".py")), None)
+if py_set is None:
+    print("FAIL: no python owned-extension set listing .py and .pyi")
+    sys.exit(1)
+if has(py_set, ".json"):
+    print("FAIL: python owned-extension set must EXCLUDE .json:", py_set.strip())
+    sys.exit(1)
+
+fmt = next((i for i, ln in enumerate(lines) if "ruff" in ln and "format" in ln), None)
+if fmt is None:
+    print("FAIL: no `ruff format` invocation found")
+    sys.exit(1)
+window = "\n".join(lines[max(0, fmt - 12):fmt + 1])
+if not re.search(r"\bext\b", window) or " in " not in window:
+    print("FAIL: no `ext` membership gate near the `ruff format` invocation")
+    sys.exit(1)
+
+print("post-edit-lint: python owned-set floor (.py/.pyi, no .json) + ext gate near ruff format OK")
+PY
+}
+
 check "post-edit-lint empty stdin"        check_lint_empty_stdin
 check "post-edit-lint non-Edit tool"      check_lint_non_edit_tool
 check "post-edit-lint missing file"       check_lint_missing_file
 check "post-edit-lint no shell=True"      check_no_shell_true
+check "post-edit-lint json-not-reformatted"       check_lint_json_not_reformatted
+check "post-edit-lint formatters-extension-gated" check_lint_formatters_extension_gated
 echo
 
 # --- stop-check hook ---
