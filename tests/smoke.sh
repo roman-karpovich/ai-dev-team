@@ -414,36 +414,86 @@ EOF
   )
 }
 
-# Structure floor (ruff-independent): the python owned-extension set must list
-# .py/.pyi and EXCLUDE .json, and an `ext` membership gate must sit near the
-# `ruff format` invocation. NOT a polarity claim (that is the behavioral pin's
-# job) — just an owned-set floor. Ships RED against the unfixed hook.
+# Structure floor (ruff-independent, AST-based — NOT substring): `ast.parse` the
+# hook and assert the `run(["ruff", "format", rel], ...)` call is lexically nested
+# under an `if ext in RUFF_BLACK_EXTS:` gate, and that RUFF_BLACK_EXTS lists
+# .py/.pyi and excludes .json. AST closes the substring-fragility class (code-audit
+# X1): a comment mentioning "ruff format" no longer matches, and the gate is
+# verified as a single `ext in RUFF_BLACK_EXTS` Compare dominating the call — not
+# two decoupled token checks in a line window. NOT a polarity claim (that is the
+# behavioral pin's job) — an owned-set floor. Ships RED against the unfixed hook.
 check_lint_formatters_extension_gated() {
   python3 - "$PLUGIN_ROOT/hooks/post-edit-lint" <<'PY'
-import re, sys
-lines = open(sys.argv[1]).read().splitlines()
+import ast, sys
 
-def has(ln, tok):
-    return ('"%s"' % tok) in ln or ("'%s'" % tok) in ln
+tree = ast.parse(open(sys.argv[1]).read())
 
-py_set = next((ln for ln in lines if has(ln, ".pyi") and has(ln, ".py")), None)
-if py_set is None:
-    print("FAIL: no python owned-extension set listing .py and .pyi")
+def is_ruff_format_call(node):
+    # run(["ruff", "format", ...], ...) — first arg a list literal beginning
+    # with the string constants "ruff", "format".
+    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "run" and node.args):
+        return False
+    first = node.args[0]
+    if not (isinstance(first, ast.List) and len(first.elts) >= 2):
+        return False
+    a, b = first.elts[0], first.elts[1]
+    return (isinstance(a, ast.Constant) and a.value == "ruff"
+            and isinstance(b, ast.Constant) and b.value == "format")
+
+def is_ruff_gate(node):
+    # if ext in RUFF_BLACK_EXTS:
+    if not isinstance(node, ast.If):
+        return False
+    t = node.test
+    return (isinstance(t, ast.Compare)
+            and isinstance(t.left, ast.Name) and t.left.id == "ext"
+            and len(t.ops) == 1 and isinstance(t.ops[0], ast.In)
+            and len(t.comparators) == 1
+            and isinstance(t.comparators[0], ast.Name)
+            and t.comparators[0].id == "RUFF_BLACK_EXTS")
+
+# 1) RUFF_BLACK_EXTS definition: must contain .py/.pyi, must NOT contain .json.
+ext_vals = None
+for n in ast.walk(tree):
+    if isinstance(n, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "RUFF_BLACK_EXTS" for t in n.targets):
+        if isinstance(n.value, ast.Set):
+            ext_vals = {e.value for e in n.value.elts if isinstance(e, ast.Constant)}
+        break
+if ext_vals is None:
+    print("FAIL: no `RUFF_BLACK_EXTS = {...}` set assignment found")
     sys.exit(1)
-if has(py_set, ".json"):
-    print("FAIL: python owned-extension set must EXCLUDE .json:", py_set.strip())
+if not ({".py", ".pyi"} <= ext_vals):
+    print("FAIL: RUFF_BLACK_EXTS must contain .py and .pyi:", sorted(ext_vals))
+    sys.exit(1)
+if ".json" in ext_vals:
+    print("FAIL: RUFF_BLACK_EXTS must EXCLUDE .json:", sorted(ext_vals))
     sys.exit(1)
 
-fmt = next((i for i, ln in enumerate(lines) if "ruff" in ln and "format" in ln), None)
-if fmt is None:
-    print("FAIL: no `ruff format` invocation found")
-    sys.exit(1)
-window = "\n".join(lines[max(0, fmt - 12):fmt + 1])
-if not re.search(r"\bext\b", window) or " in " not in window:
-    print("FAIL: no `ext` membership gate near the `ruff format` invocation")
+# 2) every ruff-format call must be lexically nested under an `if ext in
+#    RUFF_BLACK_EXTS:` body (the gate dominates the call).
+all_calls = [n for n in ast.walk(tree) if is_ruff_format_call(n)]
+if not all_calls:
+    print('FAIL: no `run(["ruff", "format", ...])` call found in the hook')
     sys.exit(1)
 
-print("post-edit-lint: python owned-set floor (.py/.pyi, no .json) + ext gate near ruff format OK")
+gated = set()
+for n in ast.walk(tree):
+    if is_ruff_gate(n):
+        for stmt in n.body:
+            for sub in ast.walk(stmt):
+                if is_ruff_format_call(sub):
+                    gated.add(id(sub))
+
+for c in all_calls:
+    if id(c) not in gated:
+        print("FAIL: ruff format not gated by `if ext in RUFF_BLACK_EXTS` "
+              "(line %d)" % getattr(c, "lineno", -1))
+        sys.exit(1)
+
+print("post-edit-lint: ruff format AST-gated under `if ext in RUFF_BLACK_EXTS` "
+      "(.py/.pyi owned, .json excluded) OK")
 PY
 }
 
