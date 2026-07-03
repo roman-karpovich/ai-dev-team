@@ -3120,6 +3120,12 @@ check "cross-auditor-mode-enum-names-decision" check_cross_auditor_mode_enum_nam
 check "cross-auditor-decision-severity-ladder" check_cross_auditor_decision_severity_ladder agents/cross-auditor.md
 check "cross-auditor-hub-no-stale-four-modes" check_cross_auditor_hub_no_stale_four_modes agents/cross-auditor.md
 check "cross-auditor-mode-symmetry-names-decision" check_cross_auditor_mode_symmetry_names_decision agents/cross-auditor.md
+# Decision-mode Codex dispatch + handshake/output-format pins (spec 2026-07-02-decision-audit-mode Step 3).
+check "cross-auditor-codex-decision-focus-anchors" check_cross_auditor_codex_decision_focus_anchors agents/references/cross-auditor-codex-dispatch.md
+check "cross-auditor-codex-decision-reads-inputs" check_cross_auditor_codex_decision_reads_inputs agents/references/cross-auditor-codex-dispatch.md
+check "cross-auditor-codex-decision-ladder" check_cross_auditor_codex_decision_ladder agents/references/cross-auditor-codex-dispatch.md
+check "cross-auditor-output-format-no-write-names-decision" check_cross_auditor_output_format_no_write_names_decision agents/references/cross-auditor-output-format.md
+check "cross-auditor-handshake-names-decision" check_cross_auditor_handshake_names_decision agents/references/cross-auditor-evidence-handshake.md
 # Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
 check "check_smoke_helper_focus_areas_skill_hybrid_rejected" check_smoke_helper_focus_areas_skill_hybrid_rejected

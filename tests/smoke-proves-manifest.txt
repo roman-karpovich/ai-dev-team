@@ -190,6 +190,13 @@ check_cross_auditor_decision_severity_ladder prompt-text
 check_cross_auditor_hub_no_stale_four_modes prompt-text
 check_cross_auditor_mode_symmetry_names_decision prompt-text
 
+# Decision-mode Codex dispatch + handshake/output-format pins (spec 2026-07-02-decision-audit-mode Step 3)
+check_cross_auditor_codex_decision_focus_anchors prompt-text
+check_cross_auditor_codex_decision_reads_inputs prompt-text
+check_cross_auditor_codex_decision_ladder prompt-text
+check_cross_auditor_output_format_no_write_names_decision prompt-text
+check_cross_auditor_handshake_names_decision prompt-text
+
 # Probe-envelope JSON-Schema validator self-test
 check_json_schema_lint_self_test behavioral
 

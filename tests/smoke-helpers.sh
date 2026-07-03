@@ -1289,6 +1289,131 @@ check_cross_auditor_mode_symmetry_names_decision() {
   echo "$path Step 2.5 empirical-verification mode-symmetry line names decision mode"
 }
 
+# --- Decision-mode Codex dispatch + handshake pins (spec 2026-07-02-decision-audit-mode Step 3) ---
+# Shared awk extractor semantics: the `**Decision mode** Codex prompt template:`
+# fenced block. The three helpers below scope their greps to the block body so a
+# stray token elsewhere in the file cannot mask a template that dropped a
+# required anchor (X15/X17: real dual-model parity requires the Codex half carry
+# the full decision focus, not a spec-mode clone).
+
+# prompt-text: the decision-mode Codex prompt template must carry the `Mode: decision`
+# literal AND all five §3.1 focus-cluster LABELS + the two deterministic rubber-stamp
+# signal tokens (self_fallback / grill_status). labels-not-prose per audit X17 — a
+# template carrying only `Mode: decision` while dropping the embedded clusters would
+# hand Codex a spec-mode (wrong-question) audit, silently degrading the mode center
+# to single-model.
+check_cross_auditor_codex_decision_focus_anchors() {
+  local path="${1:-agents/references/cross-auditor-codex-dispatch.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    /^\*\*Decision mode\*\* Codex prompt template/ { grab=1; next }
+    grab && /^```$/ { fence++; if (fence==2) exit; next }
+    grab && fence==1 { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing **Decision mode** Codex prompt template fenced block"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Mode: decision' \
+    || { echo "$path decision template missing 'Mode: decision' literal"; return 1; }
+  local anchor
+  for anchor in 'Decision coherence' 'Premise re-derivation' 'Rubber-stamp' 'Fork analysis' 'Planned/observed' 'self_fallback' 'grill_status'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path decision template missing focus anchor '$anchor'"; return 1; }
+  done
+  echo "$path decision Codex template carries Mode: decision + 5 cluster labels + self_fallback/grill_status (labels-not-prose)"
+}
+
+# prompt-text: the decision-mode Codex template must instruct Codex to read the
+# audited spec `[scope]`, the `[workdoc_path]`, and each `findings_paths` entry —
+# without these reads the cluster-3 vacuous-triage and the cluster-1a
+# findings-portion are unperformable (X20). Template-side findings_paths pin,
+# DISTINCT from Step 4's SKILL-dispatch-block `findings_paths:` pin.
+check_cross_auditor_codex_decision_reads_inputs() {
+  local path="${1:-agents/references/cross-auditor-codex-dispatch.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    /^\*\*Decision mode\*\* Codex prompt template/ { grab=1; next }
+    grab && /^```$/ { fence++; if (fence==2) exit; next }
+    grab && fence==1 { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing **Decision mode** Codex prompt template fenced block"; return 1; }
+  local anchor
+  for anchor in '[scope]' '[workdoc_path]' 'findings_paths'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path decision template does not instruct Codex to read '$anchor'"; return 1; }
+  done
+  echo "$path decision Codex template reads [scope]/[workdoc_path]/findings_paths"
+}
+
+# prompt-text: the decision-mode Codex template must carry the decision-mode
+# severity ladder in place of the inherited `[Severity ladder for spec mode]`
+# placeholder (X20). Negative: the spec-mode placeholder must be gone from the
+# block. Positive: the ladder header + per-level content (false-premise /
+# vacuous-triage / fork-analysis) present so a bare header cannot pass.
+check_cross_auditor_codex_decision_ladder() {
+  local path="${1:-agents/references/cross-auditor-codex-dispatch.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    /^\*\*Decision mode\*\* Codex prompt template/ { grab=1; next }
+    grab && /^```$/ { fence++; if (fence==2) exit; next }
+    grab && fence==1 { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing **Decision mode** Codex prompt template fenced block"; return 1; }
+  if printf '%s\n' "$section" | grep -qF '[Severity ladder for spec mode]'; then
+    echo "$path decision template still carries the inherited '[Severity ladder for spec mode]' placeholder"; return 1
+  fi
+  printf '%s\n' "$section" | grep -qF 'Severity ladder (decision mode):' \
+    || { echo "$path decision template missing 'Severity ladder (decision mode):' header — spec-mode placeholder not substituted"; return 1; }
+  local anchor
+  for anchor in 'demonstrably false premise' 'vacuous accept/defer of a CRITICAL/HIGH finding' 'fork analysis'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path decision template ladder missing per-level anchor '$anchor'"; return 1; }
+  done
+  echo "$path decision Codex template carries the decision-mode severity ladder (spec-mode placeholder substituted)"
+}
+
+# prompt-text: the Step-4 write-vs-inline contract (cross-auditor-output-format.md)
+# no-write exception (~:7) must name decision mode AND generalize its caller
+# parenthetical to the standalone `/cross-audit` (decision's caller). Without this
+# the agent WRITES an orphaned findings doc for a decision-mode return (X12),
+# contradicting §3.4/D3 and colliding with D6/R8.
+check_cross_auditor_output_format_no_write_names_decision() {
+  local path="${1:-agents/references/cross-auditor-output-format.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local excline
+  excline=$(grep -F 'mode exception' "$path")
+  [ -n "$excline" ] || { echo "$path missing Step-4 '... mode exception' no-write line"; return 1; }
+  printf '%s\n' "$excline" | grep -qF 'decision' \
+    || { echo "$path Step-4 no-write exception does not name decision mode"; return 1; }
+  printf '%s\n' "$excline" | grep -qF 'standalone `/cross-audit`' \
+    || { echo "$path Step-4 no-write exception caller parenthetical not generalized to standalone /cross-audit"; return 1; }
+  echo "$path Step-4 no-write exception names decision (caller parenthetical generalized to standalone /cross-audit)"
+}
+
+# prompt-text: the evidence-handshake doc must name decision mode in BOTH the
+# spec-scoped no-write clause (~:31) — with its caller phrase generalized off
+# 'calling feature skill' to the standalone `/cross-audit` — AND the claude_model
+# placement clause (~:56, the 'immediately preceding' the sentinel rule). Decision
+# rides the spec-mode inline-footer channel; these two clauses were spec-only.
+check_cross_auditor_handshake_names_decision() {
+  local path="${1:-agents/references/cross-auditor-evidence-handshake.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # (a) no-write clause (~:31) names decision + caller generalized to /cross-audit.
+  local nowrite
+  nowrite=$(grep -F 'does NOT write findings.md' "$path")
+  [ -n "$nowrite" ] || { echo "$path missing no-write clause 'does NOT write findings.md'"; return 1; }
+  printf '%s\n' "$nowrite" | grep -qF 'decision' \
+    || { echo "$path no-write clause (~:31) does not name decision mode"; return 1; }
+  printf '%s\n' "$nowrite" | grep -qF '/cross-audit' \
+    || { echo "$path no-write clause (~:31) caller not generalized to standalone /cross-audit"; return 1; }
+  # (b) claude_model placement clause (~:56) names decision on the 'immediately
+  #     preceding' bullet (the sentinel-adjacency rule that model-attestation pins).
+  grep -F 'immediately preceding' "$path" | grep -qF 'decision' \
+    || { echo "$path claude_model placement clause (~:56) does not name decision mode"; return 1; }
+  echo "$path handshake no-write (:31) + claude_model placement (:56) clauses name decision (caller generalized)"
+}
+
 check_cross_audit_skill_focus_areas_references_canonical() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
