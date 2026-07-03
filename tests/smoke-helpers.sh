@@ -1289,6 +1289,33 @@ check_cross_auditor_mode_symmetry_names_decision() {
   echo "$path Step 2.5 empirical-verification mode-symmetry line names decision mode"
 }
 
+# prompt-text: the §Finding ID Format no-findings-doc exception must name BOTH spec
+# AND decision mode. Decision mode also persists no findings doc and accepts
+# next_finding_id (§Input :36 already reads "spec and decision modes"), so a
+# spec-only exception literal routes decision re-audits to the default "read the
+# highest existing ID in the findings doc" rule → ID reset/collision (audit X3).
+# Scopes to the ## Finding ID Format section body so a stray 'decision' token
+# elsewhere in the file cannot mask a spec-only exception header.
+check_cross_auditor_finding_id_exception_names_decision() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    /^## Finding ID Format/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing ## Finding ID Format section"; return 1; }
+  local exception
+  exception=$(printf '%s\n' "$section" | grep -F 'mode exception')
+  [ -n "$exception" ] || { echo "$path §Finding ID Format missing no-findings-doc 'mode exception' bullet"; return 1; }
+  printf '%s\n' "$exception" | grep -qF 'decision' \
+    || { echo "$path §Finding ID Format exception names only spec — decision mode also persists no findings doc + accepts next_finding_id (X3 ID-collision)"; return 1; }
+  printf '%s\n' "$exception" | grep -qF 'Spec' \
+    || { echo "$path §Finding ID Format exception no longer names spec"; return 1; }
+  echo "$path §Finding ID Format no-findings-doc exception names both spec and decision mode"
+}
+
 # --- Decision-mode Codex dispatch + handshake pins (spec 2026-07-02-decision-audit-mode Step 3) ---
 # Shared awk extractor semantics: the `**Decision mode** Codex prompt template:`
 # fenced block. The three helpers below scope their greps to the block body so a

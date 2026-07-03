@@ -84,7 +84,7 @@ Use `allowed_severities` in the Codex prompt (see `agents/references/cross-audit
 
 IDs are `X<N>` where N is a monotonically increasing integer across all iterations of this audit slug. On re-audit: read the highest existing ID in the findings doc and continue from there. IDs are never reused, even after FIXED.
 
-**Spec mode exception**: no findings doc exists on disk. If `next_finding_id` is provided in the input, start N from that value. If not provided (first round), start from 1.
+**Spec and decision mode exception**: no findings doc exists on disk (spec and decision modes). If `next_finding_id` is provided in the input, start N from that value. If not provided (first round), start from 1.
 
 ## Finding Status State Machine
 

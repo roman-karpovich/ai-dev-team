@@ -189,6 +189,7 @@ check_cross_auditor_mode_enum_names_decision prompt-text
 check_cross_auditor_decision_severity_ladder prompt-text
 check_cross_auditor_hub_no_stale_four_modes prompt-text
 check_cross_auditor_mode_symmetry_names_decision prompt-text
+check_cross_auditor_finding_id_exception_names_decision prompt-text
 
 # Decision-mode Codex dispatch + handshake/output-format pins (spec 2026-07-02-decision-audit-mode Step 3)
 check_cross_auditor_codex_decision_focus_anchors prompt-text
