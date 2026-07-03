@@ -166,9 +166,9 @@ PR mode is **mandatory worktree-isolated** (not user-disableable): `gh pr checko
 ### Step 1: Determine parameters
 
 From `$ARGUMENTS` derive:
-- **scope**: files/directories/feature area
-- **mode**: `logic` | `security` | `full`
-- **severity_floor**: `high` (default) | `medium+` — from `--severity` flag
+- **scope**: files/directories/feature area (for `--mode decision` this is the audited KB spec path — see **Decision mode** above)
+- **mode**: `logic` | `security` | `full` | `decision`
+- **severity_floor**: `high` (default) | `medium+` — from `--severity` flag. **`--mode decision` defaults to `medium+`** (not `high`) — its severity ladder parks fork-analysis and most vacuous-rationale forms at MEDIUM, so a `high` floor would take two of the five focus clusters dark; `--severity high` still narrows on demand.
 - **base_branch**: for diff mode (default: auto-detected via `git symbolic-ref refs/remotes/origin/HEAD`, falls back to `main`)
 - **range_spec**: for ref-range mode — the full diff range string passed verbatim to `git diff --name-only`, e.g. `v1.7.0...v2.0.2` or `v1.7.0..v2.0.2 -- subdir/`. Formatted by joining `<op>` with refA/refB: `<refA><op><refB>` (then appending ` -- <path_filter>` if path_filter is non-empty).
 - **materialize_mode**: `worktree` when `--materialize=worktree` was given; unset otherwise.
@@ -178,6 +178,14 @@ From `$ARGUMENTS` derive:
 - **kb_path**: from discovery above
 - **project**: project name
 - **audit_slug**: `YYYY-MM-DD-<scope-slug>` (new audit) or extracted from the existing findings filename (re-audit — see Phase 0). For ref-range mode: `YYYY-MM-DD-range-<sanitized-refA>__<sanitized-refB>` where sanitization replaces `[^a-zA-Z0-9._-]` with `-` and caps each half at 60 chars (produced by `cross_audit_resolve_range.sh`'s `slug_pair` output).
+
+**Decision mode (`--mode decision`) derives these additional params** — the canonical rule is in the **Decision mode** section above (§Scope + standalone slug derivation + Dispatch param block); reproduced here so Step 2 has values to thread:
+- **feature_slug**: `basename(scope)` minus the `.md` extension minus the leading `YYYY-MM-DD-` date prefix (the date-stripped form — raw-basename resolution is WRONG).
+- **workdoc_path**: `<kb>/repos/<project>/design/workdocs/<feature_slug>/exec.md`.
+- **findings_paths**: `sorted(glob <kb>/repos/<project>/security/<feature_slug>-*findings.md)` — pass what exists; `[]` is legal (a greenfield spec has neither; missing artifacts are NOT an error).
+- **next_finding_id**: `1` for a new audit; on re-audit continue past the highest finding id already assigned.
+- **audit_slug**: `<feature_slug>-decisions` (overrides the date-slug form above — decision mode reads a spec, not a diff or a `-findings.md`).
+- **base_branch** / **range_spec** are NOT derived (decision mode reads documents, not a diff); **severity_floor** defaults to `medium+` per the bullet above.
 
 ### Step 2: Launch cross-auditor agent in background
 
@@ -200,6 +208,13 @@ base_branch: [branch, if diff mode]
 range_spec: [range_spec, if ref-range mode]
 previously_fixed: [list of IDs, if re-audit]
 working_directory: [cwd]
+
+[Decision mode only (`--mode decision`) — derived in Step 1 / see the Decision mode section:]
+workdoc_path: [derived <kb>/repos/<project>/design/workdocs/<feature_slug>/exec.md]
+findings_paths: [sorted security/<feature_slug>-*findings.md; [] is legal]
+next_finding_id: [N]
+# base_branch / range_spec are OMITTED for decision mode (it reads documents, not a diff);
+# severity_floor is threaded above with the decision-mode default medium+ (not the global high).
 
 [PR mode only — populated from Phase 0.5:]
 pr_number: [N]
