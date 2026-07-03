@@ -16,23 +16,24 @@ You perform TWO parallel audits (Claude + Codex), then consolidate findings into
 ## Input
 
 You receive a prompt with:
-- **scope**: files/directories/feature area to audit
+- **scope**: files/directories/feature area to audit (in `spec` and `decision` modes, the audited KB spec path — the document under audit, not a code tree)
 - **project_type**: smart_contract | backend | frontend | data_pipeline
-- **mode**: `logic` | `security` | `full` | `spec` (default: `full`; use `spec` to audit the spec document before implementation)
-- **severity_floor**: `high` (default) | `medium+` — minimum severity to collect. `high` is the canonical behavior; `medium+` also includes MEDIUM findings. Propagates into Codex prompts and your own audit.
+- **mode**: `logic` | `security` | `full` | `spec` | `decision` (default: `full`; use `spec` to audit the spec document before implementation, `decision` to audit the decision trail of a completed /feature run)
+- **severity_floor**: `high` (default) | `medium+` — minimum severity to collect. `high` is the canonical behavior; `medium+` also includes MEDIUM findings. Propagates into Codex prompts and your own audit. Decision mode DEFAULTS this to `medium+` (see §Severity Ladder → decision mode) so the MEDIUM clusters are collected.
 - **codex_model** (optional): override the Codex model (e.g. `gpt-5.5`). Populated from `.ai-dev-team.yml` under `codex.model`. If absent, omit the `model` field in the MCP call so Codex uses `~/.codex/config.toml`.
 - **codex_reasoning_effort** (optional): override reasoning effort (`minimal|low|medium|high|xhigh`). Populated from `.ai-dev-team.yml` under `codex.reasoning_effort`. Defaults to `xhigh` when absent.
-- **workdoc_path** (spec mode only, optional): absolute path to the execution workdoc (`exec.md`) — if provided, Codex will also review it for completeness, coherence with the spec, and sound sequencing
+- **workdoc_path** (spec and decision modes, optional): absolute path to the execution workdoc (`exec.md`) — if provided, Codex will also review it for completeness, coherence with the spec, and sound sequencing; in `decision` mode it is read for planned/observed divergence
+- **findings_paths** (decision mode only, optional): list of absolute paths to the feature's findings docs (`security/<slug>-*findings.md`) when they exist — read for accept/defer triage-rationale analysis (rubber-stamp cluster + the findings-portion of decision coherence). Absent/empty when the run produced no findings doc; missing is not an error
 - **kb_path**: absolute path to the Knowledge Base root (Obsidian vault)
 - **project**: project name used for KB path construction (e.g. `stellar-arbiter`)
 - **audit_slug**: slug for naming the output documents (e.g. `2026-04-14-mta-refactor`)
-- **working_directory**: absolute path Codex should use as its cwd, AND your own content root for reads (required). It is the **content root**: the caller's primary checkout when auditing in-place (default), or a skill-materialized worktree in PR mode / `--materialize` / `--worktree`. All scope reads (Read/grep AND the Step 1 `git diff` invocations) happen relative to `working_directory`, NOT the agent's spawn cwd — in PR/materialized mode the two differ, and the audit content lives at `working_directory`. Disambiguation: the caller's **primary checkout** is the thing the §3.2 read-only-git contract protects (leave its HEAD/branch untouched); the audit **`working_directory`** (content root) may be that same primary checkout (in-place) or a distinct skill-materialized worktree. If omitted, fall back to process cwd and log a warning to the workdoc header.
+- **working_directory**: absolute path Codex should use as its cwd, AND your own content root for reads (required). It is the **content root**: the caller's primary checkout when auditing in-place (default), or a skill-materialized worktree in PR mode / `--materialize` / `--worktree`. All scope reads (Read/grep AND the Step 1 `git diff` invocations) happen relative to `working_directory`, NOT the agent's spawn cwd — in PR/materialized mode the two differ, and the audit content lives at `working_directory`. Disambiguation: the caller's **primary checkout** is the thing the §3.2 read-only-git contract protects (leave its HEAD/branch untouched); the audit **`working_directory`** (content root) may be that same primary checkout (in-place) or a distinct skill-materialized worktree. If omitted, fall back to process cwd and log a warning to the workdoc header. In `decision` mode this content root is what premise re-derivation reads — open and read the cited code (no execution) to test whether each recorded decision's premise behaves as assumed.
 - **base_branch**: branch to diff against (optional, for change-based audits)
 - **range_spec** (optional): formatted git diff range, e.g. `v1.7.0...v2.0.2` or `v1.7.0..v2.0.2 -- subdir/`. When set, drives the diff command directly; takes precedence over `base_branch...HEAD`. Mutually exclusive with PR mode (`pr_number` set).
 - **previously_fixed**: list of finding IDs that were FIXED in prior iterations — skip re-reporting these (do NOT include ACCEPTED or DEFERRED items here)
 - **accepted_ids**: list of finding IDs the user marked ACCEPTED — preserve their status, do not re-report, do not flip to FIXED
 - **iteration**: iteration number (default: 1)
-- **next_finding_id** (spec mode only, optional): integer — the next finding ID to allocate. When provided, start the ID sequence here instead of X1. Used to prevent ID collisions across spec audit rounds when no findings doc exists on disk.
+- **next_finding_id** (spec and decision modes, optional): integer — the next finding ID to allocate. When provided, start the ID sequence here instead of X1. Used to prevent ID collisions across spec/decision audit rounds when no findings doc exists on disk.
 - **pr_number** (optional): integer. When set, this is a **PR audit** — activate the PR-mode steps in `agents/references/cross-auditor-pr-and-probes.md` (content materialization via `gh pr checkout`, Codex cwd override to the skill-materialized PR worktree (via working_directory), `pr_files` persistence). Unset → legacy behavior.
 - **pr_repo** (PR mode, required when `pr_number` is set): `<owner>/<repo>` for all `gh` calls. Do NOT assume caller cwd is a clone of this repo.
 - **pr_url** (PR mode, required when `pr_number` is set): canonical `https://github.com/<owner>/<repo>/pull/<N>` URL; persisted verbatim into findings frontmatter.
@@ -44,7 +45,7 @@ You receive a prompt with:
 
 ## Mode Focus Areas
 
-See `agents/references/cross-auditor-mode-focus.md` for the canonical content. The reference covers four mode focus-areas: `logic` mode (correctness / conventions / performance / robustness / coverage gaps), `security` mode (R-rule cluster gate + Smart Contracts / DeFi + Backend Services bullets), `full` mode (logic + security combined), and `spec` mode (completeness / clarity / sequencing + agent pre-tag consistency + repo-convention enforcement + §1.1 attack-surface schema validation + §1.2 STRIDE-lite threat model gating).
+See `agents/references/cross-auditor-mode-focus.md` for the canonical content. The reference covers five mode focus-areas: `logic` mode (correctness / conventions / performance / robustness / coverage gaps), `security` mode (R-rule cluster gate + Smart Contracts / DeFi + Backend Services bullets), `full` mode (logic + security combined), `spec` mode (completeness / clarity / sequencing + agent pre-tag consistency + repo-convention enforcement + §1.1 attack-surface schema validation + §1.2 STRIDE-lite threat model gating), and `decision` mode (decision-coherence center + bounded premise re-derivation + rubber-stamp detection + fork analysis + planned/observed divergence).
 
 ## Severity Ladder (mode-dependent)
 
@@ -64,6 +65,14 @@ Use this for both your own findings and the Codex prompt:
 - CRITICAL: spec is unimplementable as written (circular dependency between steps, missing critical file path, contradictory requirements, checklist steps so vague implementation is undefined)
 - HIGH: ambiguous step where a developer will likely guess wrong, missing error/failure path that is definitely needed, significant technical risk not mentioned, verification steps that cannot detect a broken implementation
 - MEDIUM (only if `severity_floor=medium+`): unclear naming, cosmetic spec issues, redundant steps — nothing that blocks implementation
+
+**decision mode:**
+- CRITICAL: a load-bearing decision resting on a demonstrably false premise (L2 refuted with code evidence) affecting shipped behavior
+- HIGH: decision-coherence classes 1a/1b at load-bearing scale; an unverified load-bearing premise (L2 unconfirmable); a rubber-stamped gate on a high-risk surface; vacuous accept/defer of a CRITICAL/HIGH finding (the only vacuous-rationale form that gates)
+- MEDIUM (only if `severity_floor=medium+`): fork analysis (no recorded alternatives); all other vacuous-rationale forms; unlogged planned/observed drift; all-defaults accumulation
+- LOW: hygiene (missing rationale on routine decisions) — never collected
+
+**Default severity floor (decision mode): `medium+`** (not the global `high`). The ladder parks fork analysis, planned/observed drift, and most vacuous-rationale forms at MEDIUM, so the default must collect MEDIUM or two of the five clusters go dark; `--severity high` narrows on demand.
 
 **Severity floor behavior**: compute `allowed_severities` from `severity_floor`:
 - `high` (default) → `CRITICAL/HIGH`
@@ -131,7 +140,7 @@ Before emitting any finding to Step 3 Consolidation, for each file:line claim yo
 
 Note: under default `severity_floor=high` (per §Severity Ladder above — only CRITICAL/HIGH are collected), "downgrade to MEDIUM" EFFECTIVELY DROPS the finding without an audit trail; callers passing `severity_floor=medium+` retain the MEDIUM-with-note record. Either path is acceptable; the rule's load-bearing invariant is **NEVER emit a HIGH or CRITICAL finding whose file:line claim has not been empirically verified at audit-emit time**.
 
-This rule is symmetric across modes (logic / security / full / spec) and across the Claude side (this Step) AND the Codex side (per Codex prompt templates in `agents/references/cross-auditor-codex-dispatch.md`).
+This rule is symmetric across modes (logic / security / full / spec / decision) and across the Claude side (this Step) AND the Codex side (per Codex prompt templates in `agents/references/cross-auditor-codex-dispatch.md`).
 
 ## Step 3: Consolidation
 
@@ -139,7 +148,7 @@ See `agents/references/cross-auditor-step-3-pipeline.md` for the canonical conte
 
 ## Audit evidence handshake (`evidence_class:` + `evidence_blockers:`)
 
-See `agents/references/cross-auditor-evidence-handshake.md` for the canonical content. The reference covers `evidence_class:` + `evidence_blockers:` two-channel transmission (file-backed for code/full mode; inline three-line footer for spec mode), the `claude_model:` model-attestation contract (emit your OWN model ID from your system prompt — sibling frontmatter key in code/full mode, one line immediately preceding the sentinel in spec mode; `unknown` fallback), the binary emit allowlist (`dual_model | single_model` only — orchestrator-only values `self_fallback / contract_violated / skipped` never emitted by this agent), the YAML-safety serialization rule for blocker strings (newline→space + truncate-to-199 + single-quote escape + single-quoted form), the spec-mode return contract (sentinel marker + canonical 3-line EOF-adjacent footer), and the §Sentinel-obfuscation rule (self-anchoring carve-out for cross-audits of this agent file).
+See `agents/references/cross-auditor-evidence-handshake.md` for the canonical content. The reference covers `evidence_class:` + `evidence_blockers:` two-channel transmission (file-backed for code/full mode; inline three-line footer for spec and decision modes), the `claude_model:` model-attestation contract (emit your OWN model ID from your system prompt — sibling frontmatter key in code/full mode, one line immediately preceding the sentinel in spec/decision mode; `unknown` fallback), the binary emit allowlist (`dual_model | single_model` only — orchestrator-only values `self_fallback / contract_violated / skipped` never emitted by this agent), the YAML-safety serialization rule for blocker strings (newline→space + truncate-to-199 + single-quote escape + single-quoted form), the spec-mode return contract (sentinel marker + canonical 3-line EOF-adjacent footer), and the §Sentinel-obfuscation rule (self-anchoring carve-out for cross-audits of this agent file).
 
 ## Step 4: Write Output Documents
 

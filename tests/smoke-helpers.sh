@@ -1220,6 +1220,75 @@ check_cross_auditor_mode_focus_no_stale_four_modes() {
   echo "$path summary names five operating modes (no stale 'four operating modes')"
 }
 
+# prompt-text: the cross-auditor hub (agents/cross-auditor.md) §Input mode enum
+# must render `decision` as the fifth mode. Keys on the adjacency literal
+# `` `spec` | `decision` `` so a regression that drops `decision` from the enum
+# (or reorders it away from spec) fails — the rendered backtick-pipe form is the
+# canonical wire contract D1 cites.
+check_cross_auditor_mode_enum_names_decision() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF '`spec` | `decision`' "$path" \
+    || { echo "$path §Input mode enum missing rendered '\`spec\` | \`decision\`' — decision must be the fifth mode"; return 1; }
+  echo "$path §Input mode enum names decision (rendered '\`spec\` | \`decision\`')"
+}
+
+# prompt-text: the mode-dependent Severity Ladder in the cross-auditor hub must
+# carry a `**decision mode:**` block AND the decision-mode default-floor note.
+# Scopes to the block body (from the `**decision mode:**` header to the shared
+# `**Severity floor behavior**` paragraph) and freezes the load-bearing per-level
+# content — CRITICAL false-premise, HIGH vacuous accept/defer, MEDIUM fork
+# analysis, LOW hygiene — plus the `medium+` default-floor rationale, so a block
+# that silently dropped a severity level or the default-floor note cannot pass
+# while the header survives (labels-not-prose, matching the mode-focus cluster pin).
+check_cross_auditor_decision_severity_ladder() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "**decision mode:**" { in_s = 1; print; next }
+    in_s && /^\*\*Severity floor behavior\*\*/ { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path §Severity Ladder missing '**decision mode:**' block"; return 1; }
+  local anchor
+  for anchor in 'demonstrably false premise' 'vacuous accept/defer of a CRITICAL/HIGH finding' 'fork analysis' 'hygiene' 'two of the five clusters go dark'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path §Severity Ladder decision block missing anchor '$anchor'"; return 1; }
+  done
+  echo "$path §Severity Ladder carries the decision-mode block (CRITICAL false-premise / HIGH vacuous-triage / MEDIUM fork / LOW hygiene + medium+ default floor)"
+}
+
+# prompt-text: the cross-auditor hub reference-summary line (:47) must name FIVE
+# mode focus-areas now that `decision` is the fifth. Negative: the stale `four
+# mode` literal must be gone. Positive: the updated prose must name `five mode`,
+# so a bare deletion of the summary line cannot silently pass the negative grep
+# (stale-prose pins need a positive anchor to keep signal). Distinct from the
+# mode-focus.md `four operating modes` pin — different file, different literal.
+check_cross_auditor_hub_no_stale_four_modes() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  if grep -qF 'four mode' "$path"; then
+    echo "$path still carries stale 'four mode' prose — decision mode makes it five"; return 1
+  fi
+  grep -qF 'five mode' "$path" \
+    || { echo "$path missing 'five mode' summary prose"; return 1; }
+  echo "$path summary names five mode focus-areas (no stale 'four mode')"
+}
+
+# prompt-text: the Step 2.5 empirical-verification mode-symmetry line must name
+# `decision` in its parenthetical mode list. The `four mode` negative pin above
+# cannot see this line (it carries no `four` literal), so a positive pin isolates
+# the symmetry line and asserts decision is present — a sweep that missed :134
+# would otherwise ship silently (X18).
+check_cross_auditor_mode_symmetry_names_decision() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -F 'symmetric across modes' "$path" | grep -qF 'decision' \
+    || { echo "$path Step 2.5 mode-symmetry line does not name decision mode"; return 1; }
+  echo "$path Step 2.5 empirical-verification mode-symmetry line names decision mode"
+}
+
 check_cross_audit_skill_focus_areas_references_canonical() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
@@ -3766,7 +3835,7 @@ check_finding_claims_helper_flags_known_wrong_fixture() {
     || { echo "missing X3 LINE-OUT-OF-RANGE diagnostic"; printf '%s\n' "$out"; return 1; }
   printf '%s\n' "$out" | grep -qE '^X4: FILE-MISSING nonexistent/path\.md' \
     || { echo "missing X4 FILE-MISSING diagnostic"; printf '%s\n' "$out"; return 1; }
-  printf '%s\n' "$out" | grep -qE '^X5: OK agents/cross-auditor\.md:112' \
+  printf '%s\n' "$out" | grep -qE '^X5: OK agents/cross-auditor\.md:121' \
     || { echo "missing X5 OK diagnostic (control case — helper must not false-positive)"; printf '%s\n' "$out"; return 1; }
   printf '%s\n' "$out" | grep -qF 'Total: 5 findings, 4 mismatches' \
     || { echo "missing summary line 'Total: 5 findings, 4 mismatches'"; printf '%s\n' "$out"; return 1; }

@@ -184,6 +184,12 @@ check_cross_auditor_mode_focus_names_locate_helper prompt-text
 check_cross_auditor_decision_mode_focus_clusters prompt-text
 check_cross_auditor_mode_focus_no_stale_four_modes prompt-text
 
+# Decision-mode cross-auditor hub pins (spec 2026-07-02-decision-audit-mode Step 2)
+check_cross_auditor_mode_enum_names_decision prompt-text
+check_cross_auditor_decision_severity_ladder prompt-text
+check_cross_auditor_hub_no_stale_four_modes prompt-text
+check_cross_auditor_mode_symmetry_names_decision prompt-text
+
 # Probe-envelope JSON-Schema validator self-test
 check_json_schema_lint_self_test behavioral
 
