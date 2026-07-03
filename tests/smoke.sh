@@ -3136,6 +3136,7 @@ check "cross-audit-skill-decision-phase3-branch" check_cross_audit_skill_decisio
 check "cross-audit-skill-decision-classifier-wiring" check_cross_audit_skill_decision_classifier_wiring skills/cross-audit/SKILL.md
 check "cross-audit-skill-decision-log-append" check_cross_audit_skill_decision_log_append skills/cross-audit/SKILL.md
 check "cross-audit-skill-decision-no-publish" check_cross_audit_skill_decision_no_publish skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-report-only" check_cross_audit_skill_decision_report_only skills/cross-audit/SKILL.md
 check "cross-audit-skill-decision-prose-complete" check_cross_audit_skill_decision_prose_complete skills/cross-audit/SKILL.md
 # Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected

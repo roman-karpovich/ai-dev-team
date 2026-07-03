@@ -1622,6 +1622,28 @@ check_cross_audit_skill_decision_no_publish() {
   echo "$path Phase-3 decision branch states the no-publish (R8) rule"
 }
 
+# prompt-text: decision mode is report-only — the Phase 3 step-3 per-finding
+# triage banner (fix/accept/defer) and the Phase 4 findings-doc status mutation
+# both target a findings doc decision mode never writes, so both do NOT apply
+# (findings transient per grill D3; the §9 Log-append is the single persistence
+# trace). The user acts by editing the audited spec / opening follow-ups. Scoped
+# to the Phase-3 subsection so a stray token elsewhere cannot mask a dropped
+# carve-out (X4).
+check_cross_audit_skill_decision_report_only() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(_skill_decision_phase3_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision-mode return handling' Phase-3 subsection"; return 1; }
+  printf '%s\n' "$section" | grep -qiF 'per-finding' \
+    || { echo "$path Phase-3 decision branch does not disable the per-finding triage banner"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Phase 4' \
+    || { echo "$path Phase-3 decision branch does not disable the Phase 4 status mutation"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'do NOT apply' \
+    || { echo "$path Phase-3 decision report-only carve-out missing 'do NOT apply'"; return 1; }
+  echo "$path Phase-3 decision branch is report-only (per-finding banner + Phase 4 status mutation do NOT apply)"
+}
+
 # prompt-text: SKILL prose-completeness — the dispatch-template mode placeholder
 # names decision, the §Adaptation per-mode list names decision, and the
 # argument-hint frontmatter names decision (the three stale-list sweep sites).

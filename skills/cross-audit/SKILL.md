@@ -256,7 +256,7 @@ When cross-auditor completes:
 
 ### Decision-mode return handling
 
-For `--mode decision` the flow above changes at three points — decision rides the spec-mode inline-footer channel and writes NO findings doc:
+For `--mode decision` the flow above changes as follows — decision rides the spec-mode inline-footer channel and writes NO findings doc:
 
 - **Classifier channel.** Decision-mode returns ride the `spec` classifier channel: a decision-mode return is classified through the `check_dispatch_response.py --mode spec` path (footer shape identical to spec mode; no `--findings-path`). The return-contract gate below runs the same `--mode spec` invocation it already runs for spec-mode returns — otherwise identical.
 - **Skip the findings.md read.** Step 1 above reads a findings doc; decision mode has none. SKIP the findings.md read and present the inline findings from the agent return directly (count by severity, HIGH-confidence first, then REVIEW) — the same presentation as step 2, sourced from the inline report rather than from KB.
@@ -265,6 +265,7 @@ For `--mode decision` the flow above changes at three points — decision rides 
   `- YYYY-MM-DD: decision audit — <N> findings (crit=X high=Y med=Z); evidence=<dual_model|...>`
 
   The severity counts (`crit=X high=Y med=Z`) come from the agent's inline summary table (the inline report of the decision return), NOT from the 3-line evidence footer (which carries only `evidence_class` / `evidence_blockers`); `evidence=` is filled from the footer's `evidence_class`.
+- **Report-only — no per-finding triage, no Phase 4 status mutation.** Decision findings are transient by design (grill D3 — the single persistence trace is the §9 Log-append line above, not a findings doc). The Phase 3 step-3 per-finding decision banner (`fix` / `accept` / `defer` / `fix all`) and the Phase 4 findings-doc status mutation (OPEN→FIXED / ACCEPTED / DEFERRED) do NOT apply for decision-mode returns — there is no findings doc to mutate. The user acts on decision findings by editing the audited spec or opening follow-ups, outside this skill's Phase 3/4 lifecycle (which ends at the inline presentation + the §9 Log-append above).
 - **No publish.** Decision findings are NEVER published to a PR: they cite KB paths (spec / workdoc / findings-doc lines) by nature, and publishing KB paths to a PR violates R8 public-output hygiene. The Phase 3 `publish` action is unavailable for decision-mode returns.
 
 ### Cross-auditor return-contract gate

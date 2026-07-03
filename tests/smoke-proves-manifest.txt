@@ -207,6 +207,7 @@ check_cross_audit_skill_decision_phase3_branch prompt-text
 check_cross_audit_skill_decision_classifier_wiring prompt-text
 check_cross_audit_skill_decision_log_append prompt-text
 check_cross_audit_skill_decision_no_publish prompt-text
+check_cross_audit_skill_decision_report_only prompt-text
 check_cross_audit_skill_decision_prose_complete prompt-text
 
 # Probe-envelope JSON-Schema validator self-test
