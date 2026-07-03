@@ -1440,6 +1440,21 @@ _skill_decision_phase3_section() {
     grab { print }
   ' "$1"
 }
+_skill_decision_launch_block() {
+  # The `[Decision mode only ...]` sub-block INSIDE the Phase 1-2 Step 2 launch
+  # template (the fenced dispatch block the skill actually threads at dispatch
+  # time — not the `### Decision mode` reference subsection). Starts at the
+  # `[Decision mode only` marker, stops at the next `[` sub-block marker or the
+  # blank line that closes the block. This is what wires decision-mode params
+  # into the live launch path; pinning it (not just the doc block) closes the
+  # X2 coverage hole where a revert of that wiring stayed green.
+  awk '
+    /^\[Decision mode only/ { grab=1; next }
+    grab && /^\[/ { exit }
+    grab && /^$/ { exit }
+    grab { print }
+  ' "$1"
+}
 
 # prompt-text: the Flags block must expose `--mode decision` in the mode enum AND
 # document the KB-spec-path scope form `/cross-audit <kb-spec-path> --mode decision`
@@ -1477,27 +1492,37 @@ check_cross_audit_skill_decision_slug_derivation() {
   echo "$path decision subsection carries the date-prefix-strip slug-derivation rule (formula + workdoc + findings glob)"
 }
 
-# prompt-text: the decision dispatch param block (inside `### Decision mode`) must
-# contain `findings_paths:` — the one genuinely new dispatch param. Template-side
-# SKILL-dispatch pin, distinct from Step 3's Codex-template findings_paths pin.
+# prompt-text: the one genuinely new dispatch param `findings_paths:` must be
+# threaded in BOTH the `### Decision mode` reference subsection AND the Phase 1-2
+# Step 2 launch template's `[Decision mode only ...]` block — the latter is the
+# live dispatch path the skill actually threads. Template-side SKILL-dispatch pin,
+# distinct from Step 3's Codex-template findings_paths pin. Pinning only the
+# reference block (X2 coverage hole) let the launch-path wiring ship/revert green.
 check_cross_audit_skill_decision_findings_paths_dispatch() {
   local path="${1:-skills/cross-audit/SKILL.md}"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  local section
+  local section launch
   section=$(_skill_decision_mode_section "$path")
   [ -n "$section" ] || { echo "$path missing '### Decision mode' subsection"; return 1; }
   printf '%s\n' "$section" | grep -qF 'findings_paths:' \
     || { echo "$path decision dispatch block does not thread 'findings_paths:'"; return 1; }
-  echo "$path decision dispatch block threads findings_paths:"
+  launch=$(_skill_decision_launch_block "$path")
+  [ -n "$launch" ] || { echo "$path missing Step 2 launch-template '[Decision mode only ...]' block"; return 1; }
+  printf '%s\n' "$launch" | grep -qF 'findings_paths:' \
+    || { echo "$path Step 2 launch template does not thread 'findings_paths:' for decision mode"; return 1; }
+  echo "$path decision dispatch threads findings_paths: in both the doc subsection and the Step 2 launch template"
 }
 
 # prompt-text: the decision dispatch must thread `severity_floor` with the
 # decision-mode DEFAULT of `medium+` (NOT the global `high`) — X13: a high floor
-# takes two of the five focus clusters dark. Scoped to `### Decision mode`.
+# takes two of the five focus clusters dark. Pinned in BOTH the `### Decision
+# mode` reference subsection AND the Phase 1-2 Step 2 launch template's
+# `[Decision mode only ...]` block (the live dispatch path) — pinning only the
+# reference block (X2 coverage hole) let the launch-path wiring ship/revert green.
 check_cross_audit_skill_decision_severity_floor() {
   local path="${1:-skills/cross-audit/SKILL.md}"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
-  local section
+  local section launch
   section=$(_skill_decision_mode_section "$path")
   [ -n "$section" ] || { echo "$path missing '### Decision mode' subsection"; return 1; }
   printf '%s\n' "$section" | grep -qF 'severity_floor' \
@@ -1506,7 +1531,15 @@ check_cross_audit_skill_decision_severity_floor() {
     || { echo "$path decision dispatch block does not name the medium+ floor"; return 1; }
   printf '%s\n' "$section" | grep -qiF 'default' \
     || { echo "$path decision dispatch block does not mark medium+ as the decision-mode DEFAULT"; return 1; }
-  echo "$path decision dispatch threads severity_floor with the medium+ decision-mode default"
+  launch=$(_skill_decision_launch_block "$path")
+  [ -n "$launch" ] || { echo "$path missing Step 2 launch-template '[Decision mode only ...]' block"; return 1; }
+  printf '%s\n' "$launch" | grep -qF 'severity_floor' \
+    || { echo "$path Step 2 launch template does not thread 'severity_floor' for decision mode"; return 1; }
+  printf '%s\n' "$launch" | grep -qF 'medium+' \
+    || { echo "$path Step 2 launch template does not name the medium+ decision default"; return 1; }
+  printf '%s\n' "$launch" | grep -qiF 'default' \
+    || { echo "$path Step 2 launch template does not mark medium+ as the decision-mode DEFAULT"; return 1; }
+  echo "$path decision dispatch threads severity_floor+medium+ default in both the doc subsection and the Step 2 launch template"
 }
 
 # prompt-text: Phase 3 must carry a decision-mode branch that SKIPS the findings.md
