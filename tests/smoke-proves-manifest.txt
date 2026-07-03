@@ -197,6 +197,17 @@ check_cross_auditor_codex_decision_ladder prompt-text
 check_cross_auditor_output_format_no_write_names_decision prompt-text
 check_cross_auditor_handshake_names_decision prompt-text
 
+# Decision-mode /cross-audit standalone-entry pins (spec 2026-07-02-decision-audit-mode Step 4)
+check_cross_audit_skill_decision_flag prompt-text
+check_cross_audit_skill_decision_slug_derivation prompt-text
+check_cross_audit_skill_decision_findings_paths_dispatch prompt-text
+check_cross_audit_skill_decision_severity_floor prompt-text
+check_cross_audit_skill_decision_phase3_branch prompt-text
+check_cross_audit_skill_decision_classifier_wiring prompt-text
+check_cross_audit_skill_decision_log_append prompt-text
+check_cross_audit_skill_decision_no_publish prompt-text
+check_cross_audit_skill_decision_prose_complete prompt-text
+
 # Probe-envelope JSON-Schema validator self-test
 check_json_schema_lint_self_test behavioral
 

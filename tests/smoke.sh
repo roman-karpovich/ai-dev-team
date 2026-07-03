@@ -3126,6 +3126,16 @@ check "cross-auditor-codex-decision-reads-inputs" check_cross_auditor_codex_deci
 check "cross-auditor-codex-decision-ladder" check_cross_auditor_codex_decision_ladder agents/references/cross-auditor-codex-dispatch.md
 check "cross-auditor-output-format-no-write-names-decision" check_cross_auditor_output_format_no_write_names_decision agents/references/cross-auditor-output-format.md
 check "cross-auditor-handshake-names-decision" check_cross_auditor_handshake_names_decision agents/references/cross-auditor-evidence-handshake.md
+# Decision-mode /cross-audit standalone-entry pins (spec 2026-07-02-decision-audit-mode Step 4).
+check "cross-audit-skill-decision-flag" check_cross_audit_skill_decision_flag skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-slug-derivation" check_cross_audit_skill_decision_slug_derivation skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-findings-paths-dispatch" check_cross_audit_skill_decision_findings_paths_dispatch skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-severity-floor" check_cross_audit_skill_decision_severity_floor skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-phase3-branch" check_cross_audit_skill_decision_phase3_branch skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-classifier-wiring" check_cross_audit_skill_decision_classifier_wiring skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-log-append" check_cross_audit_skill_decision_log_append skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-no-publish" check_cross_audit_skill_decision_no_publish skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-prose-complete" check_cross_audit_skill_decision_prose_complete skills/cross-audit/SKILL.md
 # Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
 check "check_smoke_helper_focus_areas_skill_hybrid_rejected" check_smoke_helper_focus_areas_skill_hybrid_rejected

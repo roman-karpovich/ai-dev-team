@@ -1414,6 +1414,171 @@ check_cross_auditor_handshake_names_decision() {
   echo "$path handshake no-write (:31) + claude_model placement (:56) clauses name decision (caller generalized)"
 }
 
+# --- Decision-mode /cross-audit standalone-entry pins (spec 2026-07-02-decision-audit-mode Step 4) ---
+# The nine helpers below pin skills/cross-audit/SKILL.md's decision-mode entry.
+# Four of them scope their greps to the `### Decision mode` subsection (near the
+# Flags block) or the `### Decision-mode return handling` Phase-3 subsection via
+# the shared awk extractors below, so a stray token elsewhere cannot mask a
+# subsection that dropped a required contract clause.
+_skill_decision_mode_section() {
+  # `### Decision mode` subsection body (Flags-adjacent) — stops at the next
+  # `---` rule or `## ` heading.
+  awk '
+    /^### Decision mode/ { grab=1; next }
+    grab && /^## / { exit }
+    grab && /^---$/ { exit }
+    grab { print }
+  ' "$1"
+}
+_skill_decision_phase3_section() {
+  # `### Decision-mode return handling` Phase-3 subsection body — stops at the
+  # next `### ` or `## ` heading.
+  awk '
+    /^### Decision-mode return handling/ { grab=1; next }
+    grab && /^### / { exit }
+    grab && /^## / { exit }
+    grab { print }
+  ' "$1"
+}
+
+# prompt-text: the Flags block must expose `--mode decision` in the mode enum AND
+# document the KB-spec-path scope form `/cross-audit <kb-spec-path> --mode decision`
+# (decision is standalone-first — the reviewer audits a shipped /feature trail).
+check_cross_audit_skill_decision_flag() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF -- '--mode logic|security|full|decision' "$path" \
+    || { echo "$path --mode flag enum does not include decision"; return 1; }
+  grep -qF '/cross-audit <kb-spec-path> --mode decision' "$path" \
+    || { echo "$path missing decision-mode scope form '/cross-audit <kb-spec-path> --mode decision'"; return 1; }
+  echo "$path Flags block documents --mode decision + KB-spec-path scope form"
+}
+
+# prompt-text: the `### Decision mode` subsection must carry the standalone
+# slug-derivation rule (X21) — the date-prefix-strip formula, the derived
+# workdoc_path, and the derived findings glob. Raw-basename resolution silently
+# yields a non-existent workdoc dir + empty findings glob.
+check_cross_audit_skill_decision_slug_derivation() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(_skill_decision_mode_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision mode' subsection"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'feature_slug = basename(scope)' \
+    || { echo "$path decision slug-derivation missing formula 'feature_slug = basename(scope)'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'YYYY-MM-DD-' \
+    || { echo "$path decision slug-derivation does not name the leading YYYY-MM-DD- prefix"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'date prefix' \
+    || { echo "$path decision slug-derivation does not strip the date prefix"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'design/workdocs/<feature_slug>/exec.md' \
+    || { echo "$path decision slug-derivation missing derived workdoc_path 'design/workdocs/<feature_slug>/exec.md'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'security/<feature_slug>-*findings.md' \
+    || { echo "$path decision slug-derivation missing derived findings glob 'security/<feature_slug>-*findings.md'"; return 1; }
+  echo "$path decision subsection carries the date-prefix-strip slug-derivation rule (formula + workdoc + findings glob)"
+}
+
+# prompt-text: the decision dispatch param block (inside `### Decision mode`) must
+# contain `findings_paths:` — the one genuinely new dispatch param. Template-side
+# SKILL-dispatch pin, distinct from Step 3's Codex-template findings_paths pin.
+check_cross_audit_skill_decision_findings_paths_dispatch() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(_skill_decision_mode_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision mode' subsection"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'findings_paths:' \
+    || { echo "$path decision dispatch block does not thread 'findings_paths:'"; return 1; }
+  echo "$path decision dispatch block threads findings_paths:"
+}
+
+# prompt-text: the decision dispatch must thread `severity_floor` with the
+# decision-mode DEFAULT of `medium+` (NOT the global `high`) — X13: a high floor
+# takes two of the five focus clusters dark. Scoped to `### Decision mode`.
+check_cross_audit_skill_decision_severity_floor() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(_skill_decision_mode_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision mode' subsection"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'severity_floor' \
+    || { echo "$path decision dispatch block does not thread 'severity_floor'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'medium+' \
+    || { echo "$path decision dispatch block does not name the medium+ floor"; return 1; }
+  printf '%s\n' "$section" | grep -qiF 'default' \
+    || { echo "$path decision dispatch block does not mark medium+ as the decision-mode DEFAULT"; return 1; }
+  echo "$path decision dispatch threads severity_floor with the medium+ decision-mode default"
+}
+
+# prompt-text: Phase 3 must carry a decision-mode branch that SKIPS the findings.md
+# read and presents the inline findings from the agent return (decision writes no
+# findings doc — spec-mode inline-footer channel).
+check_cross_audit_skill_decision_phase3_branch() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(_skill_decision_phase3_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision-mode return handling' Phase-3 subsection"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'SKIP the findings.md read' \
+    || { echo "$path Phase-3 decision branch does not SKIP the findings.md read"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'inline findings from the agent return' \
+    || { echo "$path Phase-3 decision branch does not present inline findings from the agent return"; return 1; }
+  echo "$path Phase-3 decision branch skips findings.md read + presents inline findings"
+}
+
+# prompt-text: decision-mode returns must be classified via the spec channel —
+# `check_dispatch_response.py --mode spec` (footer shape identical; no
+# --findings-path). Pinned on one line carrying both tokens.
+check_cross_audit_skill_decision_classifier_wiring() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -F 'check_dispatch_response.py --mode spec' "$path" | grep -qF 'decision' \
+    || { echo "$path decision returns not wired to the check_dispatch_response.py --mode spec classifier channel"; return 1; }
+  echo "$path wires decision returns via check_dispatch_response.py --mode spec channel"
+}
+
+# prompt-text: after the return-contract gate passes, the orchestrator appends ONE
+# Log line to the audited spec §9 Log. Freeze the literal line shape; the severity
+# counts come from the inline summary table, not the footer.
+check_cross_audit_skill_decision_log_append() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'decision audit — <N> findings (crit=X high=Y med=Z); evidence=' "$path" \
+    || { echo "$path missing orchestrator Log-append literal 'decision audit — <N> findings (crit=X high=Y med=Z); evidence='"; return 1; }
+  echo "$path carries the orchestrator decision Log-append rule (literal frozen)"
+}
+
+# prompt-text: decision findings are NEVER published to a PR — they cite KB paths
+# by nature and publishing KB paths violates R8. Scoped to the Phase-3 subsection.
+check_cross_audit_skill_decision_no_publish() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(_skill_decision_phase3_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision-mode return handling' Phase-3 subsection"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'NEVER published' \
+    || { echo "$path Phase-3 decision branch does not state decision findings are NEVER published"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'R8' \
+    || { echo "$path Phase-3 decision no-publish rule does not cite R8"; return 1; }
+  echo "$path Phase-3 decision branch states the no-publish (R8) rule"
+}
+
+# prompt-text: SKILL prose-completeness — the dispatch-template mode placeholder
+# names decision, the §Adaptation per-mode list names decision, and the
+# argument-hint frontmatter names decision (the three stale-list sweep sites).
+check_cross_audit_skill_decision_prose_complete() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'mode: [logic|security|full|decision]' "$path" \
+    || { echo "$path dispatch-template mode placeholder is not '[logic|security|full|decision]'"; return 1; }
+  grep -qF '`logic` / `security` / `full` / `spec` / `decision`' "$path" \
+    || { echo "$path §Adaptation per-mode list does not name decision"; return 1; }
+  local arghint
+  arghint=$(grep -F 'argument-hint:' "$path")
+  printf '%s\n' "$arghint" | grep -qF 'decision' \
+    || { echo "$path argument-hint frontmatter does not name decision"; return 1; }
+  echo "$path prose-complete: dispatch placeholder + per-mode list + argument-hint all name decision"
+}
+
 check_cross_audit_skill_focus_areas_references_canonical() {
   local path="$1"
   [ -r "$path" ] || { echo "$path not readable"; return 1; }
