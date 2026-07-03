@@ -3112,6 +3112,9 @@ check_smoke_helper_focus_areas_cross_auditor_demoted_rejected() {
 # Positive invocations — 2 rows per spec §3.4.
 check "check_cross_auditor_mode_focus_areas_canonical" check_cross_auditor_mode_focus_areas_canonical agents/references/cross-auditor-mode-focus.md
 check "check_cross_audit_skill_focus_areas_references_canonical" check_cross_audit_skill_focus_areas_references_canonical skills/cross-audit/SKILL.md
+# Decision-mode focus-area pins (spec 2026-07-02-decision-audit-mode Step 1).
+check "cross-auditor-decision-mode-focus-clusters" check_cross_auditor_decision_mode_focus_clusters agents/references/cross-auditor-mode-focus.md
+check "cross-auditor-mode-focus-no-stale-four-modes" check_cross_auditor_mode_focus_no_stale_four_modes agents/references/cross-auditor-mode-focus.md
 # Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
 check "check_smoke_helper_focus_areas_skill_hybrid_rejected" check_smoke_helper_focus_areas_skill_hybrid_rejected

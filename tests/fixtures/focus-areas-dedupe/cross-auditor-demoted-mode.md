@@ -16,4 +16,7 @@ Run both logic and security.
 #### `spec` mode
 - Completeness
 
+#### `decision` mode
+- Decision coherence
+
 ## Severity Ladder

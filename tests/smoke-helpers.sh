@@ -1172,11 +1172,52 @@ check_cross_auditor_mode_focus_areas_canonical() {
   # pass if a mode subsection were demoted from ### to #### or if the token
   # leaked only into prose with the heading silently dropped.
   local mode
-  for mode in '`logic` mode' '`security` mode' '`full` mode' '`spec` mode'; do
+  for mode in '`logic` mode' '`security` mode' '`full` mode' '`spec` mode' '`decision` mode'; do
     printf '%s\n' "$section" | grep -qFx "### $mode" \
       || { echo "$path ## Mode Focus Areas missing line-exact '### $mode' subsection heading"; return 1; }
   done
-  echo "$path has canonical ## Mode Focus Areas (heading + 4 line-exact mode subsection headings: logic/security/full/spec)"
+  echo "$path has canonical ## Mode Focus Areas (heading + 5 line-exact mode subsection headings: logic/security/full/spec/decision)"
+}
+
+# prompt-text: the `### `decision` mode` section of cross-auditor-mode-focus.md
+# must carry all five §3.1 decision-audit focus-cluster labels. The canonical
+# structure helper above only pins the line-exact heading; this pin freezes the
+# cluster CONTENT (labels-not-prose) so a decision section that silently dropped
+# a cluster — e.g. rubber-stamp detection, the mode's deterministic backbone —
+# cannot pass while the heading survives. Scopes to the section body so a stray
+# anchor phrase elsewhere in the file cannot mask a missing cluster.
+check_cross_auditor_decision_mode_focus_clusters() {
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "### `decision` mode" { in_s = 1; next }
+    in_s && /^#/ { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '### \`decision\` mode' section body"; return 1; }
+  local anchor
+  for anchor in 'Decision coherence' 'Premise re-derivation' 'Rubber-stamp' 'Fork analysis' 'Planned/observed'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path §decision mode missing focus-cluster anchor '$anchor'"; return 1; }
+  done
+  echo "$path §decision mode carries all 5 focus-cluster anchors (Decision coherence/Premise re-derivation/Rubber-stamp/Fork analysis/Planned/observed)"
+}
+
+# prompt-text: the reference-summary prose (line 3) must name FIVE operating
+# modes now that `decision` is the fifth. Negative: the stale `four operating
+# modes` literal must be gone. Positive: the updated prose must name `five
+# operating modes`, so a bare deletion of the summary line cannot silently pass
+# the negative grep (stale-prose pins need a positive anchor to keep signal).
+check_cross_auditor_mode_focus_no_stale_four_modes() {
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  if grep -qF 'four operating modes' "$path"; then
+    echo "$path still carries stale 'four operating modes' prose — decision mode makes it five"; return 1
+  fi
+  grep -qF 'five operating modes' "$path" \
+    || { echo "$path missing 'five operating modes' summary prose"; return 1; }
+  echo "$path summary names five operating modes (no stale 'four operating modes')"
 }
 
 check_cross_audit_skill_focus_areas_references_canonical() {

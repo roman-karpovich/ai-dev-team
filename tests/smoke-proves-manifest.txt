@@ -180,6 +180,10 @@ check_cross_auditor_consumes_attack_surface_profile prompt-text
 check_locate_section_outside_fences_helper behavioral
 check_cross_auditor_mode_focus_names_locate_helper prompt-text
 
+# Decision-mode focus-area pins (spec 2026-07-02-decision-audit-mode Step 1)
+check_cross_auditor_decision_mode_focus_clusters prompt-text
+check_cross_auditor_mode_focus_no_stale_four_modes prompt-text
+
 # Probe-envelope JSON-Schema validator self-test
 check_json_schema_lint_self_test behavioral
 

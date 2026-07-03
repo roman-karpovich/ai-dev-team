@@ -1,6 +1,6 @@
 # Cross-auditor: Mode Focus Areas
 
-Canonical content for the `## Mode Focus Areas` section of `agents/cross-auditor.md`. Covers the four operating modes (`logic`, `security`, `full`, `spec`), the R-rule cluster gate that wires `code-quality-rules.md` into the security audit, the supplemental Smart Contracts / DeFi + Backend Services bullet lists, and the spec-mode rule body (Agent pre-tag consistency, Repo-convention enforcement, §1.1 Attack-surface profile schema validation, §1.2 STRIDE-lite gating).
+Canonical content for the `## Mode Focus Areas` section of `agents/cross-auditor.md`. Covers the five operating modes (`logic`, `security`, `full`, `spec`, `decision`), the R-rule cluster gate that wires `code-quality-rules.md` into the security audit, the supplemental Smart Contracts / DeFi + Backend Services bullet lists, the spec-mode rule body (Agent pre-tag consistency, Repo-convention enforcement, §1.1 Attack-surface profile schema validation, §1.2 STRIDE-lite gating), and the decision-mode rule body (decision-coherence center, bounded premise re-derivation, rubber-stamp detection, fork analysis, planned/observed divergence).
 
 ## Mode Focus Areas
 
@@ -70,3 +70,25 @@ Reviews a **feature spec document** (not code) before implementation begins. The
   - **Bounding (no over-reach).** Active grounding for claims the spec MAKES and math the design DEPENDS ON — NOT a demand that every spec cite code, nor a mandate to re-derive trivial arithmetic. A greenfield spec with no concrete code referents and no boundary math leaves this check a near-no-op; do NOT invent referents to verify. Stay within the spec-mode severity ladder. DISTINCT from (and coexists with) the grill-awareness evidence-ref RESOLVES check above (which covers only grilled `## Decisions` citations), and OFFENSIVE — read code to FIND spec-vs-code mismatches — in contrast to the Codex verify-before-report line, which is DEFENSIVE de-hallucination of reported findings.
 
 <!-- end §spec mode -->
+
+### `decision` mode
+
+Audits the **decision trail** of a completed `/feature` run (spec §9 Log, grill `## Decisions` table, workdoc planned/observed + `design_decision` fields, findings triage statuses, `*_audit_evidence` frontmatter) — NOT the code. The audit target is the KB artifacts the run produced; premise re-derivation reads the source repo (`working_directory`) but never executes it. Five focus clusters, with decision coherence at the center and premise verification as the second layer:
+
+- **Decision coherence (mode center).** Two classes:
+  - *Local-optimum / crutch-stacking* — a decision fixes the symptom at hand while eroding the architecture; signals: patches layered on one spot (same defect class across 2+ audit iterations, REOPEN sweeps, fixup pileups per step), workaround-on-workaround, `design_decision` entries of the "bypassed X because faster" shape. Flag the design-level flaw underneath, not the Nth patch.
+  - *Goal-trajectory divergence* — the task was set toward X but the cumulative decision vector leads to Y; compare spec §1 Context/goal against the sum of Log decisions, scope-extensions, `change_type_shift`, and `design_decision` entries. Both classes are HIGH when load-bearing.
+- **Premise re-derivation (anti-oracle-bias), bounded.** Every recorded decision is the implementer's HYPOTHESIS, not a verified fact. Three levels: (L1) the referent exists (extends the spec-mode "citations resolve" check); (L2) the referent BEHAVES as the decision assumes — open and read the code, no execution, no re-implementation; (L3) a numeric worked-example only when the decision hinges on arithmetic/boundaries (reuses the spec-mode numeric machinery). L2 refuted with code evidence → CRITICAL; L2 unconfirmable from artifacts + code → HIGH (honest "false" vs "unproven" split).
+- **Rubber-stamp detection.** Deterministic signals, each cited by artifact line: degraded `*_audit_evidence` (`skipped` / `self_fallback` / `contract_violated` / `single_model`); `grill_status` null/skipped while high-risk signals are present (`external_input: true`, `project_type: smart_contract`, payment/auth/migration keywords); residue accepted at the iteration cap without a named residue; accept/defer of CRITICAL/HIGH findings with vacuous rationale; `attack-surface profile not applicable` on a spec with an evident network surface; all-defaults accumulation across banner decisions on a large feature.
+- **Fork analysis.** Decisions at real forks (multiple viable designs visible from the artifacts/code) with no recorded alternative or tradeoff.
+- **Planned/observed divergence.** Workdoc observed-vs-planned drift (files outside `allowed_scope`, notes contradicting the step goal, `change_type_shift`) not reflected in spec §3/§9 — a step-level feeder for the Decision-coherence crutch-stacking class.
+
+**Default severity floor (decision mode): `medium+`.** The ladder below deliberately parks fork analysis, planned/observed drift, and most vacuous-rationale forms at MEDIUM ("visible, non-gating" per grill D7), so the default floor must collect MEDIUM or two of the five clusters go dark; `--severity high` narrows on demand.
+
+Severity ladder (decision mode):
+- **CRITICAL** — a load-bearing decision resting on a demonstrably false premise (L2 refuted with code evidence) affecting shipped behavior.
+- **HIGH** — decision-coherence classes 1a/1b at load-bearing scale; an unverified load-bearing premise (L2 unconfirmable); a rubber-stamped gate on a high-risk surface; vacuous accept/defer of a CRITICAL/HIGH finding (the only vacuous-rationale form that gates).
+- **MEDIUM** — fork analysis (no recorded alternatives); all other vacuous-rationale forms; unlogged planned/observed drift; all-defaults accumulation.
+- **LOW** — hygiene (missing rationale on routine decisions).
+
+<!-- end §decision mode -->
