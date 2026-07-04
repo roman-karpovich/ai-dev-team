@@ -1,0 +1,8 @@
+expected_classification: CLEAN_DUAL
+expected_exit: 0
+mode: code
+expected_claude_model: claude-fable-5
+expected_head_arg: 1111111111111111111111111111111111111111
+expected_head_gate: HEAD_ATTESTATION_MISSING
+expected_audited_head: null
+notes: "synthetic; valid canonical coexisting with malformed '=' sibling -> parse None -> MISSING"

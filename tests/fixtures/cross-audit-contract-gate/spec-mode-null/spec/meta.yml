@@ -1,0 +1,7 @@
+expected_classification: CLEAN_DUAL
+expected_exit: 0
+mode: spec
+expected_claude_model: claude-fable-5
+expected_head_gate: null
+expected_audited_head: null
+notes: "synthetic; spec mode emits no audited_head pin -> audited_head null (6-tuple parity)"

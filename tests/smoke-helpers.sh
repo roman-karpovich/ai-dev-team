@@ -8093,46 +8093,50 @@ check_dispatch_response_classification() {
     expected_model_arg=$(sed -n 's/^expected_claude_model_arg: *//p' "$meta")
     expected_model_gate=$(sed -n 's/^expected_model_gate: *//p' "$meta")
     expected_claude_model=$(sed -n 's/^expected_claude_model: *//p' "$meta")
+    # Three OPTIONAL audited-HEAD meta keys (spec 2026-07-05 §3.2; absent in the
+    # legacy fixtures). `expected_head_arg` drives the `--expected-head` flag,
+    # threaded into ALL invocation arms alongside the model flag; a single-arm
+    # patch would silently under-test one mode. `expected_head_gate` /
+    # `expected_audited_head` are asserted UNCONDITIONALLY in the python block
+    # (absent -> null), so the flag cannot leak into a legacy CLEAN fixture and
+    # silently return HEAD_ATTESTATION_MISSING.
+    expected_head_arg=$(sed -n 's/^expected_head_arg: *//p' "$meta")
+    expected_head_gate=$(sed -n 's/^expected_head_gate: *//p' "$meta")
+    expected_audited_head=$(sed -n 's/^expected_audited_head: *//p' "$meta")
     local extra_args=()
     if [ -n "$expected_model_arg" ]; then
-      extra_args=(--expected-claude-model "$expected_model_arg")
+      extra_args+=(--expected-claude-model "$expected_model_arg")
     fi
-    # Policy-gate fixtures: the ai-dev-team variant is invoked WITH
-    # `--project ai-dev-team`; the consumer variant WITHOUT it.
+    if [ -n "$expected_head_arg" ]; then
+      extra_args+=(--expected-head "$expected_head_arg")
+    fi
+    # Policy-gate fixtures: invoked WITH `--project ai-dev-team`. The
+    # spec-mode CLEAN_SINGLE variant pins the isolated policy gate; the
+    # code-mode `head-cofire` variant pins policy_gate + head_gate firing
+    # simultaneously in one JSON (independent computation). Threaded into every
+    # mode via `extra_args` — the consumer variant omits the flag.
     project=""
     case "$d" in
-      *clean-single-policy-gate-ai-dev-team/*) project="ai-dev-team" ;;
+      *clean-single-policy-gate-ai-dev-team/*|*clean-single-policy-gate-head-cofire/*)
+        project="ai-dev-team" ;;
     esac
+    if [ -n "$project" ]; then
+      extra_args+=(--project "$project")
+    fi
+    # findings-missing/code/ deliberately lacks findings.md — the (absent) path
+    # is passed verbatim so the absence triggers FINDINGS_MISSING.
     if [ "$mode" = "code" ] || [ "$mode" = "full" ]; then
-      # findings-missing/code/ deliberately lacks findings.md — pass a
-      # non-existent path so the absence triggers FINDINGS_MISSING.
-      if [ -f "$d/findings.md" ]; then
-        python3 "$helper" --mode "$mode" \
-          --raw-response-file "$d/raw-response.txt" \
-          --audit-slug "fixture-$expected_class" --iteration 1 \
-          --findings-path "$d/findings.md" \
-          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
-      else
-        python3 "$helper" --mode "$mode" \
-          --raw-response-file "$d/raw-response.txt" \
-          --audit-slug "fixture-$expected_class" --iteration 1 \
-          --findings-path "$d/findings.md" \
-          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
-      fi
+      python3 "$helper" --mode "$mode" \
+        --raw-response-file "$d/raw-response.txt" \
+        --audit-slug "fixture-$expected_class" --iteration 1 \
+        --findings-path "$d/findings.md" \
+        ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       rc=$?
     else
-      if [ -n "$project" ]; then
-        python3 "$helper" --mode "$mode" \
-          --raw-response-file "$d/raw-response.txt" \
-          --audit-slug "fixture-$expected_class" --iteration 1 \
-          --project "$project" \
-          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
-      else
-        python3 "$helper" --mode "$mode" \
-          --raw-response-file "$d/raw-response.txt" \
-          --audit-slug "fixture-$expected_class" --iteration 1 \
-          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
-      fi
+      python3 "$helper" --mode "$mode" \
+        --raw-response-file "$d/raw-response.txt" \
+        --audit-slug "fixture-$expected_class" --iteration 1 \
+        ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       rc=$?
     fi
     if [ "$rc" != "$expected_exit" ]; then
@@ -8145,12 +8149,14 @@ check_dispatch_response_classification() {
     # newline-unsafe fixture mean a shell-variable round-trip would corrupt
     # the payload — read straight from disk).
     if ! python3 - "$out_file" "$expected_class" "$d" "$project" \
-        "$expected_model_gate" "$expected_claude_model" <<'PY'
+        "$expected_model_gate" "$expected_claude_model" \
+        "$expected_head_gate" "$expected_audited_head" <<'PY'
 import json
 import sys
 
 (out_file, expected_class, fixture_dir, project,
- expected_model_gate, expected_claude_model) = sys.argv[1:7]
+ expected_model_gate, expected_claude_model,
+ expected_head_gate, expected_audited_head) = sys.argv[1:9]
 try:
     with open(out_file, "r", encoding="utf-8") as fh:
         j = json.load(fh)
@@ -8211,6 +8217,30 @@ if got_model != want_model:
     print(f"sub-fixture {fixture_dir}: claude_model {got_model!r}, "
           f"expected {want_model!r}")
     sys.exit(1)
+
+# Audited-HEAD assertions (UNCONDITIONAL for every fixture, legacy included).
+# The meta keys are optional shell vars: an empty string means the key was
+# absent -> expected null. `expected_head_gate` guards against the flag leaking
+# into legacy CLEAN fixtures (would silently return HEAD_ATTESTATION_MISSING)
+# AND pins the co-fire independence (policy/model gate firing does NOT suppress
+# head_gate); `expected_audited_head` pins the informational parse value (an
+# impl that computes head_gate but mis-emits audited_head — or drops it on a
+# violation classification — is caught here).
+want_head_gate = (None if expected_head_gate in ("", "null")
+                  else expected_head_gate)
+got_head_gate = j.get("head_gate")
+if got_head_gate != want_head_gate:
+    print(f"sub-fixture {fixture_dir}: head_gate {got_head_gate!r}, "
+          f"expected {want_head_gate!r}")
+    sys.exit(1)
+
+want_head = (None if expected_audited_head in ("", "null")
+             else expected_audited_head)
+got_head = j.get("audited_head")
+if got_head != want_head:
+    print(f"sub-fixture {fixture_dir}: audited_head {got_head!r}, "
+          f"expected {want_head!r}")
+    sys.exit(1)
 PY
     then
       rm -f "$out_file"
@@ -8219,11 +8249,11 @@ PY
     checked=$((checked + 1))
   done
   rm -f "$out_file"
-  if [ "$checked" != "55" ]; then
-    echo "expected 55 sub-fixtures, checked $checked"
+  if [ "$checked" != "64" ]; then
+    echo "expected 64 sub-fixtures, checked $checked"
     return 1
   fi
-  echo "dispatch-response classifier: 55/55 sub-fixtures classified correctly"
+  echo "dispatch-response classifier: 64/64 sub-fixtures classified correctly"
 }
 
 # Behavioral pin for the classifier's enum -> violation-blocker phrasing
