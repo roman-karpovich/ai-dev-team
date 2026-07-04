@@ -1172,11 +1172,657 @@ check_cross_auditor_mode_focus_areas_canonical() {
   # pass if a mode subsection were demoted from ### to #### or if the token
   # leaked only into prose with the heading silently dropped.
   local mode
-  for mode in '`logic` mode' '`security` mode' '`full` mode' '`spec` mode'; do
+  for mode in '`logic` mode' '`security` mode' '`full` mode' '`spec` mode' '`decision` mode'; do
     printf '%s\n' "$section" | grep -qFx "### $mode" \
       || { echo "$path ## Mode Focus Areas missing line-exact '### $mode' subsection heading"; return 1; }
   done
-  echo "$path has canonical ## Mode Focus Areas (heading + 4 line-exact mode subsection headings: logic/security/full/spec)"
+  echo "$path has canonical ## Mode Focus Areas (heading + 5 line-exact mode subsection headings: logic/security/full/spec/decision)"
+}
+
+# prompt-text: the `### `decision` mode` section of cross-auditor-mode-focus.md
+# must carry all five §3.1 decision-audit focus-cluster labels. The canonical
+# structure helper above only pins the line-exact heading; this pin freezes the
+# cluster CONTENT (labels-not-prose) so a decision section that silently dropped
+# a cluster — e.g. rubber-stamp detection, the mode's deterministic backbone —
+# cannot pass while the heading survives. Scopes to the section body so a stray
+# anchor phrase elsewhere in the file cannot mask a missing cluster.
+check_cross_auditor_decision_mode_focus_clusters() {
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "### `decision` mode" { in_s = 1; next }
+    in_s && /^#/ { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '### \`decision\` mode' section body"; return 1; }
+  local anchor
+  for anchor in 'Decision coherence' 'Premise re-derivation' 'Rubber-stamp' 'Fork analysis' 'Planned/observed'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path §decision mode missing focus-cluster anchor '$anchor'"; return 1; }
+  done
+  echo "$path §decision mode carries all 5 focus-cluster anchors (Decision coherence/Premise re-derivation/Rubber-stamp/Fork analysis/Planned/observed)"
+}
+
+# prompt-text: the reference-summary prose (line 3) must name FIVE operating
+# modes now that `decision` is the fifth. Negative: the stale `four operating
+# modes` literal must be gone. Positive: the updated prose must name `five
+# operating modes`, so a bare deletion of the summary line cannot silently pass
+# the negative grep (stale-prose pins need a positive anchor to keep signal).
+check_cross_auditor_mode_focus_no_stale_four_modes() {
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  if grep -qF 'four operating modes' "$path"; then
+    echo "$path still carries stale 'four operating modes' prose — decision mode makes it five"; return 1
+  fi
+  grep -qF 'five operating modes' "$path" \
+    || { echo "$path missing 'five operating modes' summary prose"; return 1; }
+  echo "$path summary names five operating modes (no stale 'four operating modes')"
+}
+
+# prompt-text: the cross-auditor hub (agents/cross-auditor.md) §Input mode enum
+# must render `decision` as the fifth mode. Keys on the adjacency literal
+# `` `spec` | `decision` `` so a regression that drops `decision` from the enum
+# (or reorders it away from spec) fails — the rendered backtick-pipe form is the
+# canonical wire contract D1 cites.
+check_cross_auditor_mode_enum_names_decision() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF '`spec` | `decision`' "$path" \
+    || { echo "$path §Input mode enum missing rendered '\`spec\` | \`decision\`' — decision must be the fifth mode"; return 1; }
+  echo "$path §Input mode enum names decision (rendered '\`spec\` | \`decision\`')"
+}
+
+# prompt-text: the mode-dependent Severity Ladder in the cross-auditor hub must
+# carry a `**decision mode:**` block AND the decision-mode default-floor note.
+# Scopes to the block body (from the `**decision mode:**` header to the shared
+# `**Severity floor behavior**` paragraph) and freezes the load-bearing per-level
+# content — CRITICAL false-premise, HIGH vacuous accept/defer, MEDIUM fork
+# analysis, LOW hygiene — plus the `medium+` default-floor rationale, so a block
+# that silently dropped a severity level or the default-floor note cannot pass
+# while the header survives (labels-not-prose, matching the mode-focus cluster pin).
+check_cross_auditor_decision_severity_ladder() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "**decision mode:**" { in_s = 1; print; next }
+    in_s && /^\*\*Severity floor behavior\*\*/ { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path §Severity Ladder missing '**decision mode:**' block"; return 1; }
+  local anchor
+  for anchor in 'demonstrably false premise' 'vacuous accept/defer of a CRITICAL/HIGH finding' 'fork analysis' 'hygiene' 'two of the five clusters go dark'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path §Severity Ladder decision block missing anchor '$anchor'"; return 1; }
+  done
+  echo "$path §Severity Ladder carries the decision-mode block (CRITICAL false-premise / HIGH vacuous-triage / MEDIUM fork / LOW hygiene + medium+ default floor)"
+}
+
+# prompt-text: the cross-auditor hub reference-summary line (:47) must name FIVE
+# mode focus-areas now that `decision` is the fifth. Negative: the stale `four
+# mode` literal must be gone. Positive: the updated prose must name `five mode`,
+# so a bare deletion of the summary line cannot silently pass the negative grep
+# (stale-prose pins need a positive anchor to keep signal). Distinct from the
+# mode-focus.md `four operating modes` pin — different file, different literal.
+check_cross_auditor_hub_no_stale_four_modes() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  if grep -qF 'four mode' "$path"; then
+    echo "$path still carries stale 'four mode' prose — decision mode makes it five"; return 1
+  fi
+  grep -qF 'five mode' "$path" \
+    || { echo "$path missing 'five mode' summary prose"; return 1; }
+  echo "$path summary names five mode focus-areas (no stale 'four mode')"
+}
+
+# prompt-text: the Step 2.5 empirical-verification mode-symmetry line must name
+# `decision` in its parenthetical mode list. The `four mode` negative pin above
+# cannot see this line (it carries no `four` literal), so a positive pin isolates
+# the symmetry line and asserts decision is present — a sweep that missed :134
+# would otherwise ship silently (X18).
+check_cross_auditor_mode_symmetry_names_decision() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -F 'symmetric across modes' "$path" | grep -qF 'decision' \
+    || { echo "$path Step 2.5 mode-symmetry line does not name decision mode"; return 1; }
+  echo "$path Step 2.5 empirical-verification mode-symmetry line names decision mode"
+}
+
+# prompt-text: the §Finding ID Format no-findings-doc exception must name BOTH spec
+# AND decision mode. Decision mode also persists no findings doc and accepts
+# next_finding_id (§Input :36 already reads "spec and decision modes"), so a
+# spec-only exception literal routes decision re-audits to the default "read the
+# highest existing ID in the findings doc" rule → ID reset/collision (audit X3).
+# Scopes to the ## Finding ID Format section body so a stray 'decision' token
+# elsewhere in the file cannot mask a spec-only exception header.
+check_cross_auditor_finding_id_exception_names_decision() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    /^## Finding ID Format/ { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing ## Finding ID Format section"; return 1; }
+  local exception
+  exception=$(printf '%s\n' "$section" | grep -F 'mode exception')
+  [ -n "$exception" ] || { echo "$path §Finding ID Format missing no-findings-doc 'mode exception' bullet"; return 1; }
+  printf '%s\n' "$exception" | grep -qF 'decision' \
+    || { echo "$path §Finding ID Format exception names only spec — decision mode also persists no findings doc + accepts next_finding_id (X3 ID-collision)"; return 1; }
+  printf '%s\n' "$exception" | grep -qF 'Spec' \
+    || { echo "$path §Finding ID Format exception no longer names spec"; return 1; }
+  echo "$path §Finding ID Format no-findings-doc exception names both spec and decision mode"
+}
+
+# --- Decision-mode Codex dispatch + handshake pins (spec 2026-07-02-decision-audit-mode Step 3) ---
+# Shared awk extractor semantics: the `**Decision mode** Codex prompt template:`
+# fenced block. The three helpers below scope their greps to the block body so a
+# stray token elsewhere in the file cannot mask a template that dropped a
+# required anchor (X15/X17: real dual-model parity requires the Codex half carry
+# the full decision focus, not a spec-mode clone).
+
+# prompt-text: the decision-mode Codex prompt template must carry the `Mode: decision`
+# literal AND all five §3.1 focus-cluster LABELS + the two deterministic rubber-stamp
+# signal tokens (self_fallback / grill_status). labels-not-prose per audit X17 — a
+# template carrying only `Mode: decision` while dropping the embedded clusters would
+# hand Codex a spec-mode (wrong-question) audit, silently degrading the mode center
+# to single-model.
+check_cross_auditor_codex_decision_focus_anchors() {
+  local path="${1:-agents/references/cross-auditor-codex-dispatch.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    /^\*\*Decision mode\*\* Codex prompt template/ { grab=1; next }
+    grab && /^```$/ { fence++; if (fence==2) exit; next }
+    grab && fence==1 { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing **Decision mode** Codex prompt template fenced block"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Mode: decision' \
+    || { echo "$path decision template missing 'Mode: decision' literal"; return 1; }
+  local anchor
+  for anchor in 'Decision coherence' 'Premise re-derivation' 'Rubber-stamp' 'Fork analysis' 'Planned/observed' 'self_fallback' 'grill_status'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path decision template missing focus anchor '$anchor'"; return 1; }
+  done
+  echo "$path decision Codex template carries Mode: decision + 5 cluster labels + self_fallback/grill_status (labels-not-prose)"
+}
+
+# prompt-text: the decision-mode Codex template must instruct Codex to read the
+# audited spec `[scope]`, the `[workdoc_path]`, and each `findings_paths` entry —
+# without these reads the cluster-3 vacuous-triage and the cluster-1a
+# findings-portion are unperformable (X20). Template-side findings_paths pin,
+# DISTINCT from Step 4's SKILL-dispatch-block `findings_paths:` pin.
+check_cross_auditor_codex_decision_reads_inputs() {
+  local path="${1:-agents/references/cross-auditor-codex-dispatch.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    /^\*\*Decision mode\*\* Codex prompt template/ { grab=1; next }
+    grab && /^```$/ { fence++; if (fence==2) exit; next }
+    grab && fence==1 { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing **Decision mode** Codex prompt template fenced block"; return 1; }
+  local anchor
+  for anchor in '[scope]' '[workdoc_path]' 'findings_paths'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path decision template does not instruct Codex to read '$anchor'"; return 1; }
+  done
+  echo "$path decision Codex template reads [scope]/[workdoc_path]/findings_paths"
+}
+
+# prompt-text: the decision-mode Codex template must carry the decision-mode
+# severity ladder in place of the inherited `[Severity ladder for spec mode]`
+# placeholder (X20). Negative: the spec-mode placeholder must be gone from the
+# block. Positive: the ladder header + per-level content (false-premise /
+# vacuous-triage / fork-analysis) present so a bare header cannot pass.
+check_cross_auditor_codex_decision_ladder() {
+  local path="${1:-agents/references/cross-auditor-codex-dispatch.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    /^\*\*Decision mode\*\* Codex prompt template/ { grab=1; next }
+    grab && /^```$/ { fence++; if (fence==2) exit; next }
+    grab && fence==1 { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing **Decision mode** Codex prompt template fenced block"; return 1; }
+  if printf '%s\n' "$section" | grep -qF '[Severity ladder for spec mode]'; then
+    echo "$path decision template still carries the inherited '[Severity ladder for spec mode]' placeholder"; return 1
+  fi
+  printf '%s\n' "$section" | grep -qF 'Severity ladder (decision mode):' \
+    || { echo "$path decision template missing 'Severity ladder (decision mode):' header — spec-mode placeholder not substituted"; return 1; }
+  local anchor
+  for anchor in 'demonstrably false premise' 'vacuous accept/defer of a CRITICAL/HIGH finding' 'fork analysis'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path decision template ladder missing per-level anchor '$anchor'"; return 1; }
+  done
+  echo "$path decision Codex template carries the decision-mode severity ladder (spec-mode placeholder substituted)"
+}
+
+# prompt-text: the Step-4 write-vs-inline contract (cross-auditor-output-format.md)
+# no-write exception (~:7) must name decision mode AND generalize its caller
+# parenthetical to the standalone `/cross-audit` (decision's caller). Without this
+# the agent WRITES an orphaned findings doc for a decision-mode return (X12),
+# contradicting §3.4/D3 and colliding with D6/R8.
+check_cross_auditor_output_format_no_write_names_decision() {
+  local path="${1:-agents/references/cross-auditor-output-format.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local excline
+  excline=$(grep -F 'mode exception' "$path")
+  [ -n "$excline" ] || { echo "$path missing Step-4 '... mode exception' no-write line"; return 1; }
+  printf '%s\n' "$excline" | grep -qF 'decision' \
+    || { echo "$path Step-4 no-write exception does not name decision mode"; return 1; }
+  printf '%s\n' "$excline" | grep -qF 'standalone `/cross-audit`' \
+    || { echo "$path Step-4 no-write exception caller parenthetical not generalized to standalone /cross-audit"; return 1; }
+  echo "$path Step-4 no-write exception names decision (caller parenthetical generalized to standalone /cross-audit)"
+}
+
+# prompt-text: the evidence-handshake doc must name decision mode in BOTH the
+# spec-scoped no-write clause (~:31) — with its caller phrase generalized off
+# 'calling feature skill' to the standalone `/cross-audit` — AND the claude_model
+# placement clause (~:56, the 'immediately preceding' the sentinel rule). Decision
+# rides the spec-mode inline-footer channel; these two clauses were spec-only.
+check_cross_auditor_handshake_names_decision() {
+  local path="${1:-agents/references/cross-auditor-evidence-handshake.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  # (a) no-write clause (~:31) names decision + caller generalized to /cross-audit.
+  local nowrite
+  nowrite=$(grep -F 'does NOT write findings.md' "$path")
+  [ -n "$nowrite" ] || { echo "$path missing no-write clause 'does NOT write findings.md'"; return 1; }
+  printf '%s\n' "$nowrite" | grep -qF 'decision' \
+    || { echo "$path no-write clause (~:31) does not name decision mode"; return 1; }
+  printf '%s\n' "$nowrite" | grep -qF '/cross-audit' \
+    || { echo "$path no-write clause (~:31) caller not generalized to standalone /cross-audit"; return 1; }
+  # (b) claude_model placement clause (~:56) names decision on the 'immediately
+  #     preceding' bullet (the sentinel-adjacency rule that model-attestation pins).
+  grep -F 'immediately preceding' "$path" | grep -qF 'decision' \
+    || { echo "$path claude_model placement clause (~:56) does not name decision mode"; return 1; }
+  echo "$path handshake no-write (:31) + claude_model placement (:56) clauses name decision (caller generalized)"
+}
+
+# --- Decision-mode /cross-audit standalone-entry pins (spec 2026-07-02-decision-audit-mode Step 4) ---
+# The nine helpers below pin skills/cross-audit/SKILL.md's decision-mode entry.
+# Four of them scope their greps to the `### Decision mode` subsection (near the
+# Flags block) or the `### Decision-mode return handling` Phase-3 subsection via
+# the shared awk extractors below, so a stray token elsewhere cannot mask a
+# subsection that dropped a required contract clause.
+_skill_decision_mode_section() {
+  # `### Decision mode` subsection body (Flags-adjacent), anchored within the
+  # `## Argument Parsing` region. X6 REOPENED residual hardening — two extractor-
+  # discrimination shapes the prior loose-prefix + first-match extractor left
+  # GREEN on a gutted real carve-out:
+  #   M1 (prefix-sibling H2): the region-open anchor is now the EXACT line
+  #     `## Argument Parsing` (`/^## Argument Parsing$/`), so a decoy
+  #     `## Argument Parsing <suffix>` placed above the real H2 can no longer open
+  #     a false region and hand a decoy `### Decision mode` to the extractor. The
+  #     real H2 still terminates any region a stray H2 opened (`inarg && /^## /`).
+  #   M2 (in-region duplicate H3): the region is scanned to its close and the
+  #     `### Decision mode` occurrences are COUNTED; the body is emitted only when
+  #     EXACTLY ONE occurrence exists. A duplicate decoy `### Decision mode` placed
+  #     before the real (gutted) one → count==2 → empty output → consumer pins RED.
+  # Also still rejects the original decoy-outside-region shape (heading above the
+  # region is never counted while inarg==0). Grab stops at the next `### ` heading
+  # or `---` rule.
+  awk '
+    /^## Argument Parsing$/ { inarg=1; next }
+    inarg && /^## / { inarg=0 }
+    inarg && /^### Decision mode/ { count++; grab=1; buf=""; next }
+    inarg && grab && /^### / { grab=0 }
+    inarg && grab && /^---$/ { grab=0 }
+    inarg && grab { buf = buf $0 "\n" }
+    END { if (count == 1) printf "%s", buf }
+  ' "$1"
+}
+_skill_decision_phase3_section() {
+  # `### Decision-mode return handling` Phase-3 subsection body, anchored within
+  # the `## Phase 3` region. X6 REOPENED residual hardening (same two shapes as
+  # _skill_decision_mode_section):
+  #   M1 (prefix-sibling H2): the region-open anchor is now the EXACT parent H2
+  #     `## Phase 3: Present & Decide` (`/^## Phase 3: Present & Decide/`), so a
+  #     decoy `## Phase 3.5 …` above the real H2 can no longer open a false region.
+  #     (Prefix, not `$`-exact, because the real H2 carries a ` (foreground,
+  #     interactive)` suffix — `## Phase 3.5` still fails the `Present & Decide`
+  #     literal, and the real H2 terminates a decoy-opened region via `/^## /`.)
+  #   M2 (in-region duplicate H3): `### Decision-mode return handling` occurrences
+  #     inside the region are COUNTED; the body is emitted only when EXACTLY ONE
+  #     exists. A duplicate decoy H3 before the real (gutted) one → count==2 →
+  #     empty output → consumer pins RED.
+  # Also still rejects the original decoy-outside-region shape. Grab stops at the
+  # next `### ` heading.
+  awk '
+    /^## Phase 3: Present & Decide/ { inphase=1; next }
+    inphase && /^## / { inphase=0 }
+    inphase && /^### Decision-mode return handling/ { count++; grab=1; buf=""; next }
+    inphase && grab && /^### / { grab=0 }
+    inphase && grab { buf = buf $0 "\n" }
+    END { if (count == 1) printf "%s", buf }
+  ' "$1"
+}
+# Extract a single markdown bullet from a section body. $1 = section text, $2 = a
+# bold-marker substring on the bullet's opening `- ` line (e.g. '**Report-only').
+# Prints the bullet block: the opening line plus continuation lines up to the next
+# sibling `- ` bullet, heading, or blank line. Used so load-bearing clauses are
+# asserted CO-LOCATED within ONE bullet (X6 sweep-B) — independent tokens scattered
+# across the section (a decoy or a partial gut) are not the contract.
+_skill_decision_phase3_bullet() {
+  printf '%s\n' "$1" | awk -v marker="$2" '
+    !inb && index($0, marker) && /^- / { inb=1; print; next }
+    inb && (/^- / || /^#/ || /^$/) { exit }
+    inb { print }
+  '
+}
+_skill_decision_launch_block() {
+  # The `[Decision mode only ...]` sub-block INSIDE the Phase 1-2 Step 2 launch
+  # template (the fenced dispatch block the skill actually threads at dispatch
+  # time — not the `### Decision mode` reference subsection). Starts at the
+  # `[Decision mode only` marker, stops at the next `[` sub-block marker or the
+  # blank line that closes the block. This is what wires decision-mode params
+  # into the live launch path; pinning it (not just the doc block) closes the
+  # X2 coverage hole where a revert of that wiring stayed green.
+  awk '
+    /^\[Decision mode only/ { grab=1; next }
+    grab && /^\[/ { exit }
+    grab && /^$/ { exit }
+    grab { print }
+  ' "$1"
+}
+
+# prompt-text: the Flags block must expose `--mode decision` in the mode enum AND
+# document the KB-spec-path scope form `/cross-audit <kb-spec-path> --mode decision`
+# (decision is standalone-first — the reviewer audits a shipped /feature trail).
+check_cross_audit_skill_decision_flag() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF -- '--mode logic|security|full|decision' "$path" \
+    || { echo "$path --mode flag enum does not include decision"; return 1; }
+  grep -qF '/cross-audit <kb-spec-path> --mode decision' "$path" \
+    || { echo "$path missing decision-mode scope form '/cross-audit <kb-spec-path> --mode decision'"; return 1; }
+  echo "$path Flags block documents --mode decision + KB-spec-path scope form"
+}
+
+# prompt-text: the `### Decision mode` subsection must carry the standalone
+# slug-derivation rule (X21) — the date-prefix-strip formula, the derived
+# workdoc_path, and the derived findings glob. Raw-basename resolution silently
+# yields a non-existent workdoc dir + empty findings glob.
+check_cross_audit_skill_decision_slug_derivation() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(_skill_decision_mode_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision mode' subsection"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'feature_slug = basename(scope)' \
+    || { echo "$path decision slug-derivation missing formula 'feature_slug = basename(scope)'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'YYYY-MM-DD-' \
+    || { echo "$path decision slug-derivation does not name the leading YYYY-MM-DD- prefix"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'date prefix' \
+    || { echo "$path decision slug-derivation does not strip the date prefix"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'design/workdocs/<feature_slug>/exec.md' \
+    || { echo "$path decision slug-derivation missing derived workdoc_path 'design/workdocs/<feature_slug>/exec.md'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'security/<feature_slug>-*findings.md' \
+    || { echo "$path decision slug-derivation missing derived findings glob 'security/<feature_slug>-*findings.md'"; return 1; }
+  echo "$path decision subsection carries the date-prefix-strip slug-derivation rule (formula + workdoc + findings glob)"
+}
+
+# prompt-text: the one genuinely new dispatch param `findings_paths:` must be
+# threaded in BOTH the `### Decision mode` reference subsection AND the Phase 1-2
+# Step 2 launch template's `[Decision mode only ...]` block — the latter is the
+# live dispatch path the skill actually threads. Template-side SKILL-dispatch pin,
+# distinct from Step 3's Codex-template findings_paths pin. Pinning only the
+# reference block (X2 coverage hole) let the launch-path wiring ship/revert green.
+check_cross_audit_skill_decision_findings_paths_dispatch() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section launch
+  section=$(_skill_decision_mode_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision mode' subsection"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'findings_paths:' \
+    || { echo "$path decision dispatch block does not thread 'findings_paths:'"; return 1; }
+  launch=$(_skill_decision_launch_block "$path")
+  [ -n "$launch" ] || { echo "$path missing Step 2 launch-template '[Decision mode only ...]' block"; return 1; }
+  printf '%s\n' "$launch" | grep -qF 'findings_paths:' \
+    || { echo "$path Step 2 launch template does not thread 'findings_paths:' for decision mode"; return 1; }
+  echo "$path decision dispatch threads findings_paths: in both the doc subsection and the Step 2 launch template"
+}
+
+# prompt-text: the decision dispatch must thread `severity_floor` with the
+# decision-mode DEFAULT of `medium+` (NOT the global `high`) — X13: a high floor
+# takes two of the five focus clusters dark. Pinned in BOTH the `### Decision
+# mode` reference subsection AND the Phase 1-2 Step 2 launch template's
+# `[Decision mode only ...]` block (the live dispatch path) — pinning only the
+# reference block (X2 coverage hole) let the launch-path wiring ship/revert green.
+check_cross_audit_skill_decision_severity_floor() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section launch
+  section=$(_skill_decision_mode_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision mode' subsection"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'severity_floor' \
+    || { echo "$path decision dispatch block does not thread 'severity_floor'"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'medium+' \
+    || { echo "$path decision dispatch block does not name the medium+ floor"; return 1; }
+  printf '%s\n' "$section" | grep -qiF 'default' \
+    || { echo "$path decision dispatch block does not mark medium+ as the decision-mode DEFAULT"; return 1; }
+  launch=$(_skill_decision_launch_block "$path")
+  [ -n "$launch" ] || { echo "$path missing Step 2 launch-template '[Decision mode only ...]' block"; return 1; }
+  printf '%s\n' "$launch" | grep -qF 'severity_floor' \
+    || { echo "$path Step 2 launch template does not thread 'severity_floor' for decision mode"; return 1; }
+  printf '%s\n' "$launch" | grep -qF 'medium+' \
+    || { echo "$path Step 2 launch template does not name the medium+ decision default"; return 1; }
+  printf '%s\n' "$launch" | grep -qiF 'default' \
+    || { echo "$path Step 2 launch template does not mark medium+ as the decision-mode DEFAULT"; return 1; }
+  echo "$path decision dispatch threads severity_floor+medium+ default in both the doc subsection and the Step 2 launch template"
+}
+
+# prompt-text: Phase 3 must carry a decision-mode branch that SKIPS the findings.md
+# read and presents the inline findings from the agent return (decision writes no
+# findings doc — spec-mode inline-footer channel). Both clauses are asserted
+# CO-LOCATED in the single skip-findings bullet (X6 sweep-B): "skip the read AND
+# present inline" is one contract, not two independent tokens a decoy/partial gut
+# could satisfy separately. Extractor is `## Phase 3`-anchored (X6).
+check_cross_audit_skill_decision_phase3_branch() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section bullet
+  section=$(_skill_decision_phase3_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision-mode return handling' Phase-3 subsection"; return 1; }
+  bullet=$(_skill_decision_phase3_bullet "$section" '**Skip the findings')
+  [ -n "$bullet" ] || { echo "$path Phase-3 decision branch missing the '**Skip the findings.md read.**' bullet"; return 1; }
+  printf '%s\n' "$bullet" | grep -qF 'SKIP the findings.md read' \
+    || { echo "$path Phase-3 skip-findings bullet does not SKIP the findings.md read"; return 1; }
+  printf '%s\n' "$bullet" | grep -qF 'inline findings from the agent return' \
+    || { echo "$path Phase-3 skip-findings bullet does not co-locate 'present inline findings from the agent return'"; return 1; }
+  echo "$path Phase-3 decision branch skips findings.md read + presents inline findings (co-located in the skip bullet)"
+}
+
+# prompt-text: decision-mode returns must be classified via the spec channel —
+# `check_dispatch_response.py --mode spec` (footer shape identical; no
+# --findings-path). Pinned on one line carrying both tokens.
+check_cross_audit_skill_decision_classifier_wiring() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -F 'check_dispatch_response.py --mode spec' "$path" | grep -qF 'decision' \
+    || { echo "$path decision returns not wired to the check_dispatch_response.py --mode spec classifier channel"; return 1; }
+  echo "$path wires decision returns via check_dispatch_response.py --mode spec channel"
+}
+
+# prompt-text: after the return-contract gate passes, the orchestrator appends ONE
+# Log line to the audited spec §9 Log. Freeze the literal line shape; the severity
+# counts come from the inline summary table, not the footer.
+check_cross_audit_skill_decision_log_append() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'decision audit — <N> findings (crit=X high=Y med=Z); evidence=' "$path" \
+    || { echo "$path missing orchestrator Log-append literal 'decision audit — <N> findings (crit=X high=Y med=Z); evidence='"; return 1; }
+  echo "$path carries the orchestrator decision Log-append rule (literal frozen)"
+}
+
+# prompt-text: decision findings are NEVER published to a PR — they cite KB paths
+# by nature and publishing KB paths violates R8. Both clauses asserted CO-LOCATED
+# in the single no-publish bullet (X6 sweep-B): the R8 cite is the REASON for
+# NEVER-published, so a scattered `R8` elsewhere in the section must not satisfy
+# it. Extractor is `## Phase 3`-anchored (X6).
+check_cross_audit_skill_decision_no_publish() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section bullet
+  section=$(_skill_decision_phase3_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision-mode return handling' Phase-3 subsection"; return 1; }
+  bullet=$(_skill_decision_phase3_bullet "$section" '**No publish')
+  [ -n "$bullet" ] || { echo "$path Phase-3 decision branch missing the '**No publish.**' bullet"; return 1; }
+  printf '%s\n' "$bullet" | grep -qF 'NEVER published' \
+    || { echo "$path Phase-3 no-publish bullet does not state decision findings are NEVER published"; return 1; }
+  printf '%s\n' "$bullet" | grep -qF 'R8' \
+    || { echo "$path Phase-3 no-publish bullet does not co-locate the R8 cite"; return 1; }
+  echo "$path Phase-3 decision branch states the no-publish (R8) rule (co-located in the no-publish bullet)"
+}
+
+# prompt-text: decision mode is report-only — the Phase 3 step-3 per-finding
+# triage banner (fix/accept/defer) and the Phase 4 findings-doc status mutation
+# both target a findings doc decision mode never writes, so both do NOT apply
+# (findings transient per grill D3; the §9 Log-append is the single persistence
+# trace). The user acts by editing the audited spec / opening follow-ups. All
+# three clauses ('per-finding' banner + 'Phase 4' mutation + 'do NOT apply') are
+# asserted CO-LOCATED in the single report-only bullet (X6 sweep-B): the confirmed
+# X4→X6 mutant scattered these tokens across a gutted section behind a decoy
+# heading and the pre-X6 pin stayed GREEN. Extractor is `## Phase 3`-anchored (X6).
+check_cross_audit_skill_decision_report_only() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section bullet
+  section=$(_skill_decision_phase3_section "$path")
+  [ -n "$section" ] || { echo "$path missing '### Decision-mode return handling' Phase-3 subsection"; return 1; }
+  bullet=$(_skill_decision_phase3_bullet "$section" '**Report-only')
+  [ -n "$bullet" ] || { echo "$path Phase-3 decision branch missing the '**Report-only …**' carve-out bullet"; return 1; }
+  printf '%s\n' "$bullet" | grep -qiF 'per-finding' \
+    || { echo "$path Phase-3 report-only bullet does not disable the per-finding triage banner"; return 1; }
+  printf '%s\n' "$bullet" | grep -qF 'Phase 4' \
+    || { echo "$path Phase-3 report-only bullet does not co-locate the Phase 4 status mutation"; return 1; }
+  printf '%s\n' "$bullet" | grep -qF 'do NOT apply' \
+    || { echo "$path Phase-3 report-only bullet missing co-located 'do NOT apply'"; return 1; }
+  echo "$path Phase-3 decision branch is report-only (per-finding banner + Phase 4 mutation 'do NOT apply' co-located in one bullet)"
+}
+
+# prompt-text: SKILL prose-completeness — the dispatch-template mode placeholder
+# names decision, the §Adaptation per-mode list names decision, and the
+# argument-hint frontmatter names decision (the three stale-list sweep sites).
+check_cross_audit_skill_decision_prose_complete() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF 'mode: [logic|security|full|decision]' "$path" \
+    || { echo "$path dispatch-template mode placeholder is not '[logic|security|full|decision]'"; return 1; }
+  grep -qF '`logic` / `security` / `full` / `spec` / `decision`' "$path" \
+    || { echo "$path §Adaptation per-mode list does not name decision"; return 1; }
+  local arghint
+  arghint=$(grep -F 'argument-hint:' "$path")
+  printf '%s\n' "$arghint" | grep -qF 'decision' \
+    || { echo "$path argument-hint frontmatter does not name decision"; return 1; }
+  echo "$path prose-complete: dispatch placeholder + per-mode list + argument-hint all name decision"
+}
+
+# prompt-text: the Phase 1-2 `### Step 3: Inform the user` launch banner must carry
+# a decision-mode variant that DROPS the `Findings → …/security/<slug>-findings.md`
+# line — decision writes no findings doc, so that path is a dangling reference —
+# and states the return is inline instead (code-audit X5, sweep-A "mode-generic
+# surface assumes a findings doc"). Scoped to the `### Step 3` section; the negative
+# `Findings →` grep is confined to the decision-variant sub-block so the generic
+# (logic/security/full) banner's own `Findings →` line does not mask a regression.
+check_cross_audit_skill_decision_launch_banner() {
+  local path="${1:-skills/cross-audit/SKILL.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    /^### Step 3: Inform the user/ { grab=1; next }
+    grab && /^## / { exit }
+    grab && /^### / { exit }
+    grab && /^---$/ { exit }
+    grab { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '### Step 3: Inform the user' section"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'Decision mode (`--mode decision`) variant' \
+    || { echo "$path Step 3 banner has no decision-mode variant (still unconditionally surfaces a Findings→ findings-doc line)"; return 1; }
+  # Decision-variant sub-block: from the variant marker to end of section.
+  local decvar
+  decvar=$(printf '%s\n' "$section" | awk '/Decision mode \(`--mode decision`\) variant/ { grab=1 } grab { print }')
+  printf '%s\n' "$decvar" | grep -qF 'return inline' \
+    || { echo "$path Step 3 decision-mode variant does not state the return is inline"; return 1; }
+  # Negative targets the emitted BANNER line (a `> Findings →` blockquote), not
+  # the prose that tells the reader to drop it — the explanatory prose legitimately
+  # names `Findings →`; a regression re-adds the `> Findings →` blockquote line.
+  if printf '%s\n' "$decvar" | grep -qE '^> *Findings →'; then
+    echo "$path Step 3 decision-mode variant still emits the '> Findings →' banner line (decision writes no findings doc — dangling path)"; return 1
+  fi
+  echo "$path Step 3 banner carries a decision-mode variant that drops the Findings→ banner line (inline return)"
+}
+
+# NEGATIVE (fixture-based): proves the `## Argument Parsing` / `## Phase 3`-anchored
+# decision extractors reject a decoy heading placed OUTSIDE its canonical region
+# (code-audit X6). The fixture carries decoy `### Decision mode` +
+# `### Decision-mode return handling` headings above their parent `## ` regions
+# (full carve-out text) and gutted REAL headings inside the regions. A pre-X6
+# first-match extractor grabbed the decoys and every consumer check stayed GREEN on
+# a gutted spec (the confirmed mutant). Post-X6 the anchored extractors grab the
+# gutted real sections, so all four consumer checks MUST fail (return 1) on the
+# fixture — this pin asserts none leaked GREEN.
+check_cross_audit_skill_decision_phase3_decoy_rejected() {
+  local fx='tests/fixtures/decision-phase3-decoy/skill-decoy.md'
+  [ -r "$fx" ] || { echo "$fx decoy fixture not readable"; return 1; }
+  local leaked=""
+  check_cross_audit_skill_decision_slug_derivation "$fx" >/dev/null 2>&1 && leaked="$leaked slug_derivation"
+  check_cross_audit_skill_decision_phase3_branch   "$fx" >/dev/null 2>&1 && leaked="$leaked phase3_branch"
+  check_cross_audit_skill_decision_no_publish      "$fx" >/dev/null 2>&1 && leaked="$leaked no_publish"
+  check_cross_audit_skill_decision_report_only     "$fx" >/dev/null 2>&1 && leaked="$leaked report_only"
+  if [ -n "$leaked" ]; then
+    echo "decoy fixture: decision check(s)$leaked passed on a gutted real section — a decoy heading outside its canonical region hijacked the extractor (X6 first-match regression)"
+    return 1
+  fi
+  echo "decoy fixture: anchored extractors reject the decoy-outside-region gutted sections (slug_derivation/phase3_branch/no_publish/report_only all RED)"
+}
+
+# NEGATIVE (fixture-based): M1 prefix-sibling H2 (code-audit X6 REOPENED residual).
+# A decoy H2 that SHARES A PREFIX with the real parent H2 (`## Argument Parsing
+# (legacy)` / `## Phase 3.5 Decoy`) is placed ABOVE the real region carrying the
+# full carve-out; the real in-region H3 is gutted. The EXACT-anchor extractors
+# (`/^## Argument Parsing$/`, `/^## Phase 3: Present & Decide/`) MUST ignore the
+# prefix-sibling decoy and grab the gutted real section, so all four consumer
+# checks go RED. A pre-residual `/^## Argument Parsing/` + `/^## Phase 3/` anchor
+# opened the decoy region and stayed GREEN (the reproduced M1 mutant).
+check_cross_audit_skill_decision_m1_prefix_sibling_rejected() {
+  local fx='tests/fixtures/decision-phase3-decoy/skill-decoy-m1.md'
+  [ -r "$fx" ] || { echo "$fx M1 decoy fixture not readable"; return 1; }
+  local leaked=""
+  check_cross_audit_skill_decision_slug_derivation "$fx" >/dev/null 2>&1 && leaked="$leaked slug_derivation"
+  check_cross_audit_skill_decision_phase3_branch   "$fx" >/dev/null 2>&1 && leaked="$leaked phase3_branch"
+  check_cross_audit_skill_decision_no_publish      "$fx" >/dev/null 2>&1 && leaked="$leaked no_publish"
+  check_cross_audit_skill_decision_report_only     "$fx" >/dev/null 2>&1 && leaked="$leaked report_only"
+  if [ -n "$leaked" ]; then
+    echo "M1 decoy fixture: decision check(s)$leaked passed on a gutted real section — a prefix-sibling decoy H2 hijacked the loose-anchor extractor (X6 M1 regression)"
+    return 1
+  fi
+  echo "M1 decoy fixture: exact-anchor extractors ignore the prefix-sibling decoy H2 (slug_derivation/phase3_branch/no_publish/report_only all RED)"
+}
+
+# NEGATIVE (fixture-based): M2 in-region duplicate H3 (code-audit X6 REOPENED
+# residual). A DUPLICATE decoy H3 (`### Decision mode` / `### Decision-mode return
+# handling`) is placed INSIDE the exact parent region, BEFORE the real (gutted)
+# H3, carrying the full carve-out a first-match grab would return. The
+# uniqueness-guarded extractors COUNT the in-region H3 occurrences and emit
+# nothing when the count != 1, so all four consumer checks go RED on the empty
+# section. A pre-residual first-match extractor grabbed the decoy H3 and stayed
+# GREEN (the reproduced M2 mutant).
+check_cross_audit_skill_decision_m2_duplicate_h3_rejected() {
+  local fx='tests/fixtures/decision-phase3-decoy/skill-decoy-m2.md'
+  [ -r "$fx" ] || { echo "$fx M2 decoy fixture not readable"; return 1; }
+  local leaked=""
+  check_cross_audit_skill_decision_slug_derivation "$fx" >/dev/null 2>&1 && leaked="$leaked slug_derivation"
+  check_cross_audit_skill_decision_phase3_branch   "$fx" >/dev/null 2>&1 && leaked="$leaked phase3_branch"
+  check_cross_audit_skill_decision_no_publish      "$fx" >/dev/null 2>&1 && leaked="$leaked no_publish"
+  check_cross_audit_skill_decision_report_only     "$fx" >/dev/null 2>&1 && leaked="$leaked report_only"
+  if [ -n "$leaked" ]; then
+    echo "M2 decoy fixture: decision check(s)$leaked passed on a gutted real section — a duplicate in-region decoy H3 was grabbed by the first-match extractor (X6 M2 regression)"
+    return 1
+  fi
+  echo "M2 decoy fixture: uniqueness-guarded extractors reject the duplicate in-region H3 (slug_derivation/phase3_branch/no_publish/report_only all RED)"
 }
 
 check_cross_audit_skill_focus_areas_references_canonical() {
@@ -3725,7 +4371,7 @@ check_finding_claims_helper_flags_known_wrong_fixture() {
     || { echo "missing X3 LINE-OUT-OF-RANGE diagnostic"; printf '%s\n' "$out"; return 1; }
   printf '%s\n' "$out" | grep -qE '^X4: FILE-MISSING nonexistent/path\.md' \
     || { echo "missing X4 FILE-MISSING diagnostic"; printf '%s\n' "$out"; return 1; }
-  printf '%s\n' "$out" | grep -qE '^X5: OK agents/cross-auditor\.md:112' \
+  printf '%s\n' "$out" | grep -qE '^X5: OK agents/cross-auditor\.md:121' \
     || { echo "missing X5 OK diagnostic (control case — helper must not false-positive)"; printf '%s\n' "$out"; return 1; }
   printf '%s\n' "$out" | grep -qF 'Total: 5 findings, 4 mismatches' \
     || { echo "missing summary line 'Total: 5 findings, 4 mismatches'"; printf '%s\n' "$out"; return 1; }

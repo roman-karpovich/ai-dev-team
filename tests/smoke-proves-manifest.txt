@@ -180,6 +180,53 @@ check_cross_auditor_consumes_attack_surface_profile prompt-text
 check_locate_section_outside_fences_helper behavioral
 check_cross_auditor_mode_focus_names_locate_helper prompt-text
 
+# Decision-mode focus-area pins (spec 2026-07-02-decision-audit-mode Step 1)
+check_cross_auditor_decision_mode_focus_clusters prompt-text
+check_cross_auditor_mode_focus_no_stale_four_modes prompt-text
+
+# Decision-mode cross-auditor hub pins (spec 2026-07-02-decision-audit-mode Step 2)
+check_cross_auditor_mode_enum_names_decision prompt-text
+check_cross_auditor_decision_severity_ladder prompt-text
+check_cross_auditor_hub_no_stale_four_modes prompt-text
+check_cross_auditor_mode_symmetry_names_decision prompt-text
+check_cross_auditor_finding_id_exception_names_decision prompt-text
+
+# Decision-mode Codex dispatch + handshake/output-format pins (spec 2026-07-02-decision-audit-mode Step 3)
+check_cross_auditor_codex_decision_focus_anchors prompt-text
+check_cross_auditor_codex_decision_reads_inputs prompt-text
+check_cross_auditor_codex_decision_ladder prompt-text
+check_cross_auditor_output_format_no_write_names_decision prompt-text
+check_cross_auditor_handshake_names_decision prompt-text
+
+# Decision-mode /cross-audit standalone-entry pins (spec 2026-07-02-decision-audit-mode Step 4)
+check_cross_audit_skill_decision_flag prompt-text
+check_cross_audit_skill_decision_slug_derivation prompt-text
+check_cross_audit_skill_decision_findings_paths_dispatch prompt-text
+check_cross_audit_skill_decision_severity_floor prompt-text
+check_cross_audit_skill_decision_phase3_branch prompt-text
+check_cross_audit_skill_decision_classifier_wiring prompt-text
+check_cross_audit_skill_decision_log_append prompt-text
+check_cross_audit_skill_decision_no_publish prompt-text
+check_cross_audit_skill_decision_report_only prompt-text
+check_cross_audit_skill_decision_prose_complete prompt-text
+
+# Decision-mode rework pins (spec 2026-07-02-decision-audit-mode code-audit X5/X6 sweep):
+#   launch-banner freezes the Step-3 decision-variant banner prose (drops the
+#   Findings→ findings-doc line) → prompt-text. phase3-decoy-rejected is a
+#   fixture-based negative test of the `## Phase 3` / `## Argument Parsing`-anchored
+#   extractors' discriminating power (a decoy heading outside its region must not
+#   hijack the grab) → behavioral, matching the *_rejects_* precedent above.
+check_cross_audit_skill_decision_launch_banner prompt-text
+check_cross_audit_skill_decision_phase3_decoy_rejected behavioral
+# X6 REOPENED residual — two extractor-discrimination shapes the pre-residual
+# loose-prefix+first-match extractors left GREEN on a gutted real carve-out:
+#   m1-prefix-sibling — a decoy H2 sharing the parent prefix opens a false region;
+#   m2-duplicate-h3 — a duplicate in-region H3 before the real one is first-matched.
+# Both are fixture-based negative tests of the exact-anchor + uniqueness-guarded
+# extractors → behavioral, matching the *_rejected precedent above.
+check_cross_audit_skill_decision_m1_prefix_sibling_rejected behavioral
+check_cross_audit_skill_decision_m2_duplicate_h3_rejected behavioral
+
 # Probe-envelope JSON-Schema validator self-test
 check_json_schema_lint_self_test behavioral
 
