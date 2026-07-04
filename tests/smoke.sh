@@ -4360,6 +4360,8 @@ check "codex_audit_dispatch_helper_arg_validation"       check_codex_audit_dispa
 check "cross_auditor_uses_async_codex_dispatch"           check_cross_auditor_uses_async_codex_dispatch
 check "cross_auditor_codex_effort_default_xhigh_kept"     check_cross_auditor_codex_effort_default_xhigh_kept
 check "cross-auditor-model-attestation-contract"         check_cross_auditor_model_attestation_contract
+check "cross-auditor-audited-head-template"              check_cross_auditor_audited_head_template
+check "cross-auditor-audited-head-handshake"             check_cross_auditor_audited_head_handshake
 check "model-attestation-skill-coupling"                 check_model_attestation_skill_coupling
 check "cross_auditor_codex_cwd_override_async_dispatch"   check_cross_auditor_codex_cwd_proximity
 echo

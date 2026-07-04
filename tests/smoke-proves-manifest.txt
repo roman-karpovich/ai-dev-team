@@ -116,6 +116,8 @@ check_codex_audit_dispatch_helper_arg_validation behavioral
 check_cross_auditor_uses_async_codex_dispatch prompt-text
 check_cross_auditor_codex_effort_default_xhigh_kept prompt-text
 check_cross_auditor_model_attestation_contract prompt-text
+check_cross_auditor_audited_head_template schema
+check_cross_auditor_audited_head_handshake prompt-text
 check_model_attestation_skill_coupling schema
 
 # Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28)

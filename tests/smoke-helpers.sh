@@ -4954,6 +4954,58 @@ check_cross_auditor_model_attestation_contract() {
   echo "cross-auditor model-attestation contract OK (model: opus; claude_model emit rule + output-format key; sentinel count==1)"
 }
 
+# schema: the audited_head pin (spec 2026-07-05-audited-head-terminal-evidence-gates
+# §3.2) is emitted into the findings.md frontmatter template, sibling of claude_model.
+# Catches a defect where the emit target is dropped/renamed — the orchestrator hand-off
+# gate then has no `audited_head:` to read and the stale-audit bypass reopens silently.
+check_cross_auditor_audited_head_template() {
+  local outfmt='agents/references/cross-auditor-output-format.md'
+  test -f "$outfmt" || { echo "$outfmt missing"; return 1; }
+  # (a) findings.md frontmatter template carries the audited_head: key (the emit
+  #     target the /feature hand-off gate reads).
+  grep -qE '^audited_head: ' "$outfmt" \
+    || { echo "$outfmt findings.md template missing '^audited_head: ' frontmatter key"; return 1; }
+  # (b) claude_model: sibling still present — the pin mirrors it 1:1; if the sibling
+  #     vanished the mirror invariant this contract depends on is broken.
+  grep -qF 'claude_model:' "$outfmt" \
+    || { echo "$outfmt findings.md template missing sibling 'claude_model:' key"; return 1; }
+  # (c) emit-contract note names the file-backed-only + non-git omission rules so a
+  #     reader of the unconditional template line knows the key is conditional.
+  grep -qF 'Non-git carve-out' "$outfmt" \
+    || { echo "$outfmt missing 'Non-git carve-out' clause in audited_head emit contract"; return 1; }
+  echo "cross-auditor audited_head template OK (frontmatter key present; claude_model sibling; non-git carve-out noted)"
+}
+
+# prompt-text: the §Audited-HEAD attestation contract section in the handshake doc
+# documents the five load-bearing clauses of the emit contract. Each grep guards a
+# distinct drift: dropping the file-backed-only clause would make the cross-auditor
+# emit in spec/decision (footer migration); dropping the non-git carve-out would
+# false-fire HEAD_ATTESTATION_MISSING on non-git in-place runs; dropping the
+# no-shape-validation clause invites a spurious oid validator.
+check_cross_auditor_audited_head_handshake() {
+  local handshake='agents/references/cross-auditor-evidence-handshake.md'
+  test -f "$handshake" || { echo "$handshake missing"; return 1; }
+  # (a) the Audited-HEAD attestation contract section exists.
+  grep -qF '### Audited-HEAD attestation contract' "$handshake" \
+    || { echo "$handshake missing '### Audited-HEAD attestation contract' section"; return 1; }
+  # (b) channel restriction: file-backed modes only.
+  grep -qF 'file-backed modes ONLY' "$handshake" \
+    || { echo "$handshake audited_head contract missing 'file-backed modes ONLY' channel clause"; return 1; }
+  # (c) source of truth: git rev-parse HEAD in the audit workspace.
+  grep -qF 'git rev-parse HEAD' "$handshake" \
+    || { echo "$handshake audited_head contract missing 'git rev-parse HEAD' source-of-truth clause"; return 1; }
+  # (d) spec/decision footer stays byte-identical (zero-migration asymmetry vs claude_model).
+  grep -qF 'three-line footer stays byte-identical' "$handshake" \
+    || { echo "$handshake audited_head contract missing spec/decision 'three-line footer stays byte-identical' untouched clause"; return 1; }
+  # (e) non-git carve-out: pin OMITTED when workspace is not a git repo.
+  grep -qF 'OMITTED from the frontmatter' "$handshake" \
+    || { echo "$handshake audited_head contract missing non-git 'OMITTED from the frontmatter' carve-out"; return 1; }
+  # (f) no value-shape validation (mirror of claude_model).
+  grep -qF 'No value-shape validation' "$handshake" \
+    || { echo "$handshake audited_head contract missing 'No value-shape validation' mirror clause"; return 1; }
+  echo "cross-auditor audited_head handshake contract OK (section + file-backed-only + rev-parse source + byte-identical footer + non-git omission + no-shape-validation)"
+}
+
 check_model_attestation_skill_coupling() {
   local agent='agents/cross-auditor.md'
   local feat='skills/feature/SKILL.md'
