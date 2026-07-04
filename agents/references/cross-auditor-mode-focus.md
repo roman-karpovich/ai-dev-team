@@ -1,6 +1,6 @@
 # Cross-auditor: Mode Focus Areas
 
-Canonical content for the `## Mode Focus Areas` section of `agents/cross-auditor.md`. Covers the five operating modes (`logic`, `security`, `full`, `spec`, `decision`), the R-rule cluster gate that wires `code-quality-rules.md` into the security audit, the supplemental Smart Contracts / DeFi + Backend Services bullet lists, the spec-mode rule body (Agent pre-tag consistency, Repo-convention enforcement, §1.1 Attack-surface profile schema validation, §1.2 STRIDE-lite gating), and the decision-mode rule body (decision-coherence center, bounded premise re-derivation, rubber-stamp detection, fork analysis, planned/observed divergence).
+Canonical content for the `## Mode Focus Areas` section of `agents/cross-auditor.md`. Covers the five operating modes (`logic`, `security`, `full`, `spec`, `decision`), the R-rule cluster gate that wires `code-quality-rules.md` into the security audit, the supplemental Smart Contracts / DeFi + Backend Services bullet lists, the spec-mode rule body (Agent pre-tag consistency, Repo-convention enforcement, §1.1 Attack-surface profile schema validation, §1.2 STRIDE-lite gating), the decision-mode rule body (decision-coherence center, bounded premise re-derivation, rubber-stamp detection, fork analysis, planned/observed divergence), and the standing integration lenses (§Integration lenses (standing — logic / security / full)) applied in `logic` / `security` / `full` passes.
 
 ## Mode Focus Areas
 
@@ -10,6 +10,7 @@ Canonical content for the `## Mode Focus Areas` section of `agents/cross-auditor
 - Performance: hot-path bottlenecks, unnecessary allocations, O(n²) where O(1) exists
 - Robustness: error handling, crash paths, resource leaks, missing timeouts
 - Test coverage gaps
+- Standing integration lenses — see §Integration lenses (standing) below; applied in every logic-mode pass
 
 ### `security` mode
 
@@ -27,9 +28,22 @@ When R-rules with `category: security` and `enforced_by` containing `cross-audit
 - Input validation, injection, auth bypass
 - Race conditions, deadlocks, data corruption
 - Resource exhaustion, DoS vectors
+- Standing integration lenses — see §Integration lenses (standing) below; applied in every security-mode pass
 
 ### `full` mode
-Run both `logic` and `security` focus areas in the same pass.
+Run both `logic` and `security` focus areas plus the §Integration lenses (standing) set in the same pass.
+
+### Integration lenses (standing — logic / security / full)
+
+Standing lenses, always applied in `logic`, `security`, and `full` mode passes alongside the mode's own dimensions. Anchor incident: 2026-07-04 — every externally-caught-but-internally-missed bug class needed a lens this list now names.
+
+1. **Differential-vs-incumbent** — the new path must reproduce the observable behavior (amounts, side-effects, lifecycle) of the code it replaces or bridges; for integration/migration diffs the auditor MUST produce an explicit parity statement, not silence.
+2. **Under-issue / dropped work** — paths that silently do nothing when they should act: swallowed exceptions, orphaned retries, dropped events, silent under-issue of amounts.
+3. **Runtime / framework wiring** — not "the code exists" but "it runs": task registered AND dispatched, signal connected, decode type-correct, RPC status handled.
+4. **Read-side blast radius** — do schema/model changes break existing readers (serializers, APIs, admin, reports)?
+5. **Flag-transition / migration edges** — state created before the flag flip; old and new paths double-acting during cutover.
+
+Caller-supplied focus areas are ADDITIVE — they never replace the standing dimensions (mode focus areas + these lenses).
 
 ### `spec` mode
 
