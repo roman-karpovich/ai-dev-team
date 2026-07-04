@@ -1,7 +1,7 @@
 ---
 name: cross-audit
 description: Iterative cross-audit with Claude + Codex working independently then consolidating findings. Runs in background — does not block the main conversation.
-argument-hint: "<scope description OR path to existing findings doc> [--diff] [--mode logic|security|full] [--severity high|medium+]"
+argument-hint: "<scope description OR path to existing findings doc OR KB spec path for --mode decision> [--diff] [--mode logic|security|full|decision] [--severity high|medium+]"
 ---
 
 # Cross-Audit: Background Parallel Review
@@ -33,7 +33,7 @@ Caveman compression is mandatory in this flow. The wire prefix `[COMPRESSION:ter
 
 **Flags** (orthogonal to each other):
 - `--diff` → scope the audit to files changed since `base_branch` (default: auto-detected repo default, falls back to `main`). Can combine with any mode: e.g. `--diff --mode logic` audits only changed files using logic focus areas.
-- `--mode logic|security|full` → audit mode (default: `full`)
+- `--mode logic|security|full|decision` → audit mode (default: `full`). `decision` mode audits the *decisions* recorded in a `/feature` artifact trail (not code) — its scope is a KB spec path (`/cross-audit <kb-spec-path> --mode decision`), it returns findings inline (no findings.md written), and it defaults `--severity` to `medium+`. See **Decision mode** below.
 - `--severity high|medium+` → severity floor (default: `high`). `high` collects only CRITICAL/HIGH (current behavior). `medium+` also includes MEDIUM — useful for small features where serious findings are unlikely but nitpick-level review is still valuable.
 - `--force-publish-stale` → (publish only) bypasses the force-push preflight when the current PR `headRefOid` has diverged from the audit-time `pr_head_oid`. Records the stale OID in `head_oid_at_publish` for audit trail. See `references/publish.md`.
 - `--republish <ids>` → (publish only) forces re-posting IDs already present in a `published_to` record for the same PR URL. Adds a new record.
@@ -44,6 +44,33 @@ Caveman compression is mandatory in this flow. The wire prefix `[COMPRESSION:ter
 
 - `--probe-downgrade` → emit `ERROR: --probe-downgrade was removed in cut spec design/2026-04-26-cut-probe-downgrade.md. Read that spec for the migration path.`
 - `--account` → emit `ERROR: --account was removed in cut spec design/2026-04-27-cut-multi-gh-account.md. Read that spec for the migration path.`
+
+### Decision mode (`--mode decision`)
+
+`--mode decision` audits the implementation *decisions* recorded in a `/feature` artifact trail — spec §9 Log decision lines, the grill `## Decisions` table, workdoc planned/observed blocks + `design_decision` fields, findings-doc triage statuses, audit-evidence frontmatter — rather than auditing code. Reviewer scenario: a large PR shipped via `/feature`, code cross-audit is clean, and the reviewer runs decision-audit on the KB artifacts to check whether the decisions were *verified* or *rubber-stamped*. Standalone-first: the invocation surface is `/cross-audit <kb-spec-path> --mode decision`.
+
+**Scope + standalone slug derivation.** The `<scope>` argument is the audited KB spec path (e.g. `design/2026-07-02-decision-audit-mode.md`). No `/feature` orchestrator supplies the slug, so the skill derives it: `feature_slug = basename(scope)` minus the `.md` extension minus the leading `YYYY-MM-DD-` date prefix. Then `workdoc_path = <kb>/repos/<project>/design/workdocs/<feature_slug>/exec.md` and `findings_paths = sorted(glob <kb>/repos/<project>/security/<feature_slug>-*findings.md)`. Worked example: `design/2026-07-02-decision-audit-mode.md` → `feature_slug = decision-audit-mode` → workdoc `design/workdocs/decision-audit-mode/exec.md`, findings glob `security/decision-audit-mode-*findings.md`. Raw-basename (date-prefix-retaining) resolution is WRONG — it points at a non-existent workdoc dir and an empty findings glob silently. A missing workdoc or empty findings glob at the derived paths is NOT an error (a greenfield spec legitimately has neither — pass what exists), but the derivation itself must be the date-stripped form.
+
+**Dispatch param block.** Decision mode threads into the cross-auditor (all names except `findings_paths` are the agent's existing `§Input` params — do NOT introduce a separate `project_path` / `spec_path` vocabulary):
+
+```
+scope: <kb-spec-path>                                  # the audited spec (spec-mode channel)
+workdoc_path: <derived design/workdocs/<feature_slug>/exec.md>
+findings_paths: [<sorted security/<feature_slug>-*findings.md>, ...]   # pass what exists; [] is legal
+working_directory: <source-repo content root>          # premise re-derivation reads THIS root
+project_type: <detected>
+kb_path: <kb_path>
+project: <project>
+audit_slug: <feature_slug>-decisions
+iteration: <N>
+previously_fixed: <ids, if re-audit>
+next_finding_id: <N>
+severity_floor: <medium+>                              # decision-mode DEFAULT; --severity overrides
+```
+
+`base_branch` / `range_spec` are OMITTED — decision mode reads documents, not a diff. `severity_floor` DEFAULTS to `medium+` for decision mode (NOT the global `high` default): the decision-mode severity ladder parks fork-analysis and most vacuous-rationale forms at MEDIUM, so a `high` floor would take two of the five focus clusters dark. `--severity high` still resolves to narrow on demand.
+
+**Return.** Decision mode rides the spec-mode inline-footer channel: it returns findings inline plus the 3-line evidence footer and writes NO findings doc to disk. Phase 3 presents the inline findings directly (see **Decision-mode return handling** in Phase 3, which also carries the classifier channel, the orchestrator Log-append rule, and the no-publish rule).
 
 ---
 
@@ -139,9 +166,9 @@ PR mode is **mandatory worktree-isolated** (not user-disableable): `gh pr checko
 ### Step 1: Determine parameters
 
 From `$ARGUMENTS` derive:
-- **scope**: files/directories/feature area
-- **mode**: `logic` | `security` | `full`
-- **severity_floor**: `high` (default) | `medium+` — from `--severity` flag
+- **scope**: files/directories/feature area (for `--mode decision` this is the audited KB spec path — see **Decision mode** above)
+- **mode**: `logic` | `security` | `full` | `decision`
+- **severity_floor**: `high` (default) | `medium+` — from `--severity` flag. **`--mode decision` defaults to `medium+`** (not `high`) — its severity ladder parks fork-analysis and most vacuous-rationale forms at MEDIUM, so a `high` floor would take two of the five focus clusters dark; `--severity high` still narrows on demand.
 - **base_branch**: for diff mode (default: auto-detected via `git symbolic-ref refs/remotes/origin/HEAD`, falls back to `main`)
 - **range_spec**: for ref-range mode — the full diff range string passed verbatim to `git diff --name-only`, e.g. `v1.7.0...v2.0.2` or `v1.7.0..v2.0.2 -- subdir/`. Formatted by joining `<op>` with refA/refB: `<refA><op><refB>` (then appending ` -- <path_filter>` if path_filter is non-empty).
 - **materialize_mode**: `worktree` when `--materialize=worktree` was given; unset otherwise.
@@ -152,6 +179,14 @@ From `$ARGUMENTS` derive:
 - **project**: project name
 - **audit_slug**: `YYYY-MM-DD-<scope-slug>` (new audit) or extracted from the existing findings filename (re-audit — see Phase 0). For ref-range mode: `YYYY-MM-DD-range-<sanitized-refA>__<sanitized-refB>` where sanitization replaces `[^a-zA-Z0-9._-]` with `-` and caps each half at 60 chars (produced by `cross_audit_resolve_range.sh`'s `slug_pair` output).
 
+**Decision mode (`--mode decision`) derives these additional params** — the canonical rule is in the **Decision mode** section above (§Scope + standalone slug derivation + Dispatch param block); reproduced here so Step 2 has values to thread:
+- **feature_slug**: `basename(scope)` minus the `.md` extension minus the leading `YYYY-MM-DD-` date prefix (the date-stripped form — raw-basename resolution is WRONG).
+- **workdoc_path**: `<kb>/repos/<project>/design/workdocs/<feature_slug>/exec.md`.
+- **findings_paths**: `sorted(glob <kb>/repos/<project>/security/<feature_slug>-*findings.md)` — pass what exists; `[]` is legal (a greenfield spec has neither; missing artifacts are NOT an error).
+- **next_finding_id**: `1` for a new audit; on re-audit continue past the highest finding id already assigned.
+- **audit_slug**: `<feature_slug>-decisions` (overrides the date-slug form above — decision mode reads a spec, not a diff or a `-findings.md`).
+- **base_branch** / **range_spec** are NOT derived (decision mode reads documents, not a diff); **severity_floor** defaults to `medium+` per the bullet above.
+
 ### Step 2: Launch cross-auditor agent in background
 
 **Standalone in-place warning (A2 — emit BEFORE dispatch).** When standalone `/cross-audit` runs in-place — the caller cwd IS a git repo AND no worktree mode is active (NOT PR mode, NOT `--materialize=worktree`, NOT `--worktree`) — emit one loud line before the dispatch: `⚠️ In-place audit: running in the primary checkout. The §3.2 read-only-git contract is the only safeguard — there is NO automatic branch restore on this path. Use /feature's flow, or commit first / pass --worktree, if you want the guard.` This standalone path has no §3.5d orchestrator branch-guard; the contract is the front-line defense. Omit the line entirely when a worktree mode is active (the worktree is the physical barrier) or when cwd is not a git repo.
@@ -161,7 +196,7 @@ Cross-audit the following scope.
 
 scope: [derived scope]
 project_type: [detected type]
-mode: [logic|security|full]
+mode: [logic|security|full|decision]
 severity_floor: [high|medium+]
 codex_model: [from config, if set]
 codex_reasoning_effort: [from config, if set]
@@ -173,6 +208,13 @@ base_branch: [branch, if diff mode]
 range_spec: [range_spec, if ref-range mode]
 previously_fixed: [list of IDs, if re-audit]
 working_directory: [cwd]
+
+[Decision mode only (`--mode decision`) — derived in Step 1 / see the Decision mode section:]
+workdoc_path: [derived <kb>/repos/<project>/design/workdocs/<feature_slug>/exec.md]
+findings_paths: [sorted security/<feature_slug>-*findings.md; [] is legal]
+next_finding_id: [N]
+# base_branch / range_spec are OMITTED for decision mode (it reads documents, not a diff);
+# severity_floor is threaded above with the decision-mode default medium+ (not the global high).
 
 [PR mode only — populated from Phase 0.5:]
 pr_number: [N]
@@ -198,6 +240,11 @@ probe_modes: [dict mapping probe id → effective mode resolved from the cross_a
 > Findings → `KB/repos/<project>/security/<slug>-findings.md`
 > Continue working — I'll present results when both auditors finish.
 
+**Decision mode (`--mode decision`) variant.** Decision mode writes NO findings doc, so DROP the `Findings → …` line — there is no findings path to surface and printing one points at a file that will never exist; decision findings return inline. Emit instead:
+
+> Cross-audit running in background on **[scope]** (mode: decision, iter [N]).
+> Decision findings return inline — I'll present them when both auditors finish.
+
 ---
 
 ## Phase 3: Present & Decide (foreground, interactive)
@@ -205,12 +252,26 @@ probe_modes: [dict mapping probe id → effective mode resolved from the cross_a
 When cross-auditor completes:
 
 0. **Apply the §3.5b-2 recovery algorithm** to the agent's raw return before step 1 — this is callsite 5 of the 6 §3.5b-2 recovery callsites (the standalone `/cross-audit` Phase 1-2 initial dispatch). The recovery algorithm body is canonical in `skills/feature/SKILL.md` §3.5b-2; the standalone-mode specifics are in the §Cross-auditor return-contract gate subsection below. Classifier output gates whether the findings.md read in step 1 proceeds, or the §3.4d standalone terminal banner fires.
-1. Read the findings doc from KB
+1. Read the findings doc from KB *(logic / security / full modes)*. **Decision mode has NO findings doc** — skip this read and follow the **Decision-mode return handling** subsection below instead.
 2. Present to user:
    - Count by severity and confidence
    - HIGH CONFIDENCE findings first (both auditors agreed)
    - REVIEW findings second (one auditor only)
 3. **Stop and wait** for user decision per finding — present the banner below.
+
+### Decision-mode return handling
+
+For `--mode decision` the flow above changes as follows — decision rides the spec-mode inline-footer channel and writes NO findings doc:
+
+- **Classifier channel.** Decision-mode returns ride the `spec` classifier channel: a decision-mode return is classified through the `check_dispatch_response.py --mode spec` path (footer shape identical to spec mode; no `--findings-path`). The return-contract gate below runs the same `--mode spec` invocation it already runs for spec-mode returns — otherwise identical.
+- **Skip the findings.md read.** Step 1 above reads a findings doc; decision mode has none. SKIP the findings.md read and present the inline findings from the agent return directly (count by severity, HIGH-confidence first, then REVIEW) — the same presentation as step 2, sourced from the inline report rather than from KB.
+- **Log-append (single persistence trace).** After the return-contract gate passes (classifier PROCEED), the orchestrator — NOT the agent — appends ONE line to the audited spec's §9 Log:
+
+  `- YYYY-MM-DD: decision audit — <N> findings (crit=X high=Y med=Z); evidence=<dual_model|...>`
+
+  The severity counts (`crit=X high=Y med=Z`) come from the agent's inline summary table (the inline report of the decision return), NOT from the 3-line evidence footer (which carries only `evidence_class` / `evidence_blockers`); `evidence=` is filled from the footer's `evidence_class`.
+- **Report-only — no per-finding triage, no Phase 4 status mutation.** Decision findings are transient by design (grill D3 — the single persistence trace is the §9 Log-append line above, not a findings doc). The Phase 3 step-3 per-finding decision banner (`fix` / `accept` / `defer` / `fix all`) and the Phase 4 findings-doc status mutation (OPEN→FIXED / ACCEPTED / DEFERRED) do NOT apply for decision-mode returns — there is no findings doc to mutate. The user acts on decision findings by editing the audited spec or opening follow-ups, outside this skill's Phase 3/4 lifecycle (which ends at the inline presentation + the §9 Log-append above). The §Shadow & low-confidence findings.md sections and their Phase-3 banner footers (`… — see <findings_path>#…`) likewise do NOT apply — decision writes no findings doc, so any low-confidence decision findings are surfaced inline with the rest of the report rather than routed to a `<findings_path>` section.
+- **No publish.** Decision findings are NEVER published to a PR: they cite KB paths (spec / workdoc / findings-doc lines) by nature, and publishing KB paths to a PR violates R8 public-output hygiene. The Phase 3 `publish` action is unavailable for decision-mode returns.
 
 ### Cross-auditor return-contract gate
 
@@ -412,4 +473,4 @@ Once agreed to a direction, drive to completion without re-asking. See `docs/con
 
 ## Adaptation by Project Type
 
-Focus areas depend on detected `project_type` and audit mode — see `agents/cross-auditor.md` §Mode Focus Areas for the canonical per-mode list (`logic` / `security` / `full` / `spec`). The SKILL orchestrator selects mode and project_type only; it does not dispatch the focus-areas list itself, so this file deliberately carries no subsections.
+Focus areas depend on detected `project_type` and audit mode — see `agents/cross-auditor.md` §Mode Focus Areas for the canonical per-mode list (`logic` / `security` / `full` / `spec` / `decision`). The SKILL orchestrator selects mode and project_type only; it does not dispatch the focus-areas list itself, so this file deliberately carries no subsections.

@@ -77,6 +77,34 @@ For each finding: spec section/step reference, description, concrete fix suggest
 Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely.
 ```
 
+**Decision mode** Codex prompt template (decision mode NEVER reads `agents/references/cross-auditor-mode-focus.md`; its entire focus comes from this template — the five clusters below REPLACE the spec-mode generic `Focus areas:` line):
+```
+DECISION-TRAIL AUDIT of [scope] for project [project].
+Working directory: [working_directory]
+Mode: decision
+Read the audited spec file at: [scope] — its §1 Context/goal, §3 Design, §9 Log decision lines, and (if present) the grill `## Decisions` table.
+[If workdoc_path provided]: Also read the execution workdoc at: [workdoc_path]
+  Read it for planned/observed divergence — files touched outside `allowed_scope`, notes contradicting the step goal, `change_type_shift` not reflected in the spec §3/§9.
+[For EACH findings_paths entry, when the list is non-empty]: Read the findings doc at that path — inspect accept/defer triage rationale (rubber-stamp cluster + the findings-portion of decision coherence). An empty/absent findings_paths list is not an error; audit whatever exists.
+You are auditing the DECISION TRAIL of a completed /feature run (spec §9 Log, grill `## Decisions` table, workdoc planned/observed + `design_decision` fields, findings triage statuses, `*_audit_evidence` frontmatter) — NOT the code. Premise re-derivation OPENS and READS the source code under [working_directory] (no execution, no re-implementation) to test whether each recorded decision's premise behaves as assumed.
+Decision focus clusters (decision coherence is the center; premise verification is the second layer):
+1. Decision coherence (mode center). Two classes:
+   (a) Local-optimum / crutch-stacking — a decision fixes the symptom at hand while eroding the architecture; signals: patches layered on one spot (same defect class across 2+ audit iterations, REOPEN sweeps, fixup pileups per step), workaround-on-workaround, `design_decision` entries of the "bypassed X because faster" shape. Flag the design-level flaw underneath, not the Nth patch.
+   (b) Goal-trajectory divergence — the task was set toward X but the cumulative decision vector leads to Y; compare spec §1 Context/goal against the sum of Log decisions, scope-extensions, `change_type_shift`, and `design_decision` entries. Both classes HIGH when load-bearing.
+2. Premise re-derivation (anti-oracle-bias), bounded. Every recorded decision is the implementer's HYPOTHESIS, not a verified fact. Three levels: (L1) the referent exists (extends the "citations resolve" check); (L2) the referent BEHAVES as the decision assumes — open and read the code, no execution, no re-implementation; (L3) a numeric worked-example only when the decision hinges on arithmetic/boundaries. L2 refuted with code evidence → CRITICAL; L2 unconfirmable from artifacts + code → HIGH (honest "false" vs "unproven" split).
+3. Rubber-stamp detection. Deterministic signals, each cited by artifact line: degraded `*_audit_evidence` (`skipped` / `self_fallback` / `contract_violated` / `single_model`); `grill_status` null/skipped while high-risk signals are present (`external_input: true`, `project_type: smart_contract`, payment/auth/migration keywords); residue accepted at the iteration cap without a named residue; accept/defer of CRITICAL/HIGH findings with vacuous rationale; `attack-surface profile not applicable` on a spec with an evident network surface; all-defaults accumulation across banner decisions on a large feature.
+4. Fork analysis. Decisions at real forks (multiple viable designs visible from the artifacts/code) with no recorded alternative or tradeoff.
+5. Planned/observed divergence. Workdoc observed-vs-planned drift (files outside `allowed_scope`, notes contradicting the step goal, `change_type_shift`) not reflected in spec §3/§9 — a step-level feeder for the Decision-coherence crutch-stacking class.
+Previously fixed (skip these): [previously_fixed list]
+Severity ladder (decision mode):
+- CRITICAL: a load-bearing decision resting on a demonstrably false premise (L2 refuted with code evidence) affecting shipped behavior.
+- HIGH: decision-coherence classes 1a/1b at load-bearing scale; an unverified load-bearing premise (L2 unconfirmable); a rubber-stamped gate on a high-risk surface; vacuous accept/defer of a CRITICAL/HIGH finding (the only vacuous-rationale form that gates).
+- MEDIUM: fork analysis (no recorded alternatives); all other vacuous-rationale forms; unlogged planned/observed drift; all-defaults accumulation.
+Report [allowed_severities] only.
+For each finding: artifact-line reference (spec §9 Log line / workdoc field / findings-doc ID), description, concrete fix suggestion.
+Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely.
+```
+
 For **diff mode**: scope the audit to changed files only.
 When `range_spec` is set, run `git diff --name-only <range_spec>` (single shell-quoted string; may include `-- <path>` suffix) in `working_directory` (the content root — caller cwd in-place, or the skill-materialized worktree for PR/`--materialize`/`--worktree`), NOT the agent's spawn cwd. Otherwise when `base_branch` is set, run `git diff --name-only <base_branch>...HEAD` in `working_directory` (legacy behavior).
 Include the resulting file list as "Files to audit" in the prompt template above before writing the prompt to `$PROMPT_FILE`.

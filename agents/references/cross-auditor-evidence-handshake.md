@@ -28,7 +28,7 @@ This sanitize-blocker rule applies to every newline→space conversion site, eve
 
 ### Spec-mode return contract (inline output)
 
-For `mode: spec`, the cross-auditor does NOT write findings.md to disk; the consolidated findings are returned as inline output text to the calling feature skill. To preserve the orchestrator-readable handshake in this mode, the inline-return text MUST end with EXACTLY THREE physical lines, in this order, AT END-OF-RESPONSE (no trailing characters, no trailing prose, no trailing blank lines beyond the final line's `\n`):
+For `mode: spec` and `mode: decision`, the cross-auditor does NOT write findings.md to disk; the consolidated findings are returned as inline output text to the caller (the feature skill for spec mode, standalone `/cross-audit` for decision mode). To preserve the orchestrator-readable handshake in these modes, the inline-return text MUST end with EXACTLY THREE physical lines, in this order, AT END-OF-RESPONSE (no trailing characters, no trailing prose, no trailing blank lines beyond the final line's `\n`):
 
 ```
 # CROSS-AUDIT EVIDENCE FOOTER
@@ -53,7 +53,7 @@ Per spec `2026-06-10-fable-cross-auditor-attestation.md`. On every audit the cro
 Two channels, mirroring the evidence handshake:
 
 - **code/full mode**: one canonical `claude_model: <exact-model-id>` key in the leading frontmatter of `<audit_slug>-findings.md`, sibling of `evidence_class:`. Overwritten each iteration with the current run's model.
-- **spec mode**: ONE physical line `claude_model: <exact-model-id>` emitted **immediately preceding** the EVIDENCE FOOTER sentinel marker line. The three-line footer below the sentinel stays EXACTLY THREE physical lines — the pinned footer contract is untouched. Placing the attestation line immediately preceding the sentinel gives the consumer-side parser an unambiguous anchor (it reads the single line above the sentinel) and kills example-echo lifting, the same rationale as the EOF-adjacency anchor on the footer itself. In prose, the obfuscated sentinel form `CROSS-AUDIT-EVIDENCE-FOOTER` (hyphens for spaces) is used per the §Sentinel-obfuscation rule below; the attestation line sits one physical line above where that sentinel actually renders.
+- **spec and decision modes**: ONE physical line `claude_model: <exact-model-id>` emitted **immediately preceding** the EVIDENCE FOOTER sentinel marker line. The three-line footer below the sentinel stays EXACTLY THREE physical lines — the pinned footer contract is untouched. Placing the attestation line immediately preceding the sentinel gives the consumer-side parser an unambiguous anchor (it reads the single line above the sentinel) and kills example-echo lifting, the same rationale as the EOF-adjacency anchor on the footer itself. In prose, the obfuscated sentinel form `CROSS-AUDIT-EVIDENCE-FOOTER` (hyphens for spaces) is used per the §Sentinel-obfuscation rule below; the attestation line sits one physical line above where that sentinel actually renders.
 
 Example shapes (illustrative model IDs — emit YOUR OWN, never these): code/full frontmatter carries `claude_model: claude-fable-5` alongside `evidence_class: dual_model`; spec mode emits a single `claude_model: claude-fable-5` line immediately preceding the EVIDENCE FOOTER sentinel marker.
 

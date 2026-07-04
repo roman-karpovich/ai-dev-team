@@ -3112,6 +3112,37 @@ check_smoke_helper_focus_areas_cross_auditor_demoted_rejected() {
 # Positive invocations — 2 rows per spec §3.4.
 check "check_cross_auditor_mode_focus_areas_canonical" check_cross_auditor_mode_focus_areas_canonical agents/references/cross-auditor-mode-focus.md
 check "check_cross_audit_skill_focus_areas_references_canonical" check_cross_audit_skill_focus_areas_references_canonical skills/cross-audit/SKILL.md
+# Decision-mode focus-area pins (spec 2026-07-02-decision-audit-mode Step 1).
+check "cross-auditor-decision-mode-focus-clusters" check_cross_auditor_decision_mode_focus_clusters agents/references/cross-auditor-mode-focus.md
+check "cross-auditor-mode-focus-no-stale-four-modes" check_cross_auditor_mode_focus_no_stale_four_modes agents/references/cross-auditor-mode-focus.md
+# Decision-mode cross-auditor hub pins (spec 2026-07-02-decision-audit-mode Step 2).
+check "cross-auditor-mode-enum-names-decision" check_cross_auditor_mode_enum_names_decision agents/cross-auditor.md
+check "cross-auditor-decision-severity-ladder" check_cross_auditor_decision_severity_ladder agents/cross-auditor.md
+check "cross-auditor-hub-no-stale-four-modes" check_cross_auditor_hub_no_stale_four_modes agents/cross-auditor.md
+check "cross-auditor-mode-symmetry-names-decision" check_cross_auditor_mode_symmetry_names_decision agents/cross-auditor.md
+check "cross-auditor-finding-id-exception-names-decision" check_cross_auditor_finding_id_exception_names_decision agents/cross-auditor.md
+# Decision-mode Codex dispatch + handshake/output-format pins (spec 2026-07-02-decision-audit-mode Step 3).
+check "cross-auditor-codex-decision-focus-anchors" check_cross_auditor_codex_decision_focus_anchors agents/references/cross-auditor-codex-dispatch.md
+check "cross-auditor-codex-decision-reads-inputs" check_cross_auditor_codex_decision_reads_inputs agents/references/cross-auditor-codex-dispatch.md
+check "cross-auditor-codex-decision-ladder" check_cross_auditor_codex_decision_ladder agents/references/cross-auditor-codex-dispatch.md
+check "cross-auditor-output-format-no-write-names-decision" check_cross_auditor_output_format_no_write_names_decision agents/references/cross-auditor-output-format.md
+check "cross-auditor-handshake-names-decision" check_cross_auditor_handshake_names_decision agents/references/cross-auditor-evidence-handshake.md
+# Decision-mode /cross-audit standalone-entry pins (spec 2026-07-02-decision-audit-mode Step 4).
+check "cross-audit-skill-decision-flag" check_cross_audit_skill_decision_flag skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-slug-derivation" check_cross_audit_skill_decision_slug_derivation skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-findings-paths-dispatch" check_cross_audit_skill_decision_findings_paths_dispatch skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-severity-floor" check_cross_audit_skill_decision_severity_floor skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-phase3-branch" check_cross_audit_skill_decision_phase3_branch skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-classifier-wiring" check_cross_audit_skill_decision_classifier_wiring skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-log-append" check_cross_audit_skill_decision_log_append skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-no-publish" check_cross_audit_skill_decision_no_publish skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-report-only" check_cross_audit_skill_decision_report_only skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-prose-complete" check_cross_audit_skill_decision_prose_complete skills/cross-audit/SKILL.md
+# Decision-mode rework pins (spec 2026-07-02-decision-audit-mode code-audit X5/X6 sweep).
+check "cross-audit-skill-decision-launch-banner" check_cross_audit_skill_decision_launch_banner skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-phase3-decoy-rejected" check_cross_audit_skill_decision_phase3_decoy_rejected
+check "cross-audit-skill-decision-m1-prefix-sibling-rejected" check_cross_audit_skill_decision_m1_prefix_sibling_rejected
+check "cross-audit-skill-decision-m2-duplicate-h3-rejected" check_cross_audit_skill_decision_m2_duplicate_h3_rejected
 # Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
 check "check_smoke_helper_focus_areas_skill_hybrid_rejected" check_smoke_helper_focus_areas_skill_hybrid_rejected

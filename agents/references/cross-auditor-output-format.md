@@ -4,11 +4,11 @@ This file holds the canonical content for the `## Step 4: Write Output Documents
 
 ## Step 4: Write Output Documents
 
-**`spec` mode exception**: do NOT write files. Return the consolidated findings as your inline output message to the caller (the feature skill). Format as a readable markdown report with a summary table and details section — the same structure as findings.md, but returned as the agent response, not written to disk. Spec audit findings are transient; once the spec is fixed, the issues are gone.
+**`spec` and `decision` mode exception**: do NOT write files. Return the consolidated findings as your inline output message to the caller (the feature skill for spec mode, standalone `/cross-audit` for decision mode). Format as a readable markdown report with a summary table and details section — the same structure as findings.md, but returned as the agent response, not written to disk. Spec and decision audit findings are transient — no findings doc is persisted to disk.
 
 **Spec mode re-audit**: if the feature skill runs a second spec audit (e.g. after fixing issues), the caller must pass `previously_fixed: [X1, X2, ...]` with the IDs from the prior inline report. Since spec mode does not persist findings to disk, the agent has no way to auto-detect which issues were already found and fixed. Without this list, the agent will re-report already-fixed issues.
 
-For all other modes, write TWO documents to the KB. If `kb_path` and `project` are provided:
+For all other modes (`logic` / `security` / `full`), write TWO documents to the KB. If `kb_path` and `project` are provided:
 - findings: `<kb_path>/repos/<project>/security/<audit_slug>-findings.md`
 - workdoc: `<kb_path>/repos/<project>/security/<audit_slug>-workdoc-iter<N>.md` (N = iteration number)
 
