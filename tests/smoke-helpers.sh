@@ -2004,6 +2004,66 @@ check_findings_schema_failure_class() {
   echo "$path details template carries '**Failure class / input domain**:' + '**Fix (advisory)**:'"
 }
 
+check_codex_dispatch_emits_failure_class() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 2 — asserts the three
+  # per-mode Codex prompt templates in cross-auditor-codex-dispatch.md each emit a
+  # MODE-APPROPRIATE failure-class instruction while preserving their distinct
+  # lead-in verbatim (code=file:line / spec=spec section/step reference /
+  # decision=artifact-line reference). Each grep co-locates the lead-in and the
+  # failure-class clause on one emission line (byte-exact through the clause).
+  # Regression: a single find-replace that clobbered a mode lead-in, dropped a
+  # template's failure-class clause, un-marked the suggestion advisory, or leaked
+  # the code-only "input domain" wording into the spec/decision prompts breaks it.
+  local path="agents/references/cross-auditor-codex-dispatch.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+
+  grep -qF -- 'For each finding: file:line, description, failure class / input domain (the class of inputs/states, not one observed example),' "$path" \
+    || { echo "$path code template missing 'file:line' lead-in + 'failure class / input domain' clause"; return 1; }
+  grep -qF -- 'For each finding: spec section/step reference, description, failure class (the class of spec defects/cases the issue covers, not one example),' "$path" \
+    || { echo "$path spec template missing 'spec section/step reference' lead-in + spec-defects failure-class clause"; return 1; }
+  grep -qF -- 'For each finding: artifact-line reference (spec §9 Log line / workdoc field / findings-doc ID), description, failure class (the class of decisions/cases the issue covers, not one example),' "$path" \
+    || { echo "$path decision template missing 'artifact-line reference (...)' lead-in + decisions failure-class clause"; return 1; }
+
+  local adv
+  adv=$(grep -cF 'concrete fix suggestion (advisory —' "$path")
+  [ "$adv" = "3" ] || { echo "$path expected 3 advisory-marked fix-suggestion lines, found $adv"; return 1; }
+
+  # "input domain" wording is code-runtime-only — must NOT leak into spec/decision.
+  local idc
+  idc=$(grep -cF 'input domain' "$path")
+  [ "$idc" = "1" ] || { echo "$path expected 'input domain' exactly once (code template only), found $idc"; return 1; }
+
+  echo "$path all three Codex templates emit mode-appropriate failure class; lead-ins survive; input-domain code-only"
+}
+
+check_claude_step2_mode_conditional_failure_class() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 2 — asserts cross-auditor.md
+  # §Step 2 (mode-shared, no internal branch) carries the MODE-CONDITIONAL
+  # failure-class sentence: "input domain" scoped to code/security/full, plus the
+  # spec-defects and decisions phrasings + the advisory note. Regression: dropping
+  # the sentence, or letting bare "input domain" apply to all modes (leaking
+  # code-runtime wording into spec/decision audits), breaks this pin.
+  local path="agents/cross-auditor.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+
+  # Isolate the §Step 2 body (through the next '## Step 2.4' heading) so the
+  # sentence is asserted in the mode-shared section, not elsewhere in the file.
+  local sect
+  sect=$(awk '/^## Step 2: Claude Audit/{f=1} f&&/^## Step 2\.4/{exit} f' "$path")
+  [ -n "$sect" ] || { echo "$path §Step 2 section not found"; return 1; }
+
+  printf '%s\n' "$sect" | grep -qF -- 'code/security/full findings as failure class / input domain (the class of inputs/states, not one observed example)' \
+    || { echo "$path §Step 2 missing 'input domain' scoped to code/security/full"; return 1; }
+  printf '%s\n' "$sect" | grep -qF -- 'spec findings as the class of spec defects/cases' \
+    || { echo "$path §Step 2 missing spec-defects failure-class phrasing"; return 1; }
+  printf '%s\n' "$sect" | grep -qF -- 'decision findings as the class of decisions/cases' \
+    || { echo "$path §Step 2 missing decisions failure-class phrasing"; return 1; }
+  printf '%s\n' "$sect" | grep -qF -- 'The fix suggestion is advisory' \
+    || { echo "$path §Step 2 missing advisory fix-suggestion note"; return 1; }
+
+  echo "$path §Step 2 carries mode-conditional failure-class sentence (input-domain scoped; spec/decision phrasings; advisory)"
+}
+
 # --- Step 2: hooks/lib/render_findings.sh ---
 #
 # Each helper below drives hooks/lib/render_findings.sh with a fixture

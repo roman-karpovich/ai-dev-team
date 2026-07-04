@@ -467,3 +467,10 @@ check_skill_grill_status_skipped_write_path prompt-text
 check_findings_schema_failure_class prompt-text
 check_renderer_failure_class_passthrough behavioral
 check_dedupe_failure_class_carry behavioral
+# Emission instructions (spec 2026-07-05-fix-dispatch-carries-failure Step 2):
+#   codex-dispatch-emits-failure-class pins the three per-mode Codex prompt
+#   templates (mode-appropriate failure-class clause + verbatim lead-ins) and
+#   claude-step2-mode-conditional-failure-class pins the mode-conditional sentence
+#   in cross-auditor.md §Step 2 — both pure prose assertions → prompt-text.
+check_codex_dispatch_emits_failure_class prompt-text
+check_claude_step2_mode_conditional_failure_class prompt-text

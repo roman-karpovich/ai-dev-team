@@ -3210,6 +3210,11 @@ check "check_agents_cross_auditor_schema_cut_fields" check_agents_cross_auditor_
 # spec 2026-07-05-fix-dispatch-carries-failure Step 1 — output-format.md details
 # template carries the failure-class field + the renamed advisory Fix label.
 check "findings-schema-failure-class" check_findings_schema_failure_class
+# spec 2026-07-05-fix-dispatch-carries-failure Step 2 — emission instructions:
+# codex-dispatch.md three templates emit mode-appropriate failure class (each mode
+# lead-in survives); cross-auditor.md §Step 2 carries the mode-conditional sentence.
+check "codex-dispatch-emits-failure-class" check_codex_dispatch_emits_failure_class
+check "claude-step2-mode-conditional-failure-class" check_claude_step2_mode_conditional_failure_class
 # Step 2 — renderer schema-cut, modes, fail-open banner, hard-stop on malformed probe_failures.
 # Per spec §6.1 Step 2: 4 umbrella helpers + 7 golden-diff sub-assertions = 11 PASS lines.
 check "check_findings_renderer_schema_cut" check_findings_renderer_schema_cut
