@@ -3115,6 +3115,9 @@ check "check_cross_audit_skill_focus_areas_references_canonical" check_cross_aud
 # Decision-mode focus-area pins (spec 2026-07-02-decision-audit-mode Step 1).
 check "cross-auditor-decision-mode-focus-clusters" check_cross_auditor_decision_mode_focus_clusters agents/references/cross-auditor-mode-focus.md
 check "cross-auditor-mode-focus-no-stale-four-modes" check_cross_auditor_mode_focus_no_stale_four_modes agents/references/cross-auditor-mode-focus.md
+# Standing integration-lens taxonomy pins (spec 2026-07-05-integration-lens-taxonomy Step 3).
+check "cross-auditor-integration-lenses-standing" check_cross_auditor_integration_lenses_standing agents/references/cross-auditor-mode-focus.md
+check "cross-auditor-hub-names-integration-lenses" check_cross_auditor_hub_names_integration_lenses agents/cross-auditor.md
 # Decision-mode cross-auditor hub pins (spec 2026-07-02-decision-audit-mode Step 2).
 check "cross-auditor-mode-enum-names-decision" check_cross_auditor_mode_enum_names_decision agents/cross-auditor.md
 check "cross-auditor-decision-severity-ladder" check_cross_auditor_decision_severity_ladder agents/cross-auditor.md
