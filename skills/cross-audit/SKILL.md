@@ -240,6 +240,11 @@ probe_modes: [dict mapping probe id → effective mode resolved from the cross_a
 > Findings → `KB/repos/<project>/security/<slug>-findings.md`
 > Continue working — I'll present results when both auditors finish.
 
+**Decision mode (`--mode decision`) variant.** Decision mode writes NO findings doc, so DROP the `Findings → …` line — there is no findings path to surface and printing one points at a file that will never exist; decision findings return inline. Emit instead:
+
+> Cross-audit running in background on **[scope]** (mode: decision, iter [N]).
+> Decision findings return inline — I'll present them when both auditors finish.
+
 ---
 
 ## Phase 3: Present & Decide (foreground, interactive)
@@ -265,7 +270,7 @@ For `--mode decision` the flow above changes as follows — decision rides the s
   `- YYYY-MM-DD: decision audit — <N> findings (crit=X high=Y med=Z); evidence=<dual_model|...>`
 
   The severity counts (`crit=X high=Y med=Z`) come from the agent's inline summary table (the inline report of the decision return), NOT from the 3-line evidence footer (which carries only `evidence_class` / `evidence_blockers`); `evidence=` is filled from the footer's `evidence_class`.
-- **Report-only — no per-finding triage, no Phase 4 status mutation.** Decision findings are transient by design (grill D3 — the single persistence trace is the §9 Log-append line above, not a findings doc). The Phase 3 step-3 per-finding decision banner (`fix` / `accept` / `defer` / `fix all`) and the Phase 4 findings-doc status mutation (OPEN→FIXED / ACCEPTED / DEFERRED) do NOT apply for decision-mode returns — there is no findings doc to mutate. The user acts on decision findings by editing the audited spec or opening follow-ups, outside this skill's Phase 3/4 lifecycle (which ends at the inline presentation + the §9 Log-append above).
+- **Report-only — no per-finding triage, no Phase 4 status mutation.** Decision findings are transient by design (grill D3 — the single persistence trace is the §9 Log-append line above, not a findings doc). The Phase 3 step-3 per-finding decision banner (`fix` / `accept` / `defer` / `fix all`) and the Phase 4 findings-doc status mutation (OPEN→FIXED / ACCEPTED / DEFERRED) do NOT apply for decision-mode returns — there is no findings doc to mutate. The user acts on decision findings by editing the audited spec or opening follow-ups, outside this skill's Phase 3/4 lifecycle (which ends at the inline presentation + the §9 Log-append above). The §Shadow & low-confidence findings.md sections and their Phase-3 banner footers (`… — see <findings_path>#…`) likewise do NOT apply — decision writes no findings doc, so any low-confidence decision findings are surfaced inline with the rest of the report rather than routed to a `<findings_path>` section.
 - **No publish.** Decision findings are NEVER published to a PR: they cite KB paths (spec / workdoc / findings-doc lines) by nature, and publishing KB paths to a PR violates R8 public-output hygiene. The Phase 3 `publish` action is unavailable for decision-mode returns.
 
 ### Cross-auditor return-contract gate

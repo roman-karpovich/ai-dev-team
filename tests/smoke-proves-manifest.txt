@@ -210,6 +210,15 @@ check_cross_audit_skill_decision_no_publish prompt-text
 check_cross_audit_skill_decision_report_only prompt-text
 check_cross_audit_skill_decision_prose_complete prompt-text
 
+# Decision-mode rework pins (spec 2026-07-02-decision-audit-mode code-audit X5/X6 sweep):
+#   launch-banner freezes the Step-3 decision-variant banner prose (drops the
+#   Findings→ findings-doc line) → prompt-text. phase3-decoy-rejected is a
+#   fixture-based negative test of the `## Phase 3` / `## Argument Parsing`-anchored
+#   extractors' discriminating power (a decoy heading outside its region must not
+#   hijack the grab) → behavioral, matching the *_rejects_* precedent above.
+check_cross_audit_skill_decision_launch_banner prompt-text
+check_cross_audit_skill_decision_phase3_decoy_rejected behavioral
+
 # Probe-envelope JSON-Schema validator self-test
 check_json_schema_lint_self_test behavioral
 

@@ -3138,6 +3138,9 @@ check "cross-audit-skill-decision-log-append" check_cross_audit_skill_decision_l
 check "cross-audit-skill-decision-no-publish" check_cross_audit_skill_decision_no_publish skills/cross-audit/SKILL.md
 check "cross-audit-skill-decision-report-only" check_cross_audit_skill_decision_report_only skills/cross-audit/SKILL.md
 check "cross-audit-skill-decision-prose-complete" check_cross_audit_skill_decision_prose_complete skills/cross-audit/SKILL.md
+# Decision-mode rework pins (spec 2026-07-02-decision-audit-mode code-audit X5/X6 sweep).
+check "cross-audit-skill-decision-launch-banner" check_cross_audit_skill_decision_launch_banner skills/cross-audit/SKILL.md
+check "cross-audit-skill-decision-phase3-decoy-rejected" check_cross_audit_skill_decision_phase3_decoy_rejected
 # Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
 check "check_smoke_helper_focus_areas_skill_hybrid_rejected" check_smoke_helper_focus_areas_skill_hybrid_rejected
