@@ -10,7 +10,8 @@
 - **Severity**: HIGH
 - **File**: src/stellar/reconcile.py:142
 - **Description**: Probe E detected persisted-state marker 'build_failure:' added in diff; downstream consumer src/stellar/rewards.py:_clean_rewards allowlist does not include it. (Claude independently flagged the same gap.)
-- **Fix**: Add 'build_failure' to the _clean_rewards allowlist in src/stellar/rewards.py.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Add 'build_failure' to the _clean_rewards allowlist in src/stellar/rewards.py.
 - **Sources**: [probe:E, claude]
 - **Mode at emit**: warn
 - **Blocking**: false

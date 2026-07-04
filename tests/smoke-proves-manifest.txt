@@ -455,3 +455,15 @@ check_skill_degraded_predicate_no_grill prompt-text
 #   prompt-text.
 check_skill_grill_mode_handler_exists prompt-text
 check_skill_grill_status_skipped_write_path prompt-text
+
+# Finding-schema failure-class field + advisory Fix label (spec 2026-07-05-fix-dispatch-carries-failure Step 1):
+#   findings-schema-failure-class pins two literal markdown labels in
+#   cross-auditor-output-format.md (the failure-class details field + the renamed
+#   `**Fix (advisory)**:` label) → prompt-text. renderer-failure-class-passthrough
+#   RUNS render_findings.sh on fixture 01 and byte-matches its golden + greps the
+#   distinctive VALUE → behavioral. dedupe-failure-class-carry RUNS
+#   dedupe_findings.sh on a probe+LLM merge fixture and byte-matches the golden
+#   asserting merge_pair retains the LLM-side failure_class → behavioral.
+check_findings_schema_failure_class prompt-text
+check_renderer_failure_class_passthrough behavioral
+check_dedupe_failure_class_carry behavioral

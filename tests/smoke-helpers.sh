@@ -1987,6 +1987,23 @@ check_agents_cross_auditor_schema_cut_fields() {
   echo "$path §Step 4 findings template carries schema-cut columns + details fields + Found-by→sources[] round-trip mapping"
 }
 
+check_findings_schema_failure_class() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 1 — asserts the §Step 4
+  # details template in cross-auditor-output-format.md carries BOTH new literals:
+  #  (1) the `- **Failure class / input domain**:` details-block field
+  #  (2) the renamed advisory Fix label `- **Fix (advisory)**:`
+  # Regression: reverting either literal (dropping the failure-class field, or
+  # restoring the bare `**Fix**:` label) breaks the finding schema contract that
+  # the renderer emits — this pin catches a template/renderer drift.
+  local path="agents/references/cross-auditor-output-format.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF -- '- **Failure class / input domain**:' "$path" \
+    || { echo "$path missing details-block field '- **Failure class / input domain**:'"; return 1; }
+  grep -qF -- '- **Fix (advisory)**:' "$path" \
+    || { echo "$path missing renamed advisory Fix label '- **Fix (advisory)**:'"; return 1; }
+  echo "$path details template carries '**Failure class / input domain**:' + '**Fix (advisory)**:'"
+}
+
 # --- Step 2: hooks/lib/render_findings.sh ---
 #
 # Each helper below drives hooks/lib/render_findings.sh with a fixture
@@ -2072,6 +2089,27 @@ check_findings_renderer_fail_open() {
   _render_findings_byte_diff \
     tests/fixtures/cross-audit-probes-foundation/renderer/06-probe-fail-open-input.json \
     tests/fixtures/cross-audit-probes-foundation/renderer/06-probe-fail-open-expected.md
+}
+
+check_renderer_failure_class_passthrough() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 1 — fixture-01's input JSON
+  # carries a distinctive failure_class VALUE; the regenerated golden byte-matches
+  # AND the rendered output must carry that literal value on the details line.
+  # Byte-diff proves render_findings.sh passes f['failure_class'] through (not just
+  # the label); the explicit value grep guards against a renderer that emits the
+  # line but drops/empties the value.
+  # Regression: rendering the failure-class value as empty (or hardcoding the
+  # label without threading f.get('failure_class')) fails the value grep.
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/01-no-probes-legacy-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/01-no-probes-legacy-expected.md || return 1
+  local out
+  out=$(bash hooks/lib/render_findings.sh \
+    < tests/fixtures/cross-audit-probes-foundation/renderer/01-no-probes-legacy-input.json) \
+    || { echo "render_findings.sh exited non-zero on fixture 01"; return 1; }
+  printf '%s\n' "$out" | grep -qF -- '- **Failure class / input domain**: unparseable-numeric inputs: NaN/Infinity/negative' \
+    || { echo "render_findings.sh dropped the distinctive failure_class VALUE from fixture-01 output"; return 1; }
+  echo "render_findings.sh passes the distinctive failure_class VALUE through to the details block"
 }
 
 # --- Step 3: hooks/lib/dedupe_findings.sh + receipt hash canonicalization ---
@@ -2185,6 +2223,18 @@ check_dedupe_merged_probe_llm_sources_list() {
   _dedupe_findings_byte_diff \
     tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-input.json \
     tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-expected.json
+}
+
+check_dedupe_failure_class_carry() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 1 — probe:E + claude merge
+  # where ONLY the LLM member carries failure_class. The X23 swap makes the probe
+  # member primary before dict(primary), so without merge_pair's explicit
+  # `out["failure_class"] = primary.get(...) or secondary.get(...) or ""` carry
+  # the LLM-side value is DROPPED. Byte-match asserts the merged entry retains it.
+  # Regression: removing the carry line drops the value → byte-diff fails.
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-failure-class-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-failure-class-expected.json
 }
 
 # --- Step 4: cross_audit.probes.<id>.mode config surface ---
