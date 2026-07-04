@@ -218,6 +218,14 @@ check_cross_audit_skill_decision_prose_complete prompt-text
 #   hijack the grab) → behavioral, matching the *_rejects_* precedent above.
 check_cross_audit_skill_decision_launch_banner prompt-text
 check_cross_audit_skill_decision_phase3_decoy_rejected behavioral
+# X6 REOPENED residual — two extractor-discrimination shapes the pre-residual
+# loose-prefix+first-match extractors left GREEN on a gutted real carve-out:
+#   m1-prefix-sibling — a decoy H2 sharing the parent prefix opens a false region;
+#   m2-duplicate-h3 — a duplicate in-region H3 before the real one is first-matched.
+# Both are fixture-based negative tests of the exact-anchor + uniqueness-guarded
+# extractors → behavioral, matching the *_rejected precedent above.
+check_cross_audit_skill_decision_m1_prefix_sibling_rejected behavioral
+check_cross_audit_skill_decision_m2_duplicate_h3_rejected behavioral
 
 # Probe-envelope JSON-Schema validator self-test
 check_json_schema_lint_self_test behavioral

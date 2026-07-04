@@ -1448,34 +1448,55 @@ check_cross_auditor_handshake_names_decision() {
 # the shared awk extractors below, so a stray token elsewhere cannot mask a
 # subsection that dropped a required contract clause.
 _skill_decision_mode_section() {
-  # `### Decision mode` subsection body (Flags-adjacent), ANCHORED within the
-  # `## Argument Parsing` region (X6 sweep-B): first enter Argument Parsing, THEN
-  # grab the subsection. A decoy `### Decision mode` heading placed OUTSIDE
-  # Argument Parsing (above it) can no longer hijack the first-match extraction
-  # and mask a gutted real section. Stops at the next `### ` / `## ` heading or
-  # `---` rule.
+  # `### Decision mode` subsection body (Flags-adjacent), anchored within the
+  # `## Argument Parsing` region. X6 REOPENED residual hardening — two extractor-
+  # discrimination shapes the prior loose-prefix + first-match extractor left
+  # GREEN on a gutted real carve-out:
+  #   M1 (prefix-sibling H2): the region-open anchor is now the EXACT line
+  #     `## Argument Parsing` (`/^## Argument Parsing$/`), so a decoy
+  #     `## Argument Parsing <suffix>` placed above the real H2 can no longer open
+  #     a false region and hand a decoy `### Decision mode` to the extractor. The
+  #     real H2 still terminates any region a stray H2 opened (`inarg && /^## /`).
+  #   M2 (in-region duplicate H3): the region is scanned to its close and the
+  #     `### Decision mode` occurrences are COUNTED; the body is emitted only when
+  #     EXACTLY ONE occurrence exists. A duplicate decoy `### Decision mode` placed
+  #     before the real (gutted) one → count==2 → empty output → consumer pins RED.
+  # Also still rejects the original decoy-outside-region shape (heading above the
+  # region is never counted while inarg==0). Grab stops at the next `### ` heading
+  # or `---` rule.
   awk '
-    /^## Argument Parsing/ { inarg=1; next }
-    inarg && /^## / { exit }
-    inarg && /^### Decision mode/ { grab=1; next }
-    grab && /^### / { exit }
-    grab && /^---$/ { exit }
-    grab { print }
+    /^## Argument Parsing$/ { inarg=1; next }
+    inarg && /^## / { inarg=0 }
+    inarg && /^### Decision mode/ { count++; grab=1; buf=""; next }
+    inarg && grab && /^### / { grab=0 }
+    inarg && grab && /^---$/ { grab=0 }
+    inarg && grab { buf = buf $0 "\n" }
+    END { if (count == 1) printf "%s", buf }
   ' "$1"
 }
 _skill_decision_phase3_section() {
-  # `### Decision-mode return handling` Phase-3 subsection body, ANCHORED within
-  # the `## Phase 3` region (X6): first enter Phase 3, THEN grab the subsection.
-  # A decoy `### Decision-mode return handling` heading placed OUTSIDE Phase 3
-  # (above it) can no longer hijack the first-match extraction and mask a gutted
-  # real carve-out (the confirmed mutant: decoy-above + carve-out removed left the
-  # report-only pin GREEN). Stops at the next `### ` or `## ` heading.
+  # `### Decision-mode return handling` Phase-3 subsection body, anchored within
+  # the `## Phase 3` region. X6 REOPENED residual hardening (same two shapes as
+  # _skill_decision_mode_section):
+  #   M1 (prefix-sibling H2): the region-open anchor is now the EXACT parent H2
+  #     `## Phase 3: Present & Decide` (`/^## Phase 3: Present & Decide/`), so a
+  #     decoy `## Phase 3.5 …` above the real H2 can no longer open a false region.
+  #     (Prefix, not `$`-exact, because the real H2 carries a ` (foreground,
+  #     interactive)` suffix — `## Phase 3.5` still fails the `Present & Decide`
+  #     literal, and the real H2 terminates a decoy-opened region via `/^## /`.)
+  #   M2 (in-region duplicate H3): `### Decision-mode return handling` occurrences
+  #     inside the region are COUNTED; the body is emitted only when EXACTLY ONE
+  #     exists. A duplicate decoy H3 before the real (gutted) one → count==2 →
+  #     empty output → consumer pins RED.
+  # Also still rejects the original decoy-outside-region shape. Grab stops at the
+  # next `### ` heading.
   awk '
-    /^## Phase 3/ { inphase=1; next }
-    inphase && /^## / { exit }
-    inphase && /^### Decision-mode return handling/ { grab=1; next }
-    grab && /^### / { exit }
-    grab { print }
+    /^## Phase 3: Present & Decide/ { inphase=1; next }
+    inphase && /^## / { inphase=0 }
+    inphase && /^### Decision-mode return handling/ { count++; grab=1; buf=""; next }
+    inphase && grab && /^### / { grab=0 }
+    inphase && grab { buf = buf $0 "\n" }
+    END { if (count == 1) printf "%s", buf }
   ' "$1"
 }
 # Extract a single markdown bullet from a section body. $1 = section text, $2 = a
@@ -1756,6 +1777,52 @@ check_cross_audit_skill_decision_phase3_decoy_rejected() {
     return 1
   fi
   echo "decoy fixture: anchored extractors reject the decoy-outside-region gutted sections (slug_derivation/phase3_branch/no_publish/report_only all RED)"
+}
+
+# NEGATIVE (fixture-based): M1 prefix-sibling H2 (code-audit X6 REOPENED residual).
+# A decoy H2 that SHARES A PREFIX with the real parent H2 (`## Argument Parsing
+# (legacy)` / `## Phase 3.5 Decoy`) is placed ABOVE the real region carrying the
+# full carve-out; the real in-region H3 is gutted. The EXACT-anchor extractors
+# (`/^## Argument Parsing$/`, `/^## Phase 3: Present & Decide/`) MUST ignore the
+# prefix-sibling decoy and grab the gutted real section, so all four consumer
+# checks go RED. A pre-residual `/^## Argument Parsing/` + `/^## Phase 3/` anchor
+# opened the decoy region and stayed GREEN (the reproduced M1 mutant).
+check_cross_audit_skill_decision_m1_prefix_sibling_rejected() {
+  local fx='tests/fixtures/decision-phase3-decoy/skill-decoy-m1.md'
+  [ -r "$fx" ] || { echo "$fx M1 decoy fixture not readable"; return 1; }
+  local leaked=""
+  check_cross_audit_skill_decision_slug_derivation "$fx" >/dev/null 2>&1 && leaked="$leaked slug_derivation"
+  check_cross_audit_skill_decision_phase3_branch   "$fx" >/dev/null 2>&1 && leaked="$leaked phase3_branch"
+  check_cross_audit_skill_decision_no_publish      "$fx" >/dev/null 2>&1 && leaked="$leaked no_publish"
+  check_cross_audit_skill_decision_report_only     "$fx" >/dev/null 2>&1 && leaked="$leaked report_only"
+  if [ -n "$leaked" ]; then
+    echo "M1 decoy fixture: decision check(s)$leaked passed on a gutted real section — a prefix-sibling decoy H2 hijacked the loose-anchor extractor (X6 M1 regression)"
+    return 1
+  fi
+  echo "M1 decoy fixture: exact-anchor extractors ignore the prefix-sibling decoy H2 (slug_derivation/phase3_branch/no_publish/report_only all RED)"
+}
+
+# NEGATIVE (fixture-based): M2 in-region duplicate H3 (code-audit X6 REOPENED
+# residual). A DUPLICATE decoy H3 (`### Decision mode` / `### Decision-mode return
+# handling`) is placed INSIDE the exact parent region, BEFORE the real (gutted)
+# H3, carrying the full carve-out a first-match grab would return. The
+# uniqueness-guarded extractors COUNT the in-region H3 occurrences and emit
+# nothing when the count != 1, so all four consumer checks go RED on the empty
+# section. A pre-residual first-match extractor grabbed the decoy H3 and stayed
+# GREEN (the reproduced M2 mutant).
+check_cross_audit_skill_decision_m2_duplicate_h3_rejected() {
+  local fx='tests/fixtures/decision-phase3-decoy/skill-decoy-m2.md'
+  [ -r "$fx" ] || { echo "$fx M2 decoy fixture not readable"; return 1; }
+  local leaked=""
+  check_cross_audit_skill_decision_slug_derivation "$fx" >/dev/null 2>&1 && leaked="$leaked slug_derivation"
+  check_cross_audit_skill_decision_phase3_branch   "$fx" >/dev/null 2>&1 && leaked="$leaked phase3_branch"
+  check_cross_audit_skill_decision_no_publish      "$fx" >/dev/null 2>&1 && leaked="$leaked no_publish"
+  check_cross_audit_skill_decision_report_only     "$fx" >/dev/null 2>&1 && leaked="$leaked report_only"
+  if [ -n "$leaked" ]; then
+    echo "M2 decoy fixture: decision check(s)$leaked passed on a gutted real section — a duplicate in-region decoy H3 was grabbed by the first-match extractor (X6 M2 regression)"
+    return 1
+  fi
+  echo "M2 decoy fixture: uniqueness-guarded extractors reject the duplicate in-region H3 (slug_derivation/phase3_branch/no_publish/report_only all RED)"
 }
 
 check_cross_audit_skill_focus_areas_references_canonical() {

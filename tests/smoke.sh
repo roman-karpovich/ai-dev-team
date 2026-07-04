@@ -3141,6 +3141,8 @@ check "cross-audit-skill-decision-prose-complete" check_cross_audit_skill_decisi
 # Decision-mode rework pins (spec 2026-07-02-decision-audit-mode code-audit X5/X6 sweep).
 check "cross-audit-skill-decision-launch-banner" check_cross_audit_skill_decision_launch_banner skills/cross-audit/SKILL.md
 check "cross-audit-skill-decision-phase3-decoy-rejected" check_cross_audit_skill_decision_phase3_decoy_rejected
+check "cross-audit-skill-decision-m1-prefix-sibling-rejected" check_cross_audit_skill_decision_m1_prefix_sibling_rejected
+check "cross-audit-skill-decision-m2-duplicate-h3-rejected" check_cross_audit_skill_decision_m2_duplicate_h3_rejected
 # Negative invocations — 1 original + 3 audit (X1/X2/X3) rows.
 check "check_smoke_helper_focus_areas_skill_inline_rejected" check_smoke_helper_focus_areas_skill_inline_rejected
 check "check_smoke_helper_focus_areas_skill_hybrid_rejected" check_smoke_helper_focus_areas_skill_hybrid_rejected
