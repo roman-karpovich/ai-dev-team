@@ -474,3 +474,14 @@ check_dedupe_failure_class_carry behavioral
 #   in cross-auditor.md §Step 2 — both pure prose assertions → prompt-text.
 check_codex_dispatch_emits_failure_class prompt-text
 check_claude_step2_mode_conditional_failure_class prompt-text
+# Fix-dispatch contract (spec 2026-07-05-fix-dispatch-carries-failure Step 3):
+#   fix-dispatch-contract-text pins the canonical §Fix-dispatch contract block in
+#   feature SKILL.md (root cause / invariant / input domain field literals +
+#   blocked-dispatch sentence, and absence of the `rework: fix code-audit finding X`
+#   literal). code-audit-dispatch-template-carries-failure +
+#   verify-rework-template-carries-failure pin the two extended dispatch template
+#   lines carrying the three fields co-located on one line — all pure prose
+#   assertions on feature SKILL.md → prompt-text.
+check_fix_dispatch_contract_text prompt-text
+check_code_audit_dispatch_template_carries_failure prompt-text
+check_verify_rework_template_carries_failure prompt-text
