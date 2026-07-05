@@ -1204,6 +1204,67 @@ check_cross_auditor_decision_mode_focus_clusters() {
   echo "$path §decision mode carries all 5 focus-cluster anchors (Decision coherence/Premise re-derivation/Rubber-stamp/Fork analysis/Planned/observed)"
 }
 
+# prompt-text: the standing integration-lens taxonomy (spec 2026-07-05-integration-lens-taxonomy).
+# Pins the `### Integration lenses (standing — logic / security / full)` section of
+# cross-auditor-mode-focus.md: line-exact heading, all 5 lens labels + the ADDITIVE rule +
+# the differential-lens `explicit parity statement` clause (labels-not-prose, so rewording
+# stays free while a dropped lens fails). Also freezes the wiring anchors — logic + security
+# section bodies each carry the `Standing integration lenses` bullet, full body carries the
+# `Integration lenses (standing)` reference (full-mode wiring pinned directly, not transitively).
+# Codex-half parity: the `^Focus:` template line in cross-auditor-codex-dispatch.md must instruct
+# pasting the standing integration lenses (template-line-scoped so a stray anchor elsewhere in the
+# file cannot mask a template that dropped it). Section-scoped extraction mirrors the decision-mode
+# cluster pin above; bash-3.2 compatible, awk line-equality section boundaries.
+check_cross_auditor_integration_lenses_standing() {
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qFx '### Integration lenses (standing — logic / security / full)' "$path" \
+    || { echo "$path missing line-exact '### Integration lenses (standing — logic / security / full)' heading"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "### Integration lenses (standing — logic / security / full)" { in_s = 1; next }
+    in_s && /^#/ { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '### Integration lenses (standing …)' section body"; return 1; }
+  local anchor
+  for anchor in '**Differential-vs-incumbent**' '**Under-issue / dropped work**' '**Runtime / framework wiring**' '**Read-side blast radius**' '**Flag-transition / migration edges**' 'Caller-supplied focus areas are ADDITIVE — they never replace the standing dimensions' 'explicit parity statement'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path §Integration lenses (standing) missing anchor '$anchor'"; return 1; }
+  done
+  # Wiring anchors, scoped to each mode's own section body so a stray reference cannot mask
+  # a missing bullet. logic + security carry the `Standing integration lenses` bullet; full
+  # carries the `Integration lenses (standing)` reference.
+  local mode_body
+  mode_body=$(awk '
+    !in_s && $0 == "### `logic` mode" { in_s = 1; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$mode_body" | grep -qF 'Standing integration lenses' \
+    || { echo "$path §\`logic\` mode missing 'Standing integration lenses' wiring bullet"; return 1; }
+  mode_body=$(awk '
+    !in_s && $0 == "### `security` mode" { in_s = 1; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$mode_body" | grep -qF 'Standing integration lenses' \
+    || { echo "$path §\`security\` mode missing 'Standing integration lenses' wiring bullet"; return 1; }
+  mode_body=$(awk '
+    !in_s && $0 == "### `full` mode" { in_s = 1; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$mode_body" | grep -qF 'Integration lenses (standing)' \
+    || { echo "$path §\`full\` mode missing 'Integration lenses (standing)' wiring reference"; return 1; }
+  # Codex-half parity: the `Focus:` dispatch template line must instruct pasting the lenses.
+  local dispatch="agents/references/cross-auditor-codex-dispatch.md"
+  [ -r "$dispatch" ] || { echo "$dispatch not readable"; return 1; }
+  grep -E '^Focus:' "$dispatch" | grep -qF 'including the standing integration lenses' \
+    || { echo "$dispatch 'Focus:' template line missing 'including the standing integration lenses'"; return 1; }
+  echo "$path §Integration lenses (standing) carries heading + 5 lens labels + ADDITIVE rule + parity statement; logic/security/full wiring pinned; codex-dispatch Focus line names the lenses"
+}
+
 # prompt-text: the reference-summary prose (line 3) must name FIVE operating
 # modes now that `decision` is the fifth. Negative: the stale `four operating
 # modes` literal must be gone. Positive: the updated prose must name `five
@@ -1231,6 +1292,32 @@ check_cross_auditor_mode_enum_names_decision() {
   grep -qF '`spec` | `decision`' "$path" \
     || { echo "$path §Input mode enum missing rendered '\`spec\` | \`decision\`' — decision must be the fifth mode"; return 1; }
   echo "$path §Input mode enum names decision (rendered '\`spec\` | \`decision\`')"
+}
+
+# prompt-text: the cross-auditor hub (agents/cross-auditor.md) must name the standing
+# integration lenses (spec 2026-07-05-integration-lens-taxonomy). Two contracts: (1) the
+# `## Mode Focus Areas` section body carries the `standing integration lenses` summary clause
+# (section-scoped so a stray mention elsewhere cannot mask a summary that dropped it); (2) the
+# apply-instruction line carries `mode ∈ {logic, security, full}` on the SAME line as
+# `standing integration lenses` (the additive-scope clause), and the file carries the
+# `never replace the standing dimensions` rule. Mirrors the decision-mode hub-pin precedent.
+check_cross_auditor_hub_names_integration_lenses() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "## Mode Focus Areas" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## Mode Focus Areas' section body"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'standing integration lenses' \
+    || { echo "$path §Mode Focus Areas summary missing 'standing integration lenses' clause"; return 1; }
+  grep -F 'mode ∈ {logic, security, full}' "$path" | grep -qF 'standing integration lenses' \
+    || { echo "$path apply-instruction missing 'standing integration lenses' on the 'mode ∈ {logic, security, full}' line"; return 1; }
+  grep -qF 'never replace the standing dimensions' "$path" \
+    || { echo "$path missing 'never replace the standing dimensions' additive rule"; return 1; }
+  echo "$path hub names the standing integration lenses (§Mode Focus Areas summary + apply-instruction additive clause on the 'mode ∈ {logic, security, full}' line + 'never replace the standing dimensions' rule)"
 }
 
 # prompt-text: the mode-dependent Severity Ladder in the cross-auditor hub must
