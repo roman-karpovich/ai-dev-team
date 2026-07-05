@@ -17,7 +17,7 @@ You perform TWO parallel audits (Claude + Codex), then consolidate findings into
 
 You receive a prompt with:
 - **scope**: files/directories/feature area to audit (in `spec` and `decision` modes, the audited KB spec path — the document under audit, not a code tree)
-- **project_type**: smart_contract | backend | frontend | data_pipeline
+- **project_type**: smart_contract | backend | frontend | data_pipeline | none (`none` = declared-typeless: the project has no applicable allowlist type; the loader runs at normalized-`"all"` scope and attests `rules_loaded: true` — a standing acceptance, distinct from unset/`null`, which stays degraded)
 - **mode**: `logic` | `security` | `full` | `spec` | `decision` (default: `full`; use `spec` to audit the spec document before implementation, `decision` to audit the decision trail of a completed /feature run)
 - **severity_floor**: `high` (default) | `medium+` — minimum severity to collect. `high` is the canonical behavior; `medium+` also includes MEDIUM findings. Propagates into Codex prompts and your own audit. Decision mode DEFAULTS this to `medium+` (see §Severity Ladder → decision mode) so the MEDIUM clusters are collected.
 - **codex_model** (optional): override the Codex model (e.g. `gpt-5.5`). Populated from `.ai-dev-team.yml` under `codex.model`. If absent, omit the `model` field in the MCP call so Codex uses `~/.codex/config.toml`.
@@ -116,7 +116,7 @@ See `agents/references/cross-auditor-codex-dispatch.md` for the canonical conten
 
 ## Step 1: Launch Codex (background CLI dispatch — before your own deep review)
 
-See `agents/references/cross-auditor-codex-dispatch.md` for the canonical content. The reference covers prompt-template assembly (`Step 1a/1b/1c`), `${CLAUDE_PLUGIN_ROOT}` env-first path resolution with realpath fallback, R-rule cluster filter (Trigger A/B), Code-mode + Spec-mode Codex prompt templates, diff-mode scoping, and Step 1 result handling at Step 3.
+See `agents/references/cross-auditor-codex-dispatch.md` for the canonical content. The reference covers prompt-template assembly (`Step 1a/1b/1c`), `${CLAUDE_PLUGIN_ROOT}` env-first path resolution with realpath fallback, R-rule cluster filter (Trigger A/B), the three-way `project_type` branch (allowlist / declared-`none` / unset-or-other) with the `rules_loaded:` attestation emit, Code-mode + Spec-mode Codex prompt templates, diff-mode scoping, and Step 1 result handling at Step 3.
 
 ## Step 2: Claude Audit (you)
 
@@ -150,11 +150,11 @@ See `agents/references/cross-auditor-step-3-pipeline.md` for the canonical conte
 
 ## Audit evidence handshake (`evidence_class:` + `evidence_blockers:`)
 
-See `agents/references/cross-auditor-evidence-handshake.md` for the canonical content. The reference covers `evidence_class:` + `evidence_blockers:` two-channel transmission (file-backed for code/full mode; inline three-line footer for spec and decision modes), the `claude_model:` model-attestation contract (emit your OWN model ID from your system prompt — sibling frontmatter key in code/full mode, one line immediately preceding the sentinel in spec/decision mode; `unknown` fallback), the binary emit allowlist (`dual_model | single_model` only — orchestrator-only values `self_fallback / contract_violated / skipped` never emitted by this agent), the YAML-safety serialization rule for blocker strings (newline→space + truncate-to-199 + single-quote escape + single-quoted form), the spec-mode return contract (sentinel marker + canonical 3-line EOF-adjacent footer), and the §Sentinel-obfuscation rule (self-anchoring carve-out for cross-audits of this agent file).
+See `agents/references/cross-auditor-evidence-handshake.md` for the canonical content. The reference covers `evidence_class:` + `evidence_blockers:` two-channel transmission (file-backed for code/full mode; inline three-line footer for spec and decision modes), the `claude_model:` model-attestation contract (emit your OWN model ID from your system prompt — sibling frontmatter key in code/full mode, one line immediately preceding the sentinel in spec/decision mode; `unknown` fallback), the binary emit allowlist (`dual_model | single_model` only — orchestrator-only values `self_fallback / contract_violated / skipped` never emitted by this agent), the YAML-safety serialization rule for blocker strings (newline→space + truncate-to-199 + single-quote escape + single-quoted form), the `audited_head:` and `rules_loaded:` attestation contracts (the latter the file-backed security/full-only rules-loaded machine channel), the spec-mode return contract (sentinel marker + canonical 3-line EOF-adjacent footer), and the §Sentinel-obfuscation rule (self-anchoring carve-out for cross-audits of this agent file).
 
 ## Step 4: Write Output Documents
 
-See `agents/references/cross-auditor-output-format.md` for the canonical content. The reference covers the findings.md template (frontmatter + H1 bullet block + Summary table + Details), the workdoc-iterN.md template (new file per iteration), the R-rule cluster gate emit contract, Schema-cut column semantics, and the legacy `Found by` → `sources[]` round-trip mapping.
+See `agents/references/cross-auditor-output-format.md` for the canonical content. The reference covers the findings.md template (frontmatter + H1 bullet block + Summary table + Details) including the `rules_loaded:` frontmatter key + emit contract, the workdoc-iterN.md template (new file per iteration), the R-rule cluster gate emit contract, Schema-cut column semantics, and the legacy `Found by` → `sources[]` round-trip mapping.
 
 ## Rules
 

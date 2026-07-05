@@ -72,3 +72,25 @@ Per spec `2026-07-05-audited-head-terminal-evidence-gates.md`. On file-backed au
 **Non-git carve-out.** When the audit workspace is NOT a git repo (the standalone non-git in-place path), `git rev-parse HEAD` cannot resolve — the `audited_head:` pin is OMITTED from the frontmatter entirely, and the standalone invocation correspondingly skips `--expected-head` so no false `HEAD_ATTESTATION_MISSING` fires. /feature callsites are always git-backed and are unaffected.
 
 **No value-shape validation** (mirror of `claude_model`). The parser does not validate the OID shape; a malformed or wrong OID simply mismatches the orchestrator's expected HEAD and routes to the audited-HEAD gate, never a silent pass.
+
+### Rules-loaded attestation contract (`rules_loaded`)
+
+Per spec `2026-07-05-degraded-run-rules-gate.md`. On file-backed `security`/`full` audits the cross-auditor ALSO emits `rules_loaded:` — a strict `true`/`false` attestation of whether the R-rule cluster loader actually loaded the project-scoped cluster (vs a degraded focus-areas-only run). This is the machine channel the anchor incident lacked: previously a rules-not-loaded audit could be signed off as a clean pass on the strength of a human-readable warning bullet alone, with no gate. `rules_loaded:` is a SIBLING of `audited_head:` in the leading findings.md frontmatter and mirrors it 1:1 in placement and lifecycle — overwritten each iteration with the current run's loader outcome.
+
+**Channel — file-backed `security`/`full` ONLY.** The R-rule cluster loader runs ONLY in `mode ∈ {security, full}`; those are the only modes that emit `rules_loaded:` / `rules_reason:`. `logic` mode (file-backed but never invokes the loader) and spec/decision inline returns emit NEITHER key — the three-line spec-mode footer stays byte-identical (zero migration). This is the deliberate asymmetry vs `audited_head` (emitted on all four file-backed modes) and vs `claude_model` (emitted in spec/decision too): the attestation binds exactly where rules can load and would be a zero-signal constant anywhere else.
+
+**Value truth table** (resolved once at the loader branch, attested once):
+
+| Loader outcome | `rules_loaded` | `rules_reason` |
+|---|---|---|
+| resolver exit 0 + `project_type` ∈ allowlist (filtered cluster loaded) | `true` | omitted |
+| resolver exit 0 + Trigger B (frontmatter parse fail → EVERY body section loaded verbatim) | `true` | omitted |
+| resolver exit 0 + `project_type` explicitly `none` (declared typeless; normalized-`"all"` scope) | `true` | omitted |
+| resolver exit 0 + `project_type` unset / non-allowlist-non-`none` (normalized-`"all"` scope) | `false` | `'project_type unset — all-scope rules only, project-specific cluster not active'` |
+| resolver exit 3 (unreachable — NO rules loaded) | `false` | `'code-quality-rules.md not reachable'` |
+
+Trigger B attests `true` because coverage is a superset (over-load, not under-load); its stderr warning stays. The declared-`none` branch attests `true` because the declaration is a standing, artifact-visible user acceptance of the typeless scope — it satisfies the degraded-rules acceptance criterion once in config instead of per-audit banner clicks. UNSET stays `false` because a silent default is indistinguishable from misconfiguration; the gate's banner drives the one-time config fix.
+
+**`rules_reason` sanitization + emit.** When `rules_loaded` is `false`, emit a sibling `rules_reason: '<sanitized short reason>'` single-quoted YAML scalar, sanitized by the SAME four-step blocker rule as `evidence_blockers:` — newline→space, truncate-to-199 + `…`, escape single quotes by doubling (`'`→`''`), emit in single-quoted YAML form (see §YAML-safety serialization rule for blocker strings above). When `rules_loaded` is `true`, `rules_reason` is OMITTED entirely (no cause to carry).
+
+**No value-shape validation** (mirror of `claude_model`/`audited_head`). The parser accepts ONLY the strict `true`/`false` tokens; any other token — case variants, an `=` separator, hyphen spelling, or any other word — is a malformed attempt that parses to None and routes to the rules gate as MISSING, never a silent pass. `rules_reason` carries no shape validation at all (informational raw value).

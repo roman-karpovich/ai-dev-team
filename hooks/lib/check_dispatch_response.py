@@ -46,6 +46,9 @@ CLI:
                                           # CLEAN_* responses (model attestation)
       [--expected-head <oid>]    # optional; activates head_gate on CLEAN_*
                                  # responses (audited-HEAD attestation)
+      [--require-rules-loaded]   # optional BARE boolean flag; activates
+                                 # rules_gate on CLEAN_* responses
+                                 # (rules-loaded attestation, security/full only)
       [--debug]                  # on exit 2, emit full Python traceback to stderr
 
 The JSON output additionally carries the model-attestation fields (additive,
@@ -62,6 +65,19 @@ pinned, informational even without the flag; ALWAYS null in spec mode) and
 computed INDEPENDENTLY of `policy_gate`/`model_gate`; on a co-fire the JSON
 carries multiple non-null gates and the policy->model->head consumption
 ordering lives in the orchestrator, not here.
+
+It likewise carries the rules-loaded fields (additive, never removed):
+`rules_loaded` (true|false|null — the R-rule-cluster load attestation the
+code/full-mode findings.md pinned, informational even without the flag; ALWAYS
+null in spec mode), `rules_reason` (string|null — the sanitized human reason
+the attestation carried when false, unquoted from its on-disk single-quoted
+YAML form; null when absent) and `rules_gate`
+(null|RULES_ATTESTATION_MISSING|RULES_NOT_LOADED — set only when the bare
+`--require-rules-loaded` flag is passed and the response is CLEAN_*). `rules_gate`
+is computed INDEPENDENTLY of `policy_gate`/`model_gate`/`head_gate`; on a
+co-fire the JSON carries multiple non-null gates and the
+policy->model->head->rules consumption ordering lives in the orchestrator, not
+here.
 """
 
 import argparse
@@ -163,6 +179,40 @@ AUDITED_HEAD_CANONICAL_RE = re.compile(
     r"^audited_head: ",
 )
 
+# --- Rules-loaded recognizer (§3.2 strict, mirrors the audited_head pair) ---
+#
+# The cross-auditor attests whether the R-rule cluster loaded in an
+# `rules_loaded: <true|false>` line in the leading findings.md frontmatter
+# (code/full security/full modes only — spec/decision/logic emit NOTHING, so
+# `classify_spec` always yields `rules_loaded = None`). Parse is strict: the
+# value must be exactly `true` or `false`; any OTHER token (or shape) is a
+# malformed attempt → None → routed to the gate as MISSING, never a silent
+# pass (§3.1). Same strictness philosophy as the audited_head / claude_model
+# recognizers.
+#
+#   RULES_LOADED_ATTEMPT_RE — PERMISSIVE recognizer: matches any line a
+#     reasonable reader would recognize as an *attempt* at the key in ANY
+#     shape (`rules_loaded:x` no-space, `rules_loaded =`, hyphen/case
+#     variants, leading whitespace). Used to DETECT a malformed attempt
+#     coexisting with a valid canonical line.
+#   RULES_LOADED_CANONICAL_RE — STRICT canonical form: line start, the exact
+#     lower-case underscore key, a colon, exactly one space.
+RULES_LOADED_ATTEMPT_RE = re.compile(
+    r"^[ \t]*rules[_-]?loaded[ \t]*[:=]",
+    re.IGNORECASE,
+)
+RULES_LOADED_CANONICAL_RE = re.compile(
+    r"^rules_loaded: ",
+)
+
+# Canonical `rules_reason:` sibling — informational (§3.2: "no shape
+# validation"), read only in the strict canonical form. The value is a
+# single-quoted YAML scalar on disk; the parse strips one level of matching
+# outer single quotes and reverses the `''`→`'` escaping for the JSON surface.
+RULES_REASON_CANONICAL_RE = re.compile(
+    r"^rules_reason: ",
+)
+
 
 def _parse_claude_model_spec(lines, sentinel_idx):
     """Parse the spec-mode `claude_model:` attestation (§3.1 strict).
@@ -247,6 +297,71 @@ def _parse_audited_head_code(fm_lines, skip_lines):
     if value == "":
         return None
     return value
+
+
+def _parse_rules_loaded_code(fm_lines, skip_lines):
+    """Parse the code/full-mode `rules_loaded:` attestation (§3.2 strict).
+
+    Mirrors `_parse_audited_head_code`: scans EVERY non-continuation line of
+    the leading frontmatter, requires EXACTLY ONE canonical `rules_loaded: `
+    line and ZERO malformed attempts. A malformed attempt is either a
+    permissive-recognizer match without a canonical match (no-space, `=`,
+    hyphen/case variant) OR a canonical line whose value is neither `true`
+    nor `false` (§3.1: "any other token is a malformed attempt" — the boolean
+    is validated here, unlike the shapeless audited_head value). Zero canonical
+    lines, duplicate canonical lines, or any malformed attempt → None, which
+    routes to the gate as MISSING rather than a silent pass.
+
+    Returns Python `True` / `False` (so the JSON surface serializes `true` /
+    `false`) or None.
+    """
+    canonical_count = 0
+    malformed_seen = False
+    value = None
+    for idx, ln in enumerate(fm_lines):
+        if idx in skip_lines:
+            continue
+        if not RULES_LOADED_ATTEMPT_RE.match(ln):
+            continue
+        if RULES_LOADED_CANONICAL_RE.match(ln):
+            token = ln[len("rules_loaded: "):].strip()
+            if token == "true":
+                canonical_count += 1
+                value = True
+            elif token == "false":
+                canonical_count += 1
+                value = False
+            else:
+                # Canonical prefix but a non-boolean value — a malformed
+                # attempt, never a silent pass (§3.1).
+                malformed_seen = True
+        else:
+            malformed_seen = True
+    if malformed_seen or canonical_count != 1:
+        return None
+    return value
+
+
+def _parse_rules_reason_code(fm_lines, skip_lines):
+    """Parse the code/full-mode `rules_reason:` value (§3.2 informational).
+
+    Lenient informational read (NO shape validation, unlike the strict
+    `_parse_rules_loaded_code`): the FIRST canonical `rules_reason: ` line in
+    the leading frontmatter is taken verbatim after the prefix strip, then ONE
+    level of matching outer single quotes is stripped and the `''`→`'` YAML
+    escaping is reversed. The JSON/banner/Log surface thus carries the clean
+    human string while the raw single-quoted form stays on disk in findings.md.
+    None when no canonical `rules_reason: ` line is present.
+    """
+    for idx, ln in enumerate(fm_lines):
+        if idx in skip_lines:
+            continue
+        if RULES_REASON_CANONICAL_RE.match(ln):
+            raw = ln[len("rules_reason: "):].strip()
+            if len(raw) >= 2 and raw.startswith("'") and raw.endswith("'"):
+                return raw[1:-1].replace("''", "'")
+            return raw
+    return None
 
 
 def _validate_evidence_keys(fm_lines, skip_lines):
@@ -635,10 +750,12 @@ def classify_spec(raw_text):
     """Classify a spec-mode inline-return text.
 
     Returns (classification, evidence_class, blockers_items, blockers_yaml,
-    claude_model, audited_head). `audited_head` is ALWAYS None in spec mode —
-    the audited-HEAD pin is a code/full-mode-only channel (spec/decision inline
-    modes emit no commit sign-off), so the 6-tuple parity with `classify_code`
-    is satisfied by a constant None here.
+    claude_model, audited_head, rules_loaded, rules_reason). `audited_head`,
+    `rules_loaded` and `rules_reason` are ALWAYS None in spec mode — the
+    audited-HEAD pin and the rules-loaded attestation are code/full-mode-only
+    channels (spec/decision inline modes emit no commit sign-off and no rules
+    keys), so the 8-tuple parity with `classify_code` is satisfied by constant
+    None values here.
 
     The footer is the LAST sentinel-anchored block: the sentinel line, then
     an `evidence_class: ` line, then the `evidence_blockers: ` line whose
@@ -656,7 +773,7 @@ def classify_spec(raw_text):
     stripped = raw_text.rstrip("\n").rstrip("\r\n")
     lines = stripped.splitlines()
     if len(lines) < 3:
-        return "MISSING_FOOTER", None, [], "[]", None, None
+        return "MISSING_FOOTER", None, [], "[]", None, None, None, None
     # Anchor on the LAST occurrence of the sentinel line.
     sentinel_idx = None
     for i in range(len(lines) - 1, -1, -1):
@@ -668,7 +785,7 @@ def classify_spec(raw_text):
     # the continuation of a multi-line (newline-unsafe) evidence_blockers
     # value. Anything else (no sentinel, sentinel not near EOF) is missing.
     if sentinel_idx is None or sentinel_idx > len(lines) - 3:
-        return "MISSING_FOOTER", None, [], "[]", None, None
+        return "MISSING_FOOTER", None, [], "[]", None, None, None, None
     # Model attestation: the line immediately preceding the sentinel (§3.1
     # strict, guarded against negative-index wrap at sentinel_idx == 0). Read
     # before the footer-shape checks below so a CLEAN response with a
@@ -678,16 +795,17 @@ def classify_spec(raw_text):
     blockers_idx = sentinel_idx + 2
     if not class_line.startswith("evidence_class: "):
         return ("MALFORMED_FOOTER_EVIDENCE_CLASS", None, [], "[]",
-                claude_model, None)
+                claude_model, None, None, None)
     if not lines[blockers_idx].startswith("evidence_blockers: "):
         return ("MALFORMED_FOOTER_EVIDENCE_BLOCKERS", None, [], "[]",
-                claude_model, None)
+                claude_model, None, None, None)
     evidence_class = class_line[len("evidence_class: "):].strip()
     blockers_raw, spanned = _gather_blockers_value(lines, blockers_idx)
     # A footer that is exactly 3 physical lines (spanned == 1) AND has no
     # trailing lines beyond the blockers line is the well-formed shape.
     if spanned == 1 and blockers_idx != len(lines) - 1:
-        return "MISSING_FOOTER", None, [], "[]", claude_model, None
+        return ("MISSING_FOOTER", None, [], "[]", claude_model, None,
+                None, None)
     blockers_safety = _scan_blocker_safety(blockers_raw)
     blockers_items, blockers_ok = _parse_blockers_literal(blockers_raw)
     # A non-list `evidence_blockers` value (bare scalar, unclosed bracket,
@@ -697,20 +815,20 @@ def classify_spec(raw_text):
     # `blockers_ok` only gates the genuinely non-list shape.
     if not blockers_ok and blockers_safety == "ok":
         return ("MALFORMED_FOOTER_EVIDENCE_BLOCKERS", evidence_class, [],
-                "[]", claude_model, None)
+                "[]", claude_model, None, None, None)
     classification = _classify_fields(
         evidence_class, blockers_safety, blockers_items
     )
     blockers_yaml = _emit_blockers_yaml(blockers_items)
     return (classification, evidence_class, blockers_items, blockers_yaml,
-            claude_model, None)
+            claude_model, None, None, None)
 
 
 def classify_code(findings_path):
     """Classify a code/full-mode response from the on-disk findings.md.
 
     Returns (classification, evidence_class, blockers_items, blockers_yaml,
-    claude_model, audited_head).
+    claude_model, audited_head, rules_loaded, rules_reason).
 
     Code/spec-mode strictness parity: `classify_spec` reads the two scalars
     strictly positionally (`lines[sentinel_idx + 1]` / `+ 2`), so a malformed
@@ -730,14 +848,14 @@ def classify_code(findings_path):
         with open(findings_path, "r", encoding="utf-8") as fh:
             text = fh.read()
     except FileNotFoundError:
-        return "FINDINGS_MISSING", None, [], "[]", None, None
+        return "FINDINGS_MISSING", None, [], "[]", None, None, None, None
     except OSError as exc:
         raise ClassifierCrash(
             f"cannot read findings file {findings_path}: {exc}"
         )
     fm = _frontmatter_lines(text)
     if fm is None:
-        return "FINDINGS_MALFORMED", None, [], "[]", None, None
+        return "FINDINGS_MALFORMED", None, [], "[]", None, None, None, None
     # First pass: locate the canonical `evidence_blockers:` line and gather
     # its value across any physical continuation lines (a list literal split
     # by an embedded newline — the newline-unsafe defect). The continuation
@@ -769,11 +887,21 @@ def classify_code(findings_path):
     # malformed/duplicate/empty pin yields None but never perturbs the 12-enum
     # verdict. Same continuation-line skip set reused.
     audited_head = _parse_audited_head_code(fm, skip_lines)
+    # Rules-loaded attestation: exactly one canonical `rules_loaded: ` line
+    # whose value is `true`/`false`, zero malformed attempts (§3.2 strict,
+    # mirror of the audited_head parse). Its optional `rules_reason:` sibling
+    # is read informationally (no shape validation). Both are parsed
+    # independently of the classification — a malformed/duplicate/absent
+    # attestation yields None but never perturbs the 12-enum verdict. Same
+    # continuation-line skip set reused.
+    rules_loaded = _parse_rules_loaded_code(fm, skip_lines)
+    rules_reason = _parse_rules_reason_code(fm, skip_lines)
     # Whole-block evidence-key well-formedness check (structural — closes the
     # X9/X11/X14 frontmatter-strictness asymmetry class). Any malformed
     # attempt at either key, any count != 1, routes to FINDINGS_MALFORMED.
     if not _validate_evidence_keys(fm, skip_lines):
-        return "FINDINGS_MALFORMED", None, [], "[]", claude_model, audited_head
+        return ("FINDINGS_MALFORMED", None, [], "[]", claude_model,
+                audited_head, rules_loaded, rules_reason)
     # The block is well-formed: exactly one canonical line for each key.
     # Extract the `evidence_class` value from its canonical line.
     evidence_class = None
@@ -789,7 +917,7 @@ def classify_code(findings_path):
         # exactly one canonical line for each key), but kept as a defensive
         # invariant assertion for the value-extraction step.
         return ("FINDINGS_MALFORMED", None, [], "[]", claude_model,
-                audited_head)
+                audited_head, rules_loaded, rules_reason)
     blockers_safety = _scan_blocker_safety(blockers_raw)
     blockers_items, blockers_ok = _parse_blockers_literal(blockers_raw)
     # A non-list `evidence_blockers` value in the findings.md frontmatter is
@@ -797,13 +925,13 @@ def classify_code(findings_path):
     # the newline-unsafe safety scan takes precedence over the shape check.
     if not blockers_ok and blockers_safety == "ok":
         return ("FINDINGS_MALFORMED", evidence_class, [], "[]", claude_model,
-                audited_head)
+                audited_head, rules_loaded, rules_reason)
     classification = _classify_fields(
         evidence_class, blockers_safety, blockers_items
     )
     blockers_yaml = _emit_blockers_yaml(blockers_items)
     return (classification, evidence_class, blockers_items, blockers_yaml,
-            claude_model, audited_head)
+            claude_model, audited_head, rules_loaded, rules_reason)
 
 
 def build_parser():
@@ -827,6 +955,14 @@ def build_parser():
                              "against this exact commit oid on CLEAN_* "
                              "responses; absent -> HEAD_ATTESTATION_MISSING, "
                              "mismatch -> HEAD_MISMATCH (head_gate)")
+    parser.add_argument("--require-rules-loaded", action="store_true",
+                        help="bare boolean flag (no value); when set, gate the "
+                             "parsed rules_loaded attestation on CLEAN_* "
+                             "responses: absent/malformed -> "
+                             "RULES_ATTESTATION_MISSING, attested false -> "
+                             "RULES_NOT_LOADED (rules_gate). Security/full "
+                             "file-backed audits only — logic/spec never pass "
+                             "it")
     parser.add_argument("--debug", action="store_true",
                         help="on exit 2 (classifier crash), emit full "
                              "Python traceback to stderr")
@@ -846,7 +982,8 @@ def run(args):
 
     if args.mode == "spec":
         (classification, evidence_class, blockers_items, blockers_yaml,
-         claude_model, audited_head) = classify_spec(raw_text)
+         claude_model, audited_head, rules_loaded,
+         rules_reason) = classify_spec(raw_text)
         findings_path = None
     else:  # code | full
         if args.findings_path is None:
@@ -855,7 +992,8 @@ def run(args):
             )
         findings_path = args.findings_path
         (classification, evidence_class, blockers_items, blockers_yaml,
-         claude_model, audited_head) = classify_code(findings_path)
+         claude_model, audited_head, rules_loaded,
+         rules_reason) = classify_code(findings_path)
 
     # Project-policy gate (§3.4a): ai-dev-team CLEAN_SINGLE -> STOP_AND_DISCUSS.
     policy_gate = None
@@ -895,6 +1033,24 @@ def run(args):
         elif audited_head != args.expected_head:
             head_gate = "HEAD_MISMATCH"
 
+    # Degraded-rules gate (§3.2). Set ONLY when the bare `--require-rules-loaded`
+    # flag is passed AND the response is CLEAN_* (a violation already routes to
+    # retry — rules_gate stays null and lets the violation path supersede).
+    # Computed INDEPENDENTLY of policy_gate/model_gate/head_gate — exactly like
+    # head_gate above, which never inspects the other gates: on a co-fire the
+    # JSON carries multiple non-null gates simultaneously, and the
+    # policy->model->head->rules ordering is enforced ONLY in orchestrator
+    # consumption. rules_loaded None/absent-or-malformed -> MISSING; attested
+    # False -> RULES_NOT_LOADED; attested True -> null. The rules_loaded parse
+    # NEVER changes the 12-enum classification or exit code.
+    rules_gate = None
+    if (args.require_rules_loaded
+            and classification in ("CLEAN_DUAL", "CLEAN_SINGLE")):
+        if rules_loaded is None:
+            rules_gate = "RULES_ATTESTATION_MISSING"
+        elif rules_loaded is False:
+            rules_gate = "RULES_NOT_LOADED"
+
     exit_code = 0 if classification in ("CLEAN_DUAL", "CLEAN_SINGLE") else 1
 
     # Violation-blocker phrasing: the canonical string the orchestrator
@@ -932,6 +1088,9 @@ def run(args):
         "model_gate": model_gate,
         "audited_head": audited_head,
         "head_gate": head_gate,
+        "rules_loaded": rules_loaded,
+        "rules_reason": rules_reason,
+        "rules_gate": rules_gate,
         "iteration": args.iteration,
         "audit_slug": args.audit_slug,
         "mode": args.mode,

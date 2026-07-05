@@ -1,0 +1,12 @@
+expected_classification: CLEAN_DUAL
+expected_exit: 0
+mode: code
+require_rules_arg: true
+expected_claude_model: claude-fable-5
+expected_head_arg: 2222222222222222222222222222222222222222
+expected_head_gate: HEAD_MISMATCH
+expected_audited_head: 1111111111111111111111111111111111111111
+expected_rules_gate: RULES_NOT_LOADED
+expected_rules_loaded: false
+expected_rules_reason: project_type unset — all-scope rules only, project-specific cluster not active
+notes: "synthetic; head_gate (mismatch) co-fires with rules_gate (not-loaded) -> BOTH non-null in one JSON (independent computation)"

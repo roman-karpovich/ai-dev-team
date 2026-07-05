@@ -1567,19 +1567,21 @@ check_banner_convention_doc_valid() {
 # feature-mode contract-violation terminal banner, and the §Implement
 # continuous-parallel-diff-audits opt-in banner.
 check_feature_awaiting_count_17() {
-  # 38 includes the §3.5b-2e model-attestation gate banner added by spec
+  # 39 includes the §3.5b-2e model-attestation gate banner added by spec
   # 2026-06-10-fable-cross-auditor-attestation Step 3, the ## Grill mode
   # standalone spec-resolution banner added by the grill-feature-gate code-audit
-  # X1 fix, plus the 2 banners added by spec
+  # X1 fix, the 2 banners added by spec
   # 2026-07-05-audited-head-terminal-evidence-gates Step 4 (hand-off audited-HEAD
-  # mismatch banner + §3.4a/Verify terminal-evidence refusal banner).
+  # mismatch banner + §3.4a/Verify terminal-evidence refusal banner), plus the
+  # §3.5b-2g degraded-rules gate banner added by spec
+  # 2026-07-05-degraded-run-rules-gate Step 3.
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "38" ]; then
-    echo "feature AWAITING count=$n expected 38"
+  if [ "$n" != "39" ]; then
+    echo "feature AWAITING count=$n expected 39"
     return 1
   fi
-  echo "feature AWAITING count=38 OK"
+  echo "feature AWAITING count=39 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1595,17 +1597,19 @@ check_feature_approval_count_1() {
 
 # (d) cross-audit SKILL.md must have exactly 1 AWAITING banner line.
 check_cross_audit_awaiting_count_1() {
-  # 6 includes the Standalone model-attestation gate banner added by spec
-  # 2026-06-10-fable-cross-auditor-attestation Step 3, plus the Standalone
+  # 7 includes the Standalone model-attestation gate banner added by spec
+  # 2026-06-10-fable-cross-auditor-attestation Step 3, the Standalone
   # audited-HEAD gate banner added by spec
-  # 2026-07-05-audited-head-terminal-evidence-gates Step 5.
+  # 2026-07-05-audited-head-terminal-evidence-gates Step 5, plus the Standalone
+  # degraded-rules gate banner added by spec
+  # 2026-07-05-degraded-run-rules-gate Step 4.
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/cross-audit/SKILL.md)
-  if [ "$n" != "6" ]; then
-    echo "cross-audit AWAITING count=$n expected 6"
+  if [ "$n" != "7" ]; then
+    echo "cross-audit AWAITING count=$n expected 7"
     return 1
   fi
-  echo "cross-audit AWAITING count=6 OK"
+  echo "cross-audit AWAITING count=7 OK"
 }
 
 # (e) research SKILL.md must have exactly 4 AWAITING banner lines.
@@ -1734,8 +1738,11 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 39 — the +2 over 37
-# are the hand-off audited-HEAD mismatch banner and the §3.4a/Verify
+# (r) ruler-prefix count matches total banner count (expected 42 — the +1 over 41 is
+# the standalone degraded-rules gate banner added by spec
+# 2026-07-05-degraded-run-rules-gate Step 4; the +1 over 40
+# is the §3.5b-2g degraded-rules gate banner added by that spec's Step 3; the 40 base includes the +2 over 37
+# hand-off audited-HEAD mismatch banner and the §3.4a/Verify
 # terminal-evidence refusal banner added by spec
 # 2026-07-05-audited-head-terminal-evidence-gates Step 4; the 37 base includes the
 # §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1,
@@ -1759,15 +1766,18 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "40" ]; then
-    echo "ruler-prefix count=$c expected 40"
+  if [ "$c" != "42" ]; then
+    echo "ruler-prefix count=$c expected 42"
     return 1
   fi
-  echo "ruler-prefix count=40 OK"
+  echo "ruler-prefix count=42 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 51 — the +1
-# over 50 is the standalone audited-HEAD gate banner added by spec
+# (s) each banner has trailing bold question within 15 lines (expected 53 — the +1
+# over 52 is the standalone degraded-rules gate banner added by spec
+# 2026-07-05-degraded-run-rules-gate Step 4; the +1 over 51 is the §3.5b-2g
+# degraded-rules gate banner added by that spec's Step 3; the 51 base includes the +1 standalone
+# audited-HEAD gate banner added by spec
 # 2026-07-05-audited-head-terminal-evidence-gates Step 5; the 50 base includes the
 # +2 hand-off audited-HEAD mismatch banner and the §3.4a/Verify terminal-evidence
 # refusal banner added by that spec's Step 4; the 48 base includes
@@ -1791,11 +1801,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "51" ]; then
-    echo "trailing-bold-present-each count=$c expected 51"
+  if [ "$c" != "53" ]; then
+    echo "trailing-bold-present-each count=$c expected 53"
     return 1
   fi
-  echo "trailing-bold-present-each=51 OK"
+  echo "trailing-bold-present-each=53 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -4474,12 +4484,21 @@ check "cross_auditor_codex_effort_default_xhigh_kept"     check_cross_auditor_co
 check "cross-auditor-model-attestation-contract"         check_cross_auditor_model_attestation_contract
 check "cross-auditor-audited-head-template"              check_cross_auditor_audited_head_template
 check "cross-auditor-audited-head-handshake"             check_cross_auditor_audited_head_handshake
+check "cross-auditor-rules-loaded-template"              check_cross_auditor_rules_loaded_template
+check "cross-auditor-rules-loaded-handshake"             check_cross_auditor_rules_loaded_handshake
+check "cross-auditor-rules-loaded-dispatch"              check_cross_auditor_rules_loaded_dispatch
 check "feature-handoff-audited-head-gate"                check_feature_handoff_audited_head_gate
 check "feature-code-audit-marker-audited-head"           check_feature_code_audit_marker_audited_head
 check "feature-classifier-expected-head-callsites"       check_feature_classifier_expected_head_callsites
+check "feature-degraded-rules-gate"                      check_feature_degraded_rules_gate
+check "feature-exit0-chain-rules-fourth"                 check_feature_exit0_chain_rules_fourth
+check "feature-classifier-require-rules-callsites"       check_feature_classifier_require_rules_callsites
 check "feature-terminal-evidence-refusal"                check_feature_terminal_evidence_refusal
 check "feature-verify-terminal-evidence-precondition"    check_feature_verify_terminal_evidence_precondition
 check "cross-audit-standalone-audited-head"              check_cross_audit_standalone_audited_head
+check "cross-audit-standalone-require-rules"             check_cross_audit_standalone_require_rules
+check "cross-audit-standalone-degraded-rules-banner"     check_cross_audit_standalone_degraded_rules_banner
+check "cross-audit-standalone-recovered-clean-rules"     check_cross_audit_standalone_recovered_clean_rules
 check "model-attestation-skill-coupling"                 check_model_attestation_skill_coupling
 check "cross_auditor_codex_cwd_override_async_dispatch"   check_cross_auditor_codex_cwd_proximity
 echo

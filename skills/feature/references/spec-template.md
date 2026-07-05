@@ -12,6 +12,11 @@ created: YYYY-MM-DD
 shipped_at: null
 # Optional: project type — gates the security R-rule cluster at code-audit time.
 # Allowlist values: smart_contract | backend | frontend | data_pipeline.
+# Explicit typeless: `none` — a distinct YAML string declaring the project has NO
+#   applicable allowlist type (e.g. a markdown+bash+python tooling repo). The loader
+#   runs at normalized-"all" scope AND attests rules_loaded: true (a standing,
+#   artifact-visible acceptance), so it does NOT trip the degraded-rules gate —
+#   UNLIKE unset/null below, which stays degraded (rules_loaded: false).
 # Resolution chain (highest priority first):
 #   spec_frontmatter.project_type
 #     → .ai-dev-team.local.yml (gitignored personal override)
