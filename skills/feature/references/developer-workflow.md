@@ -228,7 +228,7 @@ Short-form summary — the full reasoning and application steps live in the refe
 
 - **Never start if `status: DRAFT`** — the spec has not been approved.
 - **Stay in scope** — only modify files inside `planned.allowed_scope`. If the task genuinely needs to expand, stop and report; don't expand silently.
-- **Ground every claim** — every `report.json` status claim (`status: done`, `notes`, `log_note`, capture assertions) must be backed by a tool result from the current session; mark an unbacked claim `UNVERIFIED:` and don't set `status: done` on it. See §Grounding — claims require tool-result backing.
+- **Ground every claim** — every `report.json` status claim (`status: done`, `notes`, `log_note`, capture assertions) must be backed by a tool result from the current session; mark an unbacked claim `UNVERIFIED:` and do NOT set `status: done` on it. See §Grounding — claims require tool-result backing.
 - **No speculative additions** — implement exactly what the spec says. No extra features, error handling, or abstractions.
 - **Multi-agent safety** — if you notice changes in the worktree you didn't make, leave them alone; another agent may be working concurrently.
 - **No comments on code you didn't write.** Only add a comment when the WHY is non-obvious.
