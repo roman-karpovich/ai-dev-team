@@ -9,7 +9,9 @@
 #       {
 #         "id": "X1", "severity": "CRITICAL|HIGH|MEDIUM",
 #         "title": "...", "sources": ["claude", "codex" | "probe:E|F|G", ...],
-#         "file": "path:line", "description": "...", "fix": "...",
+#         "file": "path:line", "description": "...",
+#         "failure_class": "<string>",  # optional; rendered empty when absent
+#         "fix": "...",
 #         "mode_at_emit": null | "shadow" | "warn" | "block",
 #         "blocking": true|false,
 #         "probe_receipt": null | "<path>", "probe_version": null | "<version>",
@@ -251,7 +253,8 @@ if all_findings:
         out.append(f"- **Severity**: {f['severity']}")
         out.append(f"- **File**: {f['file']}")
         out.append(f"- **Description**: {f['description']}")
-        out.append(f"- **Fix**: {f['fix']}")
+        out.append(f"- **Failure class / input domain**: {f.get('failure_class') or ''}")
+        out.append(f"- **Fix (advisory)**: {f['fix']}")
         out.append(f"- **Sources**: {render_sources_list(f.get('sources') or [])}")
         out.append(f"- **Mode at emit**: {f.get('mode_at_emit') or ''}")
         blocking = f.get("blocking", False)

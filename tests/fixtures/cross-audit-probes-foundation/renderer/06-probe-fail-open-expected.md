@@ -13,7 +13,8 @@
 - **Severity**: HIGH
 - **File**: src/api/users.py:67
 - **Description**: search_query parameter is concatenated directly into the LIKE clause without parameterization.
-- **Fix**: Use parameterized query with bind variables.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Use parameterized query with bind variables.
 - **Sources**: [claude, codex]
 - **Mode at emit**: 
 - **Blocking**: false

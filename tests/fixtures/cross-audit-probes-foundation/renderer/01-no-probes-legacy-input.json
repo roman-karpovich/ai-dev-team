@@ -7,6 +7,7 @@
       "sources": ["claude", "codex"],
       "file": "src/api/deposit.py:42",
       "description": "Amount field not validated against account balance before persist call.",
+      "failure_class": "unparseable-numeric inputs: NaN/Infinity/negative",
       "fix": "Add balance-check guard before calling persist_deposit().",
       "mode_at_emit": null,
       "blocking": false,

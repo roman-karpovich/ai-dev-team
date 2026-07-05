@@ -10,7 +10,8 @@
 - **Severity**: HIGH
 - **File**: src/stellar/reconcile.py:87
 - **Description**: Probe F detected .limit(200).order(desc=False) on Horizon history without cursor; production cardinality is unbounded years of data.
-- **Fix**: Use cursor-paged iteration with an explicit upper bound.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Use cursor-paged iteration with an explicit upper bound.
 - **Sources**: [probe:F]
 - **Mode at emit**: warn
 - **Blocking**: false

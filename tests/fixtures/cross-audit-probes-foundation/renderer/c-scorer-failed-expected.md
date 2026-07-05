@@ -13,7 +13,8 @@
 - **Severity**: HIGH
 - **File**: src/logs/fmt.py:18
 - **Description**: User-controlled input reaches format string.
-- **Fix**: Use %s placeholder with explicit args.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Use %s placeholder with explicit args.
 - **Sources**: [claude]
 - **Mode at emit**: 
 - **Blocking**: false
@@ -28,7 +29,8 @@
 - **Severity**: HIGH
 - **File**: src/net/retry.py:40
 - **Description**: Backoff scheme uses a magic constant.
-- **Fix**: Extract to settings.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Extract to settings.
 - **Sources**: [codex]
 - **Mode at emit**: 
 - **Blocking**: false

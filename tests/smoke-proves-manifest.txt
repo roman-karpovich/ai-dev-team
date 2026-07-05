@@ -459,3 +459,33 @@ check_skill_degraded_predicate_no_grill prompt-text
 #   prompt-text.
 check_skill_grill_mode_handler_exists prompt-text
 check_skill_grill_status_skipped_write_path prompt-text
+
+# Finding-schema failure-class field + advisory Fix label (spec 2026-07-05-fix-dispatch-carries-failure Step 1):
+#   findings-schema-failure-class pins two literal markdown labels in
+#   cross-auditor-output-format.md (the failure-class details field + the renamed
+#   `**Fix (advisory)**:` label) → prompt-text. renderer-failure-class-passthrough
+#   RUNS render_findings.sh on fixture 01 and byte-matches its golden + greps the
+#   distinctive VALUE → behavioral. dedupe-failure-class-carry RUNS
+#   dedupe_findings.sh on a probe+LLM merge fixture and byte-matches the golden
+#   asserting merge_pair retains the LLM-side failure_class → behavioral.
+check_findings_schema_failure_class prompt-text
+check_renderer_failure_class_passthrough behavioral
+check_dedupe_failure_class_carry behavioral
+# Emission instructions (spec 2026-07-05-fix-dispatch-carries-failure Step 2):
+#   codex-dispatch-emits-failure-class pins the three per-mode Codex prompt
+#   templates (mode-appropriate failure-class clause + verbatim lead-ins) and
+#   claude-step2-mode-conditional-failure-class pins the mode-conditional sentence
+#   in cross-auditor.md §Step 2 — both pure prose assertions → prompt-text.
+check_codex_dispatch_emits_failure_class prompt-text
+check_claude_step2_mode_conditional_failure_class prompt-text
+# Fix-dispatch contract (spec 2026-07-05-fix-dispatch-carries-failure Step 3):
+#   fix-dispatch-contract-text pins the canonical §Fix-dispatch contract block in
+#   feature SKILL.md (root cause / invariant / input domain field literals +
+#   blocked-dispatch sentence, and absence of the `rework: fix code-audit finding X`
+#   literal). code-audit-dispatch-template-carries-failure +
+#   verify-rework-template-carries-failure pin the two extended dispatch template
+#   lines carrying the three fields co-located on one line — all pure prose
+#   assertions on feature SKILL.md → prompt-text.
+check_fix_dispatch_contract_text prompt-text
+check_code_audit_dispatch_template_carries_failure prompt-text
+check_verify_rework_template_carries_failure prompt-text

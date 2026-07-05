@@ -20,7 +20,8 @@
 - **Severity**: HIGH
 - **File**: src/rewards/queue.py:33
 - **Description**: Concurrent queue push without lock.
-- **Fix**: Serialize with mutex.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Serialize with mutex.
 - **Sources**: [claude]
 - **Mode at emit**: 
 - **Blocking**: false
@@ -35,7 +36,8 @@
 - **Severity**: HIGH
 - **File**: src/stellar/reconcile.py:142
 - **Description**: Probe E flagged the marker.
-- **Fix**: Add to allowlist.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Add to allowlist.
 - **Sources**: [probe:E]
 - **Mode at emit**: shadow
 - **Blocking**: false

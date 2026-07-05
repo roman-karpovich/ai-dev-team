@@ -3210,6 +3210,14 @@ echo
 # --- Cross-audit probes foundation (spec 2026-04-21-cross-audit-probes-foundation) ---
 echo "Cross-audit probes foundation:"
 check "check_agents_cross_auditor_schema_cut_fields" check_agents_cross_auditor_schema_cut_fields
+# spec 2026-07-05-fix-dispatch-carries-failure Step 1 — output-format.md details
+# template carries the failure-class field + the renamed advisory Fix label.
+check "findings-schema-failure-class" check_findings_schema_failure_class
+# spec 2026-07-05-fix-dispatch-carries-failure Step 2 — emission instructions:
+# codex-dispatch.md three templates emit mode-appropriate failure class (each mode
+# lead-in survives); cross-auditor.md §Step 2 carries the mode-conditional sentence.
+check "codex-dispatch-emits-failure-class" check_codex_dispatch_emits_failure_class
+check "claude-step2-mode-conditional-failure-class" check_claude_step2_mode_conditional_failure_class
 # Step 2 — renderer schema-cut, modes, fail-open banner, hard-stop on malformed probe_failures.
 # Per spec §6.1 Step 2: 4 umbrella helpers + 7 golden-diff sub-assertions = 11 PASS lines.
 check "check_findings_renderer_schema_cut" check_findings_renderer_schema_cut
@@ -3227,6 +3235,9 @@ check "check_findings_renderer_fixture_04_probe_block" check_findings_renderer_m
 check "check_findings_renderer_fixture_05_multi_source_merged" check_findings_renderer_modes_multi_source
 check "check_findings_renderer_fixture_06_probe_fail_open" check_findings_renderer_fail_open
 check "check_findings_renderer_fixture_07_probe_failures_malformed_hard_stop" check_probe_failures_schema_hard_stop
+# spec 2026-07-05-fix-dispatch-carries-failure Step 1 — fixture-01 golden asserts
+# the distinctive failure_class VALUE passes through the renderer (not just label).
+check "renderer-failure-class-passthrough" check_renderer_failure_class_passthrough
 
 # Step 3 — dedupe (E/F/G umbrella + 9 near-miss sub-fixtures + merged-probe+LLM)
 #   + receipt hash canonicalization rerun-stability.
@@ -3247,6 +3258,9 @@ check "check_dedupe_fingerprint_g_exact_merge" check_dedupe_fingerprint_g_exact
 check "check_dedupe_fingerprint_g_partial_related_to" check_dedupe_fingerprint_g_partial
 check "check_dedupe_fingerprint_g_no_match_distinct" check_dedupe_fingerprint_g_no_match
 check "check_dedupe_merged_probe_llm_entry" check_dedupe_merged_probe_llm_sources_list
+# spec 2026-07-05-fix-dispatch-carries-failure Step 1 — probe+LLM merge where only
+# the LLM member carries failure_class; byte-match asserts merge_pair's carry retains it.
+check "dedupe-failure-class-carry" check_dedupe_failure_class_carry
 
 # Step 4 — cross_audit.probes.<id>.mode config surface (yml example, docs, skill Phase 0).
 check "check_yaml_example_probes_block" check_yaml_example_probes_block
@@ -3472,6 +3486,87 @@ check_code_audit_rework_template() {
     return 1
   fi
   echo "§Code audit has 'rework: fix code-audit finding X' template substring OK"
+}
+
+# Fix-dispatch contract (spec 2026-07-05-fix-dispatch-carries-failure Step 3).
+# Extracts the canonical `### Fix-dispatch contract` block from feature SKILL.md
+# (from its heading up to the next `### ` heading).
+_fix_dispatch_contract_block() {
+  awk '
+    !in_s && /^### Fix-dispatch contract$/ { in_s = 1; print; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' skills/feature/SKILL.md
+}
+
+# fix-dispatch-contract-text: the §Fix-dispatch contract block MUST carry the three
+# mandatory dispatch-field literals (root cause / invariant / input domain) + a
+# blocked-dispatch sentence, and MUST NOT echo the pinned `rework: fix code-audit
+# finding X` literal (keeps the existing rework-template pin's count semantics clean).
+check_fix_dispatch_contract_text() {
+  local block
+  block=$(_fix_dispatch_contract_block)
+  if [ -z "$block" ]; then
+    echo "feature SKILL.md missing '### Fix-dispatch contract' block"
+    return 1
+  fi
+  local lit
+  for lit in 'root cause' 'invariant' 'input domain'; do
+    if ! printf '%s\n' "$block" | grep -qF -- "$lit"; then
+      echo "§Fix-dispatch contract block missing mandatory field literal '$lit'"
+      return 1
+    fi
+  done
+  if ! printf '%s\n' "$block" | grep -qF "BLOCKED"; then
+    echo "§Fix-dispatch contract block missing blocked-dispatch sentence ('BLOCKED')"
+    return 1
+  fi
+  if printf '%s\n' "$block" | grep -qF "rework: fix code-audit finding X"; then
+    echo "§Fix-dispatch contract block MUST NOT echo 'rework: fix code-audit finding X' (pin-count coupling)"
+    return 1
+  fi
+  echo "§Fix-dispatch contract block carries root cause/invariant/input domain + BLOCKED, no rework literal OK"
+}
+
+# code-audit-dispatch-template-carries-failure: the §Code audit fix-worker task
+# template line (the one carrying the pinned `rework: fix code-audit finding X`
+# literal) MUST co-locate the three Fix-dispatch-contract fields on the SAME line
+# (Root cause: / Invariant: / Input domain:), so the dispatch cannot ship without them.
+check_code_audit_dispatch_template_carries_failure() {
+  local line
+  line=$(_code_audit_section | grep -F "rework: fix code-audit finding X")
+  if [ -z "$line" ]; then
+    echo "§Code audit missing 'rework: fix code-audit finding X' template line"
+    return 1
+  fi
+  local field
+  for field in 'Root cause:' 'Invariant:' 'Input domain:'; do
+    if ! printf '%s\n' "$line" | grep -qF -- "$field"; then
+      echo "§Code audit rework template line missing co-located '$field' field"
+      return 1
+    fi
+  done
+  echo "§Code audit rework template line co-locates Root cause/Invariant/Input domain OK"
+}
+
+# verify-rework-template-carries-failure: the §Verify FAIL rework task template
+# line (`rework step N: fix test failure ...`) MUST co-locate the same three
+# Fix-dispatch-contract fields on the SAME line.
+check_verify_rework_template_carries_failure() {
+  local line
+  line=$(grep -F "rework step N: fix test failure" skills/feature/SKILL.md)
+  if [ -z "$line" ]; then
+    echo "feature SKILL.md missing 'rework step N: fix test failure' verify-FAIL template line"
+    return 1
+  fi
+  local field
+  for field in 'Root cause:' 'Invariant:' 'Input domain:'; do
+    if ! printf '%s\n' "$line" | grep -qF -- "$field"; then
+      echo "§Verify FAIL rework template line missing co-located '$field' field"
+      return 1
+    fi
+  done
+  echo "§Verify FAIL rework template line co-locates Root cause/Invariant/Input domain OK"
 }
 
 # Item 8 (composite): §Code audit section contains all three terminal-state verbs
@@ -3713,6 +3808,9 @@ check "code-audit-mentions-cross-auditor"           check_code_audit_mentions_cr
 check "code-audit-iteration-var"                    check_code_audit_iteration_var
 check "code-audit-fixed-accepted-vars"              check_code_audit_fixed_accepted_vars
 check "code-audit-rework-template"                  check_code_audit_rework_template
+check "fix-dispatch-contract-text"                  check_fix_dispatch_contract_text
+check "code-audit-dispatch-template-carries-failure" check_code_audit_dispatch_template_carries_failure
+check "verify-rework-template-carries-failure"      check_verify_rework_template_carries_failure
 check "code-audit-terminal-verbs-and-no-invalid"    check_code_audit_terminal_verbs_and_no_invalid
 check "code-audit-no-auditable-files"               check_code_audit_no_auditable_files
 check "code-audit-awaiting-banner-inside"           check_code_audit_awaiting_banner_inside

@@ -10,7 +10,8 @@
 - **Severity**: HIGH
 - **File**: src/stellar/reconcile.py:87
 - **Description**: Probe F + codex merged entry: missing cursor on Horizon paging.
-- **Fix**: Use cursor-paged iteration.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Use cursor-paged iteration.
 - **Sources**: [probe:F, codex]
 - **Mode at emit**: warn
 - **Blocking**: false

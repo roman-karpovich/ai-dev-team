@@ -10,7 +10,8 @@
 - **Severity**: HIGH
 - **File**: tests/fixtures/new-feature/exec.md
 - **Description**: Probe G detected step-N entry with failing_test_cmd declaration but no corresponding red_capture path under captures/.
-- **Fix**: Run the failing test once and save the output to captures/step-NN-red.txt before committing.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Run the failing test once and save the output to captures/step-NN-red.txt before committing.
 - **Sources**: [probe:G]
 - **Mode at emit**: block
 - **Blocking**: true
