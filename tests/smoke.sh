@@ -1831,6 +1831,9 @@ check "r3-structure-triplet-present"                    check_r3_structure_tripl
 check "r3-anti-patterns-enumerated"                     check_r3_anti_patterns_enumerated                     "$CQR"
 check "r3-notes-requirement-present"                    check_r3_notes_requirement_present                    "$CQR"
 check "r3-fix-completeness-present"                      check_r3_fix_completeness_present                      "$CQR"
+check "fix-dispatch-boundary-inputs"                     check_feature_skill_fix_dispatch_boundary_inputs
+check "code-audit-fix-step-gate"                         check_skill_code_audit_fix_step_gate
+check "spec-template-boundary-inputs"                    check_spec_template_boundary_inputs_key
 check "developer-workflow-short-form-r3"                check_developer_workflow_short_form_r3                "$DWF"
 check "developer-workflow-test-quality-points-to-r3"    check_developer_workflow_test_quality_points_to_r3    "$DWF"
 check "developer-workflow-observed-notes-requirement"   check_developer_workflow_observed_notes_requirement   "$DWF"

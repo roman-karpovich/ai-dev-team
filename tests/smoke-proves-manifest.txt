@@ -109,6 +109,9 @@ check_cross_auditor_spec_mode_flags_weaker_r7_conventions prompt-text
 check_r5_step1_reads_directive_files prompt-text
 check_developer_workflow_short_form_r7 prompt-text
 check_r3_fix_completeness_present prompt-text
+check_feature_skill_fix_dispatch_boundary_inputs prompt-text
+check_skill_code_audit_fix_step_gate prompt-text
+check_spec_template_boundary_inputs_key schema
 
 # Async Codex dispatch watchdog mitigation
 check_codex_audit_dispatch_helper_positive behavioral

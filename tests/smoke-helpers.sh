@@ -97,6 +97,63 @@ check_r3_fix_completeness_present() {
   echo "R3 fix-completeness tokens (guard-mirror/failure class/boundary_inputs/non-finite) present in $path"
 }
 
+# R3 fix-completeness wiring (spec 2026-07-05-r3-fix-completeness Step 2):
+# the SKILL.md §Fix-dispatch contract block must instruct the orchestrator to
+# write fix_source + boundary_inputs / boundary_inputs_na (the R3-FC gate
+# precondition) with all four fix-flow literals. Extracts the `### Fix-dispatch
+# contract` block (heading up to the next `### `) so the tokens are scoped to
+# that section, not merely somewhere in the file.
+check_feature_skill_fix_dispatch_boundary_inputs() {
+  local path='skills/feature/SKILL.md'
+  local block
+  block=$(awk '
+    !in_s && /^### Fix-dispatch contract$/ { in_s = 1; print; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  if [ -z "$block" ]; then
+    echo "$path missing '### Fix-dispatch contract' block"; return 1
+  fi
+  local lit
+  for lit in 'fix_source:' 'boundary_inputs:' 'boundary_inputs_na:' 'code-audit X<id>' 'diff-audit X<id>' 'verify-fail' 'compliance-rework'; do
+    printf '%s\n' "$block" | grep -qF -- "$lit" \
+      || { echo "§Fix-dispatch contract block missing boundary-inputs token '$lit'"; return 1; }
+  done
+  echo "§Fix-dispatch contract block carries fix_source/boundary_inputs(_na) + 4 fix-flow literals"
+}
+
+# R3 fix-completeness code-audit gate (spec 2026-07-05-r3-fix-completeness Step 2):
+# SKILL.md must carry the code-audit appended-numeric-fix-step gate (checklist
+# line form + N=max+1 rule + checker spawn before the step-6 verifier) AND the
+# verify-FAIL + diff-audit checker-spawn wiring markers (their fix_source
+# literals). Whole-file grep — these markers span three SKILL.md flow sections.
+check_skill_code_audit_fix_step_gate() {
+  local path='skills/feature/SKILL.md'
+  local lit
+  for lit in 'fix X<id> —' 'N = max existing step number + 1' 'step-6 verifier' 'fix_source: verify-fail' 'fix_source: diff-audit X<id>'; do
+    grep -qF -- "$lit" "$path" \
+      || { echo "$path missing code-audit fix-step-gate token '$lit'"; return 1; }
+  done
+  echo "$path carries code-audit appended-fix-step gate + verify-FAIL + diff-audit checker-spawn wiring"
+}
+
+# R3 fix-completeness schema (spec 2026-07-05-r3-fix-completeness Step 2):
+# spec-template.md §Workdoc step schema Planned block documents the three
+# orchestrator-filled fix-step keys. Whole-file grep (not extract_md_section):
+# the §Workdoc step schema fence embeds a `## Step N: <step title>` line, which
+# would terminate extract_md_section before the Planned block is reached. The
+# three keys are unique to this schema block, so a file-scope literal grep is a
+# faithful presence check.
+check_spec_template_boundary_inputs_key() {
+  local path='skills/feature/references/spec-template.md'
+  local lit
+  for lit in 'fix_source:' 'boundary_inputs:' 'boundary_inputs_na:'; do
+    grep -qF -- "$lit" "$path" \
+      || { echo "$path §Workdoc step schema missing key '$lit'"; return 1; }
+  done
+  echo "$path §Workdoc step schema carries fix_source/boundary_inputs/boundary_inputs_na keys"
+}
+
 check_developer_workflow_short_form_r3() {
   local path="$1"
   extract_md_section "$path" '## Code Quality Rules' | \
