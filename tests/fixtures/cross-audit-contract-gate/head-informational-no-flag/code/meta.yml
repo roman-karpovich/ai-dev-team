@@ -1,0 +1,7 @@
+expected_classification: CLEAN_DUAL
+expected_exit: 0
+mode: code
+expected_claude_model: claude-fable-5
+expected_head_gate: null
+expected_audited_head: 1111111111111111111111111111111111111111
+notes: "synthetic; audited_head surfaced informationally WITHOUT --expected-head -> head_gate null"

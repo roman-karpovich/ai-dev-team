@@ -1,0 +1,8 @@
+expected_classification: CLEAN_SINGLE
+expected_exit: 0
+mode: code
+expected_claude_model: claude-fable-5
+expected_head_arg: 2222222222222222222222222222222222222222
+expected_head_gate: HEAD_MISMATCH
+expected_audited_head: 1111111111111111111111111111111111111111
+notes: "synthetic; CLEAN_SINGLE + --project ai-dev-team (policy_gate STOP_AND_DISCUSS) co-fires with HEAD_MISMATCH -> BOTH non-null in one JSON (independent computation)"

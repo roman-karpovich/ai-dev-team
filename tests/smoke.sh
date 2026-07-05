@@ -1567,17 +1567,19 @@ check_banner_convention_doc_valid() {
 # feature-mode contract-violation terminal banner, and the §Implement
 # continuous-parallel-diff-audits opt-in banner.
 check_feature_awaiting_count_17() {
-  # 36 includes the §3.5b-2e model-attestation gate banner added by spec
-  # 2026-06-10-fable-cross-auditor-attestation Step 3, plus the ## Grill mode
+  # 38 includes the §3.5b-2e model-attestation gate banner added by spec
+  # 2026-06-10-fable-cross-auditor-attestation Step 3, the ## Grill mode
   # standalone spec-resolution banner added by the grill-feature-gate code-audit
-  # X1 fix.
+  # X1 fix, plus the 2 banners added by spec
+  # 2026-07-05-audited-head-terminal-evidence-gates Step 4 (hand-off audited-HEAD
+  # mismatch banner + §3.4a/Verify terminal-evidence refusal banner).
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/feature/SKILL.md)
-  if [ "$n" != "36" ]; then
-    echo "feature AWAITING count=$n expected 36"
+  if [ "$n" != "38" ]; then
+    echo "feature AWAITING count=$n expected 38"
     return 1
   fi
-  echo "feature AWAITING count=36 OK"
+  echo "feature AWAITING count=38 OK"
 }
 
 # (c) feature SKILL.md must have exactly 1 APPROVAL REQUIRED banner line.
@@ -1593,15 +1595,17 @@ check_feature_approval_count_1() {
 
 # (d) cross-audit SKILL.md must have exactly 1 AWAITING banner line.
 check_cross_audit_awaiting_count_1() {
-  # 5 includes the Standalone model-attestation gate banner added by spec
-  # 2026-06-10-fable-cross-auditor-attestation Step 3.
+  # 6 includes the Standalone model-attestation gate banner added by spec
+  # 2026-06-10-fable-cross-auditor-attestation Step 3, plus the Standalone
+  # audited-HEAD gate banner added by spec
+  # 2026-07-05-audited-head-terminal-evidence-gates Step 5.
   local n
   n=$(grep -c "^## ⏸ AWAITING YOUR INPUT$" skills/cross-audit/SKILL.md)
-  if [ "$n" != "5" ]; then
-    echo "cross-audit AWAITING count=$n expected 5"
+  if [ "$n" != "6" ]; then
+    echo "cross-audit AWAITING count=$n expected 6"
     return 1
   fi
-  echo "cross-audit AWAITING count=5 OK"
+  echo "cross-audit AWAITING count=6 OK"
 }
 
 # (e) research SKILL.md must have exactly 4 AWAITING banner lines.
@@ -1730,7 +1734,10 @@ check_approval_required_unique_repo_wide() {
   echo "APPROVAL REQUIRED unique repo-wide OK"
 }
 
-# (r) ruler-prefix count matches total banner count (expected 37 — includes the
+# (r) ruler-prefix count matches total banner count (expected 39 — the +2 over 37
+# are the hand-off audited-HEAD mismatch banner and the §3.4a/Verify
+# terminal-evidence refusal banner added by spec
+# 2026-07-05-audited-head-terminal-evidence-gates Step 4; the 37 base includes the
 # §Code audit triage banner added by spec 2026-04-22-mandatory-code-audit-phase Step 1,
 # the §Conclude --queue-spec banner added by spec 2026-04-28-session-handoff-queue-visibility Step 2,
 # the §3.5c audit-iteration-cap banner added by spec 2026-05-13-cap-banner-and-empirical-verification Step 2,
@@ -1752,14 +1759,18 @@ check_awaiting_ruler_prefix_count_matches() {
     { prev = $0 }
     END { print c }
   ')
-  if [ "$c" != "37" ]; then
-    echo "ruler-prefix count=$c expected 37"
+  if [ "$c" != "40" ]; then
+    echo "ruler-prefix count=$c expected 40"
     return 1
   fi
-  echo "ruler-prefix count=37 OK"
+  echo "ruler-prefix count=40 OK"
 }
 
-# (s) each banner has trailing bold question within 15 lines (expected 48 — includes
+# (s) each banner has trailing bold question within 15 lines (expected 51 — the +1
+# over 50 is the standalone audited-HEAD gate banner added by spec
+# 2026-07-05-audited-head-terminal-evidence-gates Step 5; the 50 base includes the
+# +2 hand-off audited-HEAD mismatch banner and the §3.4a/Verify terminal-evidence
+# refusal banner added by that spec's Step 4; the 48 base includes
 # the feature Attack-surface profile and STRIDE-lite slot prompts, the §3.5c
 # audit-iteration-cap banner, the 3 §3.5b-2 recovery banners added by spec
 # 2026-05-15-cross-auditor-contract-gate-automation Step 6, the §3.4d
@@ -1780,11 +1791,11 @@ check_banner_trailing_bold_present_each() {
     inside { countdown--; if (countdown <= 0) inside = 0 }
     END { print satisfied }
   ')
-  if [ "$c" != "48" ]; then
-    echo "trailing-bold-present-each count=$c expected 48"
+  if [ "$c" != "51" ]; then
+    echo "trailing-bold-present-each count=$c expected 51"
     return 1
   fi
-  echo "trailing-bold-present-each=48 OK"
+  echo "trailing-bold-present-each=51 OK"
 }
 
 check "banner-convention-doc-valid"             check_banner_convention_doc_valid
@@ -3897,7 +3908,7 @@ _fixture_log_body() {
 # keep `[^]]*` because they carry only X-IDs (`X1, X2, ...`) which never
 # contain `]`.
 _fixture_latest_code_audit_marker() {
-  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$' | tail -1
+  _fixture_log_body "$1" | grep -E '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?(; audited_head=[0-9a-f]+)?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$' | tail -1
 }
 
 # Production helper for the audit-iteration-cap recognition pin (Step 7 of
@@ -4287,7 +4298,7 @@ check_code_audit_resume_malformed_trailing() {
   # through and the test would degenerate. Both regexes patched together.
   # Iter-3 X6 → Iter-4 X7: same blocker-list inner-pattern evolution applied
   # symmetrically — see the helper's comment block above for rationale.
-  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?(; audited_head=[0-9a-f]+)?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
     echo "malformed-trailing: trailing line is a complete canonical marker (fixture invalid)"
     return 1
   fi
@@ -4328,7 +4339,7 @@ check_code_audit_resume_malformed_trailing_bracketed() {
   # NOT be a complete canonical marker under the production regex.
   local trailing
   trailing=$(_fixture_log_body "$fx" | tail -1)
-  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
+  if printf '%s\n' "$trailing" | grep -qE '^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?(; audited_head=[0-9a-f]+)?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'; then
     echo "malformed-trailing-bracketed: trailing line is a complete canonical marker under iter-4 regex (fixture or regex broken)"
     return 1
   fi
@@ -4461,6 +4472,14 @@ check "codex_audit_dispatch_helper_arg_validation"       check_codex_audit_dispa
 check "cross_auditor_uses_async_codex_dispatch"           check_cross_auditor_uses_async_codex_dispatch
 check "cross_auditor_codex_effort_default_xhigh_kept"     check_cross_auditor_codex_effort_default_xhigh_kept
 check "cross-auditor-model-attestation-contract"         check_cross_auditor_model_attestation_contract
+check "cross-auditor-audited-head-template"              check_cross_auditor_audited_head_template
+check "cross-auditor-audited-head-handshake"             check_cross_auditor_audited_head_handshake
+check "feature-handoff-audited-head-gate"                check_feature_handoff_audited_head_gate
+check "feature-code-audit-marker-audited-head"           check_feature_code_audit_marker_audited_head
+check "feature-classifier-expected-head-callsites"       check_feature_classifier_expected_head_callsites
+check "feature-terminal-evidence-refusal"                check_feature_terminal_evidence_refusal
+check "feature-verify-terminal-evidence-precondition"    check_feature_verify_terminal_evidence_precondition
+check "cross-audit-standalone-audited-head"              check_cross_audit_standalone_audited_head
 check "model-attestation-skill-coupling"                 check_model_attestation_skill_coupling
 check "cross_auditor_codex_cwd_override_async_dispatch"   check_cross_auditor_codex_cwd_proximity
 echo
@@ -4865,6 +4884,13 @@ EOF_AE_FX
   # Forward compat: extended canonical forms per SKILL.md §3.5b L449/L565.
   _ae_recognize 'extended clean-passed (dual_model)' \
     '- 2026-04-27: code audit passed; iteration=2; verified=[X3], accepted=[X5], deferred=[X9]; evidence=dual_model; blockers=[]' || fail=1
+  # Audited-HEAD extended form (spec 2026-07-05-audited-head-terminal-evidence-gates
+  # §3.2 marker extension): the `code audit passed` marker gains a trailing
+  # `; audited_head=<oid>` copied from the findings frontmatter. The production
+  # regex MUST recognize it (optional `(; audited_head=[0-9a-f]+)?` arm) — a
+  # regex that dropped the arm would strip the suffix and mis-return the marker.
+  _ae_recognize 'extended clean-passed (dual_model + audited_head)' \
+    '- 2026-04-27: code audit passed; iteration=2; verified=[X3], accepted=[X5], deferred=[X9]; evidence=dual_model; blockers=[]; audited_head=9a71873ab45680146ec7a64e8f10d35361200103' || fail=1
   _ae_recognize 'extended clean-passed (single_model + blocker)' \
     '- 2026-04-27: code audit passed; iteration=1; verified=[], accepted=[], deferred=[]; evidence=single_model; blockers=[codex_unavailable]' || fail=1
   _ae_recognize 'extended zero-diff-skip (skipped)' \
@@ -4964,8 +4990,8 @@ EOF_MUT_FX
   # canonical mutation (revert blocker grammar to iter-3 X6 `\[.*\]`).
   # We test by piping the truncated trailing line through both regexes
   # via grep -E — equivalent to invoking the helpers in pure form.
-  local current_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'
-  local mutant_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$'
+  local current_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?(; audited_head=[0-9a-f]+)?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[(\[\]|[^][]|\[[^]]*\])*\])?)$'
+  local mutant_regex='^- [0-9]{4}-[0-9]{2}-[0-9]{2}: code audit( passed; iteration=[0-9]+; verified=\[[^]]*\], accepted=\[[^]]*\], deferred=\[[^]]*\](; evidence=[A-Za-z_]+; blockers=\[.*\])?(; audited_head=[0-9a-f]+)?| iteration=[0-9]+; fixed_ids=\[[^]]*\]; accepted_ids=\[[^]]*\]| decisions recorded; iteration=[0-9]+; pending_fixed=\[[^]]*\]; pending_accepted=\[[^]]*\]; pending_deferred=\[[^]]*\]|: no auditable files in diff; skipping(; evidence=[A-Za-z_]+; blockers=\[.*\])?)$'
 
   # Property 1: the CURRENT (iter-4) regex must REJECT the truncated line.
   if printf '%s\n' "$truncated" | grep -qE "$current_regex"; then
@@ -6529,6 +6555,7 @@ check "kb-drift-scan-behavioral"                 check_kb_drift_scan_behavioral
 check "kb-drift-summary-behavioral"              check_kb_drift_summary_behavioral
 check "kb-drift C6 index-row bloat"              check_kb_drift_c6_index_row_bloat
 check "kb-drift C7 backlog bloat"                check_kb_drift_c7_backlog_bloat
+check "kb-drift C8 terminal evidence gap"        check_kb_drift_c8_terminal_evidence_gap
 check "backlog-archiver"                         check_backlog_archiver_behavioral
 check "kb-drift whole-vault scope"               check_kb_drift_whole_vault_scope
 check "kb-drift C1 escaped-pipe alias"           check_kb_drift_c1_escaped_pipe_alias

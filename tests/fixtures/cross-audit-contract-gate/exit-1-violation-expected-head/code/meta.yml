@@ -1,0 +1,8 @@
+expected_classification: SINGLE_MODEL_WITHOUT_BLOCKERS
+expected_exit: 1
+mode: code
+expected_claude_model: claude-fable-5
+expected_head_arg: 1111111111111111111111111111111111111111
+expected_head_gate: null
+expected_audited_head: 1111111111111111111111111111111111111111
+notes: "synthetic; violation classification (exit 1) + --expected-head -> head_gate null (CLEAN_*-only rule); audited_head still surfaced informationally"

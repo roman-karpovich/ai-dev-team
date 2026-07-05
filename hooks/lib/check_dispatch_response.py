@@ -44,6 +44,8 @@ CLI:
       [--project <project>]      # optional; `ai-dev-team` activates policy_gate
       [--expected-claude-model <prefix>]  # optional; activates model_gate on
                                           # CLEAN_* responses (model attestation)
+      [--expected-head <oid>]    # optional; activates head_gate on CLEAN_*
+                                 # responses (audited-HEAD attestation)
       [--debug]                  # on exit 2, emit full Python traceback to stderr
 
 The JSON output additionally carries the model-attestation fields (additive,
@@ -51,6 +53,15 @@ never removed): `claude_model` (string|null — the attested Claude model ID,
 informational even without the flag) and `model_gate`
 (null|MODEL_DEGRADED|MODEL_ATTESTATION_MISSING — set only when
 `--expected-claude-model` is passed and the response is CLEAN_*).
+
+It likewise carries the audited-HEAD fields (additive, never removed):
+`audited_head` (string|null — the commit oid the code/full-mode findings.md
+pinned, informational even without the flag; ALWAYS null in spec mode) and
+`head_gate` (null|HEAD_ATTESTATION_MISSING|HEAD_MISMATCH — set only when
+`--expected-head` is passed and the response is CLEAN_*). `head_gate` is
+computed INDEPENDENTLY of `policy_gate`/`model_gate`; on a co-fire the JSON
+carries multiple non-null gates and the policy->model->head consumption
+ordering lives in the orchestrator, not here.
 """
 
 import argparse
@@ -128,6 +139,30 @@ CLAUDE_MODEL_CANONICAL_RE = re.compile(
     r"^claude_model: ",
 )
 
+# --- Audited-HEAD recognizer (§3.1 strict, mirrors the claude_model pair) ---
+#
+# The cross-auditor pins the commit oid its audit actually read in an
+# `audited_head: <oid>` line in the leading findings.md frontmatter (code/full
+# modes only — spec/decision inline modes emit NOTHING, so `classify_spec`
+# always yields `audited_head = None`). Parse is strict and informational — a
+# malformed attestation never perturbs the 12-enum verdict or exit code, the
+# same strictness philosophy as the claude_model / evidence-key recognizers.
+#
+#   AUDITED_HEAD_ATTEMPT_RE — PERMISSIVE recognizer: matches any line a
+#     reasonable reader would recognize as an *attempt* at the key in ANY
+#     shape (`audited_head:x` no-space, `audited_head =`, hyphen/case
+#     variants, leading whitespace). Used to DETECT a malformed attempt
+#     coexisting with a valid canonical line.
+#   AUDITED_HEAD_CANONICAL_RE — STRICT canonical form: line start, the exact
+#     lower-case underscore key, a colon, exactly one space.
+AUDITED_HEAD_ATTEMPT_RE = re.compile(
+    r"^[ \t]*audited[_-]?head[ \t]*[:=]",
+    re.IGNORECASE,
+)
+AUDITED_HEAD_CANONICAL_RE = re.compile(
+    r"^audited_head: ",
+)
+
 
 def _parse_claude_model_spec(lines, sentinel_idx):
     """Parse the spec-mode `claude_model:` attestation (§3.1 strict).
@@ -173,6 +208,38 @@ def _parse_claude_model_code(fm_lines, skip_lines):
         if CLAUDE_MODEL_CANONICAL_RE.match(ln):
             canonical_count += 1
             value = ln[len("claude_model: "):].strip()
+        else:
+            malformed_seen = True
+    if malformed_seen or canonical_count != 1:
+        return None
+    if value == "":
+        return None
+    return value
+
+
+def _parse_audited_head_code(fm_lines, skip_lines):
+    """Parse the code/full-mode `audited_head:` attestation (§3.1 strict).
+
+    Mirrors `_parse_claude_model_code` exactly: scans EVERY non-continuation
+    line of the leading frontmatter, requires EXACTLY ONE canonical
+    `audited_head: ` line and ZERO malformed attempts (a permissive-recognizer
+    match without a canonical match — no-space, `=`, hyphen/case variant).
+    Zero canonical lines, duplicate canonical lines, any malformed attempt
+    (even one coexisting with a valid canonical line), or an empty value →
+    None. No value-shape validation (mirror of claude_model — a malformed oid
+    simply mismatches the expected head downstream, it is not rejected here).
+    """
+    canonical_count = 0
+    malformed_seen = False
+    value = None
+    for idx, ln in enumerate(fm_lines):
+        if idx in skip_lines:
+            continue
+        if not AUDITED_HEAD_ATTEMPT_RE.match(ln):
+            continue
+        if AUDITED_HEAD_CANONICAL_RE.match(ln):
+            canonical_count += 1
+            value = ln[len("audited_head: "):].strip()
         else:
             malformed_seen = True
     if malformed_seen or canonical_count != 1:
@@ -568,7 +635,10 @@ def classify_spec(raw_text):
     """Classify a spec-mode inline-return text.
 
     Returns (classification, evidence_class, blockers_items, blockers_yaml,
-    claude_model).
+    claude_model, audited_head). `audited_head` is ALWAYS None in spec mode —
+    the audited-HEAD pin is a code/full-mode-only channel (spec/decision inline
+    modes emit no commit sign-off), so the 6-tuple parity with `classify_code`
+    is satisfied by a constant None here.
 
     The footer is the LAST sentinel-anchored block: the sentinel line, then
     an `evidence_class: ` line, then the `evidence_blockers: ` line whose
@@ -586,7 +656,7 @@ def classify_spec(raw_text):
     stripped = raw_text.rstrip("\n").rstrip("\r\n")
     lines = stripped.splitlines()
     if len(lines) < 3:
-        return "MISSING_FOOTER", None, [], "[]", None
+        return "MISSING_FOOTER", None, [], "[]", None, None
     # Anchor on the LAST occurrence of the sentinel line.
     sentinel_idx = None
     for i in range(len(lines) - 1, -1, -1):
@@ -598,7 +668,7 @@ def classify_spec(raw_text):
     # the continuation of a multi-line (newline-unsafe) evidence_blockers
     # value. Anything else (no sentinel, sentinel not near EOF) is missing.
     if sentinel_idx is None or sentinel_idx > len(lines) - 3:
-        return "MISSING_FOOTER", None, [], "[]", None
+        return "MISSING_FOOTER", None, [], "[]", None, None
     # Model attestation: the line immediately preceding the sentinel (§3.1
     # strict, guarded against negative-index wrap at sentinel_idx == 0). Read
     # before the footer-shape checks below so a CLEAN response with a
@@ -607,16 +677,17 @@ def classify_spec(raw_text):
     class_line = lines[sentinel_idx + 1]
     blockers_idx = sentinel_idx + 2
     if not class_line.startswith("evidence_class: "):
-        return "MALFORMED_FOOTER_EVIDENCE_CLASS", None, [], "[]", claude_model
+        return ("MALFORMED_FOOTER_EVIDENCE_CLASS", None, [], "[]",
+                claude_model, None)
     if not lines[blockers_idx].startswith("evidence_blockers: "):
         return ("MALFORMED_FOOTER_EVIDENCE_BLOCKERS", None, [], "[]",
-                claude_model)
+                claude_model, None)
     evidence_class = class_line[len("evidence_class: "):].strip()
     blockers_raw, spanned = _gather_blockers_value(lines, blockers_idx)
     # A footer that is exactly 3 physical lines (spanned == 1) AND has no
     # trailing lines beyond the blockers line is the well-formed shape.
     if spanned == 1 and blockers_idx != len(lines) - 1:
-        return "MISSING_FOOTER", None, [], "[]", claude_model
+        return "MISSING_FOOTER", None, [], "[]", claude_model, None
     blockers_safety = _scan_blocker_safety(blockers_raw)
     blockers_items, blockers_ok = _parse_blockers_literal(blockers_raw)
     # A non-list `evidence_blockers` value (bare scalar, unclosed bracket,
@@ -626,20 +697,20 @@ def classify_spec(raw_text):
     # `blockers_ok` only gates the genuinely non-list shape.
     if not blockers_ok and blockers_safety == "ok":
         return ("MALFORMED_FOOTER_EVIDENCE_BLOCKERS", evidence_class, [],
-                "[]", claude_model)
+                "[]", claude_model, None)
     classification = _classify_fields(
         evidence_class, blockers_safety, blockers_items
     )
     blockers_yaml = _emit_blockers_yaml(blockers_items)
     return (classification, evidence_class, blockers_items, blockers_yaml,
-            claude_model)
+            claude_model, None)
 
 
 def classify_code(findings_path):
     """Classify a code/full-mode response from the on-disk findings.md.
 
     Returns (classification, evidence_class, blockers_items, blockers_yaml,
-    claude_model).
+    claude_model, audited_head).
 
     Code/spec-mode strictness parity: `classify_spec` reads the two scalars
     strictly positionally (`lines[sentinel_idx + 1]` / `+ 2`), so a malformed
@@ -659,14 +730,14 @@ def classify_code(findings_path):
         with open(findings_path, "r", encoding="utf-8") as fh:
             text = fh.read()
     except FileNotFoundError:
-        return "FINDINGS_MISSING", None, [], "[]", None
+        return "FINDINGS_MISSING", None, [], "[]", None, None
     except OSError as exc:
         raise ClassifierCrash(
             f"cannot read findings file {findings_path}: {exc}"
         )
     fm = _frontmatter_lines(text)
     if fm is None:
-        return "FINDINGS_MALFORMED", None, [], "[]", None
+        return "FINDINGS_MALFORMED", None, [], "[]", None, None
     # First pass: locate the canonical `evidence_blockers:` line and gather
     # its value across any physical continuation lines (a list literal split
     # by an embedded newline — the newline-unsafe defect). The continuation
@@ -692,11 +763,17 @@ def classify_code(findings_path):
     # continuation-line skip set is reused so a blockers value continuation
     # line that happens to begin with claude_model text is not misread.
     claude_model = _parse_claude_model_code(fm, skip_lines)
+    # Audited-HEAD pin: exactly one canonical `audited_head: ` line in the
+    # leading frontmatter, zero malformed attempts (§3.1 strict, mirror of the
+    # claude_model parse). Parsed independently of the classification — a
+    # malformed/duplicate/empty pin yields None but never perturbs the 12-enum
+    # verdict. Same continuation-line skip set reused.
+    audited_head = _parse_audited_head_code(fm, skip_lines)
     # Whole-block evidence-key well-formedness check (structural — closes the
     # X9/X11/X14 frontmatter-strictness asymmetry class). Any malformed
     # attempt at either key, any count != 1, routes to FINDINGS_MALFORMED.
     if not _validate_evidence_keys(fm, skip_lines):
-        return "FINDINGS_MALFORMED", None, [], "[]", claude_model
+        return "FINDINGS_MALFORMED", None, [], "[]", claude_model, audited_head
     # The block is well-formed: exactly one canonical line for each key.
     # Extract the `evidence_class` value from its canonical line.
     evidence_class = None
@@ -711,20 +788,22 @@ def classify_code(findings_path):
         # Unreachable given a passing _validate_evidence_keys (which requires
         # exactly one canonical line for each key), but kept as a defensive
         # invariant assertion for the value-extraction step.
-        return "FINDINGS_MALFORMED", None, [], "[]", claude_model
+        return ("FINDINGS_MALFORMED", None, [], "[]", claude_model,
+                audited_head)
     blockers_safety = _scan_blocker_safety(blockers_raw)
     blockers_items, blockers_ok = _parse_blockers_literal(blockers_raw)
     # A non-list `evidence_blockers` value in the findings.md frontmatter is
     # a malformed findings file — NOT a silently-empty list. As in spec mode
     # the newline-unsafe safety scan takes precedence over the shape check.
     if not blockers_ok and blockers_safety == "ok":
-        return "FINDINGS_MALFORMED", evidence_class, [], "[]", claude_model
+        return ("FINDINGS_MALFORMED", evidence_class, [], "[]", claude_model,
+                audited_head)
     classification = _classify_fields(
         evidence_class, blockers_safety, blockers_items
     )
     blockers_yaml = _emit_blockers_yaml(blockers_items)
     return (classification, evidence_class, blockers_items, blockers_yaml,
-            claude_model)
+            claude_model, audited_head)
 
 
 def build_parser():
@@ -743,6 +822,11 @@ def build_parser():
                         help="when set, validate the parsed claude_model "
                              "attestation against this prefix on CLEAN_* "
                              "responses; mismatch -> model_gate")
+    parser.add_argument("--expected-head", default=None,
+                        help="when set, validate the parsed audited_head pin "
+                             "against this exact commit oid on CLEAN_* "
+                             "responses; absent -> HEAD_ATTESTATION_MISSING, "
+                             "mismatch -> HEAD_MISMATCH (head_gate)")
     parser.add_argument("--debug", action="store_true",
                         help="on exit 2 (classifier crash), emit full "
                              "Python traceback to stderr")
@@ -762,7 +846,7 @@ def run(args):
 
     if args.mode == "spec":
         (classification, evidence_class, blockers_items, blockers_yaml,
-         claude_model) = classify_spec(raw_text)
+         claude_model, audited_head) = classify_spec(raw_text)
         findings_path = None
     else:  # code | full
         if args.findings_path is None:
@@ -771,7 +855,7 @@ def run(args):
             )
         findings_path = args.findings_path
         (classification, evidence_class, blockers_items, blockers_yaml,
-         claude_model) = classify_code(findings_path)
+         claude_model, audited_head) = classify_code(findings_path)
 
     # Project-policy gate (§3.4a): ai-dev-team CLEAN_SINGLE -> STOP_AND_DISCUSS.
     policy_gate = None
@@ -792,6 +876,24 @@ def run(args):
             model_gate = "MODEL_ATTESTATION_MISSING"
         elif not claude_model.startswith(args.expected_claude_model):
             model_gate = "MODEL_DEGRADED"
+
+    # Audited-HEAD gate (§3.2). Set ONLY when `--expected-head` is passed AND
+    # the response is CLEAN_* (a violation already routes to retry — head_gate
+    # stays null and lets the violation path supersede). Computed INDEPENDENTLY
+    # of policy_gate/model_gate — exactly like model_gate above, which never
+    # inspects policy_gate: on a co-fire the JSON carries multiple non-null
+    # gates simultaneously, and the policy->model->head ordering is enforced
+    # ONLY in orchestrator consumption. audited_head null/absent -> MISSING;
+    # parsed but != expected (exact string compare, no shape validation)
+    # -> HEAD_MISMATCH; otherwise null. The audited_head parse NEVER changes
+    # the 12-enum classification or exit code.
+    head_gate = None
+    if (args.expected_head is not None
+            and classification in ("CLEAN_DUAL", "CLEAN_SINGLE")):
+        if audited_head is None:
+            head_gate = "HEAD_ATTESTATION_MISSING"
+        elif audited_head != args.expected_head:
+            head_gate = "HEAD_MISMATCH"
 
     exit_code = 0 if classification in ("CLEAN_DUAL", "CLEAN_SINGLE") else 1
 
@@ -828,6 +930,8 @@ def run(args):
         "policy_gate": policy_gate,
         "claude_model": claude_model,
         "model_gate": model_gate,
+        "audited_head": audited_head,
+        "head_gate": head_gate,
         "iteration": args.iteration,
         "audit_slug": args.audit_slug,
         "mode": args.mode,
