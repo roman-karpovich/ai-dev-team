@@ -50,7 +50,7 @@ If the frontmatter parse fails (Trigger B), emit the stderr warning and load eve
 AUDIT of [scope] in [project].
 Working directory: [working_directory]
 Mode: [logic|security|full]
-Focus: [paste relevant focus areas from mode]
+Focus: [paste relevant focus areas from mode, including the standing integration lenses (logic/security/full modes)]
 Files to audit: [list paths — Codex reads them directly]
 Previously fixed (skip these): [previously_fixed list]
 [Severity ladder for mode]. Report [allowed_severities] only.
