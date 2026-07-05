@@ -8385,6 +8385,69 @@ check_mission_rule_11_amended_and_audit_claims_rule_present() {
   echo "MISSION rule #11 amended + rule #13 + 2026-05-13 entry (count=$n) OK"
 }
 
+# --- dev-dispatch grounding contract (spec 2026-07-05) ---
+# Sibling to the cap-banner empirical-verification cluster above — both are
+# anti-fabrication claim-backing guards. Asserts the grounding contract is
+# structurally intact on BOTH dev-dispatch surfaces, not merely present as a
+# file-wide literal (audit X1 hardening — a file-wide presence grep false-passes
+# two ways). Requirements:
+#   1. developer-workflow.md (developer-senior reads it directly): the
+#      grounding-contract literal is present, AND the enforcement anchors
+#      `UNVERIFIED:` + `do NOT set` live inside the `## Grounding` subsection —
+#      not merely somewhere in the file (X1 case b: descriptive literal kept
+#      while the enforcement teeth are stripped from the grounding body).
+#   2. developer-codex.md (prompt-only Codex sees the contract ONLY if embedded
+#      in the Codex Prompt Template fence): the literal AND both enforcement
+#      anchors live INSIDE the `## Codex Prompt Template` fenced block. A block
+#      moved below the closing fence keeps the file-wide literal green but drops
+#      the contract from every Codex dispatch (X1 case a).
+# Fence/subsection regions are extracted by awk anchored on the section heading
+# (NOT hardcoded line numbers), mirroring the cross-auditor-codex template pins.
+check_dev_grounding_instruction() {
+  local devwf="skills/feature/references/developer-workflow.md"
+  local codex="agents/developer-codex.md"
+  test -f "$devwf" || { echo "$devwf missing"; return 1; }
+  test -f "$codex" || { echo "$codex missing"; return 1; }
+
+  local literal='backed by a tool result from the current session'
+  local anchor
+
+  # 1. developer-workflow.md: literal present file-wide (unchanged), enforcement
+  #    anchors scoped to the `## Grounding` subsection (heading -> next `## `).
+  grep -qF "$literal" "$devwf" \
+    || { echo "$devwf missing grounding-contract literal '$literal'"; return 1; }
+  local devwf_sec
+  devwf_sec=$(awk '
+    /^## Grounding/ { grab=1; next }
+    grab && /^## / { exit }
+    grab { print }
+  ' "$devwf")
+  [ -n "$devwf_sec" ] || { echo "$devwf missing '## Grounding' subsection"; return 1; }
+  for anchor in 'UNVERIFIED:' 'do NOT set'; do
+    printf '%s\n' "$devwf_sec" | grep -qF "$anchor" \
+      || { echo "$devwf '## Grounding' subsection missing enforcement anchor '$anchor'"; return 1; }
+  done
+
+  # 2. developer-codex.md: extract the `## Codex Prompt Template` fenced block
+  #    (opening ``` fence after the heading -> matching close), then assert the
+  #    literal + both enforcement anchors live INSIDE it.
+  local codex_tmpl
+  codex_tmpl=$(awk '
+    /^## Codex Prompt Template/ { grab=1; next }
+    grab && /^```$/ { fence++; if (fence==2) exit; next }
+    grab && fence==1 { print }
+  ' "$codex")
+  [ -n "$codex_tmpl" ] || { echo "$codex missing '## Codex Prompt Template' fenced block"; return 1; }
+  printf '%s\n' "$codex_tmpl" | grep -qF "$literal" \
+    || { echo "$codex grounding-contract literal '$literal' not inside '## Codex Prompt Template' fence"; return 1; }
+  for anchor in 'UNVERIFIED:' 'do NOT set'; do
+    printf '%s\n' "$codex_tmpl" | grep -qF "$anchor" \
+      || { echo "$codex '## Codex Prompt Template' fence missing enforcement anchor '$anchor'"; return 1; }
+  done
+
+  echo "dev-dispatch grounding contract: literal + UNVERIFIED:/do NOT set anchors present in developer-workflow.md '## Grounding' subsection AND inside developer-codex.md '## Codex Prompt Template' fence OK"
+}
+
 # Behavioral pin for the cross-auditor return-contract classifier
 # (`hooks/lib/check_dispatch_response.py`). Iterates every sub-fixture under
 # tests/fixtures/cross-audit-contract-gate/*/*/ (27 directories per spec
