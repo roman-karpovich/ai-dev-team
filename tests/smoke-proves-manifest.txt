@@ -130,6 +130,9 @@ check_feature_classifier_require_rules_callsites prompt-text
 check_feature_terminal_evidence_refusal prompt-text
 check_feature_verify_terminal_evidence_precondition prompt-text
 check_cross_audit_standalone_audited_head prompt-text
+check_cross_audit_standalone_require_rules prompt-text
+check_cross_audit_standalone_degraded_rules_banner prompt-text
+check_cross_audit_standalone_recovered_clean_rules prompt-text
 check_model_attestation_skill_coupling schema
 
 # Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28)

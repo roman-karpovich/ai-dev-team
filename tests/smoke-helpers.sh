@@ -5500,6 +5500,86 @@ check_cross_audit_standalone_audited_head() {
   echo "cross-audit standalone audited-HEAD OK (Phase 3 render + file-backed-only + spec/decision abstain + non-git skip + no-transport-retry + banner + workdoc persistence)"
 }
 
+# prompt-text: standalone /cross-audit passes --require-rules-loaded for security/full
+# modes ONLY — NARROWER than --expected-head (spec 2026-07-05-degraded-run-rules-gate
+# §3.4). The R-rule cluster loader runs only in security/full, so logic NEVER passes
+# the flag (else every clean logic audit false-fires RULES_ATTESTATION_MISSING); spec/
+# decision never pass it either. Dropping the security/full-only header lets the flag
+# leak onto logic/spec/decision runs (false-fire on clean audits); dropping the
+# logic-never clause reopens the false-fire class; dropping the spec/decision-never
+# clause passes the flag against the inline channel that carries no rules keys.
+check_cross_audit_standalone_require_rules() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) flag present at all.
+  grep -qF -- '--require-rules-loaded' "$skill" \
+    || { echo "$skill missing the '--require-rules-loaded' classifier flag"; return 1; }
+  # (b) security/full-only header, narrower than --expected-head.
+  grep -qF 'standalone `security`/`full` modes ONLY (NARROWER than `--expected-head`)' "$skill" \
+    || { echo "$skill missing the '--require-rules-loaded' security/full-only (NARROWER than --expected-head) header"; return 1; }
+  # (c) logic-never clause (loader runs only in security/full).
+  grep -qF 'false-fire `RULES_ATTESTATION_MISSING` on every clean logic audit' "$skill" \
+    || { echo "$skill missing the logic-never 'false-fire RULES_ATTESTATION_MISSING on every clean logic audit' clause"; return 1; }
+  # (d) spec/decision-never clause.
+  grep -qF 'standalone runs (`--mode spec`) never pass it either' "$skill" \
+    || { echo "$skill missing the spec/decision 'never pass it either' abstention clause"; return 1; }
+  echo "cross-audit standalone --require-rules-loaded OK (flag + security/full-only header + logic-never + spec/decision-never)"
+}
+
+# prompt-text: standalone degraded-rules gate banner (spec §3.4) — the machine gate
+# #151 adds to standalone /cross-audit. Dropping the section heading removes the gate
+# entirely (fail-open reopens); dropping either gate value collapses the two
+# degradation shapes (attested-false vs absent/malformed) into a silent pass; dropping
+# the Fix-environment option loses the semantic-iteration recovery path (leaving only
+# accept/stop); dropping the no-new-sidecar-field persistence clause invites an
+# unimplementable post-seal sidecar write; dropping the workdoc line loses the only
+# POST-action record of the chosen gate action.
+check_cross_audit_standalone_degraded_rules_banner() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) banner section heading.
+  grep -qF '#### Standalone degraded-rules gate banner' "$skill" \
+    || { echo "$skill missing the '#### Standalone degraded-rules gate banner' section"; return 1; }
+  # (b) both gate values.
+  grep -qF 'RULES_NOT_LOADED' "$skill" \
+    || { echo "$skill degraded-rules banner missing the RULES_NOT_LOADED gate value"; return 1; }
+  grep -qF 'RULES_ATTESTATION_MISSING' "$skill" \
+    || { echo "$skill degraded-rules banner missing the RULES_ATTESTATION_MISSING gate value"; return 1; }
+  # (c) Fix-environment banner option.
+  grep -qF 'Fix environment and re-audit' "$skill" \
+    || { echo "$skill degraded-rules banner missing the 'Fix environment and re-audit' option"; return 1; }
+  # (d) no-new-sidecar-field persistence clause (mirror of the head-gate rule).
+  grep -qF 'no new sidecar field — mirror of the head-gate rule' "$skill" \
+    || { echo "$skill degraded-rules banner missing the 'no new sidecar field — mirror of the head-gate rule' persistence clause"; return 1; }
+  # (e) workdoc POST-action persistence line (literal starts with '- ' → -- guard).
+  grep -qF -- '- Rules loaded: <rules_loaded|absent> (reason=<rules_reason|absent>)' "$skill" \
+    || { echo "$skill degraded-rules banner missing the workdoc '- Rules loaded:' persistence line"; return 1; }
+  echo "cross-audit standalone degraded-rules gate banner OK (heading + both values + Fix-environment option + no-new-sidecar persistence + workdoc line)"
+}
+
+# prompt-text: standalone recovered-clean re-entry paths re-evaluate rules_gate (X4).
+# A transport retry cannot clear an environment condition, so a recovered-clean run
+# MUST re-attest the same degradation and hit the same banner. The Exit-1 retry-
+# recovery branch names rules_gate after head_gate; the policy-gate re-spawn Option 1
+# names BOTH head_gate (repairing its pre-existing omission) AND rules_gate. Dropping
+# either site's rules_gate re-evaluation lets a recovered-clean run bypass the gate
+# (fail-open through the transport-retry back door); dropping the L326 head_gate
+# repair re-opens the pre-existing audited-HEAD omission on that path.
+check_cross_audit_standalone_recovered_clean_rules() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) Exit-1 retry-recovery branch names rules_gate re-attest.
+  grep -qF 'a recovered-clean run re-attests the same degradation' "$skill" \
+    || { echo "$skill Exit-1 recovery branch missing the rules_gate 're-attests the same degradation' re-entry literal"; return 1; }
+  # (b) policy-gate re-spawn Option 1 repairs the pre-existing head_gate omission.
+  grep -qF "repairing this option's pre-existing head_gate omission" "$skill" \
+    || { echo "$skill policy re-spawn Option 1 missing the head_gate-omission-repair literal"; return 1; }
+  # (c) policy-gate re-spawn Option 1 names rules_gate.
+  grep -qF 'then the **degraded-rules gate** returns `rules_gate: null`' "$skill" \
+    || { echo "$skill policy re-spawn Option 1 missing the rules_gate re-evaluation literal"; return 1; }
+  echo "cross-audit standalone recovered-clean rules_gate re-entry OK (Exit-1 branch + policy re-spawn head_gate repair + rules_gate)"
+}
+
 check_model_attestation_skill_coupling() {
   local agent='agents/cross-auditor.md'
   local feat='skills/feature/SKILL.md'
