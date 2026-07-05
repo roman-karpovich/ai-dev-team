@@ -1426,6 +1426,72 @@ check_cross_auditor_hub_names_integration_lenses() {
   echo "$path hub names the standing integration lenses (§Mode Focus Areas summary + apply-instruction additive clause on the 'mode ∈ {logic, security, full}' line + 'never replace the standing dimensions' rule)"
 }
 
+# prompt-text: the diff-mode whole-file + incumbent reading contract must land on
+# BOTH audit halves (spec 2026-07-05-diff-audit-whole-file-incumbent Step 3).
+# Codex half: cross-auditor-codex-dispatch.md carries the line-exact
+# `### Diff-mode reading contract` heading; its section body (heading → first
+# `^### `/`^## ` line OR the `**Step 1 result at Step 3**` prose line OR EOF) must
+# carry all 5 content anchors PLUS the 3 wiring anchors that pin the sole delivery
+# mechanism to Codex (which never reads plugin docs — the instruction reaches it
+# only via the Step 1a prompt-injection). Negative: the stale `scope the audit to
+# changed files only` literal must be gone from the whole file. Claude half:
+# cross-auditor.md `## Step 2: Claude Audit (you)` section body (awk to next `^## `)
+# must carry the SAME 5 content anchors, so one pin asserts both halves
+# symmetrically. Style mirrors check_cross_auditor_integration_lenses_standing.
+check_cross_auditor_diff_mode_whole_file_incumbent() {
+  local codex="${1:-agents/references/cross-auditor-codex-dispatch.md}"
+  local claude="${2:-agents/cross-auditor.md}"
+  [ -r "$codex" ] || { echo "$codex not readable"; return 1; }
+  [ -r "$claude" ] || { echo "$claude not readable"; return 1; }
+  # Five content anchors shared by both halves.
+  local content_anchors='read the WHOLE file, not just the changed hunks
+incumbent/replaced/bridged code path
+outside the diff
+Differential-vs-incumbent
+Cite the incumbent files you read'
+  # --- Codex half ---
+  grep -qFx '### Diff-mode reading contract' "$codex" \
+    || { echo "$codex missing line-exact '### Diff-mode reading contract' heading"; return 1; }
+  local codex_section
+  codex_section=$(awk '
+    !in_s && $0 == "### Diff-mode reading contract" { in_s = 1; next }
+    in_s && (/^### / || /^## / || index($0, "**Step 1 result at Step 3**") == 1) { exit }
+    in_s { print }
+  ' "$codex")
+  [ -n "$codex_section" ] || { echo "$codex missing '### Diff-mode reading contract' section body"; return 1; }
+  local anchor
+  while IFS= read -r anchor; do
+    printf '%s\n' "$codex_section" | grep -qF "$anchor" \
+      || { echo "$codex §Diff-mode reading contract missing content anchor '$anchor'"; return 1; }
+  done <<EOF
+$content_anchors
+EOF
+  # Three wiring anchors pin the Step 1a prompt-injection (the delivery to Codex).
+  for anchor in 'Step 1a MUST append' 'immediately after the `Files to audit:` line' 'OR PR mode'; do
+    printf '%s\n' "$codex_section" | grep -qF "$anchor" \
+      || { echo "$codex §Diff-mode reading contract missing wiring anchor '$anchor'"; return 1; }
+  done
+  # Negative: the stale which-not-how-much predecessor literal must be gone.
+  if grep -qF 'scope the audit to changed files only' "$codex"; then
+    echo "$codex still carries stale 'scope the audit to changed files only' literal — the which-not-how-much rule replaced it"; return 1
+  fi
+  # --- Claude half ---
+  local claude_section
+  claude_section=$(awk '
+    !in_s && $0 == "## Step 2: Claude Audit (you)" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$claude")
+  [ -n "$claude_section" ] || { echo "$claude missing '## Step 2: Claude Audit (you)' section body"; return 1; }
+  while IFS= read -r anchor; do
+    printf '%s\n' "$claude_section" | grep -qF "$anchor" \
+      || { echo "$claude §Step 2 missing content anchor '$anchor'"; return 1; }
+  done <<EOF
+$content_anchors
+EOF
+  echo "$codex §Diff-mode reading contract carries 5 content anchors + 3 wiring anchors (no stale 'scope the audit to changed files only'); $claude §Step 2 carries the same 5 content anchors — both halves pinned"
+}
+
 # prompt-text: the mode-dependent Severity Ladder in the cross-auditor hub must
 # carry a `**decision mode:**` block AND the decision-mode default-floor note.
 # Scopes to the block body (from the `**decision mode:**` header to the shared

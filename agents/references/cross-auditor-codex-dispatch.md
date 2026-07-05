@@ -116,9 +116,17 @@ For each finding: artifact-line reference (spec §9 Log line / workdoc field / f
 Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely.
 ```
 
-For **diff mode**: scope the audit to changed files only.
+### Diff-mode reading contract
+
+For **diff mode**: the changed-file list defines WHICH files are in scope, NOT how much of each file to read.
 When `range_spec` is set, run `git diff --name-only <range_spec>` (single shell-quoted string; may include `-- <path>` suffix) in `working_directory` (the content root — caller cwd in-place, or the skill-materialized worktree for PR/`--materialize`/`--worktree`), NOT the agent's spawn cwd. Otherwise when `base_branch` is set, run `git diff --name-only <base_branch>...HEAD` in `working_directory` (legacy behavior).
 Include the resulting file list as "Files to audit" in the prompt template above before writing the prompt to `$PROMPT_FILE`.
+
+When the audit is diff-scoped — `range_spec` set, `base_branch` set, OR PR mode (`pr_number` set, file list derived from `pr_changed_files` / `build_pr_files.sh`) — Step 1a MUST append the following block verbatim to the Codex prompt, immediately after the `Files to audit:` line of the Code-mode template. The Code-mode template is the only insertion point needed: it is the sole template carrying a diff-derived file list (spec/decision modes read documents, not diffs — no `Files to audit:` line exists there by design):
+
+```
+Diff-scope reading contract: the files listed above are the CHANGED set; they define WHICH files to audit, NOT how much of each to read. For every changed file, read the WHOLE file, not just the changed hunks. Identify and read the incumbent/replaced/bridged code path even when it lies outside the diff — the unchanged formula the new path must reproduce, framework autodiscovery/registration semantics no diff line shows, unchanged readers (serializers, APIs, reports) of rows the change writes. Differential reasoning against that incumbent is a REQUIRED part of the audit (Differential-vs-incumbent lens): state what the incumbent does, what the new path does, and whether they agree. Cite the incumbent files you read, including files outside the diff.
+```
 
 **Step 1 result at Step 3**: at the start of Step 3 Consolidation, poll `BashOutput(shell_id_codex)` until status is `completed`, `failed`, or `killed`. On `completed`: read `$OUTPUT_FILE` for Codex's final response. **If `codex_audit_dispatch.sh exits non-zero` (BashOutput status `failed` or non-zero exit code from polling)**: capture the stderr output, call `KillShell(shell_id_codex)`, mark Codex status FAILED in the workdoc header, proceed with Claude-only audit. Prepend to the consolidated findings: `⚠️ WARNING: Codex audit unavailable (<error reason>). All findings are single-source (Claude only). Re-run when Codex CLI dispatch is restored.`
 

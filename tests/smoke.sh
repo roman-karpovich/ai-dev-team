@@ -3146,6 +3146,8 @@ check "cross-auditor-mode-focus-no-stale-four-modes" check_cross_auditor_mode_fo
 # Standing integration-lens taxonomy pins (spec 2026-07-05-integration-lens-taxonomy Step 3).
 check "cross-auditor-integration-lenses-standing" check_cross_auditor_integration_lenses_standing agents/references/cross-auditor-mode-focus.md
 check "cross-auditor-hub-names-integration-lenses" check_cross_auditor_hub_names_integration_lenses agents/cross-auditor.md
+# Diff-mode whole-file + incumbent reading contract pin (spec 2026-07-05-diff-audit-whole-file-incumbent Step 3).
+check "cross-auditor-diff-mode-whole-file-incumbent" check_cross_auditor_diff_mode_whole_file_incumbent agents/references/cross-auditor-codex-dispatch.md agents/cross-auditor.md
 # Decision-mode cross-auditor hub pins (spec 2026-07-02-decision-audit-mode Step 2).
 check "cross-auditor-mode-enum-names-decision" check_cross_auditor_mode_enum_names_decision agents/cross-auditor.md
 check "cross-auditor-decision-severity-ladder" check_cross_auditor_decision_severity_ladder agents/cross-auditor.md
