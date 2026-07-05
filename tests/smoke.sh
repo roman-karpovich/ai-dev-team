@@ -4474,6 +4474,9 @@ check "cross_auditor_codex_effort_default_xhigh_kept"     check_cross_auditor_co
 check "cross-auditor-model-attestation-contract"         check_cross_auditor_model_attestation_contract
 check "cross-auditor-audited-head-template"              check_cross_auditor_audited_head_template
 check "cross-auditor-audited-head-handshake"             check_cross_auditor_audited_head_handshake
+check "cross-auditor-rules-loaded-template"              check_cross_auditor_rules_loaded_template
+check "cross-auditor-rules-loaded-handshake"             check_cross_auditor_rules_loaded_handshake
+check "cross-auditor-rules-loaded-dispatch"              check_cross_auditor_rules_loaded_dispatch
 check "feature-handoff-audited-head-gate"                check_feature_handoff_audited_head_gate
 check "feature-code-audit-marker-audited-head"           check_feature_code_audit_marker_audited_head
 check "feature-classifier-expected-head-callsites"       check_feature_classifier_expected_head_callsites

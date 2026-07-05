@@ -137,9 +137,12 @@ change_type: <type>
 created: YYYY-MM-DD
 # Optional: project_type gates the security R-rule cluster at code-audit time.
 # Allowlist: smart_contract | backend | frontend | data_pipeline.
+# Explicit typeless: `none` — declared no applicable allowlist type; loader runs at
+#   "all" scope and attests rules_loaded: true (standing acceptance, does not gate).
+#   Unset/None stays degraded (rules_loaded: false).
 # Resolution chain: spec frontmatter → .ai-dev-team.local.yml → .ai-dev-team.yml → None.
 # See references/spec-template.md for the full fallback contract.
-# project_type: <smart_contract|backend|frontend|data_pipeline>
+# project_type: <smart_contract|backend|frontend|data_pipeline|none>
 tags: [spec, <project>]
 ---
 ```

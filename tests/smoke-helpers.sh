@@ -5203,6 +5203,83 @@ check_cross_auditor_audited_head_handshake() {
   echo "cross-auditor audited_head handshake contract OK (section + file-backed-only + rev-parse source + byte-identical footer + non-git omission + no-shape-validation)"
 }
 
+# prompt-text: the §Rules-loaded attestation contract section in the handshake doc
+# (spec 2026-07-05-degraded-run-rules-gate §3.1) documents the machine channel for the
+# degraded-rules gate. Each grep guards a distinct drift: dropping the file-backed
+# security/full-only channel clause would make the cross-auditor emit rules_loaded in
+# logic/spec/decision (false MISSING fires); dropping the resolver-exit-3 truth-table
+# row would lose the unreachable-file degraded case; dropping the MISSING-routing clause
+# would let a malformed token silent-pass — the exact fail-open this spec closes.
+check_cross_auditor_rules_loaded_handshake() {
+  local handshake='agents/references/cross-auditor-evidence-handshake.md'
+  test -f "$handshake" || { echo "$handshake missing"; return 1; }
+  # (a) the Rules-loaded attestation contract section exists.
+  grep -qF '### Rules-loaded attestation contract' "$handshake" \
+    || { echo "$handshake missing '### Rules-loaded attestation contract' section"; return 1; }
+  # (b) channel restriction: file-backed security/full only (loader-bearing modes).
+  grep -qF 'file-backed `security`/`full` ONLY' "$handshake" \
+    || { echo "$handshake rules_loaded contract missing 'file-backed security/full ONLY' channel clause"; return 1; }
+  # (c) truth-table degraded row: resolver exit 3 unreachable → false + reason.
+  grep -qF 'code-quality-rules.md not reachable' "$handshake" \
+    || { echo "$handshake rules_loaded truth table missing 'code-quality-rules.md not reachable' (resolver exit 3 → false) row"; return 1; }
+  # (d) MISSING-routing: a malformed token routes to the gate as MISSING, never a silent pass.
+  grep -qF 'routes to the rules gate as MISSING' "$handshake" \
+    || { echo "$handshake rules_loaded contract missing 'routes to the rules gate as MISSING' (never-silent-pass) clause"; return 1; }
+  echo "cross-auditor rules_loaded handshake contract OK (section + file-backed-security/full-only + resolver-exit-3 row + MISSING-never-silent)"
+}
+
+# prompt-text: the three-way project_type branch in the codex-dispatch doc (spec §3.5)
+# reworks the loader from allowlist/unset two-way to allowlist / explicit-none / unset-or-other.
+# Guards: the declared-`none` branch bullet + its informational H1 bullet literal must exist
+# (else `none` falls through to the degraded catch-all → the X1 100%-gate-on-typeless failure);
+# both rules_loaded truth values must be wired into the attestation emit; the resolver-exit-3
+# row must attest false with the reachability reason; and the pre-existing pinned unset-branch
+# literal must stay byte-exact (the `none` branch is inserted as a separate PRECEDING bullet,
+# never an infix edit of the pinned literal — semantics hold via branch ordering).
+check_cross_auditor_rules_loaded_dispatch() {
+  local f='agents/references/cross-auditor-codex-dispatch.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  # (a) three-way branch: the explicit-none branch bullet precedes the unset catch-all.
+  grep -qF 'If `project_type` is explicitly `none`' "$f" \
+    || { echo "$f missing explicit-none project_type branch bullet"; return 1; }
+  # (b) the none-declared informational bullet literal emitted at the H1 location.
+  #     `--` ends option parsing so the leading '- ' bullet dash is taken literally.
+  grep -qF -- '- R-rule cluster: all-scope (project_type=none declared)' "$f" \
+    || { echo "$f missing '- R-rule cluster: all-scope (project_type=none declared)' none-declared bullet literal"; return 1; }
+  # (c) attestation emit covers both truth values.
+  grep -qF 'rules_loaded: true' "$f" \
+    || { echo "$f missing 'rules_loaded: true' attestation emit branch"; return 1; }
+  grep -qF 'rules_loaded: false' "$f" \
+    || { echo "$f missing 'rules_loaded: false' attestation emit branch"; return 1; }
+  # (d) resolver exit 3 unreachable row wired into the attestation emit with the reachability reason.
+  grep -qF "rules_reason: 'code-quality-rules.md not reachable'" "$f" \
+    || { echo "$f missing resolver-exit-3 rules_reason 'code-quality-rules.md not reachable' attestation row"; return 1; }
+  # (e) pin-preservation: the unset-branch pinned literal stays byte-exact (branch ordering keeps semantics).
+  grep -qF 'If `project_type` is unset OR has a non-allowlist value' "$f" \
+    || { echo "$f pinned unset-branch literal 'If \`project_type\` is unset OR has a non-allowlist value' missing"; return 1; }
+  echo "cross-auditor rules_loaded dispatch OK (three-way branch + none-declared bullet + true/false attestation + exit-3 row + pinned unset literal preserved)"
+}
+
+# prompt-text: the findings.md frontmatter template in the output-format doc (spec §3.5)
+# gains the rules_loaded: machine-channel key (sibling of audited_head) + emit-contract note.
+# Guards: dropping the frontmatter key removes the machine channel the /feature + standalone
+# gates read; the audited_head sibling must remain (1:1 placement mirror); the emit-contract
+# note must name the security/full-only scope + machine-channel-beside-human-bullet semantics.
+check_cross_auditor_rules_loaded_template() {
+  local outfmt='agents/references/cross-auditor-output-format.md'
+  test -f "$outfmt" || { echo "$outfmt missing"; return 1; }
+  # (a) findings.md frontmatter template carries the rules_loaded: key (sibling of audited_head).
+  grep -qE '^rules_loaded: ' "$outfmt" \
+    || { echo "$outfmt findings.md template missing '^rules_loaded: ' frontmatter key"; return 1; }
+  # (b) audited_head: sibling still present — the pin mirrors it 1:1 in placement.
+  grep -qE '^audited_head: ' "$outfmt" \
+    || { echo "$outfmt findings.md template missing sibling '^audited_head: ' key"; return 1; }
+  # (c) emit-contract note names the machine-channel-beside-human-bullet + security/full-only scope.
+  grep -qF 'Rules-loaded pin emit contract' "$outfmt" \
+    || { echo "$outfmt missing 'Rules-loaded pin emit contract' note"; return 1; }
+  echo "cross-auditor rules_loaded template OK (frontmatter key + audited_head sibling + emit-contract note)"
+}
+
 # --- /feature audited-HEAD + terminal-evidence gates (spec
 #     2026-07-05-audited-head-terminal-evidence-gates §3.2/§3.3, Step 4) ---
 
