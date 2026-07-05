@@ -8456,9 +8456,11 @@ check_dev_grounding_instruction() {
 # next ^## ), mirroring that sibling; self-contained, does NOT use
 # extract_md_section (defined only in the smoke.sh caller). $1 defaults to the
 # real reference but accepts a mutant/fixture copy for RED verification.
-# Asserts positive digest-primary anchors + the retained Trigger B contract
-# pointer, and a NEGATIVE guard that the bulk before-first-step read mandate
-# did not silently return.
+# Asserts positive digest-primary anchors — the two framing phrases, all seven
+# on-demand trigger-map routes (removing behaviour → R1 through the security
+# route), and the retained Trigger B contract pointer — plus a pattern-class
+# NEGATIVE guard that no mandatory bulk-read mandate silently returned, in the
+# frozen literal or any reworded shape.
 check_dev_rules_digest_primary() {
   local devwf="${1:-skills/feature/references/developer-workflow.md}"
   test -f "$devwf" || { echo "$devwf missing"; return 1; }
@@ -8476,17 +8478,40 @@ check_dev_rules_digest_primary() {
     'primary working set' \
     'on-demand' \
     'removing behaviour → R1' \
+    'editing core-test assertions or rewriting tests → R2 + R3' \
+    'writing the first test in a module or deciding test placement → R5 + R7' \
+    'choosing test scope → R6' \
+    'producing public outputs (commit messages, PR text) → R8' \
+    'sizing new production code → R16' \
+    'security-adjacent code → the' \
     'see §Taxonomy in `code-quality-rules.md` for the canonical contract — do not paraphrase'; do
     printf '%s\n' "$section" | grep -qF "$anchor" \
       || { echo "$devwf §Code Quality Rules missing digest-primary anchor '$anchor'"; return 1; }
   done
+
+  # Pattern-class negative guard: reject any reintroduced mandatory bulk-read
+  # mandate, not just the frozen literal. Trip when one line co-occurs a
+  # (read|load) verb, a (before|prior to|upfront) temporal, and a (first step|
+  # any work|you begin|starting) scope. Byte-wise (LC_ALL=C) awk co-occurrence
+  # rather than a bounded-gap ERE: the lead paragraph is one very long line and
+  # a `[^.]{0,80}` gap regex catastrophically backtracks in BSD grep. The
+  # pristine section carries none of the scope tokens, so the legitimate
+  # "Read a rule's full body section on-demand" phrasing never trips it.
+  if printf '%s\n' "$section" | LC_ALL=C awk '
+      { l = tolower($0) }
+      l ~ /read|load/ && l ~ /before|prior to|upfront/ && l ~ /first step|any work|you begin|starting/ { hit = 1 }
+      END { exit(hit ? 0 : 1) }
+    '; then
+    echo "$devwf §Code Quality Rules bulk-read mandate reintroduced (read/load + before/prior/upfront + scope on one line; must be absent)"
+    return 1
+  fi
 
   if printf '%s\n' "$section" | grep -qF 'before the first step'; then
     echo "$devwf §Code Quality Rules bulk-read mandate 'before the first step' returned (must be absent)"
     return 1
   fi
 
-  echo "$devwf §Code Quality Rules digest-primary: primary-working-set + on-demand + trigger map + Trigger B pointer present; bulk before-first-step mandate absent OK"
+  echo "$devwf §Code Quality Rules digest-primary: primary-working-set + on-demand + 7-route trigger map + Trigger B pointer present; bulk-read mandate absent (frozen + reworded) OK"
 }
 
 # Behavioral pin for the cross-auditor return-contract classifier
