@@ -6538,6 +6538,15 @@ check "skill-md-cap-banner-present"                       check_skill_md_cap_ban
 check "mission-rule-11-amended-and-audit-claims-rule-present" check_mission_rule_11_amended_and_audit_claims_rule_present
 echo
 
+# --- dev-dispatch grounding contract (spec 2026-07-05) ---
+# Sibling to the empirical-verification cluster above: the dev-dispatch analog
+# of the cross-auditor claim-verification guard. Pins the grounding-contract
+# literal on BOTH dev-dispatch surfaces (shared developer-workflow.md reference
+# + the Codex prompt template in developer-codex.md).
+echo "dev-dispatch grounding contract:"
+check "dev-grounding-instruction" check_dev_grounding_instruction
+echo
+
 # --- Caveman compression skill (spec 2026-05-20) ---
 echo "caveman compression skill pins:"
 check "caveman-skill-parser-anchors-literal"     check_caveman_skill_parser_anchors_literal
