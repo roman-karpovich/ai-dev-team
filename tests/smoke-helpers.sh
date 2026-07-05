@@ -1204,6 +1204,67 @@ check_cross_auditor_decision_mode_focus_clusters() {
   echo "$path §decision mode carries all 5 focus-cluster anchors (Decision coherence/Premise re-derivation/Rubber-stamp/Fork analysis/Planned/observed)"
 }
 
+# prompt-text: the standing integration-lens taxonomy (spec 2026-07-05-integration-lens-taxonomy).
+# Pins the `### Integration lenses (standing — logic / security / full)` section of
+# cross-auditor-mode-focus.md: line-exact heading, all 5 lens labels + the ADDITIVE rule +
+# the differential-lens `explicit parity statement` clause (labels-not-prose, so rewording
+# stays free while a dropped lens fails). Also freezes the wiring anchors — logic + security
+# section bodies each carry the `Standing integration lenses` bullet, full body carries the
+# `Integration lenses (standing)` reference (full-mode wiring pinned directly, not transitively).
+# Codex-half parity: the `^Focus:` template line in cross-auditor-codex-dispatch.md must instruct
+# pasting the standing integration lenses (template-line-scoped so a stray anchor elsewhere in the
+# file cannot mask a template that dropped it). Section-scoped extraction mirrors the decision-mode
+# cluster pin above; bash-3.2 compatible, awk line-equality section boundaries.
+check_cross_auditor_integration_lenses_standing() {
+  local path="${1:-agents/references/cross-auditor-mode-focus.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qFx '### Integration lenses (standing — logic / security / full)' "$path" \
+    || { echo "$path missing line-exact '### Integration lenses (standing — logic / security / full)' heading"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "### Integration lenses (standing — logic / security / full)" { in_s = 1; next }
+    in_s && /^#/ { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '### Integration lenses (standing …)' section body"; return 1; }
+  local anchor
+  for anchor in '**Differential-vs-incumbent**' '**Under-issue / dropped work**' '**Runtime / framework wiring**' '**Read-side blast radius**' '**Flag-transition / migration edges**' 'Caller-supplied focus areas are ADDITIVE — they never replace the standing dimensions' 'explicit parity statement'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$path §Integration lenses (standing) missing anchor '$anchor'"; return 1; }
+  done
+  # Wiring anchors, scoped to each mode's own section body so a stray reference cannot mask
+  # a missing bullet. logic + security carry the `Standing integration lenses` bullet; full
+  # carries the `Integration lenses (standing)` reference.
+  local mode_body
+  mode_body=$(awk '
+    !in_s && $0 == "### `logic` mode" { in_s = 1; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$mode_body" | grep -qF 'Standing integration lenses' \
+    || { echo "$path §\`logic\` mode missing 'Standing integration lenses' wiring bullet"; return 1; }
+  mode_body=$(awk '
+    !in_s && $0 == "### `security` mode" { in_s = 1; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$mode_body" | grep -qF 'Standing integration lenses' \
+    || { echo "$path §\`security\` mode missing 'Standing integration lenses' wiring bullet"; return 1; }
+  mode_body=$(awk '
+    !in_s && $0 == "### `full` mode" { in_s = 1; next }
+    in_s && /^### / { exit }
+    in_s { print }
+  ' "$path")
+  printf '%s\n' "$mode_body" | grep -qF 'Integration lenses (standing)' \
+    || { echo "$path §\`full\` mode missing 'Integration lenses (standing)' wiring reference"; return 1; }
+  # Codex-half parity: the `Focus:` dispatch template line must instruct pasting the lenses.
+  local dispatch="agents/references/cross-auditor-codex-dispatch.md"
+  [ -r "$dispatch" ] || { echo "$dispatch not readable"; return 1; }
+  grep -E '^Focus:' "$dispatch" | grep -qF 'including the standing integration lenses' \
+    || { echo "$dispatch 'Focus:' template line missing 'including the standing integration lenses'"; return 1; }
+  echo "$path §Integration lenses (standing) carries heading + 5 lens labels + ADDITIVE rule + parity statement; logic/security/full wiring pinned; codex-dispatch Focus line names the lenses"
+}
+
 # prompt-text: the reference-summary prose (line 3) must name FIVE operating
 # modes now that `decision` is the fifth. Negative: the stale `four operating
 # modes` literal must be gone. Positive: the updated prose must name `five
@@ -1231,6 +1292,32 @@ check_cross_auditor_mode_enum_names_decision() {
   grep -qF '`spec` | `decision`' "$path" \
     || { echo "$path §Input mode enum missing rendered '\`spec\` | \`decision\`' — decision must be the fifth mode"; return 1; }
   echo "$path §Input mode enum names decision (rendered '\`spec\` | \`decision\`')"
+}
+
+# prompt-text: the cross-auditor hub (agents/cross-auditor.md) must name the standing
+# integration lenses (spec 2026-07-05-integration-lens-taxonomy). Two contracts: (1) the
+# `## Mode Focus Areas` section body carries the `standing integration lenses` summary clause
+# (section-scoped so a stray mention elsewhere cannot mask a summary that dropped it); (2) the
+# apply-instruction line carries `mode ∈ {logic, security, full}` on the SAME line as
+# `standing integration lenses` (the additive-scope clause), and the file carries the
+# `never replace the standing dimensions` rule. Mirrors the decision-mode hub-pin precedent.
+check_cross_auditor_hub_names_integration_lenses() {
+  local path="${1:-agents/cross-auditor.md}"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  local section
+  section=$(awk '
+    !in_s && $0 == "## Mode Focus Areas" { in_s = 1; next }
+    in_s && /^## / { exit }
+    in_s { print }
+  ' "$path")
+  [ -n "$section" ] || { echo "$path missing '## Mode Focus Areas' section body"; return 1; }
+  printf '%s\n' "$section" | grep -qF 'standing integration lenses' \
+    || { echo "$path §Mode Focus Areas summary missing 'standing integration lenses' clause"; return 1; }
+  grep -F 'mode ∈ {logic, security, full}' "$path" | grep -qF 'standing integration lenses' \
+    || { echo "$path apply-instruction missing 'standing integration lenses' on the 'mode ∈ {logic, security, full}' line"; return 1; }
+  grep -qF 'never replace the standing dimensions' "$path" \
+    || { echo "$path missing 'never replace the standing dimensions' additive rule"; return 1; }
+  echo "$path hub names the standing integration lenses (§Mode Focus Areas summary + apply-instruction additive clause on the 'mode ∈ {logic, security, full}' line + 'never replace the standing dimensions' rule)"
 }
 
 # prompt-text: the mode-dependent Severity Ladder in the cross-auditor hub must
@@ -1987,6 +2074,83 @@ check_agents_cross_auditor_schema_cut_fields() {
   echo "$path §Step 4 findings template carries schema-cut columns + details fields + Found-by→sources[] round-trip mapping"
 }
 
+check_findings_schema_failure_class() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 1 — asserts the §Step 4
+  # details template in cross-auditor-output-format.md carries BOTH new literals:
+  #  (1) the `- **Failure class / input domain**:` details-block field
+  #  (2) the renamed advisory Fix label `- **Fix (advisory)**:`
+  # Regression: reverting either literal (dropping the failure-class field, or
+  # restoring the bare `**Fix**:` label) breaks the finding schema contract that
+  # the renderer emits — this pin catches a template/renderer drift.
+  local path="agents/references/cross-auditor-output-format.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+  grep -qF -- '- **Failure class / input domain**:' "$path" \
+    || { echo "$path missing details-block field '- **Failure class / input domain**:'"; return 1; }
+  grep -qF -- '- **Fix (advisory)**:' "$path" \
+    || { echo "$path missing renamed advisory Fix label '- **Fix (advisory)**:'"; return 1; }
+  echo "$path details template carries '**Failure class / input domain**:' + '**Fix (advisory)**:'"
+}
+
+check_codex_dispatch_emits_failure_class() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 2 — asserts the three
+  # per-mode Codex prompt templates in cross-auditor-codex-dispatch.md each emit a
+  # MODE-APPROPRIATE failure-class instruction while preserving their distinct
+  # lead-in verbatim (code=file:line / spec=spec section/step reference /
+  # decision=artifact-line reference). Each grep co-locates the lead-in and the
+  # failure-class clause on one emission line (byte-exact through the clause).
+  # Regression: a single find-replace that clobbered a mode lead-in, dropped a
+  # template's failure-class clause, un-marked the suggestion advisory, or leaked
+  # the code-only "input domain" wording into the spec/decision prompts breaks it.
+  local path="agents/references/cross-auditor-codex-dispatch.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+
+  grep -qF -- 'For each finding: file:line, description, failure class / input domain (the class of inputs/states, not one observed example),' "$path" \
+    || { echo "$path code template missing 'file:line' lead-in + 'failure class / input domain' clause"; return 1; }
+  grep -qF -- 'For each finding: spec section/step reference, description, failure class (the class of spec defects/cases the issue covers, not one example),' "$path" \
+    || { echo "$path spec template missing 'spec section/step reference' lead-in + spec-defects failure-class clause"; return 1; }
+  grep -qF -- 'For each finding: artifact-line reference (spec §9 Log line / workdoc field / findings-doc ID), description, failure class (the class of decisions/cases the issue covers, not one example),' "$path" \
+    || { echo "$path decision template missing 'artifact-line reference (...)' lead-in + decisions failure-class clause"; return 1; }
+
+  local adv
+  adv=$(grep -cF 'concrete fix suggestion (advisory —' "$path")
+  [ "$adv" = "3" ] || { echo "$path expected 3 advisory-marked fix-suggestion lines, found $adv"; return 1; }
+
+  # "input domain" wording is code-runtime-only — must NOT leak into spec/decision.
+  local idc
+  idc=$(grep -cF 'input domain' "$path")
+  [ "$idc" = "1" ] || { echo "$path expected 'input domain' exactly once (code template only), found $idc"; return 1; }
+
+  echo "$path all three Codex templates emit mode-appropriate failure class; lead-ins survive; input-domain code-only"
+}
+
+check_claude_step2_mode_conditional_failure_class() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 2 — asserts cross-auditor.md
+  # §Step 2 (mode-shared, no internal branch) carries the MODE-CONDITIONAL
+  # failure-class sentence: "input domain" scoped to code/security/full, plus the
+  # spec-defects and decisions phrasings + the advisory note. Regression: dropping
+  # the sentence, or letting bare "input domain" apply to all modes (leaking
+  # code-runtime wording into spec/decision audits), breaks this pin.
+  local path="agents/cross-auditor.md"
+  [ -r "$path" ] || { echo "$path not readable"; return 1; }
+
+  # Isolate the §Step 2 body (through the next '## Step 2.4' heading) so the
+  # sentence is asserted in the mode-shared section, not elsewhere in the file.
+  local sect
+  sect=$(awk '/^## Step 2: Claude Audit/{f=1} f&&/^## Step 2\.4/{exit} f' "$path")
+  [ -n "$sect" ] || { echo "$path §Step 2 section not found"; return 1; }
+
+  printf '%s\n' "$sect" | grep -qF -- 'code/security/full findings as failure class / input domain (the class of inputs/states, not one observed example)' \
+    || { echo "$path §Step 2 missing 'input domain' scoped to code/security/full"; return 1; }
+  printf '%s\n' "$sect" | grep -qF -- 'spec findings as the class of spec defects/cases' \
+    || { echo "$path §Step 2 missing spec-defects failure-class phrasing"; return 1; }
+  printf '%s\n' "$sect" | grep -qF -- 'decision findings as the class of decisions/cases' \
+    || { echo "$path §Step 2 missing decisions failure-class phrasing"; return 1; }
+  printf '%s\n' "$sect" | grep -qF -- 'The fix suggestion is advisory' \
+    || { echo "$path §Step 2 missing advisory fix-suggestion note"; return 1; }
+
+  echo "$path §Step 2 carries mode-conditional failure-class sentence (input-domain scoped; spec/decision phrasings; advisory)"
+}
+
 # --- Step 2: hooks/lib/render_findings.sh ---
 #
 # Each helper below drives hooks/lib/render_findings.sh with a fixture
@@ -2072,6 +2236,27 @@ check_findings_renderer_fail_open() {
   _render_findings_byte_diff \
     tests/fixtures/cross-audit-probes-foundation/renderer/06-probe-fail-open-input.json \
     tests/fixtures/cross-audit-probes-foundation/renderer/06-probe-fail-open-expected.md
+}
+
+check_renderer_failure_class_passthrough() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 1 — fixture-01's input JSON
+  # carries a distinctive failure_class VALUE; the regenerated golden byte-matches
+  # AND the rendered output must carry that literal value on the details line.
+  # Byte-diff proves render_findings.sh passes f['failure_class'] through (not just
+  # the label); the explicit value grep guards against a renderer that emits the
+  # line but drops/empties the value.
+  # Regression: rendering the failure-class value as empty (or hardcoding the
+  # label without threading f.get('failure_class')) fails the value grep.
+  _render_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/renderer/01-no-probes-legacy-input.json \
+    tests/fixtures/cross-audit-probes-foundation/renderer/01-no-probes-legacy-expected.md || return 1
+  local out
+  out=$(bash hooks/lib/render_findings.sh \
+    < tests/fixtures/cross-audit-probes-foundation/renderer/01-no-probes-legacy-input.json) \
+    || { echo "render_findings.sh exited non-zero on fixture 01"; return 1; }
+  printf '%s\n' "$out" | grep -qF -- '- **Failure class / input domain**: unparseable-numeric inputs: NaN/Infinity/negative' \
+    || { echo "render_findings.sh dropped the distinctive failure_class VALUE from fixture-01 output"; return 1; }
+  echo "render_findings.sh passes the distinctive failure_class VALUE through to the details block"
 }
 
 # --- Step 3: hooks/lib/dedupe_findings.sh + receipt hash canonicalization ---
@@ -2185,6 +2370,18 @@ check_dedupe_merged_probe_llm_sources_list() {
   _dedupe_findings_byte_diff \
     tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-input.json \
     tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-expected.json
+}
+
+check_dedupe_failure_class_carry() {
+  # spec 2026-07-05-fix-dispatch-carries-failure Step 1 — probe:E + claude merge
+  # where ONLY the LLM member carries failure_class. The X23 swap makes the probe
+  # member primary before dict(primary), so without merge_pair's explicit
+  # `out["failure_class"] = primary.get(...) or secondary.get(...) or ""` carry
+  # the LLM-side value is DROPPED. Byte-match asserts the merged entry retains it.
+  # Regression: removing the carry line drops the value → byte-diff fails.
+  _dedupe_findings_byte_diff \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-failure-class-input.json \
+    tests/fixtures/cross-audit-probes-foundation/dedupe/merged-probe-llm-failure-class-expected.json
 }
 
 # --- Step 4: cross_audit.probes.<id>.mode config surface ---

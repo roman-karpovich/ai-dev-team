@@ -65,7 +65,8 @@ tags: [audit, <project>]
 - **Found by**: Both (high confidence)
 - **File**: path:line
 - **Description**: ...
-- **Fix**: ...
+- **Failure class / input domain**: <the class of inputs/states the failure belongs to — not just one observed example>
+- **Fix (advisory)**: ...
 - **Sources**: [claude, codex]
 - **Mode at emit**: (probe findings only; blank for pure-LLM)
 - **Blocking**: false
@@ -76,6 +77,8 @@ tags: [audit, <project>]
 ```
 
 **Audited-HEAD pin emit contract**: the `audited_head: <full commit oid>` frontmatter key (sibling of `claude_model:`) is emitted on file-backed audits ONLY (`code`/`full`/`logic`/`security`). Its value is the output of `git rev-parse HEAD` in the audit workspace at audit time — the commit state the audit actually read — overwritten each iteration (same lifecycle as `claude_model:`). **Non-git carve-out**: when the audit workspace is not a git repo (the standalone non-git in-place path) `git rev-parse HEAD` cannot resolve, so the key is OMITTED from the frontmatter entirely and the standalone invocation correspondingly skips `--expected-head`. Spec and decision modes emit nothing for this field — `audited_head` is not part of the inline-footer contract. Full contract: `agents/references/cross-auditor-evidence-handshake.md` §Audited-HEAD attestation contract.
+
+**`failure_class` (optional) + advisory `Fix`**: the details block carries `- **Failure class / input domain**: <class>` — the class of inputs/states the failure belongs to, not one observed example — rendered from the optional finding JSON key `failure_class` (string; rendered empty when the key is absent, so old producers and probe findings stay valid). The `- **Fix (advisory)**:` label marks the suggestion as ONE hypothesis: the remedy derives from the Description + failure class + the code, not from the suggestion's letter. The finding JSON `fix` key is UNCHANGED (render/dedupe parse it); only the rendered label carries `(advisory)`. Legacy findings docs written before this change keep the bare `- **Fix**:` label — nothing parses the label, so mixed `**Fix**:` / `**Fix (advisory)**:` labels across a re-audited findings doc are acceptable.
 
 **R-rule cluster gate emit contract**: the conditional `- R-rule cluster: NOT loaded — ...` bullet shown in the H1 block above is a stable parsable token. It appears only when the cluster gate in `agents/references/cross-auditor-mode-focus.md` §R-rule cluster gate fires (`mode ∈ {security, full}` AND `project_type` unset or non-allowlist); when `project_type` resolves to an allowlist value, the bullet is omitted entirely. Grep-stable forms: the colonless prose-spec literal `R-rule cluster NOT loaded` matches the §R-rule cluster gate prose body; the colonized rendered-bullet literal `R-rule cluster: NOT loaded` matches the rendered findings document. Future tooling (`/feature status`, smoke pins) MAY parse either form.
 

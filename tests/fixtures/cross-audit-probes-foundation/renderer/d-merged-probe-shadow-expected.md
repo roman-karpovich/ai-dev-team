@@ -10,7 +10,8 @@
 - **Severity**: HIGH
 - **File**: src/stellar/reconcile.py:142
 - **Description**: Probe E + claude merged entry: build_failure marker not consumed.
-- **Fix**: Add build_failure to _clean_rewards allowlist.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Add build_failure to _clean_rewards allowlist.
 - **Sources**: [probe:E, claude]
 - **Mode at emit**: shadow
 - **Blocking**: false

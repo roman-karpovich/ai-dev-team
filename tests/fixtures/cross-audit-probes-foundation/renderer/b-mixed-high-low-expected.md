@@ -16,7 +16,8 @@
 - **Severity**: CRITICAL
 - **File**: src/api/admin.py:22
 - **Description**: Both auditors flagged missing auth check before deletion.
-- **Fix**: Add @require_admin decorator.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Add @require_admin decorator.
 - **Sources**: [claude, codex]
 - **Mode at emit**: 
 - **Blocking**: false
@@ -30,7 +31,8 @@
 - **Severity**: HIGH
 - **File**: src/lib/util.py:140
 - **Description**: Variable `x` is overloaded; hard to follow control flow.
-- **Fix**: Rename to retries_remaining.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Rename to retries_remaining.
 - **Sources**: [claude]
 - **Mode at emit**: 
 - **Blocking**: false
