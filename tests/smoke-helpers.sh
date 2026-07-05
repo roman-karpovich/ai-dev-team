@@ -8411,6 +8411,7 @@ check_dispatch_response_classification() {
   fi
   local d meta mode expected_class expected_exit project
   local expected_model_arg expected_model_gate expected_claude_model
+  local require_rules_arg expected_rules_gate expected_rules_loaded expected_rules_reason
   local out_file rc got_class checked=0
   out_file=$(mktemp) || return 1
   for d in "$fixture_root"/*/*/; do
@@ -8443,12 +8444,26 @@ check_dispatch_response_classification() {
     expected_head_arg=$(sed -n 's/^expected_head_arg: *//p' "$meta")
     expected_head_gate=$(sed -n 's/^expected_head_gate: *//p' "$meta")
     expected_audited_head=$(sed -n 's/^expected_audited_head: *//p' "$meta")
+    # Four OPTIONAL rules-loaded meta keys (spec 2026-07-05 §3.2; absent in the
+    # legacy fixtures). `require_rules_arg: true` drives the BARE value-less
+    # `--require-rules-loaded` flag (UNLIKE the head/model value flags — no
+    # "$val" companion), threaded into every invocation arm. `expected_rules_gate`
+    # / `expected_rules_loaded` / `expected_rules_reason` are asserted
+    # UNCONDITIONALLY in the python block (absent -> null), so the flag cannot
+    # leak into a legacy CLEAN fixture and silently return RULES_ATTESTATION_MISSING.
+    require_rules_arg=$(sed -n 's/^require_rules_arg: *//p' "$meta")
+    expected_rules_gate=$(sed -n 's/^expected_rules_gate: *//p' "$meta")
+    expected_rules_loaded=$(sed -n 's/^expected_rules_loaded: *//p' "$meta")
+    expected_rules_reason=$(sed -n 's/^expected_rules_reason: *//p' "$meta")
     local extra_args=()
     if [ -n "$expected_model_arg" ]; then
       extra_args+=(--expected-claude-model "$expected_model_arg")
     fi
     if [ -n "$expected_head_arg" ]; then
       extra_args+=(--expected-head "$expected_head_arg")
+    fi
+    if [ "$require_rules_arg" = "true" ]; then
+      extra_args+=(--require-rules-loaded)
     fi
     # Policy-gate fixtures: invoked WITH `--project ai-dev-team`. The
     # spec-mode CLEAN_SINGLE variant pins the isolated policy gate; the
@@ -8490,13 +8505,17 @@ check_dispatch_response_classification() {
     # the payload — read straight from disk).
     if ! python3 - "$out_file" "$expected_class" "$d" "$project" \
         "$expected_model_gate" "$expected_claude_model" \
-        "$expected_head_gate" "$expected_audited_head" <<'PY'
+        "$expected_head_gate" "$expected_audited_head" \
+        "$expected_rules_gate" "$expected_rules_loaded" \
+        "$expected_rules_reason" <<'PY'
 import json
 import sys
 
 (out_file, expected_class, fixture_dir, project,
  expected_model_gate, expected_claude_model,
- expected_head_gate, expected_audited_head) = sys.argv[1:9]
+ expected_head_gate, expected_audited_head,
+ expected_rules_gate, expected_rules_loaded,
+ expected_rules_reason) = sys.argv[1:12]
 try:
     with open(out_file, "r", encoding="utf-8") as fh:
         j = json.load(fh)
@@ -8581,6 +8600,44 @@ if got_head != want_head:
     print(f"sub-fixture {fixture_dir}: audited_head {got_head!r}, "
           f"expected {want_head!r}")
     sys.exit(1)
+
+# Rules-loaded assertions (UNCONDITIONAL for every fixture, legacy included).
+# The meta keys are optional shell vars: an empty string means the key was
+# absent -> expected null. `expected_rules_gate` guards against the flag leaking
+# into legacy CLEAN fixtures (would silently return RULES_ATTESTATION_MISSING)
+# AND pins the co-fire independence (policy/model/head gate firing does NOT
+# suppress rules_gate); `expected_rules_loaded` / `expected_rules_reason` pin
+# the informational parse values (an impl that computes rules_gate but mis-emits
+# rules_loaded, or fails to unquote rules_reason, is caught here).
+want_rules_gate = (None if expected_rules_gate in ("", "null")
+                   else expected_rules_gate)
+got_rules_gate = j.get("rules_gate")
+if got_rules_gate != want_rules_gate:
+    print(f"sub-fixture {fixture_dir}: rules_gate {got_rules_gate!r}, "
+          f"expected {want_rules_gate!r}")
+    sys.exit(1)
+
+if expected_rules_loaded in ("", "null"):
+    want_rules_loaded = None
+elif expected_rules_loaded == "true":
+    want_rules_loaded = True
+elif expected_rules_loaded == "false":
+    want_rules_loaded = False
+else:
+    want_rules_loaded = expected_rules_loaded
+got_rules_loaded = j.get("rules_loaded")
+if got_rules_loaded != want_rules_loaded:
+    print(f"sub-fixture {fixture_dir}: rules_loaded {got_rules_loaded!r}, "
+          f"expected {want_rules_loaded!r}")
+    sys.exit(1)
+
+want_rules_reason = (None if expected_rules_reason in ("", "null")
+                     else expected_rules_reason)
+got_rules_reason = j.get("rules_reason")
+if got_rules_reason != want_rules_reason:
+    print(f"sub-fixture {fixture_dir}: rules_reason {got_rules_reason!r}, "
+          f"expected {want_rules_reason!r}")
+    sys.exit(1)
 PY
     then
       rm -f "$out_file"
@@ -8589,11 +8646,11 @@ PY
     checked=$((checked + 1))
   done
   rm -f "$out_file"
-  if [ "$checked" != "64" ]; then
-    echo "expected 64 sub-fixtures, checked $checked"
+  if [ "$checked" != "70" ]; then
+    echo "expected 70 sub-fixtures, checked $checked"
     return 1
   fi
-  echo "dispatch-response classifier: 64/64 sub-fixtures classified correctly"
+  echo "dispatch-response classifier: 70/70 sub-fixtures classified correctly"
 }
 
 # Behavioral pin for the classifier's enum -> violation-blocker phrasing

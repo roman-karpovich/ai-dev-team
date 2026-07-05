@@ -1,0 +1,8 @@
+expected_classification: CLEAN_DUAL
+expected_exit: 0
+mode: code
+require_rules_arg: true
+expected_claude_model: claude-fable-5
+expected_rules_gate: RULES_ATTESTATION_MISSING
+expected_rules_loaded: null
+notes: "synthetic; valid canonical coexisting with malformed '=' sibling -> parse None -> MISSING"

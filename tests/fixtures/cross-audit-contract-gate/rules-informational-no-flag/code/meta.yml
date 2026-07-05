@@ -1,0 +1,8 @@
+expected_classification: CLEAN_DUAL
+expected_exit: 0
+mode: code
+expected_claude_model: claude-fable-5
+expected_rules_gate: null
+expected_rules_loaded: false
+expected_rules_reason: code-quality-rules.md not reachable
+notes: "synthetic; rules_loaded surfaced informationally WITHOUT --require-rules-loaded -> rules_gate null"
