@@ -86,6 +86,17 @@ check_r3_notes_requirement_present() {
   echo "R3 notes-requirement sentence present byte-exact in $path"
 }
 
+check_r3_fix_completeness_present() {
+  local path="$1"
+  local R3
+  R3=$(extract_md_section "$path" '## R3 — Test strength / signal-to-noise')
+  printf '%s\n' "$R3" | grep -qiF 'guard-mirror' || { echo "R3 section in $path missing 'guard-mirror' fix-completeness anti-pattern token"; return 1; }
+  printf '%s\n' "$R3" | grep -qiF 'failure class' || { echo "R3 section in $path missing 'failure class' fix-completeness token"; return 1; }
+  printf '%s\n' "$R3" | grep -qiF 'boundary_inputs' || { echo "R3 section in $path missing 'boundary_inputs' fix-completeness token"; return 1; }
+  printf '%s\n' "$R3" | grep -qiF 'non-finite' || { echo "R3 section in $path missing 'non-finite' fix-completeness token"; return 1; }
+  echo "R3 fix-completeness tokens (guard-mirror/failure class/boundary_inputs/non-finite) present in $path"
+}
+
 check_developer_workflow_short_form_r3() {
   local path="$1"
   extract_md_section "$path" '## Code Quality Rules' | \
