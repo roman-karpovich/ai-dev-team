@@ -5309,6 +5309,83 @@ check_cross_auditor_audited_head_handshake() {
   echo "cross-auditor audited_head handshake contract OK (section + file-backed-only + rev-parse source + byte-identical footer + non-git omission + no-shape-validation)"
 }
 
+# prompt-text: the §Rules-loaded attestation contract section in the handshake doc
+# (spec 2026-07-05-degraded-run-rules-gate §3.1) documents the machine channel for the
+# degraded-rules gate. Each grep guards a distinct drift: dropping the file-backed
+# security/full-only channel clause would make the cross-auditor emit rules_loaded in
+# logic/spec/decision (false MISSING fires); dropping the resolver-exit-3 truth-table
+# row would lose the unreachable-file degraded case; dropping the MISSING-routing clause
+# would let a malformed token silent-pass — the exact fail-open this spec closes.
+check_cross_auditor_rules_loaded_handshake() {
+  local handshake='agents/references/cross-auditor-evidence-handshake.md'
+  test -f "$handshake" || { echo "$handshake missing"; return 1; }
+  # (a) the Rules-loaded attestation contract section exists.
+  grep -qF '### Rules-loaded attestation contract' "$handshake" \
+    || { echo "$handshake missing '### Rules-loaded attestation contract' section"; return 1; }
+  # (b) channel restriction: file-backed security/full only (loader-bearing modes).
+  grep -qF 'file-backed `security`/`full` ONLY' "$handshake" \
+    || { echo "$handshake rules_loaded contract missing 'file-backed security/full ONLY' channel clause"; return 1; }
+  # (c) truth-table degraded row: resolver exit 3 unreachable → false + reason.
+  grep -qF 'code-quality-rules.md not reachable' "$handshake" \
+    || { echo "$handshake rules_loaded truth table missing 'code-quality-rules.md not reachable' (resolver exit 3 → false) row"; return 1; }
+  # (d) MISSING-routing: a malformed token routes to the gate as MISSING, never a silent pass.
+  grep -qF 'routes to the rules gate as MISSING' "$handshake" \
+    || { echo "$handshake rules_loaded contract missing 'routes to the rules gate as MISSING' (never-silent-pass) clause"; return 1; }
+  echo "cross-auditor rules_loaded handshake contract OK (section + file-backed-security/full-only + resolver-exit-3 row + MISSING-never-silent)"
+}
+
+# prompt-text: the three-way project_type branch in the codex-dispatch doc (spec §3.5)
+# reworks the loader from allowlist/unset two-way to allowlist / explicit-none / unset-or-other.
+# Guards: the declared-`none` branch bullet + its informational H1 bullet literal must exist
+# (else `none` falls through to the degraded catch-all → the X1 100%-gate-on-typeless failure);
+# both rules_loaded truth values must be wired into the attestation emit; the resolver-exit-3
+# row must attest false with the reachability reason; and the pre-existing pinned unset-branch
+# literal must stay byte-exact (the `none` branch is inserted as a separate PRECEDING bullet,
+# never an infix edit of the pinned literal — semantics hold via branch ordering).
+check_cross_auditor_rules_loaded_dispatch() {
+  local f='agents/references/cross-auditor-codex-dispatch.md'
+  test -f "$f" || { echo "$f missing"; return 1; }
+  # (a) three-way branch: the explicit-none branch bullet precedes the unset catch-all.
+  grep -qF 'If `project_type` is explicitly `none`' "$f" \
+    || { echo "$f missing explicit-none project_type branch bullet"; return 1; }
+  # (b) the none-declared informational bullet literal emitted at the H1 location.
+  #     `--` ends option parsing so the leading '- ' bullet dash is taken literally.
+  grep -qF -- '- R-rule cluster: all-scope (project_type=none declared)' "$f" \
+    || { echo "$f missing '- R-rule cluster: all-scope (project_type=none declared)' none-declared bullet literal"; return 1; }
+  # (c) attestation emit covers both truth values.
+  grep -qF 'rules_loaded: true' "$f" \
+    || { echo "$f missing 'rules_loaded: true' attestation emit branch"; return 1; }
+  grep -qF 'rules_loaded: false' "$f" \
+    || { echo "$f missing 'rules_loaded: false' attestation emit branch"; return 1; }
+  # (d) resolver exit 3 unreachable row wired into the attestation emit with the reachability reason.
+  grep -qF "rules_reason: 'code-quality-rules.md not reachable'" "$f" \
+    || { echo "$f missing resolver-exit-3 rules_reason 'code-quality-rules.md not reachable' attestation row"; return 1; }
+  # (e) pin-preservation: the unset-branch pinned literal stays byte-exact (branch ordering keeps semantics).
+  grep -qF 'If `project_type` is unset OR has a non-allowlist value' "$f" \
+    || { echo "$f pinned unset-branch literal 'If \`project_type\` is unset OR has a non-allowlist value' missing"; return 1; }
+  echo "cross-auditor rules_loaded dispatch OK (three-way branch + none-declared bullet + true/false attestation + exit-3 row + pinned unset literal preserved)"
+}
+
+# prompt-text: the findings.md frontmatter template in the output-format doc (spec §3.5)
+# gains the rules_loaded: machine-channel key (sibling of audited_head) + emit-contract note.
+# Guards: dropping the frontmatter key removes the machine channel the /feature + standalone
+# gates read; the audited_head sibling must remain (1:1 placement mirror); the emit-contract
+# note must name the security/full-only scope + machine-channel-beside-human-bullet semantics.
+check_cross_auditor_rules_loaded_template() {
+  local outfmt='agents/references/cross-auditor-output-format.md'
+  test -f "$outfmt" || { echo "$outfmt missing"; return 1; }
+  # (a) findings.md frontmatter template carries the rules_loaded: key (sibling of audited_head).
+  grep -qE '^rules_loaded: ' "$outfmt" \
+    || { echo "$outfmt findings.md template missing '^rules_loaded: ' frontmatter key"; return 1; }
+  # (b) audited_head: sibling still present — the pin mirrors it 1:1 in placement.
+  grep -qE '^audited_head: ' "$outfmt" \
+    || { echo "$outfmt findings.md template missing sibling '^audited_head: ' key"; return 1; }
+  # (c) emit-contract note names the machine-channel-beside-human-bullet + security/full-only scope.
+  grep -qF 'Rules-loaded pin emit contract' "$outfmt" \
+    || { echo "$outfmt missing 'Rules-loaded pin emit contract' note"; return 1; }
+  echo "cross-auditor rules_loaded template OK (frontmatter key + audited_head sibling + emit-contract note)"
+}
+
 # --- /feature audited-HEAD + terminal-evidence gates (spec
 #     2026-07-05-audited-head-terminal-evidence-gates §3.2/§3.3, Step 4) ---
 
@@ -5375,6 +5452,83 @@ check_feature_classifier_expected_head_callsites() {
   grep -qF 'NEVER consumes the shared §3.5b-1 one-transport-retry budget' "$skill" \
     || { echo "$skill §3.5b-2f missing the head_gate no-transport-retry clause"; return 1; }
   echo "feature classifier --expected-head callsites OK (2/3/4 present + callsite-1 absent + no-transport-retry)"
+}
+
+# prompt-text: the §3.5b-2g degraded-rules gate is the machine gate #151 adds — a
+# rules-not-loaded audit must NOT be recorded as a clean pass without explicit,
+# logged user acceptance. Dropping the section heading removes the gate entirely
+# (fail-open reopens); dropping either gate value collapses the two degradation
+# shapes (attested-false vs absent/malformed) into a silent pass; dropping the
+# no-auto-proceed clause invites an identical-params transport retry against the
+# same broken environment; dropping the Log grammar loses the honest audit-trail
+# record of every firing + chosen action.
+check_feature_degraded_rules_gate() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) section heading.
+  grep -qF '##### 3.5b-2g Degraded-rules gate' "$skill" \
+    || { echo "$skill missing the '##### 3.5b-2g Degraded-rules gate' section heading"; return 1; }
+  # (b) both gate values.
+  grep -qF 'RULES_NOT_LOADED' "$skill" \
+    || { echo "$skill §3.5b-2g missing the RULES_NOT_LOADED gate value"; return 1; }
+  grep -qF 'RULES_ATTESTATION_MISSING' "$skill" \
+    || { echo "$skill §3.5b-2g missing the RULES_ATTESTATION_MISSING gate value"; return 1; }
+  # (c) no-auto-proceed clause (environment condition — no identical-params retry).
+  grep -qF 'No transport-retry, no auto-retry, NO auto-proceed' "$skill" \
+    || { echo "$skill §3.5b-2g missing the 'No transport-retry, no auto-retry, NO auto-proceed' clause"; return 1; }
+  # (d) banner option 1 (fix-environment-and-re-spawn — never a silent proceed).
+  grep -qF 'Fix environment and re-spawn' "$skill" \
+    || { echo "$skill §3.5b-2g missing the 'Fix environment and re-spawn' banner option"; return 1; }
+  # (e) Log grammar literal (every firing AND chosen action).
+  grep -qF -- '- YYYY-MM-DD: rules_gate — <value>; reason=<rules_reason|absent>; iter=<N>; action=<respawn|accepted|stopped>' "$skill" \
+    || { echo "$skill §3.5b-2g missing the rules_gate Log grammar literal"; return 1; }
+  echo "feature §3.5b-2g degraded-rules gate OK (heading + both values + no-auto-proceed + banner option 1 + Log grammar)"
+}
+
+# prompt-text: the §3.5b-2 step-4 exit-0 chain evaluates rules_gate FOURTH, after
+# policy/model/head, and PROCEED requires all four null. Dropping the FOURTH-position
+# literal drops rules_gate from the consumption chain (a non-null rules_gate would
+# never be acted on → the audit proceeds degraded); dropping the all-four-null
+# PROCEED literal decouples the proceed decision from the rules gate.
+check_feature_exit0_chain_rules_fourth() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) FOURTH-position chain literal.
+  grep -qF 'per §3.5b-2g (rules_gate FOURTH)' "$skill" \
+    || { echo "$skill exit-0 chain missing 'per §3.5b-2g (rules_gate FOURTH)'"; return 1; }
+  # (b) all-four-null PROCEED literal (rules_gate: null is the last gate before PROCEED).
+  grep -qF '`rules_gate: null` → **PROCEED**' "$skill" \
+    || { echo "$skill exit-0 chain missing the '\`rules_gate: null\` → **PROCEED**' terminal"; return 1; }
+  echo "feature exit-0 chain rules_gate-FOURTH OK (chain literal + all-four-null PROCEED)"
+}
+
+# prompt-text: classifier callsites 2/3/4 (code-audit spawns) pass
+# --require-rules-loaded (feature code audits are mode: full — the R-rule loader
+# always runs); the spec-mode callsite 1 passes NEITHER --expected-head NOR
+# --require-rules-loaded (both are code/full-only — else a clean spec-audit run
+# false-fires RULES_ATTESTATION_MISSING against an inline channel that carries no
+# rules keys). Dropping the flag at any code-audit callsite reopens the fail-open
+# (a degraded run is never gated); dropping the callsite-1 asymmetry clause invites
+# passing the flag in spec mode.
+check_feature_classifier_require_rules_callsites() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) flag present at all.
+  grep -qF -- '--require-rules-loaded' "$skill" \
+    || { echo "$skill missing the '--require-rules-loaded' classifier flag"; return 1; }
+  # (b) callsite 2 invocation carries it adjacent to --expected-head.
+  grep -qF -- '--expected-head "$(git rev-parse HEAD)" --require-rules-loaded' "$skill" \
+    || { echo "$skill callsite-2 invocation missing '--expected-head \"\$(git rev-parse HEAD)\" --require-rules-loaded'"; return 1; }
+  # (c) callsite 3 prose carries it.
+  grep -qF -- '`--require-rules-loaded` (callsite 3)' "$skill" \
+    || { echo "$skill callsite-3 prose missing the '--require-rules-loaded (callsite 3)' clause"; return 1; }
+  # (d) callsite 4 prose carries it.
+  grep -qF -- '`--require-rules-loaded` (callsite 4)' "$skill" \
+    || { echo "$skill callsite-4 prose missing the '--require-rules-loaded (callsite 4)' clause"; return 1; }
+  # (e) callsite-1 asymmetry: spec mode passes neither flag.
+  grep -qF 'spec-mode callsite 1 passes neither' "$skill" \
+    || { echo "$skill missing the spec-mode callsite-1 'passes neither' asymmetry clause"; return 1; }
+  echo "feature classifier --require-rules-loaded callsites OK (2/3/4 present + callsite-1 passes-neither asymmetry)"
 }
 
 # prompt-text: the §3.4a terminal-evidence refusal (§3.3) asserts BOTH audit-evidence
@@ -5450,6 +5604,86 @@ check_cross_audit_standalone_audited_head() {
   grep -qF 'no new sidecar field — mirror of the model-gate rule' "$skill" \
     || { echo "$skill missing the 'no new sidecar field — mirror of the model-gate rule' persistence clause"; return 1; }
   echo "cross-audit standalone audited-HEAD OK (Phase 3 render + file-backed-only + spec/decision abstain + non-git skip + no-transport-retry + banner + workdoc persistence)"
+}
+
+# prompt-text: standalone /cross-audit passes --require-rules-loaded for security/full
+# modes ONLY — NARROWER than --expected-head (spec 2026-07-05-degraded-run-rules-gate
+# §3.4). The R-rule cluster loader runs only in security/full, so logic NEVER passes
+# the flag (else every clean logic audit false-fires RULES_ATTESTATION_MISSING); spec/
+# decision never pass it either. Dropping the security/full-only header lets the flag
+# leak onto logic/spec/decision runs (false-fire on clean audits); dropping the
+# logic-never clause reopens the false-fire class; dropping the spec/decision-never
+# clause passes the flag against the inline channel that carries no rules keys.
+check_cross_audit_standalone_require_rules() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) flag present at all.
+  grep -qF -- '--require-rules-loaded' "$skill" \
+    || { echo "$skill missing the '--require-rules-loaded' classifier flag"; return 1; }
+  # (b) security/full-only header, narrower than --expected-head.
+  grep -qF 'standalone `security`/`full` modes ONLY (NARROWER than `--expected-head`)' "$skill" \
+    || { echo "$skill missing the '--require-rules-loaded' security/full-only (NARROWER than --expected-head) header"; return 1; }
+  # (c) logic-never clause (loader runs only in security/full).
+  grep -qF 'false-fire `RULES_ATTESTATION_MISSING` on every clean logic audit' "$skill" \
+    || { echo "$skill missing the logic-never 'false-fire RULES_ATTESTATION_MISSING on every clean logic audit' clause"; return 1; }
+  # (d) spec/decision-never clause.
+  grep -qF 'standalone runs (`--mode spec`) never pass it either' "$skill" \
+    || { echo "$skill missing the spec/decision 'never pass it either' abstention clause"; return 1; }
+  echo "cross-audit standalone --require-rules-loaded OK (flag + security/full-only header + logic-never + spec/decision-never)"
+}
+
+# prompt-text: standalone degraded-rules gate banner (spec §3.4) — the machine gate
+# #151 adds to standalone /cross-audit. Dropping the section heading removes the gate
+# entirely (fail-open reopens); dropping either gate value collapses the two
+# degradation shapes (attested-false vs absent/malformed) into a silent pass; dropping
+# the Fix-environment option loses the semantic-iteration recovery path (leaving only
+# accept/stop); dropping the no-new-sidecar-field persistence clause invites an
+# unimplementable post-seal sidecar write; dropping the workdoc line loses the only
+# POST-action record of the chosen gate action.
+check_cross_audit_standalone_degraded_rules_banner() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) banner section heading.
+  grep -qF '#### Standalone degraded-rules gate banner' "$skill" \
+    || { echo "$skill missing the '#### Standalone degraded-rules gate banner' section"; return 1; }
+  # (b) both gate values.
+  grep -qF 'RULES_NOT_LOADED' "$skill" \
+    || { echo "$skill degraded-rules banner missing the RULES_NOT_LOADED gate value"; return 1; }
+  grep -qF 'RULES_ATTESTATION_MISSING' "$skill" \
+    || { echo "$skill degraded-rules banner missing the RULES_ATTESTATION_MISSING gate value"; return 1; }
+  # (c) Fix-environment banner option.
+  grep -qF 'Fix environment and re-audit' "$skill" \
+    || { echo "$skill degraded-rules banner missing the 'Fix environment and re-audit' option"; return 1; }
+  # (d) no-new-sidecar-field persistence clause (mirror of the head-gate rule).
+  grep -qF 'no new sidecar field — mirror of the head-gate rule' "$skill" \
+    || { echo "$skill degraded-rules banner missing the 'no new sidecar field — mirror of the head-gate rule' persistence clause"; return 1; }
+  # (e) workdoc POST-action persistence line (literal starts with '- ' → -- guard).
+  grep -qF -- '- Rules loaded: <rules_loaded|absent> (reason=<rules_reason|absent>)' "$skill" \
+    || { echo "$skill degraded-rules banner missing the workdoc '- Rules loaded:' persistence line"; return 1; }
+  echo "cross-audit standalone degraded-rules gate banner OK (heading + both values + Fix-environment option + no-new-sidecar persistence + workdoc line)"
+}
+
+# prompt-text: standalone recovered-clean re-entry paths re-evaluate rules_gate (X4).
+# A transport retry cannot clear an environment condition, so a recovered-clean run
+# MUST re-attest the same degradation and hit the same banner. The Exit-1 retry-
+# recovery branch names rules_gate after head_gate; the policy-gate re-spawn Option 1
+# names BOTH head_gate (repairing its pre-existing omission) AND rules_gate. Dropping
+# either site's rules_gate re-evaluation lets a recovered-clean run bypass the gate
+# (fail-open through the transport-retry back door); dropping the L326 head_gate
+# repair re-opens the pre-existing audited-HEAD omission on that path.
+check_cross_audit_standalone_recovered_clean_rules() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) Exit-1 retry-recovery branch names rules_gate re-attest.
+  grep -qF 'a recovered-clean run re-attests the same degradation' "$skill" \
+    || { echo "$skill Exit-1 recovery branch missing the rules_gate 're-attests the same degradation' re-entry literal"; return 1; }
+  # (b) policy-gate re-spawn Option 1 repairs the pre-existing head_gate omission.
+  grep -qF "repairing this option's pre-existing head_gate omission" "$skill" \
+    || { echo "$skill policy re-spawn Option 1 missing the head_gate-omission-repair literal"; return 1; }
+  # (c) policy-gate re-spawn Option 1 names rules_gate.
+  grep -qF 'then the **degraded-rules gate** returns `rules_gate: null`' "$skill" \
+    || { echo "$skill policy re-spawn Option 1 missing the rules_gate re-evaluation literal"; return 1; }
+  echo "cross-audit standalone recovered-clean rules_gate re-entry OK (Exit-1 branch + policy re-spawn head_gate repair + rules_gate)"
 }
 
 check_model_attestation_skill_coupling() {
@@ -8646,6 +8880,7 @@ check_dispatch_response_classification() {
   fi
   local d meta mode expected_class expected_exit project
   local expected_model_arg expected_model_gate expected_claude_model
+  local require_rules_arg expected_rules_gate expected_rules_loaded expected_rules_reason
   local out_file rc got_class checked=0
   out_file=$(mktemp) || return 1
   for d in "$fixture_root"/*/*/; do
@@ -8678,12 +8913,26 @@ check_dispatch_response_classification() {
     expected_head_arg=$(sed -n 's/^expected_head_arg: *//p' "$meta")
     expected_head_gate=$(sed -n 's/^expected_head_gate: *//p' "$meta")
     expected_audited_head=$(sed -n 's/^expected_audited_head: *//p' "$meta")
+    # Four OPTIONAL rules-loaded meta keys (spec 2026-07-05 §3.2; absent in the
+    # legacy fixtures). `require_rules_arg: true` drives the BARE value-less
+    # `--require-rules-loaded` flag (UNLIKE the head/model value flags — no
+    # "$val" companion), threaded into every invocation arm. `expected_rules_gate`
+    # / `expected_rules_loaded` / `expected_rules_reason` are asserted
+    # UNCONDITIONALLY in the python block (absent -> null), so the flag cannot
+    # leak into a legacy CLEAN fixture and silently return RULES_ATTESTATION_MISSING.
+    require_rules_arg=$(sed -n 's/^require_rules_arg: *//p' "$meta")
+    expected_rules_gate=$(sed -n 's/^expected_rules_gate: *//p' "$meta")
+    expected_rules_loaded=$(sed -n 's/^expected_rules_loaded: *//p' "$meta")
+    expected_rules_reason=$(sed -n 's/^expected_rules_reason: *//p' "$meta")
     local extra_args=()
     if [ -n "$expected_model_arg" ]; then
       extra_args+=(--expected-claude-model "$expected_model_arg")
     fi
     if [ -n "$expected_head_arg" ]; then
       extra_args+=(--expected-head "$expected_head_arg")
+    fi
+    if [ "$require_rules_arg" = "true" ]; then
+      extra_args+=(--require-rules-loaded)
     fi
     # Policy-gate fixtures: invoked WITH `--project ai-dev-team`. The
     # spec-mode CLEAN_SINGLE variant pins the isolated policy gate; the
@@ -8725,13 +8974,17 @@ check_dispatch_response_classification() {
     # the payload — read straight from disk).
     if ! python3 - "$out_file" "$expected_class" "$d" "$project" \
         "$expected_model_gate" "$expected_claude_model" \
-        "$expected_head_gate" "$expected_audited_head" <<'PY'
+        "$expected_head_gate" "$expected_audited_head" \
+        "$expected_rules_gate" "$expected_rules_loaded" \
+        "$expected_rules_reason" <<'PY'
 import json
 import sys
 
 (out_file, expected_class, fixture_dir, project,
  expected_model_gate, expected_claude_model,
- expected_head_gate, expected_audited_head) = sys.argv[1:9]
+ expected_head_gate, expected_audited_head,
+ expected_rules_gate, expected_rules_loaded,
+ expected_rules_reason) = sys.argv[1:12]
 try:
     with open(out_file, "r", encoding="utf-8") as fh:
         j = json.load(fh)
@@ -8816,6 +9069,44 @@ if got_head != want_head:
     print(f"sub-fixture {fixture_dir}: audited_head {got_head!r}, "
           f"expected {want_head!r}")
     sys.exit(1)
+
+# Rules-loaded assertions (UNCONDITIONAL for every fixture, legacy included).
+# The meta keys are optional shell vars: an empty string means the key was
+# absent -> expected null. `expected_rules_gate` guards against the flag leaking
+# into legacy CLEAN fixtures (would silently return RULES_ATTESTATION_MISSING)
+# AND pins the co-fire independence (policy/model/head gate firing does NOT
+# suppress rules_gate); `expected_rules_loaded` / `expected_rules_reason` pin
+# the informational parse values (an impl that computes rules_gate but mis-emits
+# rules_loaded, or fails to unquote rules_reason, is caught here).
+want_rules_gate = (None if expected_rules_gate in ("", "null")
+                   else expected_rules_gate)
+got_rules_gate = j.get("rules_gate")
+if got_rules_gate != want_rules_gate:
+    print(f"sub-fixture {fixture_dir}: rules_gate {got_rules_gate!r}, "
+          f"expected {want_rules_gate!r}")
+    sys.exit(1)
+
+if expected_rules_loaded in ("", "null"):
+    want_rules_loaded = None
+elif expected_rules_loaded == "true":
+    want_rules_loaded = True
+elif expected_rules_loaded == "false":
+    want_rules_loaded = False
+else:
+    want_rules_loaded = expected_rules_loaded
+got_rules_loaded = j.get("rules_loaded")
+if got_rules_loaded != want_rules_loaded:
+    print(f"sub-fixture {fixture_dir}: rules_loaded {got_rules_loaded!r}, "
+          f"expected {want_rules_loaded!r}")
+    sys.exit(1)
+
+want_rules_reason = (None if expected_rules_reason in ("", "null")
+                     else expected_rules_reason)
+got_rules_reason = j.get("rules_reason")
+if got_rules_reason != want_rules_reason:
+    print(f"sub-fixture {fixture_dir}: rules_reason {got_rules_reason!r}, "
+          f"expected {want_rules_reason!r}")
+    sys.exit(1)
 PY
     then
       rm -f "$out_file"
@@ -8824,11 +9115,11 @@ PY
     checked=$((checked + 1))
   done
   rm -f "$out_file"
-  if [ "$checked" != "64" ]; then
-    echo "expected 64 sub-fixtures, checked $checked"
+  if [ "$checked" != "70" ]; then
+    echo "expected 70 sub-fixtures, checked $checked"
     return 1
   fi
-  echo "dispatch-response classifier: 64/64 sub-fixtures classified correctly"
+  echo "dispatch-response classifier: 70/70 sub-fixtures classified correctly"
 }
 
 # Behavioral pin for the classifier's enum -> violation-blocker phrasing
