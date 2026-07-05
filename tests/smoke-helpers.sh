@@ -5348,6 +5348,83 @@ check_feature_classifier_expected_head_callsites() {
   echo "feature classifier --expected-head callsites OK (2/3/4 present + callsite-1 absent + no-transport-retry)"
 }
 
+# prompt-text: the §3.5b-2g degraded-rules gate is the machine gate #151 adds — a
+# rules-not-loaded audit must NOT be recorded as a clean pass without explicit,
+# logged user acceptance. Dropping the section heading removes the gate entirely
+# (fail-open reopens); dropping either gate value collapses the two degradation
+# shapes (attested-false vs absent/malformed) into a silent pass; dropping the
+# no-auto-proceed clause invites an identical-params transport retry against the
+# same broken environment; dropping the Log grammar loses the honest audit-trail
+# record of every firing + chosen action.
+check_feature_degraded_rules_gate() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) section heading.
+  grep -qF '##### 3.5b-2g Degraded-rules gate' "$skill" \
+    || { echo "$skill missing the '##### 3.5b-2g Degraded-rules gate' section heading"; return 1; }
+  # (b) both gate values.
+  grep -qF 'RULES_NOT_LOADED' "$skill" \
+    || { echo "$skill §3.5b-2g missing the RULES_NOT_LOADED gate value"; return 1; }
+  grep -qF 'RULES_ATTESTATION_MISSING' "$skill" \
+    || { echo "$skill §3.5b-2g missing the RULES_ATTESTATION_MISSING gate value"; return 1; }
+  # (c) no-auto-proceed clause (environment condition — no identical-params retry).
+  grep -qF 'No transport-retry, no auto-retry, NO auto-proceed' "$skill" \
+    || { echo "$skill §3.5b-2g missing the 'No transport-retry, no auto-retry, NO auto-proceed' clause"; return 1; }
+  # (d) banner option 1 (fix-environment-and-re-spawn — never a silent proceed).
+  grep -qF 'Fix environment and re-spawn' "$skill" \
+    || { echo "$skill §3.5b-2g missing the 'Fix environment and re-spawn' banner option"; return 1; }
+  # (e) Log grammar literal (every firing AND chosen action).
+  grep -qF -- '- YYYY-MM-DD: rules_gate — <value>; reason=<rules_reason|absent>; iter=<N>; action=<respawn|accepted|stopped>' "$skill" \
+    || { echo "$skill §3.5b-2g missing the rules_gate Log grammar literal"; return 1; }
+  echo "feature §3.5b-2g degraded-rules gate OK (heading + both values + no-auto-proceed + banner option 1 + Log grammar)"
+}
+
+# prompt-text: the §3.5b-2 step-4 exit-0 chain evaluates rules_gate FOURTH, after
+# policy/model/head, and PROCEED requires all four null. Dropping the FOURTH-position
+# literal drops rules_gate from the consumption chain (a non-null rules_gate would
+# never be acted on → the audit proceeds degraded); dropping the all-four-null
+# PROCEED literal decouples the proceed decision from the rules gate.
+check_feature_exit0_chain_rules_fourth() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) FOURTH-position chain literal.
+  grep -qF 'per §3.5b-2g (rules_gate FOURTH)' "$skill" \
+    || { echo "$skill exit-0 chain missing 'per §3.5b-2g (rules_gate FOURTH)'"; return 1; }
+  # (b) all-four-null PROCEED literal (rules_gate: null is the last gate before PROCEED).
+  grep -qF '`rules_gate: null` → **PROCEED**' "$skill" \
+    || { echo "$skill exit-0 chain missing the '\`rules_gate: null\` → **PROCEED**' terminal"; return 1; }
+  echo "feature exit-0 chain rules_gate-FOURTH OK (chain literal + all-four-null PROCEED)"
+}
+
+# prompt-text: classifier callsites 2/3/4 (code-audit spawns) pass
+# --require-rules-loaded (feature code audits are mode: full — the R-rule loader
+# always runs); the spec-mode callsite 1 passes NEITHER --expected-head NOR
+# --require-rules-loaded (both are code/full-only — else a clean spec-audit run
+# false-fires RULES_ATTESTATION_MISSING against an inline channel that carries no
+# rules keys). Dropping the flag at any code-audit callsite reopens the fail-open
+# (a degraded run is never gated); dropping the callsite-1 asymmetry clause invites
+# passing the flag in spec mode.
+check_feature_classifier_require_rules_callsites() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) flag present at all.
+  grep -qF -- '--require-rules-loaded' "$skill" \
+    || { echo "$skill missing the '--require-rules-loaded' classifier flag"; return 1; }
+  # (b) callsite 2 invocation carries it adjacent to --expected-head.
+  grep -qF -- '--expected-head "$(git rev-parse HEAD)" --require-rules-loaded' "$skill" \
+    || { echo "$skill callsite-2 invocation missing '--expected-head \"\$(git rev-parse HEAD)\" --require-rules-loaded'"; return 1; }
+  # (c) callsite 3 prose carries it.
+  grep -qF -- '`--require-rules-loaded` (callsite 3)' "$skill" \
+    || { echo "$skill callsite-3 prose missing the '--require-rules-loaded (callsite 3)' clause"; return 1; }
+  # (d) callsite 4 prose carries it.
+  grep -qF -- '`--require-rules-loaded` (callsite 4)' "$skill" \
+    || { echo "$skill callsite-4 prose missing the '--require-rules-loaded (callsite 4)' clause"; return 1; }
+  # (e) callsite-1 asymmetry: spec mode passes neither flag.
+  grep -qF 'spec-mode callsite 1 passes neither' "$skill" \
+    || { echo "$skill missing the spec-mode callsite-1 'passes neither' asymmetry clause"; return 1; }
+  echo "feature classifier --require-rules-loaded callsites OK (2/3/4 present + callsite-1 passes-neither asymmetry)"
+}
+
 # prompt-text: the §3.4a terminal-evidence refusal (§3.3) asserts BOTH audit-evidence
 # keys are present with a 5-enum value before any SHIPPED/VERIFIED write; absent /
 # literal-null / off-enum → never flip. Dropping any of {both keys, the 5-enum, the
