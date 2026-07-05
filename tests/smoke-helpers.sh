@@ -8448,6 +8448,47 @@ check_dev_grounding_instruction() {
   echo "dev-dispatch grounding contract: literal + UNVERIFIED:/do NOT set anchors present in developer-workflow.md '## Grounding' subsection AND inside developer-codex.md '## Codex Prompt Template' fence OK"
 }
 
+# Digest-primary pin (spec 2026-07-05-dev-rules-digest-primary): the §Code
+# Quality Rules lead paragraph declares the short-form bullets the primary
+# working set and narrows full-body reads to on-demand, domain-keyed loads.
+# Same anti-scaffolding theme + file target as check_dev_grounding_instruction
+# above. Section-scoped via inline awk heading-walk (^## Code Quality Rules ->
+# next ^## ), mirroring that sibling; self-contained, does NOT use
+# extract_md_section (defined only in the smoke.sh caller). $1 defaults to the
+# real reference but accepts a mutant/fixture copy for RED verification.
+# Asserts positive digest-primary anchors + the retained Trigger B contract
+# pointer, and a NEGATIVE guard that the bulk before-first-step read mandate
+# did not silently return.
+check_dev_rules_digest_primary() {
+  local devwf="${1:-skills/feature/references/developer-workflow.md}"
+  test -f "$devwf" || { echo "$devwf missing"; return 1; }
+
+  local section
+  section=$(awk '
+    /^## Code Quality Rules/ { grab=1; next }
+    grab && /^## / { exit }
+    grab { print }
+  ' "$devwf")
+  [ -n "$section" ] || { echo "$devwf missing '## Code Quality Rules' section"; return 1; }
+
+  local anchor
+  for anchor in \
+    'primary working set' \
+    'on-demand' \
+    'removing behaviour → R1' \
+    'see §Taxonomy in `code-quality-rules.md` for the canonical contract — do not paraphrase'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$devwf §Code Quality Rules missing digest-primary anchor '$anchor'"; return 1; }
+  done
+
+  if printf '%s\n' "$section" | grep -qF 'before the first step'; then
+    echo "$devwf §Code Quality Rules bulk-read mandate 'before the first step' returned (must be absent)"
+    return 1
+  fi
+
+  echo "$devwf §Code Quality Rules digest-primary: primary-working-set + on-demand + trigger map + Trigger B pointer present; bulk before-first-step mandate absent OK"
+}
+
 # Behavioral pin for the cross-auditor return-contract classifier
 # (`hooks/lib/check_dispatch_response.py`). Iterates every sub-fixture under
 # tests/fixtures/cross-audit-contract-gate/*/*/ (27 directories per spec
