@@ -619,11 +619,11 @@ On atomic-write failure — disk full, permission denied, read-only filesystem, 
 Automates the recovery path that §3.5b's Contract-violation rule formerly carved out. After **every** cross-auditor return at any of the 6 callsites (§2.2 of the source spec — feature spec audit, feature code audit Pass 2 spawn, feature code-audit triage-loop re-spawn, feature Continue-mode resume re-spawn, standalone `/cross-audit` initial dispatch, standalone Phase 5 re-audit re-spawn), the orchestrator runs this sequence. All capture paths carry the `-attempt<M>` suffix per §3.5b-1 so an attempt-2 retry never overwrites attempt-1 evidence.
 
 1. **Capture the raw response atomically** as a `contract-violation-iter<N>-attempt<M>.raw.txt` file per §3.5b-1. On atomic-write failure (disk full, permission denied, read-only filesystem, or pre-existing target) → jump to the **capture-failure banner** (§3.5b-2c) and STOP.
-2. **Invoke the classifier** — `python3 hooks/lib/check_dispatch_response.py --mode <spec|code|full> --raw-response-file <captured-.raw.txt-path> --audit-slug <slug> --iteration <N> --expected-claude-model claude-opus` plus `--findings-path <path>` for code/full mode, plus `--project ai-dev-team` ONLY when the resolved spec frontmatter has `project: ai-dev-team`. Read the JSON from stdout, the exit code, and stderr.
+2. **Invoke the classifier** — `python3 hooks/lib/check_dispatch_response.py --mode <spec|code|full> --raw-response-file <captured-.raw.txt-path> --audit-slug <slug> --iteration <N> --expected-claude-model claude-opus` plus `--findings-path <path>` for code/full mode, plus `--expected-head "$(git rev-parse HEAD)"` for code/full mode ONLY (callsites 2/3/4 — the code-audit spawns run on the feature branch; the spec-mode callsite 1 passes NO head channel, mirroring the audited_head file-backed-only emit asymmetry), plus `--project ai-dev-team` ONLY when the resolved spec frontmatter has `project: ai-dev-team`. Read the JSON from stdout, the exit code, and stderr.
 3. **(Standalone mode only)** Write the sidecar JSON atomically at `contract-violation-iter<N>-attempt<M>.json` per §3.5b-1. The sidecar shape is **exit-code aware** — the orchestrator reads step 2's exit code first: for exit 0/1 (the classifier ran and produced a JSON) `classifier_output` is populated from step 2's stdout JSON and `classifier_exit` records `0`/`1`; for exit 2 (classifier crash — empty stdout, no JSON) `classifier_output` is `null`, `classifier_exit` is `2`, and `classifier_stderr` carries the classifier's stderr (truncated to 1000 chars). On sidecar-write failure → capture-failure banner (§3.5b-2c) and STOP.
 4. **Branch on the classifier exit code:**
    - **Exit `2`** (classifier crash — the classifier's own failure; we cannot tell whether the response was valid) → **classifier-crash banner** (§3.5b-2c).
-   - **Exit `0` AND `policy_gate: null`** → evaluate `model_gate` per §3.5b-2e (policy_gate FIRST, model_gate SECOND): `model_gate: null` → **PROCEED**; `model_gate` non-null → the §3.5b-2e model-attestation gate. On the PROCEED path, copy `evidence_class` + `blockers_yaml` from the classifier JSON into the spec frontmatter (feature mode) or render the Phase 3 banner (standalone mode). `blockers_yaml` is the verbatim blocker source ONLY on this clean path (Exit-0); a `contract_violated` outcome instead records the classifier's `violation_blocker` phrasing per §3.5b-2b. Standard rest-of-flow.
+   - **Exit `0` AND `policy_gate: null`** → evaluate `model_gate` per §3.5b-2e (policy_gate FIRST, model_gate SECOND): `model_gate` non-null → the §3.5b-2e model-attestation gate; `model_gate: null` → evaluate `head_gate` per §3.5b-2f (head_gate THIRD): `head_gate` non-null → the §3.5b-2f audited-HEAD gate; `head_gate: null` → **PROCEED**. On the PROCEED path, copy `evidence_class` + `blockers_yaml` from the classifier JSON into the spec frontmatter (feature mode) or render the Phase 3 banner (standalone mode). `blockers_yaml` is the verbatim blocker source ONLY on this clean path (Exit-0); a `contract_violated` outcome instead records the classifier's `violation_blocker` phrasing per §3.5b-2b. Standard rest-of-flow.
    - **Exit `0` AND `policy_gate: STOP_AND_DISCUSS`** → the §3.5b-2a project-policy gate fires (ai-dev-team `CLEAN_SINGLE`). **BANNER.**
    - **Exit `1`** (any of the 10 violation classifications) → contract violation. Branch into the §3.5b-2b retry-outcome decision.
 
@@ -780,6 +780,14 @@ Options:
 `- YYYY-MM-DD: model_degraded — cross-auditor attested <claimed>; expected claude-opus*; iter=<N>; action=<respawn|accepted|stopped>`
 
 `<claimed>` is sanitized via the §3.5b Orchestrator blocker sanitization rule before embedding. Match-success runs log nothing (no noise; the sidecar JSON already carries `claude_model`).
+
+##### 3.5b-2f Audited-HEAD gate
+
+Fires on classifier **exit 0** when the classifier JSON carries `head_gate` non-null (set only when `--expected-head "$(git rev-parse HEAD)"` was passed AND the classification is `CLEAN_*`; violations and exit-1 supersede — their retry machinery runs first, and the gate is re-evaluated on a recovered-clean retry's JSON). The two gate values: `HEAD_ATTESTATION_MISSING` (the cross-auditor's `audited_head` line is absent/malformed) and `HEAD_MISMATCH` (attested oid does not equal the expected feature-branch HEAD).
+
+**Gate order — policy_gate FIRST, model_gate SECOND, head_gate THIRD.** `head_gate` is acted on ONLY after `policy_gate` and `model_gate` have resolved null/cleared (the §3.5b-2 step-4 exit-0 branch). The classifier computes `head_gate` INDEPENDENTLY of the other gates, so a co-fire JSON carries multiple non-null gates at once; the ordering is enforced here in orchestrator consumption, not in the classifier. On a policy/model re-spawn, all gates are re-evaluated on the new JSON.
+
+**No transport-retry, no auto-retry.** `head_gate` NEVER consumes the shared §3.5b-1 one-transport-retry budget and never auto-retries. BOTH values (`HEAD_ATTESTATION_MISSING` AND `HEAD_MISMATCH`) route directly to the canonical audited-HEAD mismatch banner (the same banner as the §Hand-off audited-HEAD gate) — its **Re-audit the delta** option IS the retry (a SEMANTIC iteration that re-spawns the cross-auditor and re-pins the new HEAD). There is no §3.5b-2e-style MISSING transport retry for this gate.
 
 ### 3.5c Stop criteria
 
@@ -1045,7 +1053,7 @@ If `project_type` resolves to `None`, the cross-auditor normalizes the R-rule fi
 
 **branch-guard (callsite 2).** Run the §3.5d branch-guard around this spawn — capture `pre_spawn_branch`/`pre_spawn_head` BEFORE the spawn, and after the cross-auditor returns assert current branch == `pre_spawn_branch` AND strict `HEAD == pre_spawn_head` (callsites 1-4 are strict-equality, NOT ancestor-mode) BEFORE the Log marker / any git action. On violation apply the §3.5d step-4 recovery split (4a/4b/4c) and continue-gate.
 
-**Cross-auditor return-contract gate (callsite 2).** When the cross-auditor returns for round `N`, **apply the §3.5b-2 recovery algorithm** before the Log marker is written. This is callsite 2 of the 6 §3.5b-2 callsites — the feature code-audit Pass 2 initial spawn. Capture the raw return to `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.raw.txt` per §3.5b-1, invoke `hooks/lib/check_dispatch_response.py --mode full --findings-path <kb>/repos/<project>/security/<audit_slug>-findings.md --expected-claude-model claude-opus` (add `--project ai-dev-team` when the spec frontmatter resolves `project: ai-dev-team`), and branch on the classifier exit code per §3.5b-2 step 4. The classifier output **gates** whether the iteration Log marker below is written: only an Exit-0 `policy_gate: null` with `model_gate: null` PROCEED writes the marker with the round's `evidence=<value>; blockers=[...]` (a non-null `model_gate` routes to the §3.5b-2e model-attestation gate); an Exit-0 `policy_gate: STOP_AND_DISCUSS` raises the §3.5b-2a banner, an Exit-1 violation enters the §3.5b-2b retry-outcome matrix, and an Exit-2 classifier crash raises the §3.5b-2c classifier-crash banner.
+**Cross-auditor return-contract gate (callsite 2).** When the cross-auditor returns for round `N`, **apply the §3.5b-2 recovery algorithm** before the Log marker is written. This is callsite 2 of the 6 §3.5b-2 callsites — the feature code-audit Pass 2 initial spawn. Capture the raw return to `<kb>/repos/<project>/security/<audit_slug>-contract-violation-iter<N>-attempt<M>.raw.txt` per §3.5b-1, invoke `hooks/lib/check_dispatch_response.py --mode full --findings-path <kb>/repos/<project>/security/<audit_slug>-findings.md --expected-claude-model claude-opus --expected-head "$(git rev-parse HEAD)"` (add `--project ai-dev-team` when the spec frontmatter resolves `project: ai-dev-team`), and branch on the classifier exit code per §3.5b-2 step 4. The classifier output **gates** whether the iteration Log marker below is written: only an Exit-0 `policy_gate: null` with `model_gate: null` AND `head_gate: null` PROCEED writes the marker with the round's `evidence=<value>; blockers=[...]` (a non-null `model_gate` routes to the §3.5b-2e model-attestation gate; a non-null `head_gate` routes to the §3.5b-2f audited-HEAD gate); an Exit-0 `policy_gate: STOP_AND_DISCUSS` raises the §3.5b-2a banner, an Exit-1 violation enters the §3.5b-2b retry-outcome matrix, and an Exit-2 classifier crash raises the §3.5b-2c classifier-crash banner.
 
 The cross-auditor persists code findings in KB. After the cross-auditor
 returns findings for round `N`, write this Log marker immediately. Do
@@ -1128,7 +1136,7 @@ the rationale `false positive — both auditors erred: <explanation>`.
    - `NO_TESTS`: use the Verify NO_TESTS manual sign-off rules, then
      continue.
 7. Re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`.
-7a. **branch-guard (callsite 3).** Run the §3.5d branch-guard around this re-spawn — capture `pre_spawn_branch`/`pre_spawn_head` BEFORE the re-spawn, and after the cross-auditor returns assert current branch == `pre_spawn_branch` AND strict `HEAD == pre_spawn_head` (callsites 1-4 are strict-equality, NOT ancestor-mode) BEFORE the Log marker append. On violation apply the §3.5d step-4 recovery split (4a/4b/4c) and continue-gate. **Apply the §3.5b-2 recovery algorithm** to this re-spawn's classifier output before the Log marker append below — this is callsite 3 of the 6 §3.5b-2 callsites (the code-audit triage-loop re-spawn). The project-policy gate (§3.5b-2a), retry-outcome matrix (§3.5b-2b), and model-attestation gate (§3.5b-2e) apply identically. Classifier output gates whether step 8 fires (Exit-0 `policy_gate: null` with `model_gate: null` PROCEED — a non-null `model_gate` routes to the §3.5b-2e model-attestation gate) or §3.5b-2b/2c routes to a banner.
+7a. **branch-guard (callsite 3).** Run the §3.5d branch-guard around this re-spawn — capture `pre_spawn_branch`/`pre_spawn_head` BEFORE the re-spawn, and after the cross-auditor returns assert current branch == `pre_spawn_branch` AND strict `HEAD == pre_spawn_head` (callsites 1-4 are strict-equality, NOT ancestor-mode) BEFORE the Log marker append. On violation apply the §3.5d step-4 recovery split (4a/4b/4c) and continue-gate. **Apply the §3.5b-2 recovery algorithm** to this re-spawn's classifier output before the Log marker append below — this is callsite 3 of the 6 §3.5b-2 callsites (the code-audit triage-loop re-spawn). The re-spawn's classifier invocation passes `--expected-head "$(git rev-parse HEAD)"` (callsite 3). The project-policy gate (§3.5b-2a), retry-outcome matrix (§3.5b-2b), model-attestation gate (§3.5b-2e), and audited-HEAD gate (§3.5b-2f) apply identically. Classifier output gates whether step 8 fires (Exit-0 `policy_gate: null` with `model_gate: null` AND `head_gate: null` PROCEED — a non-null `model_gate` routes to the §3.5b-2e model-attestation gate, a non-null `head_gate` routes to the §3.5b-2f audited-HEAD gate) or §3.5b-2b/2c routes to a banner.
 8. After the cross-auditor returns, append:
 `- YYYY-MM-DD: code audit iteration=N+1; fixed_ids=[...]; accepted_ids=[...]`
 
@@ -1144,8 +1152,9 @@ the rationale `false positive — both auditors erred: <explanation>`.
 
 **If there are no CRITICAL or HIGH findings, or all such findings have
 been resolved:**
-- Append the Log marker (extended template — `evidence=<value>; blockers=[...]`):
-`- YYYY-MM-DD: code audit passed; iteration=N; verified=[...], accepted=[...], deferred=[...]; evidence=<value>; blockers=[...]`
+- Append the Log marker (extended template — `evidence=<value>; blockers=[...]; audited_head=<oid>`):
+`- YYYY-MM-DD: code audit passed; iteration=N; verified=[...], accepted=[...], deferred=[...]; evidence=<value>; blockers=[...]; audited_head=<oid>`
+  The trailing `<oid>` is **COPIED from the findings-frontmatter `audited_head:` pin** (same READ path as `code_audit_evidence:` below — what the auditor actually attested), NOT re-derived via `git rev-parse` at marker-write time. The zero-diff skip marker is unchanged (no audit ran → nothing to pin).
 - Spec frontmatter write (immediately adjacent to the marker append): set `code_audit_evidence:` from the cross-auditor's final-iteration return signal per §3.5b READ path (code/full mode parses both `evidence_class:` and `evidence_blockers:` from the leading top-of-file YAML frontmatter of the produced `<slug>-code-findings.md`). Copy `evidence_blockers:` verbatim into `code_audit_blockers:` (parse-failure → `contract_violated` per §3.5b).
 - Completion here means no finding remains `OPEN` or `REOPENED`.
 - `💡 Consider running `/compact` before the hand-off step.`
@@ -1190,7 +1199,41 @@ in seeding. `smoke_check` is never seeded into §8.
    items, and instead stage the malformed Log entry
    `- YYYY-MM-DD: hand-off: §6.2 block malformed — seeding skipped, manual review required`.
 
-After phase 1, show the commit list and present exactly these 4 options:
+**Audited-HEAD gate (before the 4-option menu).** When the terminal code-audit
+record is a `code audit passed` marker (a code audit actually ran), read
+`audited_head:` from the leading frontmatter of
+`<kb>/repos/<project>/security/<slug>-code-findings.md` and compare it to
+`git rev-parse HEAD` on the feature branch:
+
+- Equal → proceed to the 4-option menu.
+- `audited_head:` missing, or unequal → render the audited-HEAD mismatch banner
+  below. **Never a silent pass.** Fix commits that land after the last audit
+  round move HEAD; this compare catches them even though each round's classifier
+  check passed at its own time.
+
+**Zero-diff carve-out:** when the terminal code-audit record is the zero-diff
+skip (`code audit: no auditable files in diff; skipping` marker /
+`code_audit_evidence: skipped` with blocker `'no auditable files in diff'`), the
+gate is N/A — no audit ran, nothing was pinned, a findings doc may not exist;
+**skip the gate SILENTLY**. The gate applies ONLY when a `code audit passed`
+marker exists.
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Audited-HEAD mismatch — the terminal code audit signed off a different commit than the current feature-branch HEAD. `audited_head=<oid|absent>` vs `HEAD=<oid>`.
+
+Options:
+
+1. **Re-audit the delta** — re-spawn the cross-auditor per the existing §Code audit Pass 2 parameter block (counts a SEMANTIC iteration; the refreshed findings re-pin the new HEAD). This is the retry path for this gate.
+2. **Accept with justification** — append the Log directive `- YYYY-MM-DD: audited-head mismatch accepted — audited=<oid|absent> head=<oid>: <reason>` and proceed.
+3. **Stop** — pause the hand-off.
+
+**Which option?**
+
+---
+
+After phase 1 and the audited-HEAD gate, show the commit list and present exactly these 4 options:
 
 ```
 git log --oneline <base>..<branch>
@@ -1216,6 +1259,34 @@ Implementation complete. What would you like to do?
 
 Phase 2 applies only after a preserving option succeeds. Set frontmatter
 `shipped_at: YYYY-MM-DD` (today), then decide status via `§3.4a`:
+
+**Terminal-evidence precondition (before any `status: SHIPPED` / `status: VERIFIED` write).**
+Assert BOTH `spec_audit_evidence:` and `code_audit_evidence:` are present in the
+spec frontmatter with a value from the 5-value enum
+`{dual_model, single_model, self_fallback, contract_violated, skipped}`. If
+either key is **absent / literal-null / off-enum** → do NOT flip the status;
+render the terminal-evidence refusal banner below. Degraded-but-honest enum
+values (`skipped`, `single_model`, …) still flip — they are honest records; the
+gate targets absence / literal-null / off-enum only (the silent-bypass
+signatures). The flow always writes these keys (spec-audit terminal sites at
+AUDIT_PASSED, code-audit terminal sites at the passed / zero-diff markers), so
+an absent key means the flow was bypassed. **Never flip with absent keys.**
+
+---
+## ⏸ AWAITING YOUR INPUT
+
+Terminal-status write blocked — cannot flip to `SHIPPED` / `VERIFIED` without
+audit evidence. Defective key(s):
+
+- `<key>`: <absent | literal-null | off-enum value `<value>`>
+
+Repair path: run the missed audit phase (spec audit → `spec_audit_evidence`;
+code audit → `code_audit_evidence`), OR record an explicit enum value with a Log
+directive if the phase legitimately ran degraded.
+
+**Repair how?**
+
+---
 
 - Malformed §6.2 → force `status: SHIPPED`, append the staged malformed Log
   line, and leave manual review required.
@@ -1322,7 +1393,7 @@ Edge cases:
      |---|---|
      | `code audit passed` | Skip straight to hand-off. Code audit already complete. |
      | `code audit: no auditable files in diff; skipping` | Skip to hand-off — deterministic empty-diff skip already applied. |
-     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. **branch-guard (callsite 4):** run the §3.5d branch-guard around this re-spawn — capture `pre_spawn_branch`/`pre_spawn_head` BEFORE the re-spawn, and after the cross-auditor returns assert current branch == `pre_spawn_branch` AND strict `HEAD == pre_spawn_head` (callsites 1-4 are strict-equality, NOT ancestor-mode) BEFORE resuming the triage loop; on violation apply the §3.5d step-4 recovery split (4a/4b/4c) and continue-gate. **Apply the §3.5b-2 recovery algorithm** (callsite 4 of 6) to the re-spawn's classifier output before resuming the triage loop; project-policy gate (§3.5b-2a), retry-outcome matrix (§3.5b-2b), and model-attestation gate (§3.5b-2e) apply identically. |
+     | `code audit decisions recorded; iteration=N; pending_*` | Re-run the verifier, then re-spawn `cross-auditor` with the same parameter block as the initial full-mode spawn at §Code audit Pass 2 (including `project_type` resolved per the spec-frontmatter → `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → `None` chain), updating only `iteration=N+1`, `previously_fixed=pending_fixed`, and `accepted_ids=(pending_accepted ∪ pending_deferred)`. **branch-guard (callsite 4):** run the §3.5d branch-guard around this re-spawn — capture `pre_spawn_branch`/`pre_spawn_head` BEFORE the re-spawn, and after the cross-auditor returns assert current branch == `pre_spawn_branch` AND strict `HEAD == pre_spawn_head` (callsites 1-4 are strict-equality, NOT ancestor-mode) BEFORE resuming the triage loop; on violation apply the §3.5d step-4 recovery split (4a/4b/4c) and continue-gate. **Apply the §3.5b-2 recovery algorithm** (callsite 4 of 6) to the re-spawn's classifier output before resuming the triage loop; the re-spawn's classifier invocation passes `--expected-head "$(git rev-parse HEAD)"` (callsite 4); project-policy gate (§3.5b-2a), retry-outcome matrix (§3.5b-2b), model-attestation gate (§3.5b-2e), and audited-HEAD gate (§3.5b-2f) apply identically. |
      | `code audit iteration=N` (without a later `decisions recorded` or `passed` marker) | Round N findings were returned but triage is pending — **do not** re-spawn the cross-auditor. Re-read the findings file at `<kb>/repos/<project>/security/<slug>-code-findings.md`, collect the findings whose status is `OPEN` or `REOPENED`, re-present them to the user, and resume the §Code audit triage loop from step 1 with those findings. |
      | No code-audit Log entry at all | Fresh code-audit run: re-run the verifier first to confirm the baseline is still green (defensive), then spawn `iteration=1` with `previously_fixed=[]` and `accepted_ids=[]`. |
 
@@ -1678,7 +1749,13 @@ Comparison uses the normalized form. Storage keeps the original text.
 3. Run the auto-resolve pass (see above) so recent upstream verifications
    propagate before the check.
 4. Tally items:
-   - All `status: done` → flip spec `status: VERIFIED`, append Log
+   - All `status: done` → **terminal-evidence precondition first**: assert BOTH
+     `spec_audit_evidence:` and `code_audit_evidence:` are present in the spec
+     frontmatter with a value from the 5-value enum
+     `{dual_model, single_model, self_fallback, contract_violated, skipped}`;
+     either **absent / literal-null / off-enum** → do NOT flip, render the §3.4a
+     terminal-evidence refusal banner naming the defective key(s) + defect shape
+     + repair path. Otherwise flip spec `status: VERIFIED`, append Log
      `- YYYY-MM-DD: VERIFIED — all post-merge items closed`. Report success.
      After the status flip, run the backlog archive check:
      ```bash

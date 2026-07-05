@@ -5006,6 +5006,112 @@ check_cross_auditor_audited_head_handshake() {
   echo "cross-auditor audited_head handshake contract OK (section + file-backed-only + rev-parse source + byte-identical footer + non-git omission + no-shape-validation)"
 }
 
+# --- /feature audited-HEAD + terminal-evidence gates (spec
+#     2026-07-05-audited-head-terminal-evidence-gates §3.2/§3.3, Step 4) ---
+
+# prompt-text: the hand-off audited-HEAD gate (§3.2 #2) runs BEFORE the 4-option
+# menu. Drops here would reopen the stale-audit bypass: a missing compare step
+# lets fix commits after the last audit round ship unverified; a missing accept
+# directive / re-audit option / zero-diff carve-out either makes the gate silent
+# (violates #149 "never a silent pass") or fires it on a legit zero-diff skip.
+check_feature_handoff_audited_head_gate() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) compare step: named gate reading audited_head from the findings doc.
+  grep -qF 'Audited-HEAD gate (before the 4-option menu)' "$skill" \
+    || { echo "$skill missing hand-off 'Audited-HEAD gate (before the 4-option menu)' step"; return 1; }
+  grep -qF '<slug>-code-findings.md' "$skill" \
+    || { echo "$skill hand-off gate missing the '<slug>-code-findings.md' read source"; return 1; }
+  # (b) banner: never-silent — accept directive (grep target of failing_test_cmd)
+  #     + re-audit option.
+  grep -qF 'audited-head mismatch accepted — audited=<oid|absent> head=<oid>: <reason>' "$skill" \
+    || { echo "$skill hand-off gate missing the accept-with-justification Log directive"; return 1; }
+  grep -qF 'Re-audit the delta' "$skill" \
+    || { echo "$skill hand-off gate missing the 'Re-audit the delta' banner option"; return 1; }
+  # (c) zero-diff carve-out: skip SILENTLY when no audit ran.
+  grep -qF 'skip the gate SILENTLY' "$skill" \
+    || { echo "$skill hand-off gate missing the zero-diff 'skip the gate SILENTLY' carve-out"; return 1; }
+  echo "feature hand-off audited-HEAD gate OK (compare step + read source + accept directive + re-audit option + zero-diff carve-out)"
+}
+
+# prompt-text: the `code audit passed` Log marker (§3.2 marker extension) gains a
+# trailing `; audited_head=<oid>` COPIED from the findings frontmatter, NOT
+# re-derived at marker-write time. A drop of the template arm decouples the marker
+# from the pinned oid; a drop of the copy rule invites a git rev-parse re-derive
+# that would pin the wrong (marker-write-time) HEAD.
+check_feature_code_audit_marker_audited_head() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  grep -qF 'evidence=<value>; blockers=[...]; audited_head=<oid>' "$skill" \
+    || { echo "$skill missing extended 'code audit passed' marker template with '; audited_head=<oid>'"; return 1; }
+  grep -qF 'COPIED from the findings-frontmatter' "$skill" \
+    || { echo "$skill marker oid-copy rule missing 'COPIED from the findings-frontmatter'"; return 1; }
+  grep -qF 'NOT re-derived via' "$skill" \
+    || { echo "$skill marker oid-copy rule missing 'NOT re-derived via' git rev-parse clause"; return 1; }
+  echo "feature code-audit marker audited_head extension OK (template arm + oid-copy rule)"
+}
+
+# prompt-text: classifier callsites 2/3/4 (code-audit spawns) pass --expected-head;
+# the spec-mode callsite 1 must NOT (the file-backed-only asymmetry — else every
+# clean spec-audit run false-fires HEAD_ATTESTATION_MISSING); and head_gate never
+# consumes the shared transport-retry budget (its re-audit banner option IS the
+# retry — a semantic iteration, not a transport attempt).
+check_feature_classifier_expected_head_callsites() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) --expected-head invocation present at the code-audit callsites.
+  grep -qF -- '--expected-head "$(git rev-parse HEAD)"' "$skill" \
+    || { echo "$skill missing '--expected-head \"\$(git rev-parse HEAD)\"' classifier invocation"; return 1; }
+  # (b) code/full-only restriction (callsites 2/3/4).
+  grep -qF 'for code/full mode ONLY (callsites 2/3/4' "$skill" \
+    || { echo "$skill missing the code/full-only (callsites 2/3/4) --expected-head restriction"; return 1; }
+  # (c) callsite-1 (spec mode) absence.
+  grep -qF 'the spec-mode callsite 1 passes NO head channel' "$skill" \
+    || { echo "$skill missing the spec-mode callsite-1 'NO head channel' clause"; return 1; }
+  # (d) no-transport-retry clause.
+  grep -qF 'NEVER consumes the shared §3.5b-1 one-transport-retry budget' "$skill" \
+    || { echo "$skill §3.5b-2f missing the head_gate no-transport-retry clause"; return 1; }
+  echo "feature classifier --expected-head callsites OK (2/3/4 present + callsite-1 absent + no-transport-retry)"
+}
+
+# prompt-text: the §3.4a terminal-evidence refusal (§3.3) asserts BOTH audit-evidence
+# keys are present with a 5-enum value before any SHIPPED/VERIFIED write; absent /
+# literal-null / off-enum → never flip. Dropping any of {both keys, the 5-enum, the
+# three defect shapes, the never-flip rule} reopens the silent-bypass class (#150).
+check_feature_terminal_evidence_refusal() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  grep -qF 'Terminal-evidence precondition (before any' "$skill" \
+    || { echo "$skill §3.4a missing 'Terminal-evidence precondition (before any' status write"; return 1; }
+  # both keys named.
+  grep -qF 'spec_audit_evidence:' "$skill" \
+    || { echo "$skill §3.4a refusal missing 'spec_audit_evidence:' key"; return 1; }
+  grep -qF 'code_audit_evidence:' "$skill" \
+    || { echo "$skill §3.4a refusal missing 'code_audit_evidence:' key"; return 1; }
+  # 5-value enum.
+  grep -qF '{dual_model, single_model, self_fallback, contract_violated, skipped}' "$skill" \
+    || { echo "$skill §3.4a refusal missing the 5-value evidence enum"; return 1; }
+  # three defect shapes.
+  grep -qF 'absent / literal-null / off-enum' "$skill" \
+    || { echo "$skill §3.4a refusal missing the three defect shapes 'absent / literal-null / off-enum'"; return 1; }
+  # never-flip.
+  grep -qF 'Never flip with absent keys.' "$skill" \
+    || { echo "$skill §3.4a refusal missing the 'Never flip with absent keys.' rule"; return 1; }
+  echo "feature §3.4a terminal-evidence refusal OK (both keys + 5-enum + three defect shapes + never-flip)"
+}
+
+# prompt-text: Verify mode gets the SAME terminal-evidence assertion as a precondition
+# before its status: VERIFIED flip (§3.3 second site). Without it, a /feature verify
+# on an evidence-less SHIPPED spec would silently reach VERIFIED — the exact incident
+# class the §3.4a gate closes on the hand-off path.
+check_feature_verify_terminal_evidence_precondition() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  grep -qF 'terminal-evidence precondition first' "$skill" \
+    || { echo "$skill Verify mode missing 'terminal-evidence precondition first' before the VERIFIED flip"; return 1; }
+  echo "feature Verify-mode terminal-evidence precondition OK (asserted before the VERIFIED flip)"
+}
+
 check_model_attestation_skill_coupling() {
   local agent='agents/cross-auditor.md'
   local feat='skills/feature/SKILL.md'
