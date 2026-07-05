@@ -8385,6 +8385,28 @@ check_mission_rule_11_amended_and_audit_claims_rule_present() {
   echo "MISSION rule #11 amended + rule #13 + 2026-05-13 entry (count=$n) OK"
 }
 
+# --- dev-dispatch grounding contract (spec 2026-07-05) ---
+# Sibling to the cap-banner empirical-verification cluster above — both are
+# anti-fabrication claim-backing guards. Asserts the grounding-contract literal
+# is present on BOTH dev-dispatch surfaces: the shared developer-workflow.md
+# reference (developer-senior reads it directly) AND the Codex prompt template
+# embedded in developer-codex.md (prompt-only Codex sees the contract only if it
+# is embedded there). A regression on either file — dropping the contract — fails.
+check_dev_grounding_instruction() {
+  local devwf="skills/feature/references/developer-workflow.md"
+  local codex="agents/developer-codex.md"
+  test -f "$devwf" || { echo "$devwf missing"; return 1; }
+  test -f "$codex" || { echo "$codex missing"; return 1; }
+
+  local literal='backed by a tool result from the current session'
+  grep -qF "$literal" "$devwf" \
+    || { echo "$devwf missing grounding-contract literal '$literal'"; return 1; }
+  grep -qF "$literal" "$codex" \
+    || { echo "$codex missing grounding-contract literal '$literal'"; return 1; }
+
+  echo "dev-dispatch grounding contract: literal present on both surfaces (developer-workflow.md + developer-codex.md) OK"
+}
+
 # Behavioral pin for the cross-auditor return-contract classifier
 # (`hooks/lib/check_dispatch_response.py`). Iterates every sub-fixture under
 # tests/fixtures/cross-audit-contract-gate/*/*/ (27 directories per spec
