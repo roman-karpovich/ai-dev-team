@@ -10,7 +10,8 @@
 - **Severity**: HIGH
 - **File**: src/stellar/retry.py:52
 - **Description**: claude flagged a possible race but evidence is weak.
-- **Fix**: Add a lock around the queue.push call.
+- **Failure class / input domain**: 
+- **Fix (advisory)**: Add a lock around the queue.push call.
 - **Sources**: [claude]
 - **Mode at emit**: 
 - **Blocking**: false

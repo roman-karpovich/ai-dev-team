@@ -54,7 +54,7 @@ Focus: [paste relevant focus areas from mode, including the standing integration
 Files to audit: [list paths — Codex reads them directly]
 Previously fixed (skip these): [previously_fixed list]
 [Severity ladder for mode]. Report [allowed_severities] only.
-For each finding: file:line, description, concrete fix suggestion.
+For each finding: file:line, description, failure class / input domain (the class of inputs/states, not one observed example), concrete fix suggestion (advisory — one hypothesis, not the contract).
 Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely.
 ```
 
@@ -73,7 +73,7 @@ Codebase-grounded verification + numeric derivation (when the spec asserts concr
 - Bounding (no over-reach). Ground only claims the spec MAKES and math the design DEPENDS ON — NOT a demand that every spec cite code, nor a mandate to re-derive trivial arithmetic, nor a license to invent referents; a greenfield spec with no concrete code referents and no boundary math leaves this a near-no-op. Stay within the spec-mode severity ladder. DISTINCT from the grill-awareness evidence-ref RESOLVES line above (which covers only grilled ## Decisions citations), and OFFENSIVE — read code to FIND spec-vs-code mismatches — in contrast to the verify-before-report line below, which is DEFENSIVE de-hallucination of reported findings; both coexist.
 Focus areas: completeness, clarity, sequencing, correctness, dependency mapping, verification coverage, scope, risk
 [Severity ladder for spec mode]. Report [allowed_severities] only.
-For each finding: spec section/step reference, description, concrete fix suggestion.
+For each finding: spec section/step reference, description, failure class (the class of spec defects/cases the issue covers, not one example), concrete fix suggestion (advisory — one hypothesis, not the contract).
 Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely.
 ```
 
@@ -101,7 +101,7 @@ Severity ladder (decision mode):
 - HIGH: decision-coherence classes 1a/1b at load-bearing scale; an unverified load-bearing premise (L2 unconfirmable); a rubber-stamped gate on a high-risk surface; vacuous accept/defer of a CRITICAL/HIGH finding (the only vacuous-rationale form that gates).
 - MEDIUM: fork analysis (no recorded alternatives); all other vacuous-rationale forms; unlogged planned/observed drift; all-defaults accumulation.
 Report [allowed_severities] only.
-For each finding: artifact-line reference (spec §9 Log line / workdoc field / findings-doc ID), description, concrete fix suggestion.
+For each finding: artifact-line reference (spec §9 Log line / workdoc field / findings-doc ID), description, failure class (the class of decisions/cases the issue covers, not one example), concrete fix suggestion (advisory — one hypothesis, not the contract).
 Before reporting any finding, verify the file:line claim by re-reading the actual content at the named line. On mismatch, downgrade to MEDIUM with a 'verification mismatch' note or omit the finding entirely.
 ```
 

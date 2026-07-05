@@ -243,6 +243,19 @@ def merge_pair(primary, secondary):
         p_desc = primary.get("description", "") or ""
         s_desc = secondary.get("description", "") or ""
         out["description"] = p_desc if len(p_desc) >= len(s_desc) else s_desc
+    # failure_class carry — the X23 swap makes the probe member primary on mixed
+    # probe+LLM merges, and probes don't emit failure_class, so an LLM-side value
+    # on the secondary would be dropped by dict(primary) alone. Carry it
+    # explicitly. §3.3 treats an absent failure_class as valid (rendered empty;
+    # old producers / probe findings stay valid), so only set the key when a
+    # value is actually present — all-absent merges keep the key absent rather
+    # than gaining a spurious empty string, which keeps every pre-existing merged
+    # finding byte-stable through the renderer.
+    carried_failure_class = (
+        primary.get("failure_class") or secondary.get("failure_class")
+    )
+    if carried_failure_class:
+        out["failure_class"] = carried_failure_class
     # probe-only fields — already on `out` via dict(primary) because the X23
     # swap guarantees primary is the probe-sourced member for mixed merges.
     # This residual block is a safety-net for future probe+probe+LLM multi-way
