@@ -325,6 +325,9 @@ check_cross_auditor_empirical_verification_step_present prompt-text
 check_skill_md_cap_banner_present prompt-text
 check_mission_rule_11_amended_and_audit_claims_rule_present prompt-text
 
+# dev-dispatch grounding contract (spec 2026-07-05)
+check_dev_grounding_instruction prompt-text
+
 # cross-auditor contract-gate automation (spec 2026-05-15) classifier pins
 check_dispatch_response_classification behavioral
 check_dispatch_response_violation_blocker_mapping behavioral
