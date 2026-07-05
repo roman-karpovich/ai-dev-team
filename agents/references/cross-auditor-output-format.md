@@ -38,6 +38,7 @@ created: YYYY-MM-DD
 evidence_class: <value>
 evidence_blockers: <YAML-list>
 claude_model: <exact model id>
+audited_head: <full commit oid>
 tags: [audit, <project>]
 ---
 
@@ -74,6 +75,8 @@ tags: [audit, <project>]
 - **Eligible reason**: (probe findings only; null for pure-LLM)
 - **Status**: OPEN
 ```
+
+**Audited-HEAD pin emit contract**: the `audited_head: <full commit oid>` frontmatter key (sibling of `claude_model:`) is emitted on file-backed audits ONLY (`code`/`full`/`logic`/`security`). Its value is the output of `git rev-parse HEAD` in the audit workspace at audit time — the commit state the audit actually read — overwritten each iteration (same lifecycle as `claude_model:`). **Non-git carve-out**: when the audit workspace is not a git repo (the standalone non-git in-place path) `git rev-parse HEAD` cannot resolve, so the key is OMITTED from the frontmatter entirely and the standalone invocation correspondingly skips `--expected-head`. Spec and decision modes emit nothing for this field — `audited_head` is not part of the inline-footer contract. Full contract: `agents/references/cross-auditor-evidence-handshake.md` §Audited-HEAD attestation contract.
 
 **`failure_class` (optional) + advisory `Fix`**: the details block carries `- **Failure class / input domain**: <class>` — the class of inputs/states the failure belongs to, not one observed example — rendered from the optional finding JSON key `failure_class` (string; rendered empty when the key is absent, so old producers and probe findings stay valid). The `- **Fix (advisory)**:` label marks the suggestion as ONE hypothesis: the remedy derives from the Description + failure class + the code, not from the suggestion's letter. The finding JSON `fix` key is UNCHANGED (render/dedupe parse it); only the rendered label carries `(advisory)`. Legacy findings docs written before this change keep the bare `- **Fix**:` label — nothing parses the label, so mixed `**Fix**:` / `**Fix (advisory)**:` labels across a re-audited findings doc are acceptable.
 

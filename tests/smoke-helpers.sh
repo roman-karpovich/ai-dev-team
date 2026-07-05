@@ -5151,6 +5151,201 @@ check_cross_auditor_model_attestation_contract() {
   echo "cross-auditor model-attestation contract OK (model: opus; claude_model emit rule + output-format key; sentinel count==1)"
 }
 
+# schema: the audited_head pin (spec 2026-07-05-audited-head-terminal-evidence-gates
+# §3.2) is emitted into the findings.md frontmatter template, sibling of claude_model.
+# Catches a defect where the emit target is dropped/renamed — the orchestrator hand-off
+# gate then has no `audited_head:` to read and the stale-audit bypass reopens silently.
+check_cross_auditor_audited_head_template() {
+  local outfmt='agents/references/cross-auditor-output-format.md'
+  test -f "$outfmt" || { echo "$outfmt missing"; return 1; }
+  # (a) findings.md frontmatter template carries the audited_head: key (the emit
+  #     target the /feature hand-off gate reads).
+  grep -qE '^audited_head: ' "$outfmt" \
+    || { echo "$outfmt findings.md template missing '^audited_head: ' frontmatter key"; return 1; }
+  # (b) claude_model: sibling still present — the pin mirrors it 1:1; if the sibling
+  #     vanished the mirror invariant this contract depends on is broken.
+  grep -qF 'claude_model:' "$outfmt" \
+    || { echo "$outfmt findings.md template missing sibling 'claude_model:' key"; return 1; }
+  # (c) emit-contract note names the file-backed-only + non-git omission rules so a
+  #     reader of the unconditional template line knows the key is conditional.
+  grep -qF 'Non-git carve-out' "$outfmt" \
+    || { echo "$outfmt missing 'Non-git carve-out' clause in audited_head emit contract"; return 1; }
+  echo "cross-auditor audited_head template OK (frontmatter key present; claude_model sibling; non-git carve-out noted)"
+}
+
+# prompt-text: the §Audited-HEAD attestation contract section in the handshake doc
+# documents the five load-bearing clauses of the emit contract. Each grep guards a
+# distinct drift: dropping the file-backed-only clause would make the cross-auditor
+# emit in spec/decision (footer migration); dropping the non-git carve-out would
+# false-fire HEAD_ATTESTATION_MISSING on non-git in-place runs; dropping the
+# no-shape-validation clause invites a spurious oid validator.
+check_cross_auditor_audited_head_handshake() {
+  local handshake='agents/references/cross-auditor-evidence-handshake.md'
+  test -f "$handshake" || { echo "$handshake missing"; return 1; }
+  # (a) the Audited-HEAD attestation contract section exists.
+  grep -qF '### Audited-HEAD attestation contract' "$handshake" \
+    || { echo "$handshake missing '### Audited-HEAD attestation contract' section"; return 1; }
+  # (b) channel restriction: file-backed modes only.
+  grep -qF 'file-backed modes ONLY' "$handshake" \
+    || { echo "$handshake audited_head contract missing 'file-backed modes ONLY' channel clause"; return 1; }
+  # (c) source of truth: git rev-parse HEAD in the audit workspace.
+  grep -qF 'git rev-parse HEAD' "$handshake" \
+    || { echo "$handshake audited_head contract missing 'git rev-parse HEAD' source-of-truth clause"; return 1; }
+  # (d) spec/decision footer stays byte-identical (zero-migration asymmetry vs claude_model).
+  grep -qF 'three-line footer stays byte-identical' "$handshake" \
+    || { echo "$handshake audited_head contract missing spec/decision 'three-line footer stays byte-identical' untouched clause"; return 1; }
+  # (e) non-git carve-out: pin OMITTED when workspace is not a git repo.
+  grep -qF 'OMITTED from the frontmatter' "$handshake" \
+    || { echo "$handshake audited_head contract missing non-git 'OMITTED from the frontmatter' carve-out"; return 1; }
+  # (f) no value-shape validation (mirror of claude_model).
+  grep -qF 'No value-shape validation' "$handshake" \
+    || { echo "$handshake audited_head contract missing 'No value-shape validation' mirror clause"; return 1; }
+  echo "cross-auditor audited_head handshake contract OK (section + file-backed-only + rev-parse source + byte-identical footer + non-git omission + no-shape-validation)"
+}
+
+# --- /feature audited-HEAD + terminal-evidence gates (spec
+#     2026-07-05-audited-head-terminal-evidence-gates §3.2/§3.3, Step 4) ---
+
+# prompt-text: the hand-off audited-HEAD gate (§3.2 #2) runs BEFORE the 4-option
+# menu. Drops here would reopen the stale-audit bypass: a missing compare step
+# lets fix commits after the last audit round ship unverified; a missing accept
+# directive / re-audit option / zero-diff carve-out either makes the gate silent
+# (violates #149 "never a silent pass") or fires it on a legit zero-diff skip.
+check_feature_handoff_audited_head_gate() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) compare step: named gate reading audited_head from the findings doc.
+  grep -qF 'Audited-HEAD gate (before the 4-option menu)' "$skill" \
+    || { echo "$skill missing hand-off 'Audited-HEAD gate (before the 4-option menu)' step"; return 1; }
+  grep -qF '<slug>-code-findings.md' "$skill" \
+    || { echo "$skill hand-off gate missing the '<slug>-code-findings.md' read source"; return 1; }
+  # (b) banner: never-silent — accept directive (grep target of failing_test_cmd)
+  #     + re-audit option.
+  grep -qF 'audited-head mismatch accepted — audited=<oid|absent> head=<oid>: <reason>' "$skill" \
+    || { echo "$skill hand-off gate missing the accept-with-justification Log directive"; return 1; }
+  grep -qF 'Re-audit the delta' "$skill" \
+    || { echo "$skill hand-off gate missing the 'Re-audit the delta' banner option"; return 1; }
+  # (c) zero-diff carve-out: skip SILENTLY when no audit ran.
+  grep -qF 'skip the gate SILENTLY' "$skill" \
+    || { echo "$skill hand-off gate missing the zero-diff 'skip the gate SILENTLY' carve-out"; return 1; }
+  echo "feature hand-off audited-HEAD gate OK (compare step + read source + accept directive + re-audit option + zero-diff carve-out)"
+}
+
+# prompt-text: the `code audit passed` Log marker (§3.2 marker extension) gains a
+# trailing `; audited_head=<oid>` COPIED from the findings frontmatter, NOT
+# re-derived at marker-write time. A drop of the template arm decouples the marker
+# from the pinned oid; a drop of the copy rule invites a git rev-parse re-derive
+# that would pin the wrong (marker-write-time) HEAD.
+check_feature_code_audit_marker_audited_head() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  grep -qF 'evidence=<value>; blockers=[...]; audited_head=<oid>' "$skill" \
+    || { echo "$skill missing extended 'code audit passed' marker template with '; audited_head=<oid>'"; return 1; }
+  grep -qF 'COPIED from the findings-frontmatter' "$skill" \
+    || { echo "$skill marker oid-copy rule missing 'COPIED from the findings-frontmatter'"; return 1; }
+  grep -qF 'NOT re-derived via' "$skill" \
+    || { echo "$skill marker oid-copy rule missing 'NOT re-derived via' git rev-parse clause"; return 1; }
+  echo "feature code-audit marker audited_head extension OK (template arm + oid-copy rule)"
+}
+
+# prompt-text: classifier callsites 2/3/4 (code-audit spawns) pass --expected-head;
+# the spec-mode callsite 1 must NOT (the file-backed-only asymmetry — else every
+# clean spec-audit run false-fires HEAD_ATTESTATION_MISSING); and head_gate never
+# consumes the shared transport-retry budget (its re-audit banner option IS the
+# retry — a semantic iteration, not a transport attempt).
+check_feature_classifier_expected_head_callsites() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) --expected-head invocation present at the code-audit callsites.
+  grep -qF -- '--expected-head "$(git rev-parse HEAD)"' "$skill" \
+    || { echo "$skill missing '--expected-head \"\$(git rev-parse HEAD)\"' classifier invocation"; return 1; }
+  # (b) code/full-only restriction (callsites 2/3/4).
+  grep -qF 'for code/full mode ONLY (callsites 2/3/4' "$skill" \
+    || { echo "$skill missing the code/full-only (callsites 2/3/4) --expected-head restriction"; return 1; }
+  # (c) callsite-1 (spec mode) absence.
+  grep -qF 'the spec-mode callsite 1 passes NO head channel' "$skill" \
+    || { echo "$skill missing the spec-mode callsite-1 'NO head channel' clause"; return 1; }
+  # (d) no-transport-retry clause.
+  grep -qF 'NEVER consumes the shared §3.5b-1 one-transport-retry budget' "$skill" \
+    || { echo "$skill §3.5b-2f missing the head_gate no-transport-retry clause"; return 1; }
+  echo "feature classifier --expected-head callsites OK (2/3/4 present + callsite-1 absent + no-transport-retry)"
+}
+
+# prompt-text: the §3.4a terminal-evidence refusal (§3.3) asserts BOTH audit-evidence
+# keys are present with a 5-enum value before any SHIPPED/VERIFIED write; absent /
+# literal-null / off-enum → never flip. Dropping any of {both keys, the 5-enum, the
+# three defect shapes, the never-flip rule} reopens the silent-bypass class (#150).
+check_feature_terminal_evidence_refusal() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  grep -qF 'Terminal-evidence precondition (before any' "$skill" \
+    || { echo "$skill §3.4a missing 'Terminal-evidence precondition (before any' status write"; return 1; }
+  # both keys named.
+  grep -qF 'spec_audit_evidence:' "$skill" \
+    || { echo "$skill §3.4a refusal missing 'spec_audit_evidence:' key"; return 1; }
+  grep -qF 'code_audit_evidence:' "$skill" \
+    || { echo "$skill §3.4a refusal missing 'code_audit_evidence:' key"; return 1; }
+  # 5-value enum.
+  grep -qF '{dual_model, single_model, self_fallback, contract_violated, skipped}' "$skill" \
+    || { echo "$skill §3.4a refusal missing the 5-value evidence enum"; return 1; }
+  # three defect shapes.
+  grep -qF 'absent / literal-null / off-enum' "$skill" \
+    || { echo "$skill §3.4a refusal missing the three defect shapes 'absent / literal-null / off-enum'"; return 1; }
+  # never-flip.
+  grep -qF 'Never flip with absent keys.' "$skill" \
+    || { echo "$skill §3.4a refusal missing the 'Never flip with absent keys.' rule"; return 1; }
+  echo "feature §3.4a terminal-evidence refusal OK (both keys + 5-enum + three defect shapes + never-flip)"
+}
+
+# prompt-text: Verify mode gets the SAME terminal-evidence assertion as a precondition
+# before its status: VERIFIED flip (§3.3 second site). Without it, a /feature verify
+# on an evidence-less SHIPPED spec would silently reach VERIFIED — the exact incident
+# class the §3.4a gate closes on the hand-off path.
+check_feature_verify_terminal_evidence_precondition() {
+  local skill='skills/feature/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  grep -qF 'terminal-evidence precondition first' "$skill" \
+    || { echo "$skill Verify mode missing 'terminal-evidence precondition first' before the VERIFIED flip"; return 1; }
+  echo "feature Verify-mode terminal-evidence precondition OK (asserted before the VERIFIED flip)"
+}
+
+# prompt-text: standalone /cross-audit audited-HEAD wiring (spec
+# 2026-07-05-audited-head-terminal-evidence-gates §3.2 "Standalone — file-backed
+# modes ONLY", Step 5). Six load-bearing clauses. Dropping the Phase 3 render line
+# hides the attested HEAD from the user; dropping the file-backed-only restriction
+# or the spec/decision abstention makes standalone pass --expected-head on spec/
+# decision runs (false HEAD_ATTESTATION_MISSING on every clean run); dropping the
+# non-git skip false-fires on non-git in-place runs; dropping the no-transport-retry
+# clause lets head_gate burn the shared retry budget; dropping the workdoc
+# persistence line loses the only POST-action record of the chosen gate action.
+check_cross_audit_standalone_audited_head() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) Phase 3 render line, file-backed modes only.
+  grep -qF 'Audited HEAD: <oid>' "$skill" \
+    || { echo "$skill missing the Phase 3 'Audited HEAD: <oid>' render line"; return 1; }
+  grep -qF 'file-backed modes ONLY' "$skill" \
+    || { echo "$skill missing the '--expected-head' file-backed-modes-ONLY restriction"; return 1; }
+  # (b) spec/decision abstention (the file-backed-only asymmetry vs --expected-claude-model).
+  grep -qF 'standalone runs (`--mode spec`) NEVER pass' "$skill" \
+    || { echo "$skill missing the spec/decision 'NEVER pass --expected-head' abstention clause"; return 1; }
+  # (c) non-git in-place skip.
+  grep -qF 'Non-git in-place file-backed runs likewise SKIP' "$skill" \
+    || { echo "$skill missing the non-git in-place '--expected-head' skip clause"; return 1; }
+  # (d) head_gate never consumes the transport-retry budget.
+  grep -qF 'NEVER consumes the shared §3.5b-2b transport-retry budget' "$skill" \
+    || { echo "$skill missing the head_gate no-transport-retry clause"; return 1; }
+  # (e) standalone audited-HEAD gate banner present (re-audit / accept / stop).
+  grep -qF 'Standalone audited-HEAD gate banner' "$skill" \
+    || { echo "$skill missing the '#### Standalone audited-HEAD gate banner' section"; return 1; }
+  # (f) workdoc persistence line (mirror of the model-gate rule — no new sidecar field).
+  grep -qF 'Audited HEAD: <audited_head|absent> vs <expected>' "$skill" \
+    || { echo "$skill missing the audited-HEAD workdoc persistence line"; return 1; }
+  grep -qF 'no new sidecar field — mirror of the model-gate rule' "$skill" \
+    || { echo "$skill missing the 'no new sidecar field — mirror of the model-gate rule' persistence clause"; return 1; }
+  echo "cross-audit standalone audited-HEAD OK (Phase 3 render + file-backed-only + spec/decision abstain + non-git skip + no-transport-retry + banner + workdoc persistence)"
+}
+
 check_model_attestation_skill_coupling() {
   local agent='agents/cross-auditor.md'
   local feat='skills/feature/SKILL.md'
@@ -8238,46 +8433,50 @@ check_dispatch_response_classification() {
     expected_model_arg=$(sed -n 's/^expected_claude_model_arg: *//p' "$meta")
     expected_model_gate=$(sed -n 's/^expected_model_gate: *//p' "$meta")
     expected_claude_model=$(sed -n 's/^expected_claude_model: *//p' "$meta")
+    # Three OPTIONAL audited-HEAD meta keys (spec 2026-07-05 §3.2; absent in the
+    # legacy fixtures). `expected_head_arg` drives the `--expected-head` flag,
+    # threaded into ALL invocation arms alongside the model flag; a single-arm
+    # patch would silently under-test one mode. `expected_head_gate` /
+    # `expected_audited_head` are asserted UNCONDITIONALLY in the python block
+    # (absent -> null), so the flag cannot leak into a legacy CLEAN fixture and
+    # silently return HEAD_ATTESTATION_MISSING.
+    expected_head_arg=$(sed -n 's/^expected_head_arg: *//p' "$meta")
+    expected_head_gate=$(sed -n 's/^expected_head_gate: *//p' "$meta")
+    expected_audited_head=$(sed -n 's/^expected_audited_head: *//p' "$meta")
     local extra_args=()
     if [ -n "$expected_model_arg" ]; then
-      extra_args=(--expected-claude-model "$expected_model_arg")
+      extra_args+=(--expected-claude-model "$expected_model_arg")
     fi
-    # Policy-gate fixtures: the ai-dev-team variant is invoked WITH
-    # `--project ai-dev-team`; the consumer variant WITHOUT it.
+    if [ -n "$expected_head_arg" ]; then
+      extra_args+=(--expected-head "$expected_head_arg")
+    fi
+    # Policy-gate fixtures: invoked WITH `--project ai-dev-team`. The
+    # spec-mode CLEAN_SINGLE variant pins the isolated policy gate; the
+    # code-mode `head-cofire` variant pins policy_gate + head_gate firing
+    # simultaneously in one JSON (independent computation). Threaded into every
+    # mode via `extra_args` — the consumer variant omits the flag.
     project=""
     case "$d" in
-      *clean-single-policy-gate-ai-dev-team/*) project="ai-dev-team" ;;
+      *clean-single-policy-gate-ai-dev-team/*|*clean-single-policy-gate-head-cofire/*)
+        project="ai-dev-team" ;;
     esac
+    if [ -n "$project" ]; then
+      extra_args+=(--project "$project")
+    fi
+    # findings-missing/code/ deliberately lacks findings.md — the (absent) path
+    # is passed verbatim so the absence triggers FINDINGS_MISSING.
     if [ "$mode" = "code" ] || [ "$mode" = "full" ]; then
-      # findings-missing/code/ deliberately lacks findings.md — pass a
-      # non-existent path so the absence triggers FINDINGS_MISSING.
-      if [ -f "$d/findings.md" ]; then
-        python3 "$helper" --mode "$mode" \
-          --raw-response-file "$d/raw-response.txt" \
-          --audit-slug "fixture-$expected_class" --iteration 1 \
-          --findings-path "$d/findings.md" \
-          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
-      else
-        python3 "$helper" --mode "$mode" \
-          --raw-response-file "$d/raw-response.txt" \
-          --audit-slug "fixture-$expected_class" --iteration 1 \
-          --findings-path "$d/findings.md" \
-          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
-      fi
+      python3 "$helper" --mode "$mode" \
+        --raw-response-file "$d/raw-response.txt" \
+        --audit-slug "fixture-$expected_class" --iteration 1 \
+        --findings-path "$d/findings.md" \
+        ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       rc=$?
     else
-      if [ -n "$project" ]; then
-        python3 "$helper" --mode "$mode" \
-          --raw-response-file "$d/raw-response.txt" \
-          --audit-slug "fixture-$expected_class" --iteration 1 \
-          --project "$project" \
-          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
-      else
-        python3 "$helper" --mode "$mode" \
-          --raw-response-file "$d/raw-response.txt" \
-          --audit-slug "fixture-$expected_class" --iteration 1 \
-          ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
-      fi
+      python3 "$helper" --mode "$mode" \
+        --raw-response-file "$d/raw-response.txt" \
+        --audit-slug "fixture-$expected_class" --iteration 1 \
+        ${extra_args[@]+"${extra_args[@]}"} >"$out_file" 2>/dev/null
       rc=$?
     fi
     if [ "$rc" != "$expected_exit" ]; then
@@ -8290,12 +8489,14 @@ check_dispatch_response_classification() {
     # newline-unsafe fixture mean a shell-variable round-trip would corrupt
     # the payload — read straight from disk).
     if ! python3 - "$out_file" "$expected_class" "$d" "$project" \
-        "$expected_model_gate" "$expected_claude_model" <<'PY'
+        "$expected_model_gate" "$expected_claude_model" \
+        "$expected_head_gate" "$expected_audited_head" <<'PY'
 import json
 import sys
 
 (out_file, expected_class, fixture_dir, project,
- expected_model_gate, expected_claude_model) = sys.argv[1:7]
+ expected_model_gate, expected_claude_model,
+ expected_head_gate, expected_audited_head) = sys.argv[1:9]
 try:
     with open(out_file, "r", encoding="utf-8") as fh:
         j = json.load(fh)
@@ -8356,6 +8557,30 @@ if got_model != want_model:
     print(f"sub-fixture {fixture_dir}: claude_model {got_model!r}, "
           f"expected {want_model!r}")
     sys.exit(1)
+
+# Audited-HEAD assertions (UNCONDITIONAL for every fixture, legacy included).
+# The meta keys are optional shell vars: an empty string means the key was
+# absent -> expected null. `expected_head_gate` guards against the flag leaking
+# into legacy CLEAN fixtures (would silently return HEAD_ATTESTATION_MISSING)
+# AND pins the co-fire independence (policy/model gate firing does NOT suppress
+# head_gate); `expected_audited_head` pins the informational parse value (an
+# impl that computes head_gate but mis-emits audited_head — or drops it on a
+# violation classification — is caught here).
+want_head_gate = (None if expected_head_gate in ("", "null")
+                  else expected_head_gate)
+got_head_gate = j.get("head_gate")
+if got_head_gate != want_head_gate:
+    print(f"sub-fixture {fixture_dir}: head_gate {got_head_gate!r}, "
+          f"expected {want_head_gate!r}")
+    sys.exit(1)
+
+want_head = (None if expected_audited_head in ("", "null")
+             else expected_audited_head)
+got_head = j.get("audited_head")
+if got_head != want_head:
+    print(f"sub-fixture {fixture_dir}: audited_head {got_head!r}, "
+          f"expected {want_head!r}")
+    sys.exit(1)
 PY
     then
       rm -f "$out_file"
@@ -8364,11 +8589,11 @@ PY
     checked=$((checked + 1))
   done
   rm -f "$out_file"
-  if [ "$checked" != "55" ]; then
-    echo "expected 55 sub-fixtures, checked $checked"
+  if [ "$checked" != "64" ]; then
+    echo "expected 64 sub-fixtures, checked $checked"
     return 1
   fi
-  echo "dispatch-response classifier: 55/55 sub-fixtures classified correctly"
+  echo "dispatch-response classifier: 64/64 sub-fixtures classified correctly"
 }
 
 # Behavioral pin for the classifier's enum -> violation-blocker phrasing
@@ -10451,6 +10676,101 @@ if "C7:" in fp:
     sys.exit(1)
 
 print("kb_drift_scan C7: 12-struck-fires / 11-clean strict threshold; header + table-row struck forms both count (6+6=12); no-frontmatter (above FM gate); prose `- ~~…~~` line-start-absent mentions NOT counted (low-FP)")
+PYEOF
+}
+
+# Behavioral: C8_terminal_evidence_gap (spec 2026-07-05 §3.3). Scans the dedicated
+# c8-fire / c8-nonfire fixture dirs and ID-anchors that a TERMINAL spec status
+# (SHIPPED/VERIFIED/DONE) on a post-cutoff spec fires iff an audit-evidence key is
+# absent / literal-null / off-enum, and NEVER fires pre-cutoff / non-terminal /
+# both-keys-valid / created-absent / created-malformed. Mutation sensitivity: an
+# ABSENCE-ONLY implementation fails the literal-null + off-enum fire fixtures (the
+# incident signature — finding 6); dropping DONE from TERMINAL_SPEC_STATUSES fails
+# fire-done-missing; a `>` instead of `>=` on the cutoff, or dropping the created
+# well-formedness/skip gate, flips the nonfire pre-cutoff / created-malformed /
+# created-absent cases; a per-key defect-shape mislabel flips the detail asserts.
+check_kb_drift_c8_terminal_evidence_gap() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  local fire="$PLUGIN_ROOT/tests/fixtures/kb-drift/c8-fire"
+  local nonfire="$PLUGIN_ROOT/tests/fixtures/kb-drift/c8-nonfire"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  [ -d "$fire" ] || { echo "$fire fixture dir missing"; return 1; }
+  [ -d "$nonfire" ] || { echo "$nonfire fixture dir missing"; return 1; }
+  python3 - "$scanner" "$fire" "$nonfire" <<'PYEOF'
+import json, subprocess, sys, tempfile
+from pathlib import Path
+
+scanner, fire, nonfire = sys.argv[1], sys.argv[2], sys.argv[3]
+
+# --- FIRE dir: exit 1, exactly the 5 defect-shape fires, all auto_safe:false ---
+f = subprocess.run([sys.executable, scanner, fire], capture_output=True, text=True)
+if f.returncode != 1:
+    print(f"c8-fire: expected exit 1 (>=1 finding), got {f.returncode}; out={f.stdout!r}")
+    sys.exit(1)
+F = json.loads(f.stdout)["findings"]
+c8 = [x for x in F if x["class"] == "C8_terminal_evidence_gap"]
+other = [x for x in F if x["class"] != "C8_terminal_evidence_gap"]
+if other:
+    print(f"c8-fire: fixtures must fire ONLY C8, got stray classes: {other}")
+    sys.exit(1)
+by_file = {x["file"]: x for x in c8}
+# Per-fixture defect-shape contract. Each names the terminal status + the exact
+# defect shape (missing / literal-null / off-enum) + the specific key — an
+# absence-only implementation cannot satisfy the null/off-enum rows.
+expected = {
+    "fire-spec-audit-absent.md":  ["SHIPPED", "spec_audit_evidence missing"],
+    "fire-spec-audit-null.md":    ["VERIFIED", "spec_audit_evidence literal-null"],
+    "fire-code-audit-null.md":    ["SHIPPED", "code_audit_evidence literal-null"],
+    "fire-off-enum.md":           ["VERIFIED", "spec_audit_evidence off-enum"],
+    "fire-done-missing.md":       ["DONE", "spec_audit_evidence missing", "code_audit_evidence missing"],
+}
+if set(by_file) != set(expected):
+    print(f"c8-fire: expected fires on {sorted(expected)}, got {sorted(by_file)}")
+    sys.exit(1)
+for fname, needles in expected.items():
+    fnd = by_file[fname]
+    if fnd["auto_safe"] is not False:
+        print(f"c8-fire {fname}: C8 must be auto_safe:false, got {fnd['auto_safe']}")
+        sys.exit(1)
+    if not ({"class", "file", "line", "detail", "auto_safe"} <= set(fnd)):
+        print(f"c8-fire {fname}: finding missing required keys: {fnd}")
+        sys.exit(1)
+    for needle in needles:
+        if needle not in fnd["detail"]:
+            print(f"c8-fire {fname}: detail must name {needle!r}, got: {fnd['detail']!r}")
+            sys.exit(1)
+# The single-key fires must NOT over-report the healthy sibling key.
+if "literal-null" in by_file["fire-spec-audit-absent.md"]["detail"]:
+    print("c8-fire fire-spec-audit-absent.md: must NOT name a literal-null defect (only the absent key)")
+    sys.exit(1)
+
+# --- NON-FIRE dir: no C8 anywhere (aggregate) AND per-file in isolation ---
+n = subprocess.run([sys.executable, scanner, nonfire], capture_output=True, text=True)
+nf = json.loads(n.stdout)["findings"]
+if any(x["class"] == "C8_terminal_evidence_gap" for x in nf):
+    print(f"c8-nonfire: no C8 finding expected, got: {[x for x in nf if x['class']=='C8_terminal_evidence_gap']}")
+    sys.exit(1)
+nonfire_files = {
+    "nonfire-precutoff.md":         "created < cutoff → legacy_unknown",
+    "nonfire-nonterminal.md":       "IN_PROGRESS not terminal",
+    "nonfire-both-valid.md":        "both keys present + enum-valid",
+    "nonfire-created-absent.md":    "created absent → skip",
+    "nonfire-created-malformed.md": "created malformed → skip",
+}
+for fname, why in nonfire_files.items():
+    fp = Path(nonfire) / fname
+    if not fp.is_file():
+        print(f"c8-nonfire missing {fname} ({why})")
+        sys.exit(1)
+    with tempfile.TemporaryDirectory() as td:
+        (Path(td) / fname).write_text(fp.read_text(encoding="utf-8"), encoding="utf-8")
+        r = subprocess.run([sys.executable, scanner, td], capture_output=True, text=True)
+        rf = json.loads(r.stdout)["findings"]
+        if any(x["class"] == "C8_terminal_evidence_gap" for x in rf):
+            print(f"c8-nonfire {fname}: must NOT fire C8 ({why}), got {rf}")
+            sys.exit(1)
+
+print("kb_drift_scan C8: terminal (SHIPPED/VERIFIED/DONE) + post-cutoff + absent/literal-null/off-enum evidence key fires (5 shapes, per-key detail); pre-cutoff / non-terminal / both-valid / created-absent / created-malformed clean; auto_safe:false")
 PYEOF
 }
 

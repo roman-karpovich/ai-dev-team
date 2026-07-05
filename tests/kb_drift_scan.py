@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-r"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3/C4/C5/C6).
+r"""Offline KB-vault drift scanner — narrow first check set (C1/C2/C3/C4/C5/C6/C7/C8).
 
 Sibling of the existing offline checkers `check_dangling_anchors.py` /
 `check_finding_claims.py`, but scoped to the KB Obsidian vault (NOT the plugin
@@ -47,6 +47,20 @@ Check set (narrow first slice):
                               measure = stripped content length AFTER the marker.
                               `auto_safe: false` (trimming requires summarization,
                               a human/librarian call).
+  C8 terminal-evidence-gap  — a `type: spec` doc whose `status:` is TERMINAL
+                              ({SHIPPED, VERIFIED, DONE}) and whose `created:` is
+                              present, well-formed, and >= AUDIT_EVIDENCE_CUTOFF
+                              ("2026-04-28"), yet at least one of
+                              `spec_audit_evidence:` / `code_audit_evidence:` is
+                              absent, literal `null`, or off the 5-value enum
+                              (CODE_AUDIT_EVIDENCE_VALUES reused for both keys).
+                              A terminal status without a recorded audit handshake
+                              is the silent-bypass signature (a session that
+                              drifted out of the /feature flow). A missing OR
+                              malformed `created:` skips (conservative FN);
+                              pre-cutoff specs are `legacy_unknown`, NEVER flagged.
+                              `auto_safe: false` (recording evidence retroactively
+                              is a human decision).
 
 Known limitations (heuristic, like the existing checkers):
   - C6 multi-physical-line dumps are under-reported: a pipe-table row is one
@@ -131,6 +145,15 @@ Known limitations (heuristic, like the existing checkers):
     TERMINAL_LOG_MARKER_RE.
   - First slice covers C1/C2/C3/C4 only (no git-status-drift, no concluded-but-
     not-ARCHIVED research check — those are follow-ups).
+  - C8 is offline: a missing OR malformed `created:` is skipped (conservative FN)
+    and pre-cutoff specs are NEVER flagged, so a genuinely evidence-less terminal
+    spec that lacks/malforms `created:` or predates the cutoff is not caught. The
+    descoped "flag IN_PROGRESS specs whose branch is already squash-merged" check
+    (issue #150) is git-based and squash-blind — the exact reason C4 avoids git —
+    and is NOT implemented; C4 already covers stale pre-terminal statuses via
+    evidence-record signals. C8 asserts key PRESENCE + enum membership, not
+    `dual_model` — honest degraded values (`skipped`, `single_model`, …) do not
+    fire; only absent / literal-null / off-enum do.
 
 CLI:
     python3 tests/kb_drift_scan.py <kb_root> [--project <name>] [--json] [--summary]
@@ -147,7 +170,7 @@ Output: JSON
     {"scanned": <int>, "findings": [{"class", "file", "line", "detail", "auto_safe"}]}
 `class` is one of {C1_broken_wikilink, C2_dangling_section_pointer,
 C3_status_enum_violation, C4_status_drift, C5_research_status_enum_violation,
-C6_index_row_bloat, C7_backlog_done_bloat}.
+C6_index_row_bloat, C7_backlog_done_bloat, C8_terminal_evidence_gap}.
 `file` is KB-relative. `--json` is accepted for explicitness; JSON is always
 emitted.
 
@@ -160,6 +183,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional
 
@@ -301,6 +325,29 @@ TERMINAL_LOG_MARKER_RE = re.compile(
     r"^- \d{4}-\d{2}-\d{2}: code audit passed\b"
     r"|^- \d{4}-\d{2}-\d{2}: code audit: no auditable files in diff",
     re.MULTILINE,
+)
+
+# C8 terminal-status evidence-gap source-of-truth.
+# TERMINAL_SPEC_STATUSES — the three statuses that attest a spec's work SHIPPED
+# (the code-audit handshake ran). Legacy `DONE` IS terminal (a read-compat
+# synonym of VERIFIED). A terminal status paired with an absent / literal-null /
+# off-enum audit-evidence key is the silent-bypass signature (§3.3): a session
+# that drifted out of the /feature flow flipped terminal without the handshake
+# that writes spec_audit_evidence / code_audit_evidence.
+TERMINAL_SPEC_STATUSES = frozenset({"SHIPPED", "VERIFIED", "DONE"})
+# AUDIT_EVIDENCE_CUTOFF — the ship date of 2026-04-27-audit-evidence-enum.md
+# (the enum's first-shipped date). Specs created BEFORE this predate the evidence
+# handshake and are `legacy_unknown` — NEVER flagged. ISO `YYYY-MM-DD` string
+# compare (well-formed dates sort lexicographically). A spec with a missing OR
+# malformed `created:` is skipped (conservative FN, consistent with the scanner's
+# under-report posture).
+AUDIT_EVIDENCE_CUTOFF = "2026-04-28"
+# C8 reads the spec's `created:` and `spec_audit_evidence:` scalars from the
+# leading frontmatter (mirror of FM_CODE_AUDIT_EVIDENCE_RE). CODE_AUDIT_EVIDENCE_VALUES
+# is REUSED for BOTH evidence keys — the two share the same 5-value enum.
+FM_CREATED_RE = re.compile(r"^created:\s*(\S+)\s*$", re.MULTILINE)
+FM_SPEC_AUDIT_EVIDENCE_RE = re.compile(
+    r"^spec_audit_evidence:\s*(\S+)\s*$", re.MULTILINE
 )
 
 
@@ -976,6 +1023,68 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                             }
                         )
 
+                # --- C8 terminal-status evidence gap (offline, git-free) ---
+                # Fire iff a TERMINAL spec status (SHIPPED/VERIFIED/DONE) on a
+                # POST-cutoff spec (created >= AUDIT_EVIDENCE_CUTOFF) is missing a
+                # complete audit-evidence record: at least one of
+                # spec_audit_evidence / code_audit_evidence is absent, literal
+                # `null`, or off-enum (CODE_AUDIT_EVIDENCE_VALUES reused for both;
+                # literal `null` → absent, same rule as C4). All three defect
+                # shapes are the silent-bypass signature — an absence-only gate
+                # would miss the null/off-enum specs the incident carried. A
+                # missing OR malformed `created:` skips (conservative FN — a
+                # pre-cutoff / undated spec is legacy_unknown, NEVER flagged).
+                # Independent of C3/C4: a terminal status is a valid enum value
+                # (no C3 double-flag) and is not PRE_TERMINAL (no C4 double-flag).
+                c8_status = status_match.group(1)
+                if c8_status in TERMINAL_SPEC_STATUSES:
+                    created_match = FM_CREATED_RE.search(frontmatter)
+                    created = created_match.group(1) if created_match else None
+                    created_ok = False
+                    if created is not None:
+                        # date.fromisoformat validates both the YYYY-MM-DD shape
+                        # and calendar validity; a malformed value → skip.
+                        try:
+                            date.fromisoformat(created)
+                            created_ok = True
+                        except ValueError:
+                            created_ok = False
+                    if created is not None and created_ok and created >= AUDIT_EVIDENCE_CUTOFF:
+                        c8_line = (
+                            frontmatter[: status_match.start()].count("\n") + 2
+                        )
+                        defects = []
+                        for key, key_re in (
+                            ("spec_audit_evidence", FM_SPEC_AUDIT_EVIDENCE_RE),
+                            ("code_audit_evidence", FM_CODE_AUDIT_EVIDENCE_RE),
+                        ):
+                            m = key_re.search(frontmatter)
+                            if m is None:
+                                defects.append(f"{key} missing")
+                            elif m.group(1) == "null":
+                                defects.append(f"{key} literal-null")
+                            elif m.group(1) not in CODE_AUDIT_EVIDENCE_VALUES:
+                                defects.append(
+                                    f"{key} off-enum ({m.group(1)})"
+                                )
+                        if defects:
+                            detail = (
+                                f"status: {c8_status} is terminal (post-cutoff "
+                                f"created: {created}) but audit-evidence is "
+                                f"incomplete: {', '.join(defects)} — terminal "
+                                f"status without a recorded audit handshake "
+                                f"(silent-bypass signature)"
+                            )
+                            findings.append(
+                                {
+                                    "class": "C8_terminal_evidence_gap",
+                                    "file": rel,
+                                    "line": c8_line,
+                                    "detail": detail,
+                                    "auto_safe": False,
+                                }
+                            )
+
         # --- C5 research-status enum violation ---
         # The C3 analog, type-scoped on the EXACT leading-frontmatter string
         # `type: research` (NEVER the `research/` path — legacy
@@ -1014,9 +1123,9 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
     return {"scanned": len(files), "findings": findings}
 
 
-# Canonical class order for the --summary render (C1<C2<C3<C4<C5<C6<C7). Keyed by
-# the leading CLASS_SHORT token (the class up to the first `_`).
-_CLASS_ORDER = ("C1", "C2", "C3", "C4", "C5", "C6", "C7")
+# Canonical class order for the --summary render (C1<C2<C3<C4<C5<C6<C7<C8). Keyed
+# by the leading CLASS_SHORT token (the class up to the first `_`).
+_CLASS_ORDER = ("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")
 
 
 def class_short(cls: str) -> str:
