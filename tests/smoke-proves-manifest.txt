@@ -123,6 +123,7 @@ check_feature_code_audit_marker_audited_head prompt-text
 check_feature_classifier_expected_head_callsites prompt-text
 check_feature_terminal_evidence_refusal prompt-text
 check_feature_verify_terminal_evidence_precondition prompt-text
+check_cross_audit_standalone_audited_head prompt-text
 check_model_attestation_skill_coupling schema
 
 # Session-handoff queue visibility (BACKLOG #52, spec 2026-04-28)

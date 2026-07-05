@@ -5112,6 +5112,43 @@ check_feature_verify_terminal_evidence_precondition() {
   echo "feature Verify-mode terminal-evidence precondition OK (asserted before the VERIFIED flip)"
 }
 
+# prompt-text: standalone /cross-audit audited-HEAD wiring (spec
+# 2026-07-05-audited-head-terminal-evidence-gates §3.2 "Standalone — file-backed
+# modes ONLY", Step 5). Six load-bearing clauses. Dropping the Phase 3 render line
+# hides the attested HEAD from the user; dropping the file-backed-only restriction
+# or the spec/decision abstention makes standalone pass --expected-head on spec/
+# decision runs (false HEAD_ATTESTATION_MISSING on every clean run); dropping the
+# non-git skip false-fires on non-git in-place runs; dropping the no-transport-retry
+# clause lets head_gate burn the shared retry budget; dropping the workdoc
+# persistence line loses the only POST-action record of the chosen gate action.
+check_cross_audit_standalone_audited_head() {
+  local skill='skills/cross-audit/SKILL.md'
+  test -f "$skill" || { echo "$skill missing"; return 1; }
+  # (a) Phase 3 render line, file-backed modes only.
+  grep -qF 'Audited HEAD: <oid>' "$skill" \
+    || { echo "$skill missing the Phase 3 'Audited HEAD: <oid>' render line"; return 1; }
+  grep -qF 'file-backed modes ONLY' "$skill" \
+    || { echo "$skill missing the '--expected-head' file-backed-modes-ONLY restriction"; return 1; }
+  # (b) spec/decision abstention (the file-backed-only asymmetry vs --expected-claude-model).
+  grep -qF 'standalone runs (`--mode spec`) NEVER pass' "$skill" \
+    || { echo "$skill missing the spec/decision 'NEVER pass --expected-head' abstention clause"; return 1; }
+  # (c) non-git in-place skip.
+  grep -qF 'Non-git in-place file-backed runs likewise SKIP' "$skill" \
+    || { echo "$skill missing the non-git in-place '--expected-head' skip clause"; return 1; }
+  # (d) head_gate never consumes the transport-retry budget.
+  grep -qF 'NEVER consumes the shared §3.5b-2b transport-retry budget' "$skill" \
+    || { echo "$skill missing the head_gate no-transport-retry clause"; return 1; }
+  # (e) standalone audited-HEAD gate banner present (re-audit / accept / stop).
+  grep -qF 'Standalone audited-HEAD gate banner' "$skill" \
+    || { echo "$skill missing the '#### Standalone audited-HEAD gate banner' section"; return 1; }
+  # (f) workdoc persistence line (mirror of the model-gate rule — no new sidecar field).
+  grep -qF 'Audited HEAD: <audited_head|absent> vs <expected>' "$skill" \
+    || { echo "$skill missing the audited-HEAD workdoc persistence line"; return 1; }
+  grep -qF 'no new sidecar field — mirror of the model-gate rule' "$skill" \
+    || { echo "$skill missing the 'no new sidecar field — mirror of the model-gate rule' persistence clause"; return 1; }
+  echo "cross-audit standalone audited-HEAD OK (Phase 3 render + file-backed-only + spec/decision abstain + non-git skip + no-transport-retry + banner + workdoc persistence)"
+}
+
 check_model_attestation_skill_coupling() {
   local agent='agents/cross-auditor.md'
   local feat='skills/feature/SKILL.md'
