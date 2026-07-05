@@ -8490,6 +8490,135 @@ check_mission_rule_11_amended_and_audit_claims_rule_present() {
   echo "MISSION rule #11 amended + rule #13 + 2026-05-13 entry (count=$n) OK"
 }
 
+# --- dev-dispatch grounding contract (spec 2026-07-05) ---
+# Sibling to the cap-banner empirical-verification cluster above — both are
+# anti-fabrication claim-backing guards. Asserts the grounding contract is
+# structurally intact on BOTH dev-dispatch surfaces, not merely present as a
+# file-wide literal (audit X1 hardening — a file-wide presence grep false-passes
+# two ways). Requirements:
+#   1. developer-workflow.md (developer-senior reads it directly): the
+#      grounding-contract literal is present, AND the enforcement anchors
+#      `UNVERIFIED:` + `do NOT set` live inside the `## Grounding` subsection —
+#      not merely somewhere in the file (X1 case b: descriptive literal kept
+#      while the enforcement teeth are stripped from the grounding body).
+#   2. developer-codex.md (prompt-only Codex sees the contract ONLY if embedded
+#      in the Codex Prompt Template fence): the literal AND both enforcement
+#      anchors live INSIDE the `## Codex Prompt Template` fenced block. A block
+#      moved below the closing fence keeps the file-wide literal green but drops
+#      the contract from every Codex dispatch (X1 case a).
+# Fence/subsection regions are extracted by awk anchored on the section heading
+# (NOT hardcoded line numbers), mirroring the cross-auditor-codex template pins.
+check_dev_grounding_instruction() {
+  local devwf="skills/feature/references/developer-workflow.md"
+  local codex="agents/developer-codex.md"
+  test -f "$devwf" || { echo "$devwf missing"; return 1; }
+  test -f "$codex" || { echo "$codex missing"; return 1; }
+
+  local literal='backed by a tool result from the current session'
+  local anchor
+
+  # 1. developer-workflow.md: literal present file-wide (unchanged), enforcement
+  #    anchors scoped to the `## Grounding` subsection (heading -> next `## `).
+  grep -qF "$literal" "$devwf" \
+    || { echo "$devwf missing grounding-contract literal '$literal'"; return 1; }
+  local devwf_sec
+  devwf_sec=$(awk '
+    /^## Grounding/ { grab=1; next }
+    grab && /^## / { exit }
+    grab { print }
+  ' "$devwf")
+  [ -n "$devwf_sec" ] || { echo "$devwf missing '## Grounding' subsection"; return 1; }
+  for anchor in 'UNVERIFIED:' 'do NOT set'; do
+    printf '%s\n' "$devwf_sec" | grep -qF "$anchor" \
+      || { echo "$devwf '## Grounding' subsection missing enforcement anchor '$anchor'"; return 1; }
+  done
+
+  # 2. developer-codex.md: extract the `## Codex Prompt Template` fenced block
+  #    (opening ``` fence after the heading -> matching close), then assert the
+  #    literal + both enforcement anchors live INSIDE it.
+  local codex_tmpl
+  codex_tmpl=$(awk '
+    /^## Codex Prompt Template/ { grab=1; next }
+    grab && /^```$/ { fence++; if (fence==2) exit; next }
+    grab && fence==1 { print }
+  ' "$codex")
+  [ -n "$codex_tmpl" ] || { echo "$codex missing '## Codex Prompt Template' fenced block"; return 1; }
+  printf '%s\n' "$codex_tmpl" | grep -qF "$literal" \
+    || { echo "$codex grounding-contract literal '$literal' not inside '## Codex Prompt Template' fence"; return 1; }
+  for anchor in 'UNVERIFIED:' 'do NOT set'; do
+    printf '%s\n' "$codex_tmpl" | grep -qF "$anchor" \
+      || { echo "$codex '## Codex Prompt Template' fence missing enforcement anchor '$anchor'"; return 1; }
+  done
+
+  echo "dev-dispatch grounding contract: literal + UNVERIFIED:/do NOT set anchors present in developer-workflow.md '## Grounding' subsection AND inside developer-codex.md '## Codex Prompt Template' fence OK"
+}
+
+# Digest-primary pin (spec 2026-07-05-dev-rules-digest-primary): the §Code
+# Quality Rules lead paragraph declares the short-form bullets the primary
+# working set and narrows full-body reads to on-demand, domain-keyed loads.
+# Same anti-scaffolding theme + file target as check_dev_grounding_instruction
+# above. Section-scoped via inline awk heading-walk (^## Code Quality Rules ->
+# next ^## ), mirroring that sibling; self-contained, does NOT use
+# extract_md_section (defined only in the smoke.sh caller). $1 defaults to the
+# real reference but accepts a mutant/fixture copy for RED verification.
+# Asserts positive digest-primary anchors — the two framing phrases, all seven
+# on-demand trigger-map routes (removing behaviour → R1 through the security
+# route), and the retained Trigger B contract pointer — plus a pattern-class
+# NEGATIVE guard that no mandatory bulk-read mandate silently returned, in the
+# frozen literal or any reworded shape.
+check_dev_rules_digest_primary() {
+  local devwf="${1:-skills/feature/references/developer-workflow.md}"
+  test -f "$devwf" || { echo "$devwf missing"; return 1; }
+
+  local section
+  section=$(awk '
+    /^## Code Quality Rules/ { grab=1; next }
+    grab && /^## / { exit }
+    grab { print }
+  ' "$devwf")
+  [ -n "$section" ] || { echo "$devwf missing '## Code Quality Rules' section"; return 1; }
+
+  local anchor
+  for anchor in \
+    'primary working set' \
+    'on-demand' \
+    'removing behaviour → R1' \
+    'editing core-test assertions or rewriting tests → R2 + R3' \
+    'writing the first test in a module or deciding test placement → R5 + R7' \
+    'choosing test scope → R6' \
+    'producing public outputs (commit messages, PR text) → R8' \
+    'sizing new production code → R16' \
+    'security-adjacent code → the' \
+    'see §Taxonomy in `code-quality-rules.md` for the canonical contract — do not paraphrase'; do
+    printf '%s\n' "$section" | grep -qF "$anchor" \
+      || { echo "$devwf §Code Quality Rules missing digest-primary anchor '$anchor'"; return 1; }
+  done
+
+  # Pattern-class negative guard: reject any reintroduced mandatory bulk-read
+  # mandate, not just the frozen literal. Trip when one line co-occurs a
+  # (read|load) verb, a (before|prior to|upfront) temporal, and a (first step|
+  # any work|you begin|starting) scope. Byte-wise (LC_ALL=C) awk co-occurrence
+  # rather than a bounded-gap ERE: the lead paragraph is one very long line and
+  # a `[^.]{0,80}` gap regex catastrophically backtracks in BSD grep. The
+  # pristine section carries none of the scope tokens, so the legitimate
+  # "Read a rule's full body section on-demand" phrasing never trips it.
+  if printf '%s\n' "$section" | LC_ALL=C awk '
+      { l = tolower($0) }
+      l ~ /read|load/ && l ~ /before|prior to|upfront/ && l ~ /first step|any work|you begin|starting/ { hit = 1 }
+      END { exit(hit ? 0 : 1) }
+    '; then
+    echo "$devwf §Code Quality Rules bulk-read mandate reintroduced (read/load + before/prior/upfront + scope on one line; must be absent)"
+    return 1
+  fi
+
+  if printf '%s\n' "$section" | grep -qF 'before the first step'; then
+    echo "$devwf §Code Quality Rules bulk-read mandate 'before the first step' returned (must be absent)"
+    return 1
+  fi
+
+  echo "$devwf §Code Quality Rules digest-primary: primary-working-set + on-demand + 7-route trigger map + Trigger B pointer present; bulk-read mandate absent (frozen + reworded) OK"
+}
+
 # Behavioral pin for the cross-auditor return-contract classifier
 # (`hooks/lib/check_dispatch_response.py`). Iterates every sub-fixture under
 # tests/fixtures/cross-audit-contract-gate/*/*/ (27 directories per spec
