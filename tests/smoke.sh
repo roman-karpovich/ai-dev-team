@@ -6545,6 +6545,7 @@ echo
 # + the Codex prompt template in developer-codex.md).
 echo "dev-dispatch grounding contract:"
 check "dev-grounding-instruction" check_dev_grounding_instruction
+check "dev-rules-digest-primary" check_dev_rules_digest_primary
 echo
 
 # --- Caveman compression skill (spec 2026-05-20) ---
