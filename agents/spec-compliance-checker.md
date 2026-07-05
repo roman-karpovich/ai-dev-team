@@ -2,7 +2,7 @@
 name: spec-compliance-checker
 # 40k: Officio Prefectus Commissar — see docs/wh40k-cast.md
 description: >
-  Compliance reviewer for R1, R2, R3, R8, the workdoc DONE rule, branch convention, and git workflow.
+  Compliance reviewer for R1, R2, R3, R3-FC, R8, the workdoc DONE rule, branch convention, and git workflow.
   R5-R7 are convention-text references in `code-quality-rules.md`, not gated here.
   Runs after each task-level step during implementation. Has authority to BLOCK step completion.
   Fresh context per invocation — never inherits session history.
@@ -159,6 +159,21 @@ v1 covers two regex-detectable shapes from the R3 anti-pattern list in `code-qua
    - Otherwise → no flag (advisory in report only).
 5. Anti-pattern list is a floor; v1 covers 2 shapes. Future iterations may add more (tautological, setter-getter, type-checker-duplication) — append-only, do not mutate v1.
 
+#### R3-FC — Fix-completeness / boundary_inputs coverage gate
+
+This slice extends R3 to **fix steps** — steps whose planned block carries a `fix_source:` marker (the orchestrator writes it at fix-dispatch time; one of `code-audit X<id>` / `diff-audit X<id>` / `verify-fail` / `compliance-rework`). A fix test written only to confirm the implementer's own `except` / `if` branch passes R3's sole-assertion check yet still misses sibling members of the same failure class — the `NaN` / `Infinity` / negative inputs that slip past a guard mirrored from one example. R3-FC gates that gap: the fix's test battery must exercise the failure-class members the orchestrator enumerated in `boundary_inputs:`. Unlike base R3 (DRIFT-only), R3-FC's floor is a **FAIL** — issue acceptance requires a hard gate, not an advisory.
+
+**How to apply**:
+
+1. **Applicability** — read `planned.fix_source` for this step. Absent/empty → **N/A**: this is a normal (non-fix) step, R3-FC does not apply; skip the rest of this check entirely. Present → this is a fix step; the gate applies.
+2. **Gate precondition (fail-closed)** — a fix step with `fix_source` present but BOTH `planned.boundary_inputs` absent/empty AND `planned.boundary_inputs_na` absent/empty → **FAIL — R3-FC gate precondition unmet**: "Fix step N declares `fix_source: <marker>` but lists neither `boundary_inputs` nor `boundary_inputs_na`. Per R3 step 6 the orchestrator must either enumerate the failure-class members or record the explicit `boundary_inputs_na` justification; silence cannot silently disable the gate. Fill one of the two keys in step N's planned block and re-run compliance." An orchestrator omission must never quietly turn the gate off.
+3. **Justified non-class-shaped fix** — `planned.boundary_inputs_na` non-empty AND `planned.boundary_inputs` absent/empty → **clean**: the fix is a genuine single-point defect with no input class. Echo the `boundary_inputs_na` justification verbatim in the report line.
+4. **Coverage check** — `planned.boundary_inputs` non-empty (a YAML list of failure-class members): identify the fix step's fresh test content in the diff range (reuse the R2/R3 base-branch detection + fresh-test classification logic). For EACH listed member, judge whether any fresh test exercises it. **Matching is LLM-side semantic judgment**, exactly like R3's sole-assertion call: member `"empty string"` is exercised by a test passing `""`; `"NaN"` by `float('nan')`; `"-1"` by a negative literal. A literal `grep` for the member string is a starting heuristic, NOT the verdict — never auto-FAIL when a semantically-equivalent input is exercised under a different spelling.
+5. **Verdict per coverage result**:
+   - **NONE of the listed members exercised** → **FAIL — R3-FC**: "Fix step N lists boundary_inputs [...] but its tests exercise none of them. Per R3 step 6, the battery must cover the failure class."
+   - **SOME but not all exercised** → **DRIFT — R3-FC**: "Fix step N boundary_inputs [...] — members [<missing>] are exercised by no fresh test." The developer covers the missing members, or justifies their non-applicability in `report.json` notes (→ `observed.notes`).
+   - **ALL exercised** (or the missing ones justified in `observed.notes`) → **clean**.
+
 #### R8 — Public-output hygiene (no KB leaks in commit messages)
 
 Commit messages are public artifacts (squash-merge titles surface in release notes; PR auto-bodies aggregate commit messages). KB references in commit text leak internal workflow structure into third-party repos. This check grep-scans each commit's full message for KB-leak patterns; LLM-side judgment confirms the hit is a real leak versus an in-source-code reference (e.g. a commit message describing a code change that itself adds a doc string mentioning a path).
@@ -217,6 +232,7 @@ Commit messages are public artifacts (squash-merge titles surface in release not
 - R1 (dead-code cleanup): <clean | DRIFT — list helpers>
 - R2 (fresh tests in green capture): <none | advisory — list test files>
 - R3 (weak-phrase fresh tests): <clean | DRIFT — list test functions with sole weak-phrase assertion>
+- R3-FC (fix-completeness boundary_inputs coverage): <N/A — not a fix step | clean | DRIFT — missing members: <list> | FAIL — none exercised | FAIL — gate precondition unmet>
 - R8 (commit-message KB-leak / tooling-footer scan): <clean | FAIL — list `<sha>: <line>` hits | DRIFT — list spec-slug advisories>
 - WAP (workdoc assertion-count parity): <clean | DRIFT — list step Ns with INV-1 or INV-2 mismatch>
 
@@ -241,6 +257,7 @@ Commit messages are public artifacts (squash-merge titles surface in release not
 - Code quality R1 violations are DRIFT — developer must delete the orphaned helper + its tests, or add a public-API note to the spec Log, before proceeding.
 - Code quality R2 has two modes: (a) new fresh tests in the green capture is advisory only and never the sole reason for DRIFT; (b) a modified core test without spec §3 backing + Log entry is always DRIFT — core assertion changes are load-bearing and must be traceable to the spec's declared behaviour change.
 - Code quality R3 violations are DRIFT — flag a fresh test whose sole assertion matches a v1 weak-phrase regex (`assertIsNotNone` family or `call_count` / `assert_called_once` / `assert_called_with` family) and whose function body has no observable-effect assertion. Sole-assertion judgment is LLM-side; never auto-FAIL on regex hit alone.
+- Code quality R3-FC verdicts apply only to fix steps (`planned.fix_source` present): **FAIL** when none of the listed `boundary_inputs` members are exercised by any fresh test; **FAIL — gate precondition unmet** when `fix_source` is present but neither `boundary_inputs` nor `boundary_inputs_na` is set (fail-closed — an orchestrator omission cannot silently disable the gate); **DRIFT** when some-but-not-all members are exercised (list the missing ones); **N/A** when `fix_source` is absent. This deliberately diverges from base R3's DRIFT-only convention — issue-acceptance requires a hard gate. Member matching is LLM-side semantic judgment (member `"empty string"` ↔ `""`, `"NaN"` ↔ `float('nan')`); never auto-FAIL on a literal grep miss when a semantically-equivalent member is exercised.
 - Code quality R8 violations: footer-phrase or KB-path hits in commit messages are FAIL (load-bearing — KB references in public artifacts is the core failure R8 prevents). Spec-slug-as-token hits are DRIFT advisory pending LLM judgment of whether the slug is a code identifier or a KB pointer. Remediation lives in §5 R8 step 4 — amend if unpushed, follow-up `chore` commit if already published.
 - Code quality WAP violations are DRIFT — never FAIL. The runtime check (DONE rule) still passes when WAP catches a hit; what diverges is the spec §6.1 parenthetical or the workdoc internal `expected_pass_pattern` vs `n=$((n+1))` count. Process-truthfulness defect: spec narrative or workdoc internals are misleading. Developer must fix the spec §6.1 parenthetical OR fix the workdoc `expected_pass_pattern` OR add/remove the missing `n=$((n+1))` increment in `passing_test_cmd` so all three numbers agree, then re-run the §3b helper before proceeding.
 - Be specific. Every issue must name the file, the deviation, and what was expected.

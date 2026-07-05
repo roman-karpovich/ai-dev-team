@@ -1834,6 +1834,7 @@ check "r3-fix-completeness-present"                      check_r3_fix_completene
 check "fix-dispatch-boundary-inputs"                     check_feature_skill_fix_dispatch_boundary_inputs
 check "code-audit-fix-step-gate"                         check_skill_code_audit_fix_step_gate
 check "spec-template-boundary-inputs"                    check_spec_template_boundary_inputs_key
+check "compliance-checker-boundary-inputs-slice"         check_compliance_checker_boundary_inputs_slice
 check "developer-workflow-short-form-r3"                check_developer_workflow_short_form_r3                "$DWF"
 check "developer-workflow-test-quality-points-to-r3"    check_developer_workflow_test_quality_points_to_r3    "$DWF"
 check "developer-workflow-observed-notes-requirement"   check_developer_workflow_observed_notes_requirement   "$DWF"

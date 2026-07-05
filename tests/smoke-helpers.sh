@@ -154,6 +154,23 @@ check_spec_template_boundary_inputs_key() {
   echo "$path §Workdoc step schema carries fix_source/boundary_inputs/boundary_inputs_na keys"
 }
 
+# R3-FC fix-completeness checker slice (spec 2026-07-05-r3-fix-completeness Step 3):
+# spec-compliance-checker.md must carry the R3-FC boundary_inputs coverage gate
+# keyed on planned.fix_source — the §5 subsection, the report-template Code
+# quality line, and the §Rules bullet. Whole-file literal grep: the five tokens
+# are unique to the new R3-FC content (subsection slug + gate-precondition and
+# none-exercised verdict phrasings + the fix_source / boundary_inputs_na keys), a
+# faithful presence check that FAILs if the slice is removed or paraphrased.
+check_compliance_checker_boundary_inputs_slice() {
+  local path='agents/spec-compliance-checker.md'
+  local lit
+  for lit in 'R3-FC' 'fix_source' 'boundary_inputs_na' 'gate precondition unmet' 'none exercised'; do
+    grep -qF -- "$lit" "$path" \
+      || { echo "$path missing R3-FC boundary_inputs slice token '$lit'"; return 1; }
+  done
+  echo "$path carries R3-FC fix_source-keyed boundary_inputs coverage slice"
+}
+
 check_developer_workflow_short_form_r3() {
   local path="$1"
   extract_md_section "$path" '## Code Quality Rules' | \
