@@ -93,6 +93,14 @@ Save all output to: <workdoc_dir>/captures/
    `exec.md`, or `observed`, and do NOT spawn the compliance-checker — return the report.json
    pointer; the orchestrator copies it into `observed` and spawns the checker.
 
+## Grounding (REQUIRED)
+Every status claim you emit in report.json — status: done, notes, log_note, and each
+capture assertion — MUST be backed by a tool result from the current session: command
+output, a file read, or capture content you actually produced this session. Do not assert
+"file created" / "behavior verified" / "no other callers" / "lint clean" from memory —
+run the tool and cite what it returned. A claim you cannot back this way is not done:
+prefix it UNVERIFIED: in notes and do NOT set status: done on its basis.
+
 ## Constraints
 - Follow existing code style and patterns exactly
 - Do not modify files outside: <allowed_scope>
