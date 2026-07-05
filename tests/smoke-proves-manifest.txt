@@ -210,6 +210,7 @@ check_cross_auditor_mode_focus_no_stale_four_modes prompt-text
 # Standing integration-lens taxonomy pins (spec 2026-07-05-integration-lens-taxonomy Step 3)
 check_cross_auditor_integration_lenses_standing prompt-text
 check_cross_auditor_hub_names_integration_lenses prompt-text
+check_cross_auditor_diff_mode_whole_file_incumbent prompt-text
 
 # Decision-mode cross-auditor hub pins (spec 2026-07-02-decision-audit-mode Step 2)
 check_cross_auditor_mode_enum_names_decision prompt-text
