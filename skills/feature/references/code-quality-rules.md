@@ -248,14 +248,20 @@ tautological/shape-only assertions before they accumulate as green-CI ballast.
    failure — the assertion battery MUST cover the whole failure class, not the one observed
    example. Exercise the applicable class members: parse-but-invalid, negative, non-finite
    (`NaN` / `Infinity`), empty, degenerate, and boundary. When `planned.boundary_inputs`
-   lists members, every listed member must be exercised by the step's tests, or its
-   non-applicability noted in `report.json` `notes`. A genuinely non-class-shaped fix
-   (single-point defect, no input class) opts out via `boundary_inputs_na` — silence is not
-   an opt-out. Fix the FAILURE, not the finding text: the finding names one example, but the
-   whole class is what regresses. The checker gate keys on `fix_source:` (R3-FC): none of the
-   class exercised → FAIL; `fix_source:` present but neither `boundary_inputs` nor
-   `boundary_inputs_na` set → FAIL (gate precondition unmet); some-but-not-all members
-   exercised → DRIFT. The canonical gate contract lives in
+   lists members, at least one member must be exercised AND the whole list accounted for:
+   each member not exercised must carry a non-applicability note in `report.json` `notes`.
+   The note escapes ONLY the unexercised REMAINDER, and only once ≥1 member is genuinely
+   exercised — a battery that exercises ZERO members FAILs regardless of notes (a per-member
+   note cannot null the hard gate). A genuinely non-class-shaped fix (single-point defect, no
+   input class) opts out via `boundary_inputs_na` — silence is not an opt-out; and if EVERY
+   listed member turns out non-applicable, that is not a notes-escape either: surface it in
+   `report.json` so the orchestrator replaces `boundary_inputs` with `boundary_inputs_na` and
+   re-dispatches. Fix the FAILURE, not the finding text: the finding names one example, but
+   the whole class is what regresses. The checker gate keys on `fix_source:` (R3-FC) and is a
+   total function: zero of the class exercised → FAIL regardless of notes; `fix_source:`
+   present but neither `boundary_inputs` nor `boundary_inputs_na` set (or both set) → FAIL
+   (gate precondition unmet); ≥1 exercised with the unexercised remainder justified → clean;
+   ≥1 exercised with an unjustified remainder → DRIFT. The canonical gate contract lives in
    `agents/spec-compliance-checker.md` §R3-FC.
 
 **Automated enforcement is partial.** The `enforced_by: [spec-compliance-checker]` frontmatter tag means the rule has a checker hook, NOT full anti-pattern coverage. The checker regex-detects only the two highest-signal shapes above — the `assertIsNotNone` family and the mock-call-counter family; the tautological, setter-getter, and type-checker-duplication shapes need deeper analysis and are LLM-side / manual review, not deterministically gated (see `agents/spec-compliance-checker.md` §R3). The fix-completeness slice (R3-FC, step 6) is separately checker-gated on the planned-block `fix_source:` / `boundary_inputs:` keys — see `agents/spec-compliance-checker.md` §R3-FC.

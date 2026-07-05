@@ -122,19 +122,20 @@ check_feature_skill_fix_dispatch_boundary_inputs() {
   echo "§Fix-dispatch contract block carries fix_source/boundary_inputs(_na) + 4 fix-flow literals"
 }
 
-# R3 fix-completeness code-audit gate (spec 2026-07-05-r3-fix-completeness Step 2):
-# SKILL.md must carry the code-audit appended-numeric-fix-step gate (checklist
-# line form + N=max+1 rule + checker spawn before the step-6 verifier) AND the
+# R3 fix-completeness code-audit gate (spec 2026-07-05-r3-fix-completeness Step 2;
+# M-d hardening Step 6): SKILL.md must carry the code-audit appended-numeric-fix-step
+# gate (checklist line form + N=max+1 rule + the `fix_source: code-audit X<id>`
+# planned-block write + checker spawn before the step-6 verifier) AND the
 # verify-FAIL + diff-audit checker-spawn wiring markers (their fix_source
 # literals). Whole-file grep — these markers span three SKILL.md flow sections.
 check_skill_code_audit_fix_step_gate() {
   local path='skills/feature/SKILL.md'
   local lit
-  for lit in 'fix X<id> —' 'N = max existing step number + 1' 'step-6 verifier' 'fix_source: verify-fail' 'fix_source: diff-audit X<id>'; do
+  for lit in 'fix X<id> —' 'N = max existing step number + 1' 'step-6 verifier' 'fix_source: code-audit X<id>' 'fix_source: verify-fail' 'fix_source: diff-audit X<id>'; do
     grep -qF -- "$lit" "$path" \
       || { echo "$path missing code-audit fix-step-gate token '$lit'"; return 1; }
   done
-  echo "$path carries code-audit appended-fix-step gate + verify-FAIL + diff-audit checker-spawn wiring"
+  echo "$path carries code-audit appended-fix-step gate (incl. fix_source: code-audit X<id> write) + verify-FAIL + diff-audit checker-spawn wiring"
 }
 
 # R3 fix-completeness schema (spec 2026-07-05-r3-fix-completeness Step 2):
