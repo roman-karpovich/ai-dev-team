@@ -1049,7 +1049,7 @@ def scan(kb_root: Path, project: Optional[str]) -> Dict:
                             created_ok = True
                         except ValueError:
                             created_ok = False
-                    if created_ok and created >= AUDIT_EVIDENCE_CUTOFF:
+                    if created is not None and created_ok and created >= AUDIT_EVIDENCE_CUTOFF:
                         c8_line = (
                             frontmatter[: status_match.start()].count("\n") + 2
                         )
