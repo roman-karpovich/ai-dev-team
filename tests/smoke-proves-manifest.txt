@@ -113,6 +113,7 @@ check_feature_skill_fix_dispatch_boundary_inputs prompt-text
 check_skill_code_audit_fix_step_gate prompt-text
 check_spec_template_boundary_inputs_key schema
 check_compliance_checker_boundary_inputs_slice prompt-text
+check_developer_workflow_post_fix_self_review prompt-text
 
 # Async Codex dispatch watchdog mitigation
 check_codex_audit_dispatch_helper_positive behavioral

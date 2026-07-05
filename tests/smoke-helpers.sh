@@ -198,6 +198,26 @@ check_developer_workflow_observed_notes_requirement() {
   echo "$path §Per-step protocol has report.json notes R3 requirement"
 }
 
+# R3 fix-completeness developer discipline (spec 2026-07-05-r3-fix-completeness Step 4):
+# developer-workflow.md §Per-step protocol must carry the post-fix self-review
+# line for FIX dispatches — the byte-exact self-review question, the fix_source
+# trigger marker, and the fix-the-FAILURE-not-the-finding-wording discipline.
+# Scoped to §Per-step protocol via extract_md_section (mirrors the sibling
+# observed-notes pin); the three tokens are unique to the post-fix self-review
+# paragraph within that section, so a section-scoped literal grep is a faithful
+# presence check that FAILs if the line is removed or paraphrased.
+check_developer_workflow_post_fix_self_review() {
+  local path="$1"
+  local section
+  section=$(extract_md_section "$path" '## Per-step protocol')
+  local lit
+  for lit in 'what in this class could still slip through?' 'fix_source' 'without referencing the finding'; do
+    printf '%s\n' "$section" | grep -qiF -- "$lit" \
+      || { echo "$path §Per-step protocol missing post-fix self-review token '$lit'"; return 1; }
+  done
+  echo "$path §Per-step protocol carries post-fix self-review (self-review question + fix_source trigger + fix-the-FAILURE discipline)"
+}
+
 # --- Per-step agent pre-tag (spec 2026-04-20-per-step-agent-pretag) ---
 
 check_spec_template_agent_pretag_grammar() {

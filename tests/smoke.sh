@@ -1838,6 +1838,7 @@ check "compliance-checker-boundary-inputs-slice"         check_compliance_checke
 check "developer-workflow-short-form-r3"                check_developer_workflow_short_form_r3                "$DWF"
 check "developer-workflow-test-quality-points-to-r3"    check_developer_workflow_test_quality_points_to_r3    "$DWF"
 check "developer-workflow-observed-notes-requirement"   check_developer_workflow_observed_notes_requirement   "$DWF"
+check "developer-workflow-post-fix-self-review"         check_developer_workflow_post_fix_self_review         "$DWF"
 echo
 
 # --- R3 fixture-based behavioral assertions (2026-04-19, backlog #24) ---
