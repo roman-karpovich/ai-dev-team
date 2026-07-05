@@ -218,6 +218,9 @@ passing_test_cmd: command that should pass after implementation
 expected_pass_pattern: substring expected in passing output
 integration_probe_cmd: (optional) command to confirm feature is reachable at runtime
 expected_probe_signal: (optional) substring expected from probe
+fix_source: (fix steps only; orchestrator-filled at fix-dispatch time — one of code-audit X<id> | diff-audit X<id> | verify-fail | compliance-rework)
+boundary_inputs: (fix steps only; YAML list of concrete failure-class members the fix's test battery must exercise)
+boundary_inputs_na: (fix steps only; justification when the failure is not class-shaped — mutually exclusive with a non-empty boundary_inputs)
 
 ### Observed
 actual_files_touched: []

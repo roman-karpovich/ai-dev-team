@@ -228,14 +228,43 @@ tautological/shape-only assertions before they accumulate as green-CI ballast.
      the schema defines. Violates pillars (1) and (4): type checkers, schema migrations,
      and CI lint catch these faster and more reliably; the test adds noise and breaks on
      harmless schema renames.
+   - **Guard-mirror fix test** — a fix step's test exercises exactly the one input that
+     matches the guard the implementer just wrote (the `except` / `if` branch), while the
+     other members of the same failure class (`NaN`, `Infinity`, negative, empty, boundary)
+     slip through untested. Violates pillar (1): the assertion confirms the implementer's
+     own branch, not the failure class the finding names, so a regression in any sibling
+     member of the class still reads green. Anchor incident 2026-07-04 — the fix test
+     asserted the one value matching the `except` clause while `NaN` / `Infinity` / negative
+     members of the class were never exercised. Step 6 gives the completeness discipline that
+     forecloses this shape for fix steps.
 4. Every fresh test must have a one-sentence note in `observed.notes` naming the regression it catches; if you cannot name it, the test is weak — rewrite or delete.
    This is the behavioural trigger spec-compliance-checker keys off — an empty or vague
    note ("catches regression if the assertion breaks") does not satisfy R3.
 5. Anti-pattern list is a floor, not a ceiling. When you spot a new weak-test shape in the
    wild, append it here with a one-line pillar-grounded rationale; do not mutate existing
    entries.
+6. **Fix-completeness (fix steps only).** When the step is a fix — its `planned` block
+   carries `fix_source:` and the defect is a validation / parsing / boundary / rounding
+   failure — the assertion battery MUST cover the whole failure class, not the one observed
+   example. Exercise the applicable class members: parse-but-invalid, negative, non-finite
+   (`NaN` / `Infinity`), empty, degenerate, and boundary. When `planned.boundary_inputs`
+   lists members, at least one member must be exercised AND the whole list accounted for:
+   each member not exercised must carry a non-applicability note in `report.json` `notes`.
+   The note escapes ONLY the unexercised REMAINDER, and only once ≥1 member is genuinely
+   exercised — a battery that exercises ZERO members FAILs regardless of notes (a per-member
+   note cannot null the hard gate). A genuinely non-class-shaped fix (single-point defect, no
+   input class) opts out via `boundary_inputs_na` — silence is not an opt-out; and if EVERY
+   listed member turns out non-applicable, that is not a notes-escape either: surface it in
+   `report.json` so the orchestrator replaces `boundary_inputs` with `boundary_inputs_na` and
+   re-dispatches. Fix the FAILURE, not the finding text: the finding names one example, but
+   the whole class is what regresses. The checker gate keys on `fix_source:` (R3-FC) and is a
+   total function: zero of the class exercised → FAIL regardless of notes; `fix_source:`
+   present but neither `boundary_inputs` nor `boundary_inputs_na` set (or both set) → FAIL
+   (gate precondition unmet); ≥1 exercised with the unexercised remainder justified → clean;
+   ≥1 exercised with an unjustified remainder → DRIFT. The canonical gate contract lives in
+   `agents/spec-compliance-checker.md` §R3-FC.
 
-**Automated enforcement is partial.** The `enforced_by: [spec-compliance-checker]` frontmatter tag means the rule has a checker hook, NOT full anti-pattern coverage. The checker regex-detects only the two highest-signal shapes above — the `assertIsNotNone` family and the mock-call-counter family; the tautological, setter-getter, and type-checker-duplication shapes need deeper analysis and are LLM-side / manual review, not deterministically gated (see `agents/spec-compliance-checker.md` §R3).
+**Automated enforcement is partial.** The `enforced_by: [spec-compliance-checker]` frontmatter tag means the rule has a checker hook, NOT full anti-pattern coverage. The checker regex-detects only the two highest-signal shapes above — the `assertIsNotNone` family and the mock-call-counter family; the tautological, setter-getter, and type-checker-duplication shapes need deeper analysis and are LLM-side / manual review, not deterministically gated (see `agents/spec-compliance-checker.md` §R3). The fix-completeness slice (R3-FC, step 6) is separately checker-gated on the planned-block `fix_source:` / `boundary_inputs:` keys — see `agents/spec-compliance-checker.md` §R3-FC.
 
 ---
 
