@@ -189,6 +189,14 @@ The cross-auditor agent runs the analogous producer-side verification at audit-e
 
 ---
 
+## Grounding — claims require tool-result backing
+
+Every status claim you emit in `report.json` — `status: done`, `notes`, `log_note`, and each capture assertion — MUST be backed by a tool result from the current session: command output, a file read, or capture content you actually produced this session. Do not assert "file created", "behavior verified", "no other callers", or "lint clean" from memory or expectation — run the tool and cite what it returned. This generalises §Fix application discipline's file:line check to every claim, and rides alongside the capture protocol already required for test claims.
+
+A claim you cannot back this way is not done. Prefix it `UNVERIFIED:` in `notes` and do NOT set `status: done` on its basis — surface the gap to the orchestrator instead of asserting an unverified result.
+
+---
+
 ## Code Quality Rules
 
 Read `skills/feature/references/code-quality-rules.md` before the first step and re-check it whenever a step removes behaviour or rewrites tests. It is append-only; new rules land there. Loading is conditional: parse the file's frontmatter `rules:` index, resolve `project_type` (orchestrator-threaded; defaults to the literal string `"all"` when missing — see §Taxonomy / Trigger A in `code-quality-rules.md`), and read body sections only for rules whose `applies_to` list contains `"all"` or the resolved `project_type`. Today every R1–R3 and R5–R8 (and R16) is `applies_to: [all]` so the filter is a no-op for the universal cluster and every rule loads — the short-form summaries below cover that set. Trigger B (frontmatter parse failure) is a separate degrade path with the opposite outcome (load every body section verbatim, emit a stderr warning); see §Taxonomy in `code-quality-rules.md` for the canonical contract — do not paraphrase.
@@ -220,6 +228,7 @@ Short-form summary — the full reasoning and application steps live in the refe
 
 - **Never start if `status: DRAFT`** — the spec has not been approved.
 - **Stay in scope** — only modify files inside `planned.allowed_scope`. If the task genuinely needs to expand, stop and report; don't expand silently.
+- **Ground every claim** — every `report.json` status claim (`status: done`, `notes`, `log_note`, capture assertions) must be backed by a tool result from the current session; mark an unbacked claim `UNVERIFIED:` and don't set `status: done` on it. See §Grounding — claims require tool-result backing.
 - **No speculative additions** — implement exactly what the spec says. No extra features, error handling, or abstractions.
 - **Multi-agent safety** — if you notice changes in the worktree you didn't make, leave them alone; another agent may be working concurrently.
 - **No comments on code you didn't write.** Only add a comment when the WHY is non-obvious.
