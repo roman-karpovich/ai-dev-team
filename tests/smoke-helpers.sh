@@ -10339,6 +10339,101 @@ print("kb_drift_scan C7: 12-struck-fires / 11-clean strict threshold; header + t
 PYEOF
 }
 
+# Behavioral: C8_terminal_evidence_gap (spec 2026-07-05 §3.3). Scans the dedicated
+# c8-fire / c8-nonfire fixture dirs and ID-anchors that a TERMINAL spec status
+# (SHIPPED/VERIFIED/DONE) on a post-cutoff spec fires iff an audit-evidence key is
+# absent / literal-null / off-enum, and NEVER fires pre-cutoff / non-terminal /
+# both-keys-valid / created-absent / created-malformed. Mutation sensitivity: an
+# ABSENCE-ONLY implementation fails the literal-null + off-enum fire fixtures (the
+# incident signature — finding 6); dropping DONE from TERMINAL_SPEC_STATUSES fails
+# fire-done-missing; a `>` instead of `>=` on the cutoff, or dropping the created
+# well-formedness/skip gate, flips the nonfire pre-cutoff / created-malformed /
+# created-absent cases; a per-key defect-shape mislabel flips the detail asserts.
+check_kb_drift_c8_terminal_evidence_gap() {
+  local scanner="$PLUGIN_ROOT/tests/kb_drift_scan.py"
+  local fire="$PLUGIN_ROOT/tests/fixtures/kb-drift/c8-fire"
+  local nonfire="$PLUGIN_ROOT/tests/fixtures/kb-drift/c8-nonfire"
+  [ -f "$scanner" ] || { echo "$scanner missing"; return 1; }
+  [ -d "$fire" ] || { echo "$fire fixture dir missing"; return 1; }
+  [ -d "$nonfire" ] || { echo "$nonfire fixture dir missing"; return 1; }
+  python3 - "$scanner" "$fire" "$nonfire" <<'PYEOF'
+import json, subprocess, sys, tempfile
+from pathlib import Path
+
+scanner, fire, nonfire = sys.argv[1], sys.argv[2], sys.argv[3]
+
+# --- FIRE dir: exit 1, exactly the 5 defect-shape fires, all auto_safe:false ---
+f = subprocess.run([sys.executable, scanner, fire], capture_output=True, text=True)
+if f.returncode != 1:
+    print(f"c8-fire: expected exit 1 (>=1 finding), got {f.returncode}; out={f.stdout!r}")
+    sys.exit(1)
+F = json.loads(f.stdout)["findings"]
+c8 = [x for x in F if x["class"] == "C8_terminal_evidence_gap"]
+other = [x for x in F if x["class"] != "C8_terminal_evidence_gap"]
+if other:
+    print(f"c8-fire: fixtures must fire ONLY C8, got stray classes: {other}")
+    sys.exit(1)
+by_file = {x["file"]: x for x in c8}
+# Per-fixture defect-shape contract. Each names the terminal status + the exact
+# defect shape (missing / literal-null / off-enum) + the specific key — an
+# absence-only implementation cannot satisfy the null/off-enum rows.
+expected = {
+    "fire-spec-audit-absent.md":  ["SHIPPED", "spec_audit_evidence missing"],
+    "fire-spec-audit-null.md":    ["VERIFIED", "spec_audit_evidence literal-null"],
+    "fire-code-audit-null.md":    ["SHIPPED", "code_audit_evidence literal-null"],
+    "fire-off-enum.md":           ["VERIFIED", "spec_audit_evidence off-enum"],
+    "fire-done-missing.md":       ["DONE", "spec_audit_evidence missing", "code_audit_evidence missing"],
+}
+if set(by_file) != set(expected):
+    print(f"c8-fire: expected fires on {sorted(expected)}, got {sorted(by_file)}")
+    sys.exit(1)
+for fname, needles in expected.items():
+    fnd = by_file[fname]
+    if fnd["auto_safe"] is not False:
+        print(f"c8-fire {fname}: C8 must be auto_safe:false, got {fnd['auto_safe']}")
+        sys.exit(1)
+    if not ({"class", "file", "line", "detail", "auto_safe"} <= set(fnd)):
+        print(f"c8-fire {fname}: finding missing required keys: {fnd}")
+        sys.exit(1)
+    for needle in needles:
+        if needle not in fnd["detail"]:
+            print(f"c8-fire {fname}: detail must name {needle!r}, got: {fnd['detail']!r}")
+            sys.exit(1)
+# The single-key fires must NOT over-report the healthy sibling key.
+if "literal-null" in by_file["fire-spec-audit-absent.md"]["detail"]:
+    print("c8-fire fire-spec-audit-absent.md: must NOT name a literal-null defect (only the absent key)")
+    sys.exit(1)
+
+# --- NON-FIRE dir: no C8 anywhere (aggregate) AND per-file in isolation ---
+n = subprocess.run([sys.executable, scanner, nonfire], capture_output=True, text=True)
+nf = json.loads(n.stdout)["findings"]
+if any(x["class"] == "C8_terminal_evidence_gap" for x in nf):
+    print(f"c8-nonfire: no C8 finding expected, got: {[x for x in nf if x['class']=='C8_terminal_evidence_gap']}")
+    sys.exit(1)
+nonfire_files = {
+    "nonfire-precutoff.md":         "created < cutoff → legacy_unknown",
+    "nonfire-nonterminal.md":       "IN_PROGRESS not terminal",
+    "nonfire-both-valid.md":        "both keys present + enum-valid",
+    "nonfire-created-absent.md":    "created absent → skip",
+    "nonfire-created-malformed.md": "created malformed → skip",
+}
+for fname, why in nonfire_files.items():
+    fp = Path(nonfire) / fname
+    if not fp.is_file():
+        print(f"c8-nonfire missing {fname} ({why})")
+        sys.exit(1)
+    with tempfile.TemporaryDirectory() as td:
+        (Path(td) / fname).write_text(fp.read_text(encoding="utf-8"), encoding="utf-8")
+        r = subprocess.run([sys.executable, scanner, td], capture_output=True, text=True)
+        rf = json.loads(r.stdout)["findings"]
+        if any(x["class"] == "C8_terminal_evidence_gap" for x in rf):
+            print(f"c8-nonfire {fname}: must NOT fire C8 ({why}), got {rf}")
+            sys.exit(1)
+
+print("kb_drift_scan C8: terminal (SHIPPED/VERIFIED/DONE) + post-cutoff + absent/literal-null/off-enum evidence key fires (5 shapes, per-key detail); pre-cutoff / non-terminal / both-valid / created-absent / created-malformed clean; auto_safe:false")
+PYEOF
+}
+
 # Behavioral: GOLDEN backlog-archiver (spec 2026-06-04-backlog-curator §6). Copies
 # the committed pre-cleanup golden BACKLOG (frozen ONCE as a static fixture from
 # the real pre-deep-clean backlog — NO vault reach in the test, cwd-independent) into a
