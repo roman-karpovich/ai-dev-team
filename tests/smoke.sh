@@ -4488,6 +4488,7 @@ echo "cross-auditor async Codex dispatch pins:"
 check "codex_audit_dispatch_helper_positive"             check_codex_audit_dispatch_helper_positive
 check "codex_audit_dispatch_helper_propagates_exit_code" check_codex_audit_dispatch_helper_propagates_exit_code
 check "codex_audit_dispatch_helper_arg_validation"       check_codex_audit_dispatch_helper_arg_validation
+check "codex_audit_dispatch_helper_model_passthrough"    check_codex_audit_dispatch_helper_model_passthrough
 check "cross_auditor_uses_async_codex_dispatch"           check_cross_auditor_uses_async_codex_dispatch
 check "cross_auditor_codex_effort_default_xhigh_kept"     check_cross_auditor_codex_effort_default_xhigh_kept
 check "cross-auditor-model-attestation-contract"         check_cross_auditor_model_attestation_contract
