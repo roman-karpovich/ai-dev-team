@@ -20,7 +20,7 @@ Codex audits run via the `${CLAUDE_PLUGIN_ROOT}/hooks/lib/codex_audit_dispatch.s
 
 **Step 1b — Write prompt to a temp file and launch Codex in background**:
 1. Write the prompt text to a temp file via `Bash`: `PROMPT_FILE=$(mktemp) && cat > "$PROMPT_FILE" << 'CODEX_PROMPT_EOF' ... CODEX_PROMPT_EOF`
-2. Set `CODEX_MODEL` (from `codex_model` input if provided, else `gpt-5.5`) and `CODEX_EFFORT` (from `codex_reasoning_effort` if provided, else `xhigh`).
+2. Set `CODEX_MODEL` (from `codex_model` input if provided, else the empty string `""` — the dispatch helper then omits `-m` and Codex resolves the model from `~/.codex/config.toml`, the single global model config) and `CODEX_EFFORT` (from `codex_reasoning_effort` if provided, else `xhigh`).
 3. In **PR mode** (`pr_number` set), `working_directory` IS the skill-materialized PR worktree (post-`gh pr checkout`); use it as `CODEX_WD`. In non-PR mode, also use `working_directory`.
 4. Set `OUTPUT_FILE` to a temp path: `OUTPUT_FILE=$(mktemp)`.
 5. Launch via `Bash(run_in_background: true)`: `bash "${CLAUDE_PLUGIN_ROOT}/hooks/lib/codex_audit_dispatch.sh" "$CODEX_WD" "$OUTPUT_FILE" "$CODEX_MODEL" "$CODEX_EFFORT" < "$PROMPT_FILE"`

@@ -35,9 +35,9 @@ Two one-time manual steps after install:
 claude mcp add codex -s user -- codex mcp-server
 ```
 
-Model and reasoning effort come from `~/.codex/config.toml`:
+Model and reasoning effort come from `~/.codex/config.toml` — the single global model config; the plugin never hardcodes a Codex model, so future model upgrades are a one-line change here (or a per-project override via `.ai-dev-team.yml` `codex.model`):
 ```toml
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "xhigh"
 ```
 
@@ -191,7 +191,7 @@ Confidence levels in findings:
 /investigate should we use optimistic locking or a queue for concurrent order updates?
 ```
 
-Runs in the **background**. Claude (Opus) and Codex (GPT-5.5) debate through up to 3 rounds, challenging each other's positions. Returns a convergence report with key agreements, unresolved tensions, and a synthesized recommendation.
+Runs in the **background**. Claude (Opus) and Codex (GPT, model from `~/.codex/config.toml`) debate through up to 3 rounds, challenging each other's positions. Returns a convergence report with key agreements, unresolved tensions, and a synthesized recommendation.
 
 Use this before committing to a non-obvious design decision.
 
