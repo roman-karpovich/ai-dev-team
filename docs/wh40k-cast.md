@@ -44,7 +44,7 @@ rubric-cited evidence, not vibes.
 ### 5. High Lords' Conclave — `agents/investigator.md`
 
 **Конклав Высоких Лордов Терры.** Adversarial debate between Claude (Opus) and
-Codex (GPT-5.5), round by round, until convergence or exhaustion. Two ordos with
+Codex (GPT), round by round, until convergence or exhaustion. Two ordos with
 opposing biases stress-test the question; the convergence report names what they
 agreed on, what they didn't, and what the Imperium should actually do. The closest
 thing this plugin has to a parliament.

@@ -6,7 +6,7 @@ argument-hint: "<scope description OR path to existing findings doc OR KB spec p
 
 # Cross-Audit: Background Parallel Review
 
-Cross-audit runs Claude (Opus) and Codex (GPT-5.5) as independent auditors, consolidates their findings into KB documents, then iterates until clean. **Runs in the background** so you can continue working.
+Cross-audit runs Claude (Opus) and Codex (GPT, model from `~/.codex/config.toml`) as independent auditors, consolidates their findings into KB documents, then iterates until clean. **Runs in the background** so you can continue working.
 
 /cross-audit runs in background — you can keep working while it runs
 

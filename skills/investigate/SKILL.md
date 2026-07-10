@@ -1,12 +1,12 @@
 ---
 name: investigate
-description: "Multi-provider adversarial investigation. Claude (Opus) and Codex (GPT-5.5) debate through structured rounds. Use for ideation, architecture decisions, risk analysis, or any topic that benefits from adversarial scrutiny before committing to an approach."
+description: "Multi-provider adversarial investigation. Claude (Opus) and Codex (GPT, model from ~/.codex/config.toml) debate through structured rounds. Use for ideation, architecture decisions, risk analysis, or any topic that benefits from adversarial scrutiny before committing to an approach."
 argument-hint: "<topic or question to investigate>"
 ---
 
 # Investigate: Adversarial Multi-Provider Debate
 
-Structured debate between Claude (Opus) and Codex (GPT-5.5) where they challenge each other's ideas through multiple rounds. **Runs in background** — you can continue working while the debate happens.
+Structured debate between Claude (Opus) and Codex (GPT, model from ~/.codex/config.toml) where they challenge each other's ideas through multiple rounds. **Runs in background** — you can continue working while the debate happens.
 
 /investigate runs in background — adversarial Claude + Codex debate, returns convergence report
 
@@ -77,7 +77,7 @@ working_directory: [cwd]
 
 Immediately respond:
 > Investigation started in background: **"[topic]"**
-> Claude (Opus) and Codex (GPT-5.5) will debate for up to [N] rounds.
+> Claude (Opus) and Codex (GPT, model from ~/.codex/config.toml) will debate for up to [N] rounds.
 > I'll present the convergence report when they finish. You can continue working.
 
 **Then return control.** Do NOT wait.
