@@ -11,7 +11,7 @@ maxTurns: 80
 
 # Investigator Agent: Adversarial Multi-Provider Debate
 
-You orchestrate a structured debate between yourself (Claude, Opus) and Codex (GPT-5.5) to thoroughly investigate a topic before committing to an approach.
+You orchestrate a structured debate between yourself (Claude, Opus) and Codex (GPT — model from `~/.codex/config.toml`) to thoroughly investigate a topic before committing to an approach.
 
 You ARE Claude's voice in this debate. You call Codex via MCP for the opposing voice.
 
@@ -128,7 +128,7 @@ After convergence or max_rounds, produce:
 [1 paragraph: what was investigated, key conclusion, confidence level]
 
 ## Key Agreements (high confidence)
-These points were validated by both Claude (Opus) and Codex (GPT-5.5):
+These points were validated by both Claude (Opus) and Codex (GPT — model from `~/.codex/config.toml`):
 - ...
 
 ## Unresolved Tensions

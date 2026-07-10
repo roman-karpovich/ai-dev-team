@@ -3,7 +3,9 @@ set -euo pipefail
 
 WORKING_DIR="${1:-}"
 OUTPUT_FILE="${2:-}"
-MODEL="${3:-gpt-5.5}"
+# Empty/absent model → omit -m so Codex resolves the model from ~/.codex/config.toml
+# (single global source of truth; override per-project via .ai-dev-team.yml codex.model).
+MODEL="${3:-}"
 EFFORT="${4:-xhigh}"
 
 if [ -z "$WORKING_DIR" ]; then
@@ -27,4 +29,11 @@ if [ ! -d "$OUTPUT_PARENT" ]; then
   exit 1
 fi
 
-exec "${CODEX_BIN:-codex}" exec --json -m "$MODEL" -c "reasoning.effort=$EFFORT" -s read-only -C "$WORKING_DIR" --skip-git-repo-check -o "$OUTPUT_FILE" -
+MODEL_ARGS=()
+if [ -n "$MODEL" ]; then
+  MODEL_ARGS+=(-m "$MODEL")
+fi
+
+# ${arr[@]+...} guard: empty-array expansion is an unbound-variable error under
+# `set -u` on bash 3.2 (macOS default).
+exec "${CODEX_BIN:-codex}" exec --json ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} -c "reasoning.effort=$EFFORT" -s read-only -C "$WORKING_DIR" --skip-git-repo-check -o "$OUTPUT_FILE" -

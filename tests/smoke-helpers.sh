@@ -5100,6 +5100,24 @@ check_codex_audit_dispatch_helper_arg_validation() {
   echo "codex_audit_dispatch arg validation rejects missing args"
 }
 
+check_codex_audit_dispatch_helper_model_passthrough() {
+  local argv_empty argv_explicit
+  # /bin/echo as CODEX_BIN prints the exec'd argv, letting us assert flag composition.
+  argv_empty=$(CODEX_BIN=/bin/echo bash hooks/lib/codex_audit_dispatch.sh /tmp /tmp/codex-model-omit-test.txt "" xhigh < /dev/null) \
+    || { echo "dispatch with empty model expected exit 0"; return 1; }
+  case " $argv_empty " in
+    *" -m "*) echo "dispatch with empty model must omit -m (~/.codex/config.toml governs); argv: $argv_empty"; return 1;;
+  esac
+  echo "$argv_empty" | grep -qF 'reasoning.effort=xhigh' \
+    || { echo "dispatch with empty model lost effort flag; argv: $argv_empty"; return 1; }
+
+  argv_explicit=$(CODEX_BIN=/bin/echo bash hooks/lib/codex_audit_dispatch.sh /tmp /tmp/codex-model-omit-test.txt gpt-test-model xhigh < /dev/null) \
+    || { echo "dispatch with explicit model expected exit 0"; return 1; }
+  echo "$argv_explicit" | grep -qF -- '-m gpt-test-model' \
+    || { echo "dispatch with explicit model must pass -m; argv: $argv_explicit"; return 1; }
+  echo "codex_audit_dispatch model passthrough: empty→no -m (config.toml default), explicit→-m forwarded"
+}
+
 check_feature_skill_step1_reads_repo_conventions() {
   local skill='skills/feature/SKILL.md'
   local section
