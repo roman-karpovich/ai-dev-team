@@ -85,6 +85,7 @@ class Machine:
         self.deadlines = {}
         self.clock = 0
         self.nodes = {}
+        self.snapshot_id = None
         self.claims = {}  # claim_id -> claim record (registry, ADR-2)
         self.adjudications = []
         self.candidate_dispositions = []
@@ -116,7 +117,11 @@ class Machine:
 
     def retry_fully_permitted(self, node):
         """Complete N7 predicate — used by BOTH the schedule guard and the
-        settled derivation (a FAILED node with no permissible retry is settled)."""
+        settled derivation (a FAILED node with no permissible retry is settled).
+        Includes the cutoff/cancel flags: after cutoff a retryable failure is
+        settled, never stuck unretryable-yet-unsettled (liveness)."""
+        if self.cutoff or self.cancelling:
+            return False
         if node.last_failure_class not in self.retry_classes:
             return False
         if node.latest >= node.max_attempts or self.retry_reserve < 1:
@@ -142,17 +147,19 @@ class Machine:
         return node.status in self.settled_states
 
     def advance_ok_nonadj(self):
+        ok = True
         for n in self.nodes.values():
             if n.kind == "adjudicator":
                 continue
             if n.attempts and not self.node_settled(n):
-                return False
-            if n.required and not n.attempts and not n.skipped:
+                ok = False
+                continue
+            if not n.attempts and not n.skipped:
                 if self.cutoff:
-                    self.skip(n)
-                else:
-                    return False
-        return True
+                    self.skip(n)  # ADR-1 1.5a: EVERY unstarted node, optional too
+                elif n.required:
+                    ok = False
+        return ok
 
     def adj_settled(self):
         adjs = [n for n in self.nodes.values() if n.kind == "adjudicator"]
@@ -178,13 +185,18 @@ class Machine:
 
     def register_claims(self, claim_list, producer):
         for c in claim_list:
+            for field in ("claim_id", "claim_class", "subject", "asserted_value"):
+                if field not in c:
+                    raise TraceError(f"claim missing {field}")
             cid = c["claim_id"]
             if cid in self.claims:
                 raise TraceError(f"duplicate claim_id {cid}")
-            # A finder-proposed artifact_observation becomes machine-produced
-            # only when the control-plane re-read verified it (ADR-2 1.2).
-            actual = "CONTROL_PLANE" if c.get("reread_verified") else producer
-            self.claims[cid] = {**c, "producer": actual}
+            if producer == "CONTROL_PLANE" and cid.startswith("cp-"):
+                if c.get("snapshot_id") != self.snapshot_id:
+                    raise TraceError(f"re-read claim {cid} not bound to run snapshot")
+            self.claims[cid] = {
+                "relationship": "supports", **c, "producer": producer
+            }
 
     def b_input(self):
         supplied = sorted(self.claims)
@@ -225,6 +237,16 @@ class Machine:
             return
         if kind == "cancel_requested":
             self.cancelling = True
+        elif kind == "claims_reread":
+            # Control-plane re-read receipt: the ONLY path by which an
+            # observation becomes machine-produced (ADR-2 1.2). Never taken
+            # from a model envelope.
+            if self.phase not in ("EXECUTING", "CONSOLIDATING"):
+                raise TraceError(f"claims_reread in phase {self.phase}")
+            for c in payload["claims"]:
+                if not c["claim_id"].startswith("cp-"):
+                    raise TraceError("control-plane claim without cp- prefix")
+            self.register_claims(payload["claims"], "CONTROL_PLANE")
         elif kind == "budget_exhausted":
             if (
                 payload["dimension"] == "wall_clock"
@@ -257,6 +279,7 @@ class Machine:
         if row is None:
             raise TraceError(f"invalid event {kind} in phase {self.phase}")
         if kind == "snapshot_sealed":
+            self.snapshot_id = payload["snapshot_id"]
             self.register_claims(
                 [{"claim_id": "mc-snapshot", "claim_class": "snapshot_binding",
                   "subject": "run", "asserted_value": payload["snapshot_id"]}],
@@ -393,10 +416,12 @@ class Machine:
                 verdict = self.check_rejection(adj)
             if verdict == "CONFIRMED" and not any(
                 self.claims[o]["producer"] == "CONTROL_PLANE"
+                and self.claims[o]["claim_class"]
+                in ("artifact_observation", "command_execution")
                 for o in adj.get("observation_claim_ids", [])
             ):
                 raise TraceError(
-                    f"CONFIRMED {adj['finding_id']} without machine observation (E3)"
+                    f"CONFIRMED {adj['finding_id']} without an admissible machine observation (E3)"
                 )
             entry = {
                 "finding_id": adj["finding_id"],
@@ -407,7 +432,9 @@ class Machine:
             if verdict == "CONFIRMED":
                 self.canonical_finding_ids.append(adj["finding_id"])
             else:
-                self.candidate_dispositions.append(f"{adj['finding_id']}:{verdict}")
+                self.candidate_dispositions.append(
+                    {"finding_id": adj["finding_id"], "adjudication": verdict}
+                )
 
     def check_rejection(self, adj):
         """ADR-2 1.5: REJECTED needs a machine-verified exclusive contradiction;
@@ -416,10 +443,13 @@ class Machine:
         contradiction = self.claims.get(cid) if cid else None
         ok = (
             contradiction is not None
-            and contradiction["claim_class"] in ("artifact_observation", "command_execution")
             and contradiction["producer"] == "CONTROL_PLANE"
+            and contradiction["claim_class"] in ("artifact_observation", "command_execution")
+            and contradiction.get("relationship") == "contradicts"
+            and contradiction.get("snapshot_id") == self.snapshot_id
             and any(
-                self.claims[o]["subject"] == contradiction["subject"]
+                self.claims[o]["claim_class"] == contradiction["claim_class"]
+                and self.claims[o]["subject"] == contradiction["subject"]
                 and self.claims[o]["asserted_value"] != contradiction["asserted_value"]
                 for o in adj.get("observation_claim_ids", [])
                 if o in self.claims
@@ -522,10 +552,11 @@ def run_trace(trace, spec):
             sorted(machine.canonical_finding_ids),
         )
     if "expected_candidate_dispositions" in trace:
+        keyfn = lambda d: (d["finding_id"], d["adjudication"])
         check(
             "candidate_dispositions",
-            sorted(trace["expected_candidate_dispositions"]),
-            sorted(machine.candidate_dispositions),
+            sorted(trace["expected_candidate_dispositions"], key=keyfn),
+            sorted(machine.candidate_dispositions, key=keyfn),
         )
     if "expected_attempt_transitions" in trace:
         check(

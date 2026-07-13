@@ -144,7 +144,7 @@
         "envelope_hash": "h-adj-t01",
         "adjudications": [],
         "b_binding": {
-          "input_claim_set_hash": "a30eea98aa401c1eb5e025dc3d4f949709a853dcea74d1e9409065755f378501",
+          "input_claim_set_hash": "9597493356f36b0ef3fc763243f881a146cc7d0137cc9954ad824b5b3845f356",
           "supplied_claim_ids": [
             "mc-policy",
             "mc-snapshot"

@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): scheduling a new attempt after budget cutoff, in the window while another attempt is still in flight -> G_NO_CUTOFF (I8)",
+  "notes": "MUTANT (must be rejected): scheduling a new attempt after budget cutoff while another is in flight -> G_NO_CUTOFF (I8)",
   "input_events": [
     {
       "event_id": "e1",

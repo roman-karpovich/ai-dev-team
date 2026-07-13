@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "One HEAVY finder fails non-retryably; sibling + B run as diagnostics. UNRESOLVED lands in candidate_dispositions, never canonical; INCOMPLETE + HOLD; coverage gap machine-derived.",
+  "notes": "One HEAVY finder fails non-retryably; sibling + B run as diagnostics. UNRESOLVED lands in candidate_dispositions (normative record), never canonical; INCOMPLETE + HOLD; coverage gap machine-derived.",
   "input_events": [
     {
       "event_id": "e1",
@@ -118,8 +118,7 @@
                 "claim_id": "obs-1",
                 "claim_class": "artifact_observation",
                 "subject": "src/mod.py:42",
-                "asserted_value": "literal-A",
-                "reread_verified": true
+                "asserted_value": "literal-A"
               }
             ]
           }
@@ -130,12 +129,29 @@
       "at_min": 12
     },
     {
+      "event_id": "e9r",
+      "event_kind": "claims_reread",
+      "payload": {
+        "claims": [
+          {
+            "claim_id": "cp-obs-1",
+            "claim_class": "artifact_observation",
+            "subject": "src/mod.py:42",
+            "asserted_value": "literal-A",
+            "snapshot_id": "snap-t03",
+            "relationship": "supports"
+          }
+        ]
+      },
+      "at_min": 13
+    },
+    {
       "event_id": "e10",
       "event_kind": "node_scheduled",
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 12
+      "at_min": 13
     },
     {
       "event_id": "e11",
@@ -143,7 +159,7 @@
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 13
+      "at_min": 14
     },
     {
       "event_id": "e12",
@@ -185,18 +201,20 @@
               "reachability": "conditional"
             },
             "observation_claim_ids": [
-              "obs-1"
+              "cp-obs-1"
             ]
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "5dc288b946876a8d74ab2e2122e35ad621cda02dbe8c6a407c012150bac0bddd",
+          "input_claim_set_hash": "12c5b7c232741cc0d7291f38071a8a8a38e527a766ff661cae5a90edbf161ab2",
           "supplied_claim_ids": [
+            "cp-obs-1",
             "mc-policy",
             "mc-snapshot",
             "obs-1"
           ],
           "considered_claim_ids": [
+            "cp-obs-1",
             "mc-policy",
             "mc-snapshot",
             "obs-1"
@@ -263,6 +281,9 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [
-    "F1:UNRESOLVED"
+    {
+      "finding_id": "F1",
+      "adjudication": "UNRESOLVED"
+    }
   ]
 }

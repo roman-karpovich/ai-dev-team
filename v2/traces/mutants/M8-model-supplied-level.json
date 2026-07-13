@@ -118,8 +118,7 @@
                 "claim_id": "obs-1",
                 "claim_class": "artifact_observation",
                 "subject": "src/mod.py:42",
-                "asserted_value": "literal-A",
-                "reread_verified": true
+                "asserted_value": "literal-A"
               }
             ]
           }
@@ -130,12 +129,29 @@
       "at_min": 12
     },
     {
+      "event_id": "e9r",
+      "event_kind": "claims_reread",
+      "payload": {
+        "claims": [
+          {
+            "claim_id": "cp-obs-1",
+            "claim_class": "artifact_observation",
+            "subject": "src/mod.py:42",
+            "asserted_value": "literal-A",
+            "snapshot_id": "snap-t02",
+            "relationship": "supports"
+          }
+        ]
+      },
+      "at_min": 13
+    },
+    {
       "event_id": "e10",
       "event_kind": "node_scheduled",
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 12
+      "at_min": 13
     },
     {
       "event_id": "e11",
@@ -143,7 +159,7 @@
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 13
+      "at_min": 14
     },
     {
       "event_id": "e12",
@@ -213,18 +229,20 @@
               "level": "HIGH"
             },
             "observation_claim_ids": [
-              "obs-1"
+              "cp-obs-1"
             ]
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "b5296c092ef2cf45de2cac35302c173d3afeda4671024345ca302ecba10188ef",
+          "input_claim_set_hash": "8902811fe7b22ad1ff01ad110aae085bd41914d38cda8ede78fe0dbf91a66b20",
           "supplied_claim_ids": [
+            "cp-obs-1",
             "mc-policy",
             "mc-snapshot",
             "obs-1"
           ],
           "considered_claim_ids": [
+            "cp-obs-1",
             "mc-policy",
             "mc-snapshot",
             "obs-1"

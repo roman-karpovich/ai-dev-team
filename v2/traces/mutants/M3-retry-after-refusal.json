@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): retry after non-retryable policy_refusal (N7)",
+  "notes": "MUTANT (must be rejected): retry after non-retryable policy_refusal while claude still in flight (N7)",
   "input_events": [
     {
       "event_id": "e1",
@@ -90,40 +90,6 @@
       "at_min": 3
     },
     {
-      "event_id": "e10",
-      "event_kind": "node_scheduled",
-      "payload": {},
-      "node_id": "finder-codex",
-      "attempt": 1,
-      "at_min": 12
-    },
-    {
-      "event_id": "e11",
-      "event_kind": "node_dispatched",
-      "payload": {},
-      "node_id": "finder-codex",
-      "attempt": 1,
-      "at_min": 13
-    },
-    {
-      "event_id": "e12",
-      "event_kind": "node_failed",
-      "payload": {
-        "failure_class": "policy_refusal"
-      },
-      "node_id": "finder-codex",
-      "attempt": 1,
-      "at_min": 15
-    },
-    {
-      "event_id": "eX",
-      "event_kind": "node_scheduled",
-      "node_id": "finder-codex",
-      "attempt": 2,
-      "payload": {},
-      "at_min": 16
-    },
-    {
       "event_id": "e7",
       "event_kind": "node_scheduled",
       "payload": {},
@@ -140,80 +106,38 @@
       "at_min": 4
     },
     {
-      "event_id": "e9",
-      "event_kind": "node_result",
-      "payload": {
-        "envelope_hash": "h-claude-t03",
-        "candidates": [
-          {
-            "candidate_id": "c-F1",
-            "claims": [
-              {
-                "claim_id": "obs-1",
-                "claim_class": "artifact_observation",
-                "subject": "src/mod.py:42",
-                "asserted_value": "literal-A",
-                "reread_verified": true
-              }
-            ]
-          }
-        ]
-      },
-      "node_id": "finder-claude",
-      "attempt": 1,
-      "at_min": 12
-    },
-    {
-      "event_id": "e13",
+      "event_id": "e10",
       "event_kind": "node_scheduled",
       "payload": {},
-      "node_id": "adjudicator-b",
+      "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 16
+      "at_min": 5
     },
     {
-      "event_id": "e14",
+      "event_id": "e11",
       "event_kind": "node_dispatched",
       "payload": {},
-      "node_id": "adjudicator-b",
+      "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 17
+      "at_min": 6
     },
     {
-      "event_id": "e15",
-      "event_kind": "node_result",
+      "event_id": "e12",
+      "event_kind": "node_failed",
       "payload": {
-        "envelope_hash": "h-adj-t03",
-        "adjudications": [
-          {
-            "finding_id": "F1",
-            "adjudication": "UNRESOLVED",
-            "candidate_severity": {
-              "impact": "wrong_result",
-              "reachability": "conditional"
-            },
-            "observation_claim_ids": [
-              "obs-1"
-            ]
-          }
-        ],
-        "b_binding": {
-          "input_claim_set_hash": "5dc288b946876a8d74ab2e2122e35ad621cda02dbe8c6a407c012150bac0bddd",
-          "supplied_claim_ids": [
-            "mc-policy",
-            "mc-snapshot",
-            "obs-1"
-          ],
-          "considered_claim_ids": [
-            "mc-policy",
-            "mc-snapshot",
-            "obs-1"
-          ]
-        }
+        "failure_class": "policy_refusal"
       },
-      "node_id": "adjudicator-b",
+      "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 20
+      "at_min": 8
+    },
+    {
+      "event_id": "eX",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "finder-codex",
+      "attempt": 2,
+      "at_min": 9
     }
   ],
   "expected_transitions": [
@@ -271,7 +195,10 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [
-    "F1:UNRESOLVED"
+    {
+      "finding_id": "F1",
+      "adjudication": "UNRESOLVED"
+    }
   ],
   "expect_failure_containing": "retry not permitted"
 }
