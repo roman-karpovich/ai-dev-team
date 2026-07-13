@@ -144,7 +144,7 @@
         "envelope_hash": "h-adj-t01",
         "adjudications": [],
         "b_binding": {
-          "input_claim_set_hash": "066113664603e780bad0fcab21f4f141d58a0c1bda086ebf2f3b88ea628e3d0d",
+          "input_claim_set_hash": "9597493356f36b0ef3fc763243f881a146cc7d0137cc9954ad824b5b3845f356",
           "supplied_claim_ids": [
             "mc-policy",
             "mc-snapshot"
@@ -202,7 +202,6 @@
   "expected_degradations": [],
   "expected_coverage_gaps": [],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": "484f6feda2b19d1fedc04563093b756955a5227b04af6cae17bc6c07fc610da9",
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -211,6 +210,7 @@
   ],
   "expected_candidate_dispositions": [],
   "expected_ledger_length": 13,
+  "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expected_ledger_sealed": true
+  "expected_ledger_head": "07ff24e82ba4124c25ba3c4681cac1959ee681ff4e948b0729cfc7d068b21d3f"
 }

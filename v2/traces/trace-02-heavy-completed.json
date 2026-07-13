@@ -237,7 +237,7 @@
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "827139cbf6053c2effc0c11c3d624078fd2086c964b264d442258a21740d1e5b",
+          "input_claim_set_hash": "0b80a33513281b5ddea873bc4c25b118025f70e59564433d6773fbacb3f5d9f3",
           "supplied_claim_ids": [
             "cp-obs-1",
             "mc-policy",
@@ -304,7 +304,6 @@
   "expected_canonical_finding_ids": [
     "F1"
   ],
-  "expected_ledger_head": "293f645129a074b4db7e95c294533554af1ee94a6fcaa50f3362aff239599bd3",
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -313,6 +312,7 @@
   ],
   "expected_candidate_dispositions": [],
   "expected_ledger_length": 20,
+  "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expected_ledger_sealed": true
+  "expected_ledger_head": "7c178a28e5852a3b4f3b686fb0f7cf7e41418d78f3dae7ced40ede0cca7d0a89"
 }

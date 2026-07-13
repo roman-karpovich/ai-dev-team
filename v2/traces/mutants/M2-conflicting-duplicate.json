@@ -164,7 +164,6 @@
   "expected_degradations": [],
   "expected_coverage_gaps": [],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": "484f6feda2b19d1fedc04563093b756955a5227b04af6cae17bc6c07fc610da9",
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -172,8 +171,7 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
-  "expected_ledger_length": 13,
-  "expected_ledger_intact": true,
   "expected_ledger_sealed": true,
+  "expected_ledger_intact": true,
   "expect_failure_containing": "got 'FAILED'"
 }

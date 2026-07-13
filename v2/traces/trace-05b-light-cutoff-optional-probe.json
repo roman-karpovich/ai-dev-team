@@ -143,7 +143,6 @@
   ],
   "expected_canonical_finding_ids": [],
   "expected_candidate_dispositions": [],
-  "expected_ledger_head": "a0da8ae4984157a3a7dc69ce62ed9c2cfa64d9434cf6223e793a4fef67ac1edd",
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -151,6 +150,7 @@
     "external_state_mutation"
   ],
   "expected_ledger_length": 8,
+  "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expected_ledger_sealed": true
+  "expected_ledger_head": "a0da8ae4984157a3a7dc69ce62ed9c2cfa64d9434cf6223e793a4fef67ac1edd"
 }

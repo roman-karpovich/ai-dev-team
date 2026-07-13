@@ -211,7 +211,6 @@
     "adjudicator-b:no_adjudication"
   ],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": "af91e3c62e7aa66b94ad9838ed2b4a1aafb8bcd7cfee69d0c5e594b667e0419f",
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -220,6 +219,7 @@
   ],
   "expected_candidate_dispositions": [],
   "expected_ledger_length": 15,
+  "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expected_ledger_sealed": true
+  "expected_ledger_head": "af91e3c62e7aa66b94ad9838ed2b4a1aafb8bcd7cfee69d0c5e594b667e0419f"
 }
