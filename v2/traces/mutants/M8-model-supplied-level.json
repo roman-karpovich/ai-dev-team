@@ -139,7 +139,8 @@
             "subject": "src/mod.py:42",
             "asserted_value": "literal-A",
             "snapshot_id": "snap-t02",
-            "relationship": "supports"
+            "relationship": "supports",
+            "reread_of": "obs-1"
           }
         ]
       },
@@ -230,11 +231,14 @@
             },
             "observation_claim_ids": [
               "cp-obs-1"
+            ],
+            "rationale_claim_ids": [
+              "cp-obs-1"
             ]
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "8902811fe7b22ad1ff01ad110aae085bd41914d38cda8ede78fe0dbf91a66b20",
+          "input_claim_set_hash": "35acd534910702ad0153c3e23d5ddbb23e193619e53d6fb7169683ce72d8baef",
           "supplied_claim_ids": [
             "cp-obs-1",
             "mc-policy",
