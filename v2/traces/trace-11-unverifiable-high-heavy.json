@@ -212,7 +212,7 @@
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "80925552b1507d0f00ca72b0698f2c29456e71437baef269811ccdffc439d2d5",
+          "input_claim_set_hash": "53fa52a07149bcea0607884c738d6ff8e530b32181efc51615fb4816e04f0afc",
           "supplied_claim_ids": [
             "cp-obs-1",
             "mc-policy",
@@ -292,7 +292,7 @@
     }
   ],
   "expected_ledger_length": 17,
-  "expected_ledger_intact": true,
   "expected_ledger_sealed": true,
-  "expected_ledger_head": "08121791d0d2a0d70c7daf4a029e94488d5e4f123fe7158490da11e9c80e8577"
+  "expected_ledger_intact": true,
+  "expected_ledger_head": "4d1fed7daa2e7c888ac7507c72a2eb4e73cc12fc12eaa689bf3017915501d084"
 }

@@ -149,7 +149,7 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_ledger_sealed": false,
   "expected_ledger_intact": true,
-  "expected_ledger_sealed": true,
   "expect_failure_containing": "terminal: expected 'COMPLETED'"
 }

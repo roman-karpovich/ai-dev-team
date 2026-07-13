@@ -149,6 +149,7 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_ledger_sealed": false,
   "expected_ledger_intact": false,
-  "expected_ledger_sealed": true
+  "expected_audit_length": 1
 }

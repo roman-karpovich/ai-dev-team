@@ -171,7 +171,7 @@
         "envelope_hash": "h-adj",
         "adjudications": [],
         "b_binding": {
-          "input_claim_set_hash": "e1cde7b97f24fc5d65b69971cd63f012641532c3aa16add63710147756b38cf1",
+          "input_claim_set_hash": "9712288147797363827a406ea45abfbfaf2d7a73876be8a947dc19082971a5ff",
           "supplied_claim_ids": [
             "mc-policy",
             "mc-snapshot"
@@ -242,7 +242,7 @@
   ],
   "expected_candidate_dispositions": [],
   "expected_ledger_length": 17,
-  "expected_ledger_intact": true,
   "expected_ledger_sealed": true,
-  "expected_ledger_head": "78a0d6fa60eac76cd58263074fb696dd4cc558dda94cf7c3aecf54ff99248961"
+  "expected_ledger_intact": true,
+  "expected_ledger_head": "69815b8aa1fcb748c5ccc437694b066ef11aaab26718759322529ca0cd904507"
 }

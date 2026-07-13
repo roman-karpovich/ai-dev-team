@@ -1,5 +1,5 @@
 {
-  "spec_version": "adr1-v5",
+  "spec_version": "adr1-v6",
   "source_adr": "v2 VERIFY ADR-1 (state machine and snapshot); this JSON is the pinned encoding \u2014 on divergence the ADR wins",
   "phases": [
     "CREATED",
@@ -329,12 +329,15 @@
     "format_version": "v2-verify-1",
     "supported_versions": ["v2-verify-1"],
     "genesis": "GENESIS/v2-verify",
+    "domain": "the MAIN ledger journals EXTERNAL events (snapshot/plan/exec/node-lifecycle/resume/cancel/budget) + the terminal seal; machine-DERIVED transitions (phase advances, N9 skips, derived N4/terminal) are deterministic consequences reconstructible by replay, recorded in the transition logs, NOT separate ledger records — this keeps an independent head-hash oracle valid",
     "record": "{format_version, seq, prev_hash, kind, event_id, body_digest, artifact_refs[], record_hash}",
-    "record_hash": "sha256(canonical({format_version, seq, prev_hash, kind, event_id, body_digest}))",
-    "seal": "{run_id, terminal_seq, head_hash} persisted separately; detects archived-tail truncation",
+    "artifact_ref": "{sha256, size, media_type}; referenced bytes verified against sha256 on read",
+    "record_hash": "sha256(canonical({format_version, seq, prev_hash, kind, event_id, body_digest, artifact_refs}))  # artifact_refs INSIDE the hash",
+    "seal": "real appended record {kind: terminal_seal, run_id, terminal_seq, head_hash}, created immediately at terminal; a corrupt/unsupported SOURCE journal is NEVER sealed or rewritten",
+    "audit_chain": "separate hash-chained post-terminal/recovery trail {seq, prev_hash, kind, digest, record_hash}; holds late_result_rejected + recovery_blocked/recovery_corruption outcomes; NOT the sealed run ledger",
     "guards": {
-      "G_LEDGER_VERSION_SUPPORTED": "journal format_version in supported_versions, else BLOCKED(SCHEMA_VERSION)",
-      "G_LEDGER_INTACT": "verify_chain() recomputes every record_hash + prev_hash links, else corruption_detected -> FAILED"
+      "G_LEDGER_VERSION_SUPPORTED": "journal format_version in supported_versions, else BLOCKED(SCHEMA_VERSION); source not rewritten",
+      "G_LEDGER_INTACT": "verify_chain() recomputes every record_hash (incl. artifact_refs) + prev_hash links + per-record version, else corruption_detected -> FAILED; source not rewritten"
     },
     "test_only_events": {
       "__tamper_ledger__": "fault injection for tests ONLY (flip a stored record hash); NOT part of the production vocabulary"

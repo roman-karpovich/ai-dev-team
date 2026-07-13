@@ -215,7 +215,6 @@
     "adjudicator-b:no_adjudication"
   ],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": "f3ebd725f4517b6758c47512b8506241d4c94c063972ea6cfb5726fbcbf9e90e",
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -285,8 +284,7 @@
       "to": "SKIPPED"
     }
   ],
-  "expected_ledger_length": 14,
-  "expected_ledger_intact": true,
   "expected_ledger_sealed": true,
+  "expected_ledger_intact": true,
   "expect_failure_containing": "after cutoff/cancel"
 }

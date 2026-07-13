@@ -104,7 +104,8 @@ class Machine:
         self.dispatch_at = {}
         self.ledger = []      # ADR-5 hash-chained records
         self.ledger_seal = None
-        self.audit_chain = []  # post-terminal audit records (late results)
+        self.no_seal = False  # set when the source journal is corrupt/unsupported
+        self.audit_chain = []  # post-terminal / recovery audit records
         self.block_code = None
         self.run_rows = spec["run_transitions"]
         self.attempt_rows = spec["attempt_transitions"]
@@ -203,7 +204,8 @@ class Machine:
             if producer == "CONTROL_PLANE" and cid.startswith("cp-"):
                 if c.get("snapshot_id") != self.snapshot_id:
                     raise TraceError(f"re-read claim {cid} not bound to run snapshot")
-            # ADR-5 §1.6 claim-field lift: bind to the containing ledger record.
+            # ADR-5 §1.6 claim-field lift (enforced for EVERY claim, not only cp-):
+            # bind to the containing ledger record + run inputs + trust domain.
             created_at_seq = len(self.ledger) - 1
             record_refs = self.ledger[-1]["artifact_refs"] if self.ledger else []
             if any(r not in record_refs for r in c.get("artifact_refs", [])):
@@ -211,12 +213,23 @@ class Machine:
             self.claims[cid] = {
                 "relationship": "supports", **c, "producer": producer,
                 "created_at_seq": created_at_seq,
+                "snapshot_id": c.get("snapshot_id", self.snapshot_id),
+                "execution_manifest_id": "em:" + (self.run_id or "?"),
+                "trust_domain": {"name": producer,
+                                 "instance": f"{producer}:{self.run_id}",
+                                 "shared_dependencies": []},
             }
+
+    # B adjudicates on the SEMANTIC claim content, not bookkeeping metadata
+    # (created_at_seq, trust_domain, manifest ids). The binding pins that
+    # content set; lift metadata is enforced separately at registration.
+    B_PROJECTION = ("claim_id", "claim_class", "subject", "asserted_value",
+                    "relationship", "producer")
 
     def b_input(self):
         supplied = sorted(self.claims)
-        payload = canonical([self.claims[c] for c in supplied])
-        return supplied, sha(payload)
+        proj = [{k: self.claims[c][k] for k in self.B_PROJECTION} for c in supplied]
+        return supplied, sha(canonical(proj))
 
     # -- ADR-5 ledger (append-only, corruption-evident) --------------------
 
@@ -247,14 +260,29 @@ class Machine:
 
     def seal(self):
         # ADR-5 §1.2: the seal is a real appended record + a persisted sidecar,
-        # created at terminal (idempotent). run_id binds the seal to the run.
-        if self.ledger_seal is None and self.terminal is not None and self.ledger:
+        # created immediately at terminal (idempotent). run_id binds it to the run.
+        # A corrupt/unsupported SOURCE journal is never sealed (self.no_seal).
+        if (self.ledger_seal is None and self.terminal is not None
+                and self.ledger and not self.no_seal):
             head_hash = self.ledger[-1]["record_hash"]
             self.ledger_append("terminal_seal", "seal",
                                sha(canonical({"run_id": self.run_id, "head_hash": head_hash})))
             seal_rec = self.ledger[-1]
             self.ledger_seal = {"run_id": self.run_id, "terminal_seq": seal_rec["seq"],
                                 "head_hash": seal_rec["record_hash"]}
+
+    def audit_append(self, kind, payload):
+        # Separate hash-chained post-terminal/recovery audit trail (ADR-5): it
+        # is NOT the sealed run ledger, but it is corruption-evident on its own.
+        seq = len(self.audit_chain)
+        prev = self.audit_chain[-1]["record_hash"] if self.audit_chain else "AUDIT-GENESIS/v2-verify"
+        rec = {"seq": seq, "prev_hash": prev, "kind": kind,
+               "digest": sha(canonical(payload))}
+        rec["record_hash"] = sha(canonical(rec))
+        self.audit_chain.append(rec)
+
+    def audit_head(self):
+        return self.audit_chain[-1]["record_hash"] if self.audit_chain else None
 
     # -- event application -----------------------------------------------
 
@@ -267,9 +295,7 @@ class Machine:
             if kind == "late_result_rejected":
                 # ADR-1 §1.6 / ADR-5: journaled to a SEPARATE post-terminal audit
                 # chain (the main ledger is sealed); inadmissible, never accepted.
-                self.audit_chain.append(
-                    {"kind": kind, "node_id": event["node_id"], "attempt": event["attempt"]}
-                )
+                self.audit_append(kind, {"node_id": event["node_id"], "attempt": event["attempt"]})
                 self.degradations.append(
                     f"late_result_rejected:{event['node_id']}:{event['attempt']}"
                 )
@@ -301,19 +327,23 @@ class Machine:
             return
         if kind == "journal_resume":
             # ADR-5 §1.4 / §1.3: verify the SOURCE journal BEFORE trusting or
-            # appending anything — a corrupt/unsupported source is never modified.
+            # appending anything. A corrupt/unsupported source is NEVER modified —
+            # not even sealed; the recovery outcome goes to the audit chain.
             if payload["format_version"] not in SUPPORTED_LEDGER_VERSIONS:
+                self.no_seal = True  # never rewrite/seal an unsupported source
+                self.audit_append("recovery_blocked", {"reason": "SCHEMA_VERSION",
+                                                       "found_version": payload["format_version"]})
                 self.record(eid, self.phase, "BLOCKED")
                 self.terminal = "BLOCKED"
                 self.block_code = "SCHEMA_VERSION"
-                self.seal()
                 self.finalize_release()
                 return
             if not self.verify_chain():
+                self.no_seal = True  # never rewrite/seal a corrupt source
+                self.audit_append("recovery_corruption", {"reason": "CHAIN_BROKEN"})
                 self.corrupted = True
                 self.record("corruption_detected", self.phase, "FAILED")
                 self.terminal = "FAILED"
-                self.seal()
                 self.finalize_release()
                 return
             self.ledger_append(kind, eid, h, payload.get("artifact_refs"))
@@ -473,13 +503,15 @@ class Machine:
         if kind == "node_result":
             derived_fail = self.consume_result(node, payload)
             if derived_fail is not None:
-                # Machine validation DERIVED an envelope integrity failure from
-                # the result itself (ADR-2 §1.4) — the attempt FAILS, it does not
-                # COMPLETE. Not a trusted supplied label.
+                # Machine validation, replaying the JOURNALED node_result envelope,
+                # DERIVES an integrity failure (ADR-2 §1.4). The attempt is an
+                # explicit N4 node_failed (not a silent N3->FAILED), recorded in the
+                # transition log as a deterministic consequence of the journaled
+                # result — reconstructible on replay, so it needs no separate record.
                 node.last_failure_class = derived_fail
                 self.degradations.append(f"node_failed:{node.node_id}:{derived_fail}")
                 to_state = "FAILED"
-                on = "node_result:machine_validation_failed"
+                on = "node_failed"  # N4, machine-derived from the journaled result
         node.attempts[attempt] = to_state
         self.record_node(node, attempt, on, to_state)
 
@@ -642,6 +674,7 @@ class Machine:
             self.release_recommendation = "PROCEED" if ok else "HOLD"
         else:
             self.release_recommendation = "HOLD"
+        self.seal()  # ADR-5 §1.2: seal immediately at terminal (idempotent)
 
     def coverage_gaps(self):
         gaps = []
@@ -737,6 +770,8 @@ def run_trace(trace, spec):
         check("ledger_head", trace["expected_ledger_head"], head)
     if "expected_block_code" in trace:
         check("block_code", trace["expected_block_code"], machine.block_code)
+    if "expected_audit_length" in trace:
+        check("audit_length", trace["expected_audit_length"], len(machine.audit_chain))
     return failures
 
 
