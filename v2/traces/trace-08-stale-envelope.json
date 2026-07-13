@@ -1,0 +1,230 @@
+{
+  "trace_id": "T08-stale-envelope",
+  "profile": "HEAVY",
+  "initial_state": "CREATED",
+  "policy_version": "v2-policy-1",
+  "notes": "The adjudicator returns an envelope whose snapshot/execution binding is stale; machine validation detects it as an envelope-level integrity failure (ADR-2 1.4), so the attempt FAILS (stale_binding, non-retryable). Required node not COMPLETED -> INCOMPLETE + HOLD. An injected integrity failure can never coexist with COMPLETED.",
+  "input_events": [
+    {
+      "event_id": "e1",
+      "event_kind": "snapshot_sealed",
+      "payload": {
+        "snapshot_id": "snap-t08"
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e2",
+      "event_kind": "plan_resolved",
+      "payload": {
+        "profile": "HEAVY",
+        "policy_version": "v2-policy-1",
+        "budget": {
+          "retry_reserve": 2,
+          "wall_clock_min": 60,
+          "deadlines": {
+            "probe": 10,
+            "finder": 20,
+            "adjudicator": 15
+          }
+        },
+        "nodes": [
+          {
+            "node_id": "probe-parity",
+            "kind": "probe",
+            "required": true,
+            "max_attempts": 1
+          },
+          {
+            "node_id": "finder-claude",
+            "kind": "finder",
+            "required": true,
+            "max_attempts": 2
+          },
+          {
+            "node_id": "finder-codex",
+            "kind": "finder",
+            "required": true,
+            "max_attempts": 2
+          },
+          {
+            "node_id": "adjudicator-b",
+            "kind": "adjudicator",
+            "required": true,
+            "max_attempts": 2
+          }
+        ]
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e3",
+      "event_kind": "execution_started",
+      "payload": {},
+      "at_min": 0
+    },
+    {
+      "event_id": "e4",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "at_min": 0
+    },
+    {
+      "event_id": "e5",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "at_min": 1
+    },
+    {
+      "event_id": "e6",
+      "event_kind": "node_result",
+      "payload": {
+        "envelope_hash": "h-probe"
+      },
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "at_min": 3
+    },
+    {
+      "event_id": "e7",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "at_min": 3
+    },
+    {
+      "event_id": "e8",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "at_min": 4
+    },
+    {
+      "event_id": "e9",
+      "event_kind": "node_result",
+      "payload": {
+        "envelope_hash": "h-claude",
+        "candidates": []
+      },
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "at_min": 12
+    },
+    {
+      "event_id": "e10",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "at_min": 12
+    },
+    {
+      "event_id": "e11",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "at_min": 13
+    },
+    {
+      "event_id": "e12",
+      "event_kind": "node_result",
+      "payload": {
+        "envelope_hash": "h-codex",
+        "candidates": []
+      },
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "at_min": 20
+    },
+    {
+      "event_id": "e13",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "adjudicator-b",
+      "attempt": 1,
+      "at_min": 21
+    },
+    {
+      "event_id": "e14",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "adjudicator-b",
+      "attempt": 1,
+      "at_min": 22
+    },
+    {
+      "event_id": "e15",
+      "event_kind": "node_failed",
+      "payload": {
+        "failure_class": "stale_binding"
+      },
+      "node_id": "adjudicator-b",
+      "attempt": 1,
+      "at_min": 25
+    }
+  ],
+  "expected_transitions": [
+    {
+      "on": "e1",
+      "from": "CREATED",
+      "to": "SNAPSHOT_BOUND"
+    },
+    {
+      "on": "e2",
+      "from": "SNAPSHOT_BOUND",
+      "to": "PLAN_BOUND"
+    },
+    {
+      "on": "e3",
+      "from": "PLAN_BOUND",
+      "to": "EXECUTING"
+    },
+    {
+      "on": "derived:all_required_nodes_settled",
+      "from": "EXECUTING",
+      "to": "CONSOLIDATING"
+    },
+    {
+      "on": "derived:consolidation_complete",
+      "from": "CONSOLIDATING",
+      "to": "ADJUDICATING"
+    },
+    {
+      "on": "derived:adjudication_settled",
+      "from": "ADJUDICATING",
+      "to": "INCOMPLETE"
+    }
+  ],
+  "expected_node_states": {
+    "probe-parity": "COMPLETED",
+    "finder-claude": "COMPLETED",
+    "finder-codex": "COMPLETED",
+    "adjudicator-b": "FAILED"
+  },
+  "expected_terminal": "INCOMPLETE",
+  "expected_release_recommendation": "HOLD",
+  "expected_degradations": [
+    "node_failed:adjudicator-b:stale_binding"
+  ],
+  "expected_coverage_gaps": [
+    "adjudicator-b:no_adjudication"
+  ],
+  "expected_canonical_finding_ids": [],
+  "forbidden_side_effects": [
+    "network",
+    "package_install",
+    "write_outside_scratch",
+    "external_state_mutation"
+  ],
+  "expected_candidate_dispositions": [],
+  "expected_ledger_length": 15,
+  "expected_ledger_intact": true,
+  "expected_ledger_sealed": true
+}

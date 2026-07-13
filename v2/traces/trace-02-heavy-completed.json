@@ -311,5 +311,8 @@
     "write_outside_scratch",
     "external_state_mutation"
   ],
-  "expected_candidate_dispositions": []
+  "expected_candidate_dispositions": [],
+  "expected_ledger_length": 19,
+  "expected_ledger_intact": true,
+  "expected_ledger_sealed": true
 }

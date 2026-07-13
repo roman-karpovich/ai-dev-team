@@ -149,5 +149,8 @@
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ]
+  ],
+  "expected_ledger_length": 7,
+  "expected_ledger_intact": true,
+  "expected_ledger_sealed": true
 }

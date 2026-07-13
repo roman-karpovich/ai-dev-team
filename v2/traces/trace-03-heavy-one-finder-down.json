@@ -294,5 +294,8 @@
         "cp-obs-1"
       ]
     }
-  ]
+  ],
+  "expected_ledger_length": 16,
+  "expected_ledger_intact": true,
+  "expected_ledger_sealed": true
 }
