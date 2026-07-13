@@ -49,5 +49,6 @@
   "expected_ledger_length": 2,
   "expected_ledger_intact": true,
   "expected_ledger_sealed": true,
-  "expected_block_code": "SCHEMA_VERSION"
+  "expected_block_code": "SCHEMA_VERSION",
+  "expected_ledger_head": "fb3ea44d9878138f19711fbfa4420151dc46aeff15959c5fd8cfbd8eac0e3992"
 }

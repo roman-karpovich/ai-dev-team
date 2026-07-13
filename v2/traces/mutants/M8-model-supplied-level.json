@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): model tries to supply the severity level (E7: control plane derives it)",
+  "notes": "MUTANT (must be rejected): Happy path HEAVY: retryable finder failure (N7 under wall-budget guard); finder PROPOSES obs-1, the control-plane re-read receipt (claims_reread) produces cp-obs-1, CONFIRMED cites the machine observation (E3); hash recomputed by control plane; level ladder-derived (MEDIUM) so release=PROCEED. Batch-1 limitation (declared): claim records enforce {claim_id, claim_class, subject, asserted_value} + snapshot/relationship/reread_of for cp- claims; trust-domain instances, created_at_seq and content-addressed artifact_refs become enforceable with the ledger (ADR-5, batch 2).",
   "input_events": [
     {
       "event_id": "e1",
@@ -238,7 +238,7 @@
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "35acd534910702ad0153c3e23d5ddbb23e193619e53d6fb7169683ce72d8baef",
+          "input_claim_set_hash": "827139cbf6053c2effc0c11c3d624078fd2086c964b264d442258a21740d1e5b",
           "supplied_claim_ids": [
             "cp-obs-1",
             "mc-policy",
@@ -305,7 +305,7 @@
   "expected_canonical_finding_ids": [
     "F1"
   ],
-  "expected_ledger_head": null,
+  "expected_ledger_head": "293f645129a074b4db7e95c294533554af1ee94a6fcaa50f3362aff239599bd3",
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -313,5 +313,8 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_ledger_length": 20,
+  "expected_ledger_intact": true,
+  "expected_ledger_sealed": true,
   "expect_failure_containing": "model-supplied severity level"
 }

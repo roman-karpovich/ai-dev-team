@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): REJECTED cites a properly-anchored contradicts-claim (own proposal obs-other, subject match, different value) whose subject is WRONG relative to F1's cited observation -> exclusivity predicate fails -> coerced to UNRESOLVED",
+  "notes": "MUTANT (must be rejected): Happy path HEAVY: retryable finder failure (N7 under wall-budget guard); finder PROPOSES obs-1, the control-plane re-read receipt (claims_reread) produces cp-obs-1, CONFIRMED cites the machine observation (E3); hash recomputed by control plane; level ladder-derived (MEDIUM) so release=PROCEED. Batch-1 limitation (declared): claim records enforce {claim_id, claim_class, subject, asserted_value} + snapshot/relationship/reread_of for cp- claims; trust-domain instances, created_at_seq and content-addressed artifact_refs become enforceable with the ledger (ADR-5, batch 2).",
   "input_events": [
     {
       "event_id": "e1",
@@ -258,7 +258,7 @@
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "8171e36156127cbd38bc9a3291f3a6c2f8c7fe04a21c2aa8bb789120a53319a1",
+          "input_claim_set_hash": "f46d111c812c844440503682304074a7c254cfa2ac6d5acc94d10d3f9e1c41a7",
           "supplied_claim_ids": [
             "cp-obs-1",
             "cp-other",
@@ -329,7 +329,7 @@
   "expected_canonical_finding_ids": [
     "F1"
   ],
-  "expected_ledger_head": null,
+  "expected_ledger_head": "293f645129a074b4db7e95c294533554af1ee94a6fcaa50f3362aff239599bd3",
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -337,5 +337,8 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_ledger_length": 20,
+  "expected_ledger_intact": true,
+  "expected_ledger_sealed": true,
   "expect_failure_containing": "canonical_finding_ids"
 }

@@ -1,9 +1,9 @@
 {
-  "trace_id": "M14-late-result-accepted",
+  "trace_id": "M14-post-terminal-result-rejected",
   "profile": "LIGHT",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): claims the cancelled run terminates COMPLETED (late output accepted). Must stay CANCELLED, late result inadmissible.",
+  "notes": "MUTANT (must be rejected): Operator cancel while finder-claude is in flight; its result wins the race and is journaled COMPLETED, but the run still terminates CANCELLED (cancel intent wins). The adjudicator never started. A late result arriving AFTER the terminal seal is journaled inadmissible (late_result_rejected), never accepted. (The lone finder settling advances the run to ADJUDICATING; the adjudicator never started, and cancel_finalized then terminates CANCELLED from there.)",
   "input_events": [
     {
       "event_id": "e1",
@@ -98,6 +98,15 @@
       },
       "node_id": "finder-claude",
       "attempt": 1
+    },
+    {
+      "event_id": "e10",
+      "event_kind": "node_result",
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "payload": {
+        "envelope_hash": "h-post"
+      }
     }
   ],
   "expected_transitions": [
@@ -117,8 +126,18 @@
       "to": "EXECUTING"
     },
     {
-      "on": "e8",
+      "on": "derived:all_required_nodes_settled",
       "from": "EXECUTING",
+      "to": "CONSOLIDATING"
+    },
+    {
+      "on": "derived:consolidation_complete",
+      "from": "CONSOLIDATING",
+      "to": "ADJUDICATING"
+    },
+    {
+      "on": "e8",
+      "from": "ADJUDICATING",
       "to": "CANCELLED"
     }
   ],
@@ -126,7 +145,7 @@
     "finder-claude": "COMPLETED",
     "adjudicator-b": "PENDING"
   },
-  "expected_terminal": "COMPLETED",
+  "expected_terminal": "CANCELLED",
   "expected_release_recommendation": "REPORT_ONLY",
   "expected_degradations": [
     "late_result_rejected:finder-claude:1"
@@ -142,8 +161,9 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
-  "expected_ledger_length": 8,
+  "expected_ledger_length": 9,
   "expected_ledger_intact": true,
   "expected_ledger_sealed": true,
-  "expect_failure_containing": "terminal: expected 'COMPLETED'"
+  "expected_ledger_head": "94ce282d11a53be0babb964fd5ea3e1490971eccfaef06bc2270a1f5f211ef6f",
+  "expect_failure_containing": "after terminal state"
 }
