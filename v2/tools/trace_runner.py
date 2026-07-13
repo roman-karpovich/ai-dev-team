@@ -26,6 +26,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_SPEC = REPO_ROOT / "v2" / "spec" / "transitions.json"
 
 GATING = ("CONFIRMED", "UNRESOLVED", "UNVERIFIABLE")
+LEDGER_FORMAT_VERSION = "v2-verify-1"
+SUPPORTED_LEDGER_VERSIONS = {"v2-verify-1"}
+LEDGER_GENESIS = "GENESIS/v2-verify"
 
 
 def canonical(obj):
@@ -98,6 +101,9 @@ class Machine:
         self.seen = {}
         self.dispatch_effects = set()
         self.dispatch_at = {}
+        self.ledger = []      # ADR-5 hash-chained records
+        self.ledger_seal = None
+        self.block_code = None
         self.run_rows = spec["run_transitions"]
         self.attempt_rows = spec["attempt_transitions"]
         self.settled_states = set(spec["attempt_settled_states"])
@@ -204,13 +210,47 @@ class Machine:
         payload = canonical([self.claims[c] for c in supplied])
         return supplied, sha(payload)
 
+    # -- ADR-5 ledger (append-only, corruption-evident) --------------------
+
+    def ledger_append(self, kind, event_id, body_digest):
+        seq = len(self.ledger)
+        prev = self.ledger[-1]["record_hash"] if self.ledger else LEDGER_GENESIS
+        rec = {"format_version": LEDGER_FORMAT_VERSION, "seq": seq, "prev_hash": prev,
+               "kind": kind, "event_id": event_id, "body_digest": body_digest}
+        rec["record_hash"] = sha(canonical(rec))
+        self.ledger.append(rec)
+
+    def verify_chain(self):
+        prev = LEDGER_GENESIS
+        for i, rec in enumerate(self.ledger):
+            if rec["seq"] != i or rec["prev_hash"] != prev:
+                return False
+            core = {k: rec[k] for k in
+                    ("format_version", "seq", "prev_hash", "kind", "event_id", "body_digest")}
+            if rec["record_hash"] != sha(canonical(core)):
+                return False
+            prev = rec["record_hash"]
+        return True
+
+    def seal(self):
+        if self.ledger_seal is None and self.terminal is not None and self.ledger:
+            head = self.ledger[-1]
+            self.ledger_seal = {"terminal_seq": head["seq"], "head_hash": head["record_hash"]}
+
     # -- event application -----------------------------------------------
 
     def apply(self, event):
-        if self.terminal:
-            raise TraceError(f"event {event['event_id']} after terminal state")
         eid, kind = event["event_id"], event["event_kind"]
         payload = event.get("payload", {})
+        if self.terminal:
+            # Post-terminal: only a late result for a settled attempt is allowed;
+            # it is journaled as inadmissible, never accepted (ADR-1 1.6).
+            if kind == "late_result_rejected":
+                self.degradations.append(
+                    f"late_result_rejected:{event['node_id']}:{event['attempt']}"
+                )
+                return
+            raise TraceError(f"event {eid} after terminal state")
         # Identity/idempotency FIRST: an exact duplicate is a total no-op —
         # it must not advance even the virtual clock (ADR-1 I3).
         h = body_hash(kind, event.get("node_id"), event.get("attempt"), payload)
@@ -230,11 +270,35 @@ class Machine:
                 raise TraceError(f"non-monotonic at_min on {eid}")
             self.clock = at
 
+        if kind == "__tamper_ledger__":
+            # TEST-ONLY fault injection (NOT a production event, ADR-5 §3):
+            # flip a stored record's hash so verify_chain() must catch it.
+            self.ledger[payload["seq"]]["record_hash"] = "TAMPERED"
+            return
+        # Every real event is journaled (ADR-5 §1.1). The ledger is the
+        # transport-of-record; downstream reads it, never the raw stream.
+        self.ledger_append(kind, eid, h)
+
         if kind == "corruption_detected":
             self.corrupted = True
             self.record(eid, self.phase, "FAILED")
             self.terminal = "FAILED"
             self.finalize_release()
+            return
+        if kind == "journal_resume":
+            # ADR-5 §1.4 / §1.3: version check + integrity check on resume.
+            if payload["format_version"] not in SUPPORTED_LEDGER_VERSIONS:
+                self.record(eid, self.phase, "BLOCKED")
+                self.terminal = "BLOCKED"
+                self.block_code = "SCHEMA_VERSION"
+                self.finalize_release()
+                return
+            if not self.verify_chain():
+                self.corrupted = True
+                self.record("corruption_detected", self.phase, "FAILED")
+                self.terminal = "FAILED"
+                self.finalize_release()
+                return
             return
         if kind == "cancel_requested":
             self.cancelling = True
@@ -555,6 +619,7 @@ def run_trace(trace, spec):
         raise TraceError("initial_state mismatch")
     for event in trace["input_events"]:
         machine.apply(event)
+    machine.seal()
 
     failures = []
 
@@ -614,8 +679,17 @@ def run_trace(trace, spec):
     }
     if machine.dispatch_effects != dispatched:
         failures.append("dispatch side-effect keying mismatch (duplicate dispatch?)")
-    if trace.get("expected_ledger_head") is not None:
-        failures.append("expected_ledger_head set but ledger hashing lands with ADR-5")
+    # ADR-5 ledger integrity: a standing check on every trace (structural, not
+    # an opaque hardcoded hash — verify_chain recomputes the chain).
+    if "expected_ledger_length" in trace:
+        check("ledger_length", trace["expected_ledger_length"], len(machine.ledger))
+    if "expected_ledger_intact" in trace:
+        # A run that ended FAILED on corruption legitimately has a broken chain.
+        check("ledger_intact", trace["expected_ledger_intact"], machine.verify_chain())
+    if "expected_ledger_sealed" in trace:
+        check("ledger_sealed", trace["expected_ledger_sealed"], machine.ledger_seal is not None)
+    if "expected_block_code" in trace:
+        check("block_code", trace["expected_block_code"], machine.block_code)
     return failures
 
 

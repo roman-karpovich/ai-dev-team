@@ -1,15 +1,15 @@
 {
-  "trace_id": "T03-heavy-one-finder-down",
+  "trace_id": "T11-unverifiable-high-heavy",
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "One HEAVY finder fails non-retryably; sibling + B run as diagnostics. UNRESOLVED lands in candidate_dispositions (normative record), never canonical; INCOMPLETE + HOLD; coverage gap machine-derived.",
+  "notes": "A HIGH-severity candidate B can neither confirm nor refute for an operational reason (no repro environment) -> UNVERIFIABLE. In HEAVY, an UNVERIFIABLE HIGH/CRITICAL means the assurance workflow did not complete: terminal INCOMPLETE + HOLD (V2-SM-08, fail-closed). The candidate lives in candidate_dispositions, never canonical.",
   "input_events": [
     {
       "event_id": "e1",
       "event_kind": "snapshot_sealed",
       "payload": {
-        "snapshot_id": "snap-t03"
+        "snapshot_id": "snap-t11"
       },
       "at_min": 0
     },
@@ -83,7 +83,7 @@
       "event_id": "e6",
       "event_kind": "node_result",
       "payload": {
-        "envelope_hash": "h-probe-t03"
+        "envelope_hash": "h-probe"
       },
       "node_id": "probe-parity",
       "attempt": 1,
@@ -109,7 +109,7 @@
       "event_id": "e9",
       "event_kind": "node_result",
       "payload": {
-        "envelope_hash": "h-claude-t03",
+        "envelope_hash": "h-claude",
         "candidates": [
           {
             "candidate_id": "c-F1",
@@ -138,7 +138,7 @@
             "claim_class": "artifact_observation",
             "subject": "src/mod.py:42",
             "asserted_value": "literal-A",
-            "snapshot_id": "snap-t03",
+            "snapshot_id": "snap-t11",
             "relationship": "supports",
             "reread_of": "obs-1"
           }
@@ -164,13 +164,14 @@
     },
     {
       "event_id": "e12",
-      "event_kind": "node_failed",
+      "event_kind": "node_result",
       "payload": {
-        "failure_class": "policy_refusal"
+        "envelope_hash": "h-codex",
+        "candidates": []
       },
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 15
+      "at_min": 22
     },
     {
       "event_id": "e13",
@@ -178,7 +179,7 @@
       "payload": {},
       "node_id": "adjudicator-b",
       "attempt": 1,
-      "at_min": 16
+      "at_min": 23
     },
     {
       "event_id": "e14",
@@ -186,19 +187,19 @@
       "payload": {},
       "node_id": "adjudicator-b",
       "attempt": 1,
-      "at_min": 17
+      "at_min": 24
     },
     {
       "event_id": "e15",
       "event_kind": "node_result",
       "payload": {
-        "envelope_hash": "h-adj-t03",
+        "envelope_hash": "h-adj",
         "adjudications": [
           {
             "finding_id": "F1",
-            "adjudication": "UNRESOLVED",
+            "adjudication": "UNVERIFIABLE",
             "candidate_severity": {
-              "impact": "wrong_result",
+              "impact": "corruption_money_security",
               "reachability": "conditional"
             },
             "observation_claim_ids": [
@@ -207,11 +208,11 @@
             "rationale_claim_ids": [
               "cp-obs-1"
             ],
-            "reason_code": "insufficient_evidence"
+            "reason_code": "no_repro_environment"
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "e46e32c7ba56c264fca22de71c917769aa999392bc7911a7c7090cb290aa8617",
+          "input_claim_set_hash": "14780dd8062d048a43f5ab712c66a067848dae93637e7e1005478f6df97e33b0",
           "supplied_claim_ids": [
             "cp-obs-1",
             "mc-policy",
@@ -228,7 +229,7 @@
       },
       "node_id": "adjudicator-b",
       "attempt": 1,
-      "at_min": 20
+      "at_min": 30
     }
   ],
   "expected_transitions": [
@@ -266,19 +267,14 @@
   "expected_node_states": {
     "probe-parity": "COMPLETED",
     "finder-claude": "COMPLETED",
-    "finder-codex": "FAILED",
+    "finder-codex": "COMPLETED",
     "adjudicator-b": "COMPLETED"
   },
   "expected_terminal": "INCOMPLETE",
   "expected_release_recommendation": "HOLD",
-  "expected_degradations": [
-    "node_failed:finder-codex:policy_refusal"
-  ],
-  "expected_coverage_gaps": [
-    "finder-codex:no_envelope"
-  ],
+  "expected_degradations": [],
+  "expected_coverage_gaps": [],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": null,
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -288,8 +284,8 @@
   "expected_candidate_dispositions": [
     {
       "finding_id": "F1",
-      "adjudication": "UNRESOLVED",
-      "reason_code": "insufficient_evidence",
+      "adjudication": "UNVERIFIABLE",
+      "reason_code": "no_repro_environment",
       "rationale_claim_ids": [
         "cp-obs-1"
       ]

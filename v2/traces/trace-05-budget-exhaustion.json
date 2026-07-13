@@ -270,5 +270,8 @@
       "on": "node_skipped",
       "to": "SKIPPED"
     }
-  ]
+  ],
+  "expected_ledger_length": 13,
+  "expected_ledger_intact": true,
+  "expected_ledger_sealed": true
 }
