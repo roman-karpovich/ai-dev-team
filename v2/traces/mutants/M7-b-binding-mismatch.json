@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): B considered != supplied -> envelope failure (ADR-2 1.5)",
+  "notes": "MUTANT (must be rejected): B considered != supplied -> envelope failure",
   "input_events": [
     {
       "event_id": "e1",
@@ -112,7 +112,16 @@
         "envelope_hash": "h-claude-t02",
         "candidates": [
           {
-            "candidate_id": "c-F1"
+            "candidate_id": "c-F1",
+            "claims": [
+              {
+                "claim_id": "obs-1",
+                "claim_class": "artifact_observation",
+                "subject": "src/mod.py:42",
+                "asserted_value": "literal-A",
+                "reread_verified": true
+              }
+            ]
           }
         ]
       },
@@ -167,11 +176,7 @@
       "event_kind": "node_result",
       "payload": {
         "envelope_hash": "h-codex-t02",
-        "candidates": [
-          {
-            "candidate_id": "c-F1b"
-          }
-        ]
+        "candidates": []
       },
       "node_id": "finder-codex",
       "attempt": 2,
@@ -204,21 +209,23 @@
             "adjudication": "CONFIRMED",
             "candidate_severity": {
               "impact": "wrong_result",
-              "reachability": "conditional",
-              "level": "MEDIUM"
-            }
+              "reachability": "conditional"
+            },
+            "observation_claim_ids": [
+              "obs-1"
+            ]
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "h-b-t02",
+          "input_claim_set_hash": "b5296c092ef2cf45de2cac35302c173d3afeda4671024345ca302ecba10188ef",
           "supplied_claim_ids": [
-            "c1",
-            "c2",
-            "c3"
+            "mc-policy",
+            "mc-snapshot",
+            "obs-1"
           ],
           "considered_claim_ids": [
-            "c1",
-            "c2"
+            "mc-policy",
+            "mc-snapshot"
           ]
         }
       },
@@ -280,5 +287,7 @@
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ]
+  ],
+  "expected_candidate_dispositions": [],
+  "expect_failure_containing": "considered != supplied"
 }

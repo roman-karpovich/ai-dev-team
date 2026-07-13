@@ -3,14 +3,17 @@
 
 Replays a trace fixture's input events through a reference implementation of
 the ADR-1 run/node state machine (tables loaded as data from
-v2/spec/transitions.json) and asserts the trace's expectations. No provider
-calls, no side effects, stdlib only.
+v2/spec/transitions.json) plus the ADR-2 evidence layer (claim registry,
+control-plane-computed B input binding, machine-derived severity level,
+REJECTED exclusivity coercion). No provider calls, no side effects, stdlib
+only.
 
 Usage:
   python3 v2/tools/trace_runner.py [--spec PATH] TRACE.json [...]
   python3 v2/tools/trace_runner.py --expect-fail MUTANT.json [...]
 
-Exit 0 iff every trace passes (or, with --expect-fail, every trace fails).
+Exit 0 iff every trace passes (or, with --expect-fail, every mutant fails —
+matching its `expect_failure_containing` when present).
 """
 
 import argparse
@@ -25,11 +28,18 @@ DEFAULT_SPEC = REPO_ROOT / "v2" / "spec" / "transitions.json"
 GATING = ("CONFIRMED", "UNRESOLVED", "UNVERIFIABLE")
 
 
+def canonical(obj):
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"))
+
+
+def sha(text):
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 def body_hash(kind, node_id, attempt, payload):
-    body = {"event_kind": kind, "node_id": node_id, "attempt": attempt, "payload": payload}
-    return hashlib.sha256(
-        json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    return sha(canonical(
+        {"event_kind": kind, "node_id": node_id, "attempt": attempt, "payload": payload}
+    ))
 
 
 class TraceError(Exception):
@@ -75,14 +85,16 @@ class Machine:
         self.deadlines = {}
         self.clock = 0
         self.nodes = {}
+        self.claims = {}  # claim_id -> claim record (registry, ADR-2)
         self.adjudications = []
-        self.finder_candidates = 0
+        self.candidate_dispositions = []
         self.canonical_finding_ids = []
         self.degradations = []
         self.transitions = []
         self.node_transitions = []
-        self.seen = {}  # (kind, event_id) -> body hash
-        self.dispatch_effects = set()  # (node_id, attempt): at-most-once side effects
+        self.side_effect_kinds = set()
+        self.seen = {}
+        self.dispatch_effects = set()
         self.dispatch_at = {}
         self.run_rows = spec["run_transitions"]
         self.attempt_rows = spec["attempt_transitions"]
@@ -97,13 +109,28 @@ class Machine:
     def record(self, on, src, dst):
         self.transitions.append({"on": on, "from": src, "to": dst})
 
-    def retry_allowed(self, node):
-        # G_RETRY_PERMITTED, wall-budget half checked at schedule time.
-        return (
-            node.last_failure_class in self.retry_classes
-            and node.latest < node.max_attempts
-            and self.retry_reserve > 0
+    def record_node(self, node, attempt, on, dst):
+        self.node_transitions.append(
+            {"node_id": node.node_id, "attempt": attempt, "on": on, "to": dst}
         )
+
+    def retry_fully_permitted(self, node):
+        """Complete N7 predicate — used by BOTH the schedule guard and the
+        settled derivation (a FAILED node with no permissible retry is settled)."""
+        if node.last_failure_class not in self.retry_classes:
+            return False
+        if node.latest >= node.max_attempts or self.retry_reserve < 1:
+            return False
+        if self.wall_clock_min is None:
+            return False
+        pending_base = sum(
+            self.deadlines[n.kind]
+            for n in self.nodes.values()
+            if n.required
+            and n.node_id != node.node_id
+            and n.status in ("PENDING", "SCHEDULED", "DISPATCHED")
+        )
+        return self.wall_clock_min - self.clock >= self.deadlines[node.kind] + pending_base
 
     def node_settled(self, node):
         if node.skipped:
@@ -111,12 +138,10 @@ class Machine:
         if node.status in ("PENDING", "SCHEDULED", "DISPATCHED"):
             return False
         if node.status == "FAILED":
-            return not self.retry_allowed(node)
+            return not self.retry_fully_permitted(node)
         return node.status in self.settled_states
 
     def advance_ok_nonadj(self):
-        # G_EXEC_SETTLED: started attempts must settle; required nodes must
-        # settle or be skipped under cutoff; optional may stay PENDING.
         for n in self.nodes.values():
             if n.kind == "adjudicator":
                 continue
@@ -144,8 +169,27 @@ class Machine:
         return True
 
     def skip(self, node):
+        # N9: machine-generated PENDING -> SKIPPED under cutoff (journaled).
         node.skipped = True
+        self.record_node(node, 0, "node_skipped", "SKIPPED")
         self.degradations.append(f"node_skipped:{node.node_id}:budget_cutoff")
+
+    # -- ADR-2 evidence layer (control-plane side) --------------------------
+
+    def register_claims(self, claim_list, producer):
+        for c in claim_list:
+            cid = c["claim_id"]
+            if cid in self.claims:
+                raise TraceError(f"duplicate claim_id {cid}")
+            # A finder-proposed artifact_observation becomes machine-produced
+            # only when the control-plane re-read verified it (ADR-2 1.2).
+            actual = "CONTROL_PLANE" if c.get("reread_verified") else producer
+            self.claims[cid] = {**c, "producer": actual}
+
+    def b_input(self):
+        supplied = sorted(self.claims)
+        payload = canonical([self.claims[c] for c in supplied])
+        return supplied, sha(payload)
 
     # -- event application -----------------------------------------------
 
@@ -154,22 +198,24 @@ class Machine:
             raise TraceError(f"event {event['event_id']} after terminal state")
         eid, kind = event["event_id"], event["event_kind"]
         payload = event.get("payload", {})
-        at = event.get("at_min")
-        if at is not None:
-            if at < self.clock:
-                raise TraceError(f"non-monotonic at_min on {eid}")
-            self.clock = at
+        # Identity/idempotency FIRST: an exact duplicate is a total no-op —
+        # it must not advance even the virtual clock (ADR-1 I3).
         h = body_hash(kind, event.get("node_id"), event.get("attempt"), payload)
         ident = (kind, eid)
         if ident in self.seen:
             if self.seen[ident] == h:
-                return  # idempotent duplicate: no-op, no side effect (I3)
-            self.corrupted = True  # conflicting body for known identity (R11)
+                return
+            self.corrupted = True
             self.record("corruption_detected", self.phase, "FAILED")
             self.terminal = "FAILED"
             self.finalize_release()
             return
         self.seen[ident] = h
+        at = event.get("at_min")
+        if at is not None:
+            if at < self.clock:
+                raise TraceError(f"non-monotonic at_min on {eid}")
+            self.clock = at
 
         if kind == "corruption_detected":
             self.corrupted = True
@@ -180,7 +226,13 @@ class Machine:
         if kind == "cancel_requested":
             self.cancelling = True
         elif kind == "budget_exhausted":
-            self.cutoff = True  # ADR-1 section 1.5a durable cutoff flag
+            if (
+                payload["dimension"] == "wall_clock"
+                and self.wall_clock_min is not None
+                and self.clock < self.wall_clock_min
+            ):
+                raise TraceError("premature wall_clock exhaustion")
+            self.cutoff = True  # ADR-1 1.5a durable cutoff flag (R9b)
             self.degradations.append("budget_exhausted:" + payload["dimension"])
         elif kind == "cancel_finalized":
             if not self.cancelling:
@@ -204,8 +256,19 @@ class Machine:
         )
         if row is None:
             raise TraceError(f"invalid event {kind} in phase {self.phase}")
+        if kind == "snapshot_sealed":
+            self.register_claims(
+                [{"claim_id": "mc-snapshot", "claim_class": "snapshot_binding",
+                  "subject": "run", "asserted_value": payload["snapshot_id"]}],
+                "CONTROL_PLANE",
+            )
         if kind == "plan_resolved":
             self.load_plan(payload)
+            self.register_claims(
+                [{"claim_id": "mc-policy", "claim_class": "policy_resolution",
+                  "subject": "run", "asserted_value": payload["policy_version"]}],
+                "CONTROL_PLANE",
+            )
         dst = row["to"]
         self.record(eid, self.phase, dst)
         if dst in self.spec["terminals"]:
@@ -231,21 +294,21 @@ class Machine:
         if self.phase not in self.spec["node_event_phase_domain"][node.kind]:
             raise TraceError(f"{node.kind} event in phase {self.phase} ({node.node_id})")
         attempt = event["attempt"]
-        state = node.attempts.get(attempt)
+        from_state = (
+            node.attempts.get(node.latest) if kind == "node_scheduled" and node.attempts
+            else node.attempts.get(attempt)
+        ) if kind == "node_scheduled" else node.attempts.get(attempt)
         row = next(
             (
                 r
                 for r in self.attempt_rows
-                if r["event"] == kind and (node.attempts.get(node.latest) if node.attempts else None) in r["from"]
+                if r["event"] == kind and from_state in r["from"]
             ),
-            None,
-        ) if kind == "node_scheduled" else next(
-            (r for r in self.attempt_rows if r["event"] == kind and state in r["from"]),
             None,
         )
         if row is None:
             raise TraceError(
-                f"invalid {kind} for {node.node_id} attempt {attempt} in state {state}"
+                f"invalid {kind} for {node.node_id} attempt {attempt} in state {from_state}"
             )
         self.check_guards(row["guards"], node, attempt, kind, payload)
 
@@ -258,6 +321,7 @@ class Machine:
             key = (node.node_id, attempt)
             if key not in self.dispatch_effects:
                 self.dispatch_effects.add(key)  # at-most-once (I3)
+                self.side_effect_kinds.add("provider_dispatch")
             self.dispatch_at[key] = self.clock
         if kind == "node_failed":
             node.last_failure_class = payload["failure_class"]
@@ -265,6 +329,7 @@ class Machine:
                 f"node_failed:{node.node_id}:{payload['failure_class']}"
             )
         if kind == "node_reconciled":
+            # N8: proven non-acceptance -> FAILED(transport_5xx), N7-eligible.
             node.last_failure_class = "transport_5xx"
             self.degradations.append(f"node_reconciled:{node.node_id}:transport_5xx")
         if kind == "node_cancelled":
@@ -276,6 +341,7 @@ class Machine:
         if kind == "node_result":
             self.consume_result(node, payload)
         node.attempts[attempt] = row["to"]
+        self.record_node(node, attempt, kind, row["to"])
 
     def check_guards(self, guards, node, attempt, kind, payload):
         for g in guards:
@@ -285,55 +351,84 @@ class Machine:
             elif g == "G_ATTEMPT_MONOTONIC":
                 pass  # checked in apply_node_event
             elif g == "G_RETRY_PERMITTED":
-                if not self.retry_allowed(node):
+                if not self.retry_fully_permitted(node):
                     raise TraceError(f"retry not permitted on {node.node_id}")
-                if self.wall_clock_min is None:
-                    raise TraceError("retry before plan_resolved")
-                pending_base = sum(
-                    self.deadlines[n.kind]
-                    for n in self.nodes.values()
-                    if n.required
-                    and n.node_id != node.node_id
-                    and n.status in ("PENDING", "SCHEDULED", "DISPATCHED")
-                )
-                remaining = self.wall_clock_min - self.clock
-                if remaining < self.deadlines[node.kind] + pending_base:
-                    raise TraceError(
-                        f"retry on {node.node_id} would consume required base budget"
-                    )
             elif g == "G_WITHIN_DEADLINE":
                 start = self.dispatch_at.get((node.node_id, attempt))
                 if start is not None and self.clock - start > self.deadlines[node.kind]:
                     raise TraceError(
-                        f"{node.node_id} attempt {attempt} exceeded deadline without timeout"
+                        f"{node.node_id} attempt {attempt} result past deadline"
                     )
             elif g == "G_PROVEN_NON_ACCEPTANCE":
                 if not payload.get("proven_non_acceptance"):
                     raise TraceError(f"node_reconciled without proof on {node.node_id}")
 
     def consume_result(self, node, payload):
+        if node.kind == "probe":
+            return
         if node.kind == "finder":
-            self.finder_candidates += len(payload.get("candidates", []))
-            return  # evidence pipeline separation: candidates never reach decision
-        if node.kind == "adjudicator":
-            binding = payload.get("b_binding")
-            if binding is None:
-                raise TraceError(f"adjudicator {node.node_id} result without b_binding")
-            if sorted(binding["considered_claim_ids"]) != sorted(
-                binding["supplied_claim_ids"]
+            for cand in payload.get("candidates", []):
+                self.register_claims(cand.get("claims", []), "MODEL_CONTEXT")
+            return
+        # adjudicator: verify B binding against control-plane-computed input.
+        binding = payload.get("b_binding")
+        if binding is None:
+            raise TraceError(f"adjudicator {node.node_id} result without b_binding")
+        supplied, input_hash = self.b_input()
+        if sorted(binding["supplied_claim_ids"]) != supplied:
+            raise TraceError("b_binding supplied_claim_ids != control-plane claim set")
+        if binding["input_claim_set_hash"] != input_hash:
+            raise TraceError("b_binding input_claim_set_hash mismatch")
+        if sorted(binding["considered_claim_ids"]) != supplied:
+            raise TraceError("b_binding considered != supplied (envelope failure)")
+        for adj in payload.get("adjudications", []):
+            sev = adj["candidate_severity"]
+            if "level" in sev:
+                raise TraceError("model-supplied severity level (E7)")
+            for cid in adj.get("observation_claim_ids", []):
+                if cid not in self.claims:
+                    raise TraceError(f"adjudication cites unknown claim {cid}")
+            verdict = adj["adjudication"]
+            if verdict == "REJECTED":
+                verdict = self.check_rejection(adj)
+            if verdict == "CONFIRMED" and not any(
+                self.claims[o]["producer"] == "CONTROL_PLANE"
+                for o in adj.get("observation_claim_ids", [])
             ):
-                raise TraceError("b_binding considered != supplied (envelope failure)")
-            for adj in payload.get("adjudications", []):
-                sev = adj["candidate_severity"]
-                expected_level = self.ladder[sev["impact"]][sev["reachability"]]
-                if sev["level"] != expected_level:
-                    raise TraceError(
-                        f"severity level {sev['level']} != ladder({sev['impact']},"
-                        f"{sev['reachability']})={expected_level} (E7)"
-                    )
-                self.adjudications.append(adj)
-                if adj["adjudication"] == "CONFIRMED":
-                    self.canonical_finding_ids.append(adj["finding_id"])
+                raise TraceError(
+                    f"CONFIRMED {adj['finding_id']} without machine observation (E3)"
+                )
+            entry = {
+                "finding_id": adj["finding_id"],
+                "adjudication": verdict,
+                "level": self.ladder[sev["impact"]][sev["reachability"]],
+            }
+            self.adjudications.append(entry)
+            if verdict == "CONFIRMED":
+                self.canonical_finding_ids.append(adj["finding_id"])
+            else:
+                self.candidate_dispositions.append(f"{adj['finding_id']}:{verdict}")
+
+    def check_rejection(self, adj):
+        """ADR-2 1.5: REJECTED needs a machine-verified exclusive contradiction;
+        otherwise the verdict is coerced to UNRESOLVED (journaled)."""
+        cid = adj.get("contradiction_claim_id")
+        contradiction = self.claims.get(cid) if cid else None
+        ok = (
+            contradiction is not None
+            and contradiction["claim_class"] in ("artifact_observation", "command_execution")
+            and contradiction["producer"] == "CONTROL_PLANE"
+            and any(
+                self.claims[o]["subject"] == contradiction["subject"]
+                and self.claims[o]["asserted_value"] != contradiction["asserted_value"]
+                for o in adj.get("observation_claim_ids", [])
+                if o in self.claims
+            )
+        )
+        if ok:
+            return "REJECTED"
+        self.degradations.append(f"verdict_coerced:{adj['finding_id']}:UNRESOLVED")
+        return "UNRESOLVED"
 
     # -- derived transitions (machine-owned) -------------------------------
 
@@ -352,7 +447,6 @@ class Machine:
             self.finalize_release()
 
     def terminal_decision(self):
-        # ADR-1 section 1.5, ordered. Only adjudicator output feeds rules 5-6.
         if self.corrupted:
             return "FAILED"
         if self.cancelling:
@@ -360,8 +454,7 @@ class Machine:
         if any(n.required and n.status != "COMPLETED" for n in self.nodes.values()):
             return "INCOMPLETE"
         if self.profile == "HEAVY" and any(
-            a["adjudication"] == "UNVERIFIABLE"
-            and a["candidate_severity"]["level"] in ("HIGH", "CRITICAL")
+            a["adjudication"] == "UNVERIFIABLE" and a["level"] in ("HIGH", "CRITICAL")
             for a in self.adjudications
         ):
             return "INCOMPLETE"  # V2-SM-08
@@ -372,14 +465,13 @@ class Machine:
             self.release_recommendation = "REPORT_ONLY"
         elif self.profile == "HEAVY":
             gating = any(
-                a["candidate_severity"]["level"] in ("HIGH", "CRITICAL")
-                and a["adjudication"] in GATING
+                a["level"] in ("HIGH", "CRITICAL") and a["adjudication"] in GATING
                 for a in self.adjudications
             )
             ok = self.terminal == "COMPLETED" and not gating
             self.release_recommendation = "PROCEED" if ok else "HOLD"
         else:
-            self.release_recommendation = "HOLD"  # terminal before plan_resolved
+            self.release_recommendation = "HOLD"
 
     def coverage_gaps(self):
         gaps = []
@@ -429,21 +521,35 @@ def run_trace(trace, spec):
             sorted(trace["expected_canonical_finding_ids"]),
             sorted(machine.canonical_finding_ids),
         )
-    # Side effects: the runner performs none; dispatches are modelled and keyed
-    # at-most-once per (node_id, attempt). Assert model consistency.
+    if "expected_candidate_dispositions" in trace:
+        check(
+            "candidate_dispositions",
+            sorted(trace["expected_candidate_dispositions"]),
+            sorted(machine.candidate_dispositions),
+        )
+    if "expected_attempt_transitions" in trace:
+        check(
+            "attempt_transitions",
+            trace["expected_attempt_transitions"],
+            machine.node_transitions,
+        )
+    forbidden = set(trace.get("forbidden_side_effects", []))
+    if "forbidden_side_effects" not in trace:
+        failures.append("forbidden_side_effects[] missing from fixture")
+    elif machine.side_effect_kinds & forbidden:
+        failures.append(
+            f"forbidden side effects occurred: {sorted(machine.side_effect_kinds & forbidden)}"
+        )
     dispatched = {
         (n.node_id, a)
         for n in machine.nodes.values()
-        for a, st in n.attempts.items()
-        if st in ("DISPATCHED", "COMPLETED", "FAILED", "ABANDONED")
-        or (st == "CANCELLED" and (n.node_id, a) in machine.dispatch_at)
+        for a in n.attempts
+        if (n.node_id, a) in machine.dispatch_at
     }
     if machine.dispatch_effects != dispatched:
         failures.append("dispatch side-effect keying mismatch (duplicate dispatch?)")
     if trace.get("expected_ledger_head") is not None:
         failures.append("expected_ledger_head set but ledger hashing lands with ADR-5")
-    if "forbidden_side_effects" not in trace:
-        failures.append("forbidden_side_effects[] missing from fixture")
     return failures
 
 
@@ -453,7 +559,7 @@ def main():
     parser.add_argument(
         "--expect-fail",
         action="store_true",
-        help="invert: every given trace must FAIL (mutant conformance)",
+        help="invert: every given trace must FAIL, matching its expect_failure_containing",
     )
     parser.add_argument("traces", nargs="+", type=Path)
     args = parser.parse_args()
@@ -468,11 +574,15 @@ def main():
             failures = [f"TraceError: {exc}"]
         name = trace.get("trace_id", path.name)
         if args.expect_fail:
-            if failures:
-                print(f"PASS (rejected as expected) {name}: {failures[0]}")
-            else:
+            want = trace.get("expect_failure_containing")
+            if not failures:
                 bad += 1
                 print(f"FAIL (mutant accepted!) {name}")
+            elif want and not any(want in f for f in failures):
+                bad += 1
+                print(f"FAIL (wrong rejection) {name}: wanted {want!r}, got {failures[0]!r}")
+            else:
+                print(f"PASS (rejected as expected) {name}: {failures[0]}")
         elif failures:
             bad += 1
             print(f"FAIL {name}")

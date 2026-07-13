@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): retry after non-retryable policy_refusal while still EXECUTING -> N7 guard",
+  "notes": "MUTANT (must be rejected): retry after non-retryable policy_refusal (N7)",
   "input_events": [
     {
       "event_id": "e1",
@@ -146,7 +146,16 @@
         "envelope_hash": "h-claude-t03",
         "candidates": [
           {
-            "candidate_id": "c-F1"
+            "candidate_id": "c-F1",
+            "claims": [
+              {
+                "claim_id": "obs-1",
+                "claim_class": "artifact_observation",
+                "subject": "src/mod.py:42",
+                "asserted_value": "literal-A",
+                "reread_verified": true
+              }
+            ]
           }
         ]
       },
@@ -181,18 +190,24 @@
             "adjudication": "UNRESOLVED",
             "candidate_severity": {
               "impact": "wrong_result",
-              "reachability": "conditional",
-              "level": "MEDIUM"
-            }
+              "reachability": "conditional"
+            },
+            "observation_claim_ids": [
+              "obs-1"
+            ]
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "h-b-t03",
+          "input_claim_set_hash": "5dc288b946876a8d74ab2e2122e35ad621cda02dbe8c6a407c012150bac0bddd",
           "supplied_claim_ids": [
-            "c1"
+            "mc-policy",
+            "mc-snapshot",
+            "obs-1"
           ],
           "considered_claim_ids": [
-            "c1"
+            "mc-policy",
+            "mc-snapshot",
+            "obs-1"
           ]
         }
       },
@@ -254,5 +269,9 @@
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ]
+  ],
+  "expected_candidate_dispositions": [
+    "F1:UNRESOLVED"
+  ],
+  "expect_failure_containing": "retry not permitted"
 }

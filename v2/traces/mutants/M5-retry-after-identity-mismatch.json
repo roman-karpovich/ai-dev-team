@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): direct N7 violation: retry after model_identity_mismatch",
+  "notes": "MUTANT (must be rejected): direct N7 violation after model_identity_mismatch",
   "input_events": [
     {
       "event_id": "e1",
@@ -225,5 +225,7 @@
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ]
+  ],
+  "expected_candidate_dispositions": [],
+  "expect_failure_containing": "retry not permitted"
 }
