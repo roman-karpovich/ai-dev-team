@@ -202,12 +202,15 @@
   "expected_degradations": [],
   "expected_coverage_gaps": [],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": null,
   "forbidden_side_effects": [
     "network",
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
   ],
-  "expected_candidate_dispositions": []
+  "expected_candidate_dispositions": [],
+  "expected_ledger_sealed": true,
+  "expected_ledger_intact": true,
+  "expected_ledger_length": 13,
+  "expected_ledger_head": "f4d43ec29e5996b85c8d340efadf2f5fe1cf3186a6bb652926508194be9cdc97"
 }

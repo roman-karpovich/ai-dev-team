@@ -1,15 +1,15 @@
 {
-  "trace_id": "M5-retry-after-identity-mismatch",
+  "trace_id": "M18-shared-deps-must-propagate",
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): Both HEAVY finders fail non-retryably (identity mismatch is NEVER silently substituted); B cancelled for lack of input; INCOMPLETE + HOLD; machine-derived coverage gaps for every required node without a COMPLETED envelope.",
+  "notes": "MUTANT (must be rejected): asserts empty shared_dependencies for obs-1, but the finder receipt supplied a non-empty list that must propagate into the claim trust_domain.",
   "input_events": [
     {
       "event_id": "e1",
       "event_kind": "snapshot_sealed",
       "payload": {
-        "snapshot_id": "snap-t04"
+        "snapshot_id": "snap-t02"
       },
       "at_min": 0
     },
@@ -83,7 +83,7 @@
       "event_id": "e6",
       "event_kind": "node_result",
       "payload": {
-        "envelope_hash": "h-probe-t04"
+        "envelope_hash": "h-probe-t02"
       },
       "node_id": "probe-parity",
       "attempt": 1,
@@ -107,21 +107,55 @@
     },
     {
       "event_id": "e9",
-      "event_kind": "node_failed",
+      "event_kind": "node_result",
       "payload": {
-        "failure_class": "model_identity_mismatch"
+        "envelope_hash": "h-claude-t02",
+        "candidates": [
+          {
+            "candidate_id": "c-F1",
+            "claims": [
+              {
+                "claim_id": "obs-1",
+                "claim_class": "artifact_observation",
+                "subject": "src/mod.py:42",
+                "asserted_value": "literal-A"
+              }
+            ]
+          }
+        ],
+        "receipt": {
+          "shared_dependencies": [
+            "tokenizer:cl100k",
+            "runtime:sandbox-exec"
+          ]
+        }
       },
       "node_id": "finder-claude",
       "attempt": 1,
-      "at_min": 6
+      "at_min": 12
     },
     {
-      "event_id": "eY",
-      "event_kind": "node_scheduled",
-      "node_id": "finder-claude",
-      "attempt": 2,
-      "payload": {},
-      "at_min": 6
+      "event_id": "e9r",
+      "event_kind": "claims_reread",
+      "payload": {
+        "claims": [
+          {
+            "claim_id": "cp-obs-1",
+            "claim_class": "artifact_observation",
+            "subject": "src/mod.py:42",
+            "asserted_value": "literal-A",
+            "snapshot_id": "snap-t02",
+            "relationship": "supports",
+            "reread_of": "obs-1"
+          }
+        ],
+        "receipt": {
+          "shared_dependencies": [
+            "control-plane:reread-lib"
+          ]
+        }
+      },
+      "at_min": 13
     },
     {
       "event_id": "e10",
@@ -129,7 +163,7 @@
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 6
+      "at_min": 13
     },
     {
       "event_id": "e11",
@@ -137,35 +171,101 @@
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 7
+      "at_min": 14
     },
     {
       "event_id": "e12",
       "event_kind": "node_failed",
       "payload": {
-        "failure_class": "policy_refusal"
+        "failure_class": "transport_5xx"
       },
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 9
+      "at_min": 15
     },
     {
       "event_id": "e13",
       "event_kind": "node_scheduled",
       "payload": {},
-      "node_id": "adjudicator-b",
-      "attempt": 1,
-      "at_min": 10
+      "node_id": "finder-codex",
+      "attempt": 2,
+      "at_min": 16
     },
     {
       "event_id": "e14",
-      "event_kind": "node_cancelled",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "finder-codex",
+      "attempt": 2,
+      "at_min": 17
+    },
+    {
+      "event_id": "e15",
+      "event_kind": "node_result",
       "payload": {
-        "reason": "no_input"
+        "envelope_hash": "h-codex-t02",
+        "candidates": []
+      },
+      "node_id": "finder-codex",
+      "attempt": 2,
+      "at_min": 25
+    },
+    {
+      "event_id": "e16",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "adjudicator-b",
+      "attempt": 1,
+      "at_min": 26
+    },
+    {
+      "event_id": "e17",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "adjudicator-b",
+      "attempt": 1,
+      "at_min": 27
+    },
+    {
+      "event_id": "e18",
+      "event_kind": "node_result",
+      "payload": {
+        "envelope_hash": "h-adj-t02",
+        "adjudications": [
+          {
+            "finding_id": "F1",
+            "adjudication": "CONFIRMED",
+            "candidate_severity": {
+              "impact": "wrong_result",
+              "reachability": "conditional"
+            },
+            "observation_claim_ids": [
+              "cp-obs-1"
+            ],
+            "rationale_claim_ids": [
+              "cp-obs-1"
+            ]
+          }
+        ],
+        "b_binding": {
+          "input_claim_set_hash": "0b80a33513281b5ddea873bc4c25b118025f70e59564433d6773fbacb3f5d9f3",
+          "supplied_claim_ids": [
+            "cp-obs-1",
+            "mc-policy",
+            "mc-snapshot",
+            "obs-1"
+          ],
+          "considered_claim_ids": [
+            "cp-obs-1",
+            "mc-policy",
+            "mc-snapshot",
+            "obs-1"
+          ]
+        }
       },
       "node_id": "adjudicator-b",
       "attempt": 1,
-      "at_min": 10
+      "at_min": 30
     }
   ],
   "expected_transitions": [
@@ -197,28 +297,24 @@
     {
       "on": "derived:adjudication_settled",
       "from": "ADJUDICATING",
-      "to": "INCOMPLETE"
+      "to": "COMPLETED"
     }
   ],
   "expected_node_states": {
     "probe-parity": "COMPLETED",
-    "finder-claude": "FAILED",
-    "finder-codex": "FAILED",
-    "adjudicator-b": "CANCELLED"
+    "finder-claude": "COMPLETED",
+    "finder-codex": "COMPLETED",
+    "adjudicator-b": "COMPLETED"
   },
-  "expected_terminal": "INCOMPLETE",
-  "expected_release_recommendation": "HOLD",
+  "expected_terminal": "COMPLETED",
+  "expected_release_recommendation": "PROCEED",
   "expected_degradations": [
-    "node_failed:finder-claude:model_identity_mismatch",
-    "node_failed:finder-codex:policy_refusal",
-    "node_cancelled:adjudicator-b:no_input"
+    "node_failed:finder-codex:transport_5xx"
   ],
-  "expected_coverage_gaps": [
-    "finder-claude:no_envelope",
-    "finder-codex:no_envelope",
-    "adjudicator-b:no_adjudication"
+  "expected_coverage_gaps": [],
+  "expected_canonical_finding_ids": [
+    "F1"
   ],
-  "expected_canonical_finding_ids": [],
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -226,7 +322,10 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_claim_shared_deps": {
+    "obs-1": []
+  },
   "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expect_failure_containing": "retry not permitted"
+  "expect_failure_containing": "claim_shared_deps[obs-1]"
 }

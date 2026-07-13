@@ -3,7 +3,7 @@
   "profile": "LIGHT",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): same (kind,event_id), different body -> corruption -> FAILED",
+  "notes": "MUTANT (must be rejected): Happy path LIGHT with an exact duplicate of e9 (idempotent replay = total no-op incl. virtual clock; ADR-1 I3). B binding computed by the control plane over machine claims.",
   "input_events": [
     {
       "event_id": "e1",
@@ -114,17 +114,6 @@
       "event_id": "e9",
       "event_kind": "node_result",
       "payload": {
-        "envelope_hash": "h-finder-t01",
-        "candidates": []
-      },
-      "node_id": "finder-claude",
-      "attempt": 1,
-      "at_min": 10
-    },
-    {
-      "event_id": "e9",
-      "event_kind": "node_result",
-      "payload": {
         "envelope_hash": "tampered",
         "candidates": []
       },
@@ -175,7 +164,6 @@
   "expected_degradations": [],
   "expected_coverage_gaps": [],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": null,
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -183,5 +171,7 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_ledger_sealed": true,
+  "expected_ledger_intact": true,
   "expect_failure_containing": "got 'FAILED'"
 }

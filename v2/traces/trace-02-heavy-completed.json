@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "Happy path HEAVY: retryable finder failure (N7 under wall-budget guard); finder PROPOSES obs-1, the control-plane re-read receipt (claims_reread) produces cp-obs-1, CONFIRMED cites the machine observation (E3); hash recomputed by control plane; level ladder-derived (MEDIUM) so release=PROCEED. Batch-1 limitation (declared): claim records enforce {claim_id, claim_class, subject, asserted_value} + snapshot/relationship/reread_of for cp- claims; trust-domain instances, created_at_seq and content-addressed artifact_refs become enforceable with the ledger (ADR-5, batch 2).",
+  "notes": "Happy path HEAVY: retryable finder failure (N7 under wall-budget guard); finder PROPOSES obs-1, the control-plane re-read receipt (claims_reread) produces cp-obs-1, CONFIRMED cites the machine observation (E3); level ladder-derived (MEDIUM) so release=PROCEED. The full ADR-5 claim-record lift (created_at_seq, artifact_refs subseteq record, pinned snapshot_id, execution_manifest_id, receipt-owned trust_domain) is enforced at registration; B adjudicates on the stable semantic projection so the lift does not perturb the binding hash.",
   "input_events": [
     {
       "event_id": "e1",
@@ -122,7 +122,13 @@
               }
             ]
           }
-        ]
+        ],
+        "receipt": {
+          "shared_dependencies": [
+            "tokenizer:cl100k",
+            "runtime:sandbox-exec"
+          ]
+        }
       },
       "node_id": "finder-claude",
       "attempt": 1,
@@ -142,7 +148,12 @@
             "relationship": "supports",
             "reread_of": "obs-1"
           }
-        ]
+        ],
+        "receipt": {
+          "shared_dependencies": [
+            "control-plane:reread-lib"
+          ]
+        }
       },
       "at_min": 13
     },
@@ -237,7 +248,7 @@
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "35acd534910702ad0153c3e23d5ddbb23e193619e53d6fb7169683ce72d8baef",
+          "input_claim_set_hash": "0b80a33513281b5ddea873bc4c25b118025f70e59564433d6773fbacb3f5d9f3",
           "supplied_claim_ids": [
             "cp-obs-1",
             "mc-policy",
@@ -304,12 +315,24 @@
   "expected_canonical_finding_ids": [
     "F1"
   ],
-  "expected_ledger_head": null,
   "forbidden_side_effects": [
     "network",
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
   ],
-  "expected_candidate_dispositions": []
+  "expected_candidate_dispositions": [],
+  "expected_claim_shared_deps": {
+    "obs-1": [
+      "tokenizer:cl100k",
+      "runtime:sandbox-exec"
+    ],
+    "cp-obs-1": [
+      "control-plane:reread-lib"
+    ]
+  },
+  "expected_ledger_sealed": true,
+  "expected_ledger_intact": true,
+  "expected_ledger_length": 20,
+  "expected_ledger_head": "6bba3adabebec1b51dff9d99ede415a38bb6d1203ed6c1801011e094aec09293"
 }

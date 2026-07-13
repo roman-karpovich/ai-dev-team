@@ -1,15 +1,15 @@
 {
-  "trace_id": "M1-wrong-terminal",
+  "trace_id": "T07-cancel-plus-late-result",
   "profile": "LIGHT",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): Happy path LIGHT with an exact duplicate of e9 (idempotent replay = total no-op incl. virtual clock; ADR-1 I3). B binding computed by the control plane over machine claims.",
+  "notes": "Operator cancel while finder-claude is in flight; its result wins the race and is journaled COMPLETED, but the run still terminates CANCELLED (cancel intent wins). The adjudicator never started. A late result arriving AFTER the terminal seal is journaled inadmissible (late_result_rejected), never accepted. (The lone finder settling advances the run to ADJUDICATING; the adjudicator never started, and cancel_finalized then terminates CANCELLED from there.)",
   "input_events": [
     {
       "event_id": "e1",
       "event_kind": "snapshot_sealed",
       "payload": {
-        "snapshot_id": "snap-t01"
+        "snapshot_id": "snap-t07"
       },
       "at_min": 0
     },
@@ -29,12 +29,6 @@
           }
         },
         "nodes": [
-          {
-            "node_id": "probe-smoke",
-            "kind": "probe",
-            "required": false,
-            "max_attempts": 1
-          },
           {
             "node_id": "finder-claude",
             "kind": "finder",
@@ -61,7 +55,7 @@
       "event_id": "e4",
       "event_kind": "node_scheduled",
       "payload": {},
-      "node_id": "probe-smoke",
+      "node_id": "finder-claude",
       "attempt": 1,
       "at_min": 0
     },
@@ -69,95 +63,41 @@
       "event_id": "e5",
       "event_kind": "node_dispatched",
       "payload": {},
-      "node_id": "probe-smoke",
+      "node_id": "finder-claude",
       "attempt": 1,
       "at_min": 1
     },
     {
       "event_id": "e6",
-      "event_kind": "node_result",
-      "payload": {
-        "envelope_hash": "h-probe-t01"
-      },
-      "node_id": "probe-smoke",
-      "attempt": 1,
+      "event_kind": "cancel_requested",
+      "payload": {},
       "at_min": 2
     },
     {
       "event_id": "e7",
-      "event_kind": "node_scheduled",
-      "payload": {},
-      "node_id": "finder-claude",
-      "attempt": 1,
-      "at_min": 2
-    },
-    {
-      "event_id": "e8",
-      "event_kind": "node_dispatched",
-      "payload": {},
+      "event_kind": "node_result",
+      "payload": {
+        "envelope_hash": "h-claude",
+        "candidates": []
+      },
       "node_id": "finder-claude",
       "attempt": 1,
       "at_min": 3
     },
     {
-      "event_id": "e9",
-      "event_kind": "node_result",
-      "payload": {
-        "envelope_hash": "h-finder-t01",
-        "candidates": []
-      },
-      "node_id": "finder-claude",
-      "attempt": 1,
-      "at_min": 10
+      "event_id": "e8",
+      "event_kind": "cancel_finalized",
+      "payload": {},
+      "at_min": 4
     },
     {
       "event_id": "e9",
-      "event_kind": "node_result",
+      "event_kind": "late_result_rejected",
       "payload": {
-        "envelope_hash": "h-finder-t01",
-        "candidates": []
+        "envelope_hash": "h-late"
       },
       "node_id": "finder-claude",
-      "attempt": 1,
-      "at_min": 10
-    },
-    {
-      "event_id": "e10",
-      "event_kind": "node_scheduled",
-      "payload": {},
-      "node_id": "adjudicator-b",
-      "attempt": 1,
-      "at_min": 10
-    },
-    {
-      "event_id": "e11",
-      "event_kind": "node_dispatched",
-      "payload": {},
-      "node_id": "adjudicator-b",
-      "attempt": 1,
-      "at_min": 11
-    },
-    {
-      "event_id": "e12",
-      "event_kind": "node_result",
-      "payload": {
-        "envelope_hash": "h-adj-t01",
-        "adjudications": [],
-        "b_binding": {
-          "input_claim_set_hash": "9597493356f36b0ef3fc763243f881a146cc7d0137cc9954ad824b5b3845f356",
-          "supplied_claim_ids": [
-            "mc-policy",
-            "mc-snapshot"
-          ],
-          "considered_claim_ids": [
-            "mc-policy",
-            "mc-snapshot"
-          ]
-        }
-      },
-      "node_id": "adjudicator-b",
-      "attempt": 1,
-      "at_min": 15
+      "attempt": 1
     }
   ],
   "expected_transitions": [
@@ -187,20 +127,23 @@
       "to": "ADJUDICATING"
     },
     {
-      "on": "derived:adjudication_settled",
+      "on": "e8",
       "from": "ADJUDICATING",
-      "to": "COMPLETED"
+      "to": "CANCELLED"
     }
   ],
   "expected_node_states": {
-    "probe-smoke": "COMPLETED",
     "finder-claude": "COMPLETED",
-    "adjudicator-b": "COMPLETED"
+    "adjudicator-b": "PENDING"
   },
-  "expected_terminal": "INCOMPLETE",
+  "expected_terminal": "CANCELLED",
   "expected_release_recommendation": "REPORT_ONLY",
-  "expected_degradations": [],
-  "expected_coverage_gaps": [],
+  "expected_degradations": [
+    "late_result_rejected:finder-claude:1"
+  ],
+  "expected_coverage_gaps": [
+    "adjudicator-b:no_adjudication"
+  ],
   "expected_canonical_finding_ids": [],
   "forbidden_side_effects": [
     "network",
@@ -209,7 +152,9 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_audit_length": 1,
   "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expect_failure_containing": "terminal: expected 'INCOMPLETE'"
+  "expected_ledger_length": 9,
+  "expected_ledger_head": "ad3e2c0fd06d0adb31fdc7aa59904a695e9076e3825f165a6a4edfdab35507dd"
 }
