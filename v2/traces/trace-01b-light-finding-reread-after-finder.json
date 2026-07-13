@@ -219,5 +219,5 @@
   "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
   "expected_ledger_length": 11,
-  "expected_ledger_head": "ea031d3a4b0b64cb470dad7427bed26cadf2417672501f5a6b2bdd77f720344f"
+  "expected_ledger_head": "980bc87656402f1322ce41418c8152b0d08d4f7f0b88e8b643aaa437c7068178"
 }

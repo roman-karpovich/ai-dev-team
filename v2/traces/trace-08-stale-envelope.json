@@ -236,10 +236,6 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
-  "expected_ledger_sealed": true,
-  "expected_ledger_intact": true,
-  "expected_ledger_length": 16,
-  "expected_ledger_head": "42d4e18253c256b623f1aa3bd6bafd7bde9c45ed5bae942f4c551119823a2314",
   "expected_attempt_transitions": [
     {
       "node_id": "probe-parity",
@@ -313,5 +309,9 @@
       "on": "node_failed",
       "to": "FAILED"
     }
-  ]
+  ],
+  "expected_ledger_sealed": true,
+  "expected_ledger_intact": true,
+  "expected_ledger_length": 16,
+  "expected_ledger_head": "934c186910371d2eeb1d6eb6f590e43d7d93abb67bf6a10e75fd521464a991d1"
 }
