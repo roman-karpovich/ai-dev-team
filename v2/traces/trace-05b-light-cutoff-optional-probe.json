@@ -1,0 +1,153 @@
+{
+  "trace_id": "T05b-light-cutoff-optional-probe",
+  "profile": "LIGHT",
+  "initial_state": "CREATED",
+  "policy_version": "v2-policy-1",
+  "notes": "LIGHT cutoff at the 40-min wall while the finder (dispatched at 25, 15 < 20-min deadline) is in flight: EVERY unstarted node is SKIPPED via N9 \u2014 the OPTIONAL probe too, not only required nodes (ADR-1 1.5a). LIGHT never gates: REPORT_ONLY even on INCOMPLETE.",
+  "input_events": [
+    {
+      "event_id": "e1",
+      "event_kind": "snapshot_sealed",
+      "payload": {
+        "snapshot_id": "snap-t05b"
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e2",
+      "event_kind": "plan_resolved",
+      "payload": {
+        "profile": "LIGHT",
+        "policy_version": "v2-policy-1",
+        "budget": {
+          "retry_reserve": 1,
+          "wall_clock_min": 40,
+          "deadlines": {
+            "probe": 5,
+            "finder": 20,
+            "adjudicator": 10
+          }
+        },
+        "nodes": [
+          {
+            "node_id": "probe-smoke",
+            "kind": "probe",
+            "required": false,
+            "max_attempts": 1
+          },
+          {
+            "node_id": "finder-claude",
+            "kind": "finder",
+            "required": true,
+            "max_attempts": 2
+          },
+          {
+            "node_id": "adjudicator-b",
+            "kind": "adjudicator",
+            "required": true,
+            "max_attempts": 2
+          }
+        ]
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e3",
+      "event_kind": "execution_started",
+      "payload": {},
+      "at_min": 0
+    },
+    {
+      "event_id": "e4",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "at_min": 22
+    },
+    {
+      "event_id": "e5",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "at_min": 25
+    },
+    {
+      "event_id": "e6",
+      "event_kind": "budget_exhausted",
+      "payload": {
+        "dimension": "wall_clock"
+      },
+      "at_min": 40
+    },
+    {
+      "event_id": "e7",
+      "event_kind": "node_cancelled",
+      "payload": {
+        "reason": "budget"
+      },
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "at_min": 40
+    }
+  ],
+  "expected_transitions": [
+    {
+      "on": "e1",
+      "from": "CREATED",
+      "to": "SNAPSHOT_BOUND"
+    },
+    {
+      "on": "e2",
+      "from": "SNAPSHOT_BOUND",
+      "to": "PLAN_BOUND"
+    },
+    {
+      "on": "e3",
+      "from": "PLAN_BOUND",
+      "to": "EXECUTING"
+    },
+    {
+      "on": "derived:all_required_nodes_settled",
+      "from": "EXECUTING",
+      "to": "CONSOLIDATING"
+    },
+    {
+      "on": "derived:consolidation_complete",
+      "from": "CONSOLIDATING",
+      "to": "ADJUDICATING"
+    },
+    {
+      "on": "derived:adjudication_settled",
+      "from": "ADJUDICATING",
+      "to": "INCOMPLETE"
+    }
+  ],
+  "expected_node_states": {
+    "probe-smoke": "SKIPPED",
+    "finder-claude": "CANCELLED",
+    "adjudicator-b": "SKIPPED"
+  },
+  "expected_terminal": "INCOMPLETE",
+  "expected_release_recommendation": "REPORT_ONLY",
+  "expected_degradations": [
+    "budget_exhausted:wall_clock",
+    "node_skipped:probe-smoke:budget_cutoff",
+    "node_cancelled:finder-claude:budget",
+    "node_skipped:adjudicator-b:budget_cutoff"
+  ],
+  "expected_coverage_gaps": [
+    "finder-claude:no_envelope",
+    "adjudicator-b:no_adjudication"
+  ],
+  "expected_canonical_finding_ids": [],
+  "expected_candidate_dispositions": [],
+  "expected_ledger_head": null,
+  "forbidden_side_effects": [
+    "network",
+    "package_install",
+    "write_outside_scratch",
+    "external_state_mutation"
+  ]
+}

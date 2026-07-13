@@ -1,0 +1,340 @@
+{
+  "spec_version": "adr1-v4",
+  "source_adr": "v2 VERIFY ADR-1 (state machine and snapshot); this JSON is the pinned encoding \u2014 on divergence the ADR wins",
+  "phases": [
+    "CREATED",
+    "SNAPSHOT_BOUND",
+    "PLAN_BOUND",
+    "EXECUTING",
+    "CONSOLIDATING",
+    "ADJUDICATING"
+  ],
+  "terminals": [
+    "COMPLETED",
+    "INCOMPLETE",
+    "FAILED",
+    "BLOCKED",
+    "CANCELLED"
+  ],
+  "release_recommendations": [
+    "PROCEED",
+    "HOLD",
+    "REPORT_ONLY"
+  ],
+  "run_transitions": [
+    {
+      "id": "R0",
+      "from": "CREATED",
+      "event": "intent_blocked",
+      "to": "BLOCKED",
+      "guards": []
+    },
+    {
+      "id": "R1",
+      "from": "CREATED",
+      "event": "snapshot_sealed",
+      "to": "SNAPSHOT_BOUND",
+      "guards": []
+    },
+    {
+      "id": "R2",
+      "from": "CREATED",
+      "event": "snapshot_blocked",
+      "to": "BLOCKED",
+      "guards": []
+    },
+    {
+      "id": "R3",
+      "from": "SNAPSHOT_BOUND",
+      "event": "plan_resolved",
+      "to": "PLAN_BOUND",
+      "guards": []
+    },
+    {
+      "id": "R4",
+      "from": "SNAPSHOT_BOUND",
+      "event": "plan_blocked",
+      "to": "BLOCKED",
+      "guards": []
+    },
+    {
+      "id": "R5",
+      "from": "PLAN_BOUND",
+      "event": "execution_started",
+      "to": "EXECUTING",
+      "guards": []
+    },
+    {
+      "id": "R6",
+      "from": "EXECUTING",
+      "event": "derived:all_required_nodes_settled",
+      "to": "CONSOLIDATING",
+      "guards": [
+        "G_EXEC_SETTLED"
+      ]
+    },
+    {
+      "id": "R7",
+      "from": "CONSOLIDATING",
+      "event": "derived:consolidation_complete",
+      "to": "ADJUDICATING",
+      "guards": [
+        "G_CONSOLIDATION_READY"
+      ]
+    },
+    {
+      "id": "R8",
+      "from": "ADJUDICATING",
+      "event": "derived:adjudication_settled",
+      "to": "@terminal_decision",
+      "guards": [
+        "G_ADJ_SETTLED"
+      ]
+    },
+    {
+      "id": "R9",
+      "from": "@any_nonterminal",
+      "event": "cancel_requested",
+      "to": "@same",
+      "guards": []
+    },
+    {
+      "id": "R9b",
+      "from": "@any_nonterminal",
+      "event": "budget_exhausted",
+      "to": "@same",
+      "guards": []
+    },
+    {
+      "id": "R10",
+      "from": "@any_nonterminal",
+      "event": "cancel_finalized",
+      "to": "CANCELLED",
+      "guards": [
+        "G_CANCEL_FINAL"
+      ]
+    },
+    {
+      "id": "R11",
+      "from": "@any",
+      "event": "corruption_detected",
+      "to": "FAILED",
+      "guards": []
+    }
+  ],
+  "attempt_states": [
+    "SCHEDULED",
+    "DISPATCHED",
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED",
+    "ABANDONED"
+  ],
+  "attempt_settled_states": [
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED",
+    "ABANDONED"
+  ],
+  "node_reported_statuses": [
+    "PENDING",
+    "SKIPPED",
+    "SCHEDULED",
+    "DISPATCHED",
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED",
+    "ABANDONED"
+  ],
+  "attempt_transitions": [
+    {
+      "id": "N1",
+      "from": [
+        null
+      ],
+      "event": "node_scheduled",
+      "to": "SCHEDULED",
+      "guards": [
+        "G_NO_CUTOFF",
+        "G_ATTEMPT_MONOTONIC"
+      ]
+    },
+    {
+      "id": "N2",
+      "from": [
+        "SCHEDULED"
+      ],
+      "event": "node_dispatched",
+      "to": "DISPATCHED",
+      "guards": [
+        "G_NO_CUTOFF"
+      ]
+    },
+    {
+      "id": "N3",
+      "from": [
+        "DISPATCHED"
+      ],
+      "event": "node_result",
+      "to": "COMPLETED",
+      "guards": [
+        "G_WITHIN_DEADLINE"
+      ]
+    },
+    {
+      "id": "N4",
+      "from": [
+        "DISPATCHED"
+      ],
+      "event": "node_failed",
+      "to": "FAILED",
+      "guards": []
+    },
+    {
+      "id": "N5",
+      "from": [
+        "SCHEDULED",
+        "DISPATCHED"
+      ],
+      "event": "node_cancelled",
+      "to": "CANCELLED",
+      "guards": []
+    },
+    {
+      "id": "N6",
+      "from": [
+        "SCHEDULED",
+        "DISPATCHED"
+      ],
+      "event": "node_abandoned",
+      "to": "ABANDONED",
+      "guards": []
+    },
+    {
+      "id": "N7",
+      "from": [
+        "FAILED"
+      ],
+      "event": "node_scheduled",
+      "to": "SCHEDULED",
+      "guards": [
+        "G_NO_CUTOFF",
+        "G_ATTEMPT_MONOTONIC",
+        "G_RETRY_PERMITTED"
+      ]
+    },
+    {
+      "id": "N8",
+      "from": [
+        "SCHEDULED",
+        "DISPATCHED"
+      ],
+      "event": "node_reconciled",
+      "to": "FAILED",
+      "guards": [
+        "G_PROVEN_NON_ACCEPTANCE"
+      ]
+    },
+    {
+      "id": "N9",
+      "from": [
+        null
+      ],
+      "event": "node_skipped",
+      "to": "SKIPPED",
+      "machine_generated": true,
+      "guards": [
+        "G_CUTOFF_ACTIVE"
+      ]
+    }
+  ],
+  "guards": {
+    "G_EXEC_SETTLED": "every STARTED non-adjudicator attempt settled AND every REQUIRED non-adjudicator node settled or skipped-under-cutoff; optional nodes may remain PENDING",
+    "G_ADJ_SETTLED": "adjudicator settled (COMPLETED|FAILED|CANCELLED|ABANDONED) or skipped-under-cutoff",
+    "G_CANCEL_FINAL": "cancelling flag set AND all attempts settled",
+    "G_NO_CUTOFF": "forbidden after budget cutoff or cancel flag (ADR-1 I8)",
+    "G_ATTEMPT_MONOTONIC": "attempt number = latest attempt + 1",
+    "G_RETRY_PERMITTED": "prior attempt FAILED with retryable/corrective class AND attempts < max_attempts AND retry reserve > 0 AND remaining wall budget >= own deadline + sum of base deadlines of other pending required nodes",
+    "G_WITHIN_DEADLINE": "dispatch-to-result duration <= per-kind node deadline (results only; failures/timeouts are journaled as node_failed)",
+    "G_PROVEN_NON_ACCEPTANCE": "provider reconciliation proves the in-doubt request was never accepted; lands as FAILED(transport_5xx), N7-eligible; unproven in-doubt attempts use N6 node_abandoned instead",
+    "G_CUTOFF_ACTIVE": "machine-generated only while the budget cutoff flag is set; applies to nodes with zero attempts whose scheduling phase is still open (an optional node whose phase already closed legitimately remains PENDING per R6)",
+    "G_CONSOLIDATION_READY": "every model-proposed artifact observation has a matching control-plane re-read receipt, OR the cutoff flag releases the hold (the run terminates INCOMPLETE regardless)"
+  },
+  "failure_classes": {
+    "retryable": [
+      "transport_5xx",
+      "rate_limit"
+    ],
+    "corrective": [
+      "malformed_output"
+    ],
+    "non_retryable": [
+      "policy_refusal",
+      "timeout_unproven",
+      "model_identity_mismatch",
+      "stale_binding",
+      "input_mutation"
+    ]
+  },
+  "node_kinds": [
+    "probe",
+    "finder",
+    "adjudicator"
+  ],
+  "node_event_phase_domain": {
+    "probe": [
+      "EXECUTING"
+    ],
+    "finder": [
+      "EXECUTING"
+    ],
+    "adjudicator": [
+      "ADJUDICATING"
+    ]
+  },
+  "event_identity": "(event_kind, event_id); conflict hash over canonical body {event_kind, node_id, attempt, payload}",
+  "terminal_decision_order": [
+    "corruption -> FAILED",
+    "cancelling -> CANCELLED",
+    "pre-execution block -> BLOCKED (via R0/R2/R4)",
+    "any required node not COMPLETED -> INCOMPLETE",
+    "cutoff flag set -> INCOMPLETE (budget exhaustion never COMPLETED, even if in-flight nodes settle successfully)",
+    "HEAVY and any adjudicated finding UNVERIFIABLE with candidate_severity.level in {HIGH,CRITICAL} -> INCOMPLETE (V2-SM-08)",
+    "else COMPLETED"
+  ],
+  "evidence_events": {
+    "claims_reread": "control-plane re-read receipt (ADR-2 1.4); allowed in EXECUTING/CONSOLIDATING, phase unchanged; cp- claim-id prefix, snapshot-bound; R7 holds until every model proposal is re-read (cutoff releases the hold)"
+  },
+  "release_rules": {
+    "LIGHT": "REPORT_ONLY",
+    "HEAVY": "PROCEED iff terminal=COMPLETED and no adjudicated finding with candidate_severity.level >= HIGH and adjudication in {CONFIRMED,UNRESOLVED,UNVERIFIABLE}; else HOLD",
+    "no_profile": "HOLD"
+  },
+  "severity_ladder": {
+    "corruption_money_security": {
+      "direct": "CRITICAL",
+      "conditional": "HIGH",
+      "unreachable": "LOW"
+    },
+    "wrong_result": {
+      "direct": "HIGH",
+      "conditional": "MEDIUM",
+      "unreachable": "LOW"
+    },
+    "degraded_quality": {
+      "direct": "MEDIUM",
+      "conditional": "LOW",
+      "unreachable": "INFO"
+    }
+  },
+  "adjudications": [
+    "CONFIRMED",
+    "REJECTED",
+    "UNRESOLVED",
+    "UNVERIFIABLE"
+  ],
+  "coverage_gap_rules": {
+    "probe_or_finder_required_not_completed": "<node_id>:no_envelope",
+    "adjudicator_required_not_completed": "<node_id>:no_adjudication"
+  }
+}
