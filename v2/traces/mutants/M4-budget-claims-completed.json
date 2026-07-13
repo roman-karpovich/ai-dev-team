@@ -1,0 +1,211 @@
+{
+  "trace_id": "M4-budget-claims-completed",
+  "profile": "HEAVY",
+  "initial_state": "CREATED",
+  "policy_version": "v2-policy-1",
+  "notes": "MUTANT (must be rejected): budget exhaustion trace claiming COMPLETED/PROCEED",
+  "input_events": [
+    {
+      "event_id": "e1",
+      "event_kind": "snapshot_sealed",
+      "payload": {
+        "snapshot_id": "snap-t05"
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e2",
+      "event_kind": "plan_resolved",
+      "payload": {
+        "profile": "HEAVY",
+        "policy_version": "v2-policy-1",
+        "budget": {
+          "retry_reserve": 2,
+          "wall_clock_min": 60,
+          "deadlines": {
+            "probe": 10,
+            "finder": 20,
+            "adjudicator": 15
+          }
+        },
+        "nodes": [
+          {
+            "node_id": "probe-parity",
+            "kind": "probe",
+            "required": true,
+            "max_attempts": 1
+          },
+          {
+            "node_id": "finder-claude",
+            "kind": "finder",
+            "required": true,
+            "max_attempts": 2
+          },
+          {
+            "node_id": "finder-codex",
+            "kind": "finder",
+            "required": true,
+            "max_attempts": 2
+          },
+          {
+            "node_id": "adjudicator-b",
+            "kind": "adjudicator",
+            "required": true,
+            "max_attempts": 2
+          }
+        ]
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e3",
+      "event_kind": "execution_started",
+      "payload": {},
+      "at_min": 0
+    },
+    {
+      "event_id": "e4",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "at_min": 0
+    },
+    {
+      "event_id": "e5",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "at_min": 1
+    },
+    {
+      "event_id": "e6",
+      "event_kind": "node_result",
+      "payload": {
+        "envelope_hash": "h-probe-t05"
+      },
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "at_min": 3
+    },
+    {
+      "event_id": "e7",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "at_min": 3
+    },
+    {
+      "event_id": "e8",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "at_min": 4
+    },
+    {
+      "event_id": "e9",
+      "event_kind": "node_result",
+      "payload": {
+        "envelope_hash": "h-claude-t05",
+        "candidates": []
+      },
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "at_min": 12
+    },
+    {
+      "event_id": "e10",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "at_min": 12
+    },
+    {
+      "event_id": "e11",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "at_min": 13
+    },
+    {
+      "event_id": "e12",
+      "event_kind": "budget_exhausted",
+      "payload": {
+        "dimension": "wall_clock"
+      },
+      "at_min": 55
+    },
+    {
+      "event_id": "e13",
+      "event_kind": "node_cancelled",
+      "payload": {
+        "reason": "budget"
+      },
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "at_min": 55
+    }
+  ],
+  "expected_transitions": [
+    {
+      "on": "e1",
+      "from": "CREATED",
+      "to": "SNAPSHOT_BOUND"
+    },
+    {
+      "on": "e2",
+      "from": "SNAPSHOT_BOUND",
+      "to": "PLAN_BOUND"
+    },
+    {
+      "on": "e3",
+      "from": "PLAN_BOUND",
+      "to": "EXECUTING"
+    },
+    {
+      "on": "derived:all_required_nodes_settled",
+      "from": "EXECUTING",
+      "to": "CONSOLIDATING"
+    },
+    {
+      "on": "derived:consolidation_complete",
+      "from": "CONSOLIDATING",
+      "to": "ADJUDICATING"
+    },
+    {
+      "on": "derived:adjudication_settled",
+      "from": "ADJUDICATING",
+      "to": "INCOMPLETE"
+    }
+  ],
+  "expected_node_states": {
+    "probe-parity": "COMPLETED",
+    "finder-claude": "COMPLETED",
+    "finder-codex": "CANCELLED",
+    "adjudicator-b": "SKIPPED"
+  },
+  "expected_terminal": "COMPLETED",
+  "expected_release_recommendation": "PROCEED",
+  "expected_degradations": [
+    "budget_exhausted:wall_clock",
+    "node_cancelled:finder-codex:budget",
+    "node_skipped:adjudicator-b:budget_cutoff"
+  ],
+  "expected_coverage_gaps": [
+    "finder-codex:no_envelope",
+    "adjudicator-b:no_adjudication"
+  ],
+  "expected_canonical_finding_ids": [],
+  "expected_ledger_head": null,
+  "forbidden_side_effects": [
+    "network",
+    "package_install",
+    "write_outside_scratch",
+    "external_state_mutation"
+  ]
+}
