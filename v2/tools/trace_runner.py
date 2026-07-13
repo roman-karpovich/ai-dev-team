@@ -247,10 +247,18 @@ class Machine:
             for c in payload["claims"]:
                 if not c["claim_id"].startswith("cp-"):
                     raise TraceError("control-plane claim without cp- prefix")
-                ref = c.get("reread_of")
-                if ref is not None:
-                    if ref not in self.proposals:
-                        raise TraceError(f"reread_of {ref} is not a pending proposal")
+                if c["claim_class"] == "artifact_observation":
+                    # Provenance: a re-read observation exists only as the
+                    # verification of a finder-proposed locator (ADR-2 1.2).
+                    ref = c.get("reread_of")
+                    if ref is None or ref not in self.proposals:
+                        raise TraceError(
+                            f"cp observation {c['claim_id']} without a pending proposal"
+                        )
+                    if self.claims[ref]["subject"] != c["subject"]:
+                        raise TraceError(
+                            f"reread subject mismatch: {c['claim_id']} vs proposal {ref}"
+                        )
                     self.proposals.discard(ref)
             self.register_claims(payload["claims"], "CONTROL_PLANE")
         elif kind == "budget_exhausted":
