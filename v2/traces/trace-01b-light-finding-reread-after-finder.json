@@ -146,7 +146,7 @@
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "7e19d9dc9623f1bdd207ec187ebba51ddcade5ae03e26b9e919d0bfb54707454",
+          "input_claim_set_hash": "a484a69c90482b63484f37bb2c26c12333e94a590574d9c32f10309a339b01fd",
           "supplied_claim_ids": [
             "cp-obs-1",
             "mc-policy",
@@ -210,14 +210,14 @@
     "F1"
   ],
   "expected_candidate_dispositions": [],
-  "expected_ledger_head": null,
+  "expected_ledger_head": "1272d36ff39f336a6245d1cad428f769290432418a9fe766336186453c7615d6",
   "forbidden_side_effects": [
     "network",
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
   ],
-  "expected_ledger_length": 10,
+  "expected_ledger_length": 11,
   "expected_ledger_intact": true,
   "expected_ledger_sealed": true
 }

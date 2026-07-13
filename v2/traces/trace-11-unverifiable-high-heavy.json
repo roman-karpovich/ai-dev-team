@@ -212,7 +212,7 @@
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "14780dd8062d048a43f5ab712c66a067848dae93637e7e1005478f6df97e33b0",
+          "input_claim_set_hash": "80925552b1507d0f00ca72b0698f2c29456e71437baef269811ccdffc439d2d5",
           "supplied_claim_ids": [
             "cp-obs-1",
             "mc-policy",
@@ -291,7 +291,8 @@
       ]
     }
   ],
-  "expected_ledger_length": 16,
+  "expected_ledger_length": 17,
   "expected_ledger_intact": true,
-  "expected_ledger_sealed": true
+  "expected_ledger_sealed": true,
+  "expected_ledger_head": "08121791d0d2a0d70c7daf4a029e94488d5e4f123fe7158490da11e9c80e8577"
 }

@@ -3,7 +3,7 @@
   "profile": null,
   "initial_state": "CREATED",
   "policy_version": null,
-  "notes": "MUTANT (must be rejected): unsupported journal version claiming COMPLETED instead of BLOCKED(SCHEMA_VERSION).",
+  "notes": "MUTANT (must be rejected): Resume reads a journal written by a newer, unsupported format_version. The reader does NOT rewrite it in place; it BLOCKS(SCHEMA_VERSION). Terminal before any plan -> no profile -> HOLD. The records read so far stay chained and sealed.",
   "input_events": [
     {
       "event_id": "e1",
@@ -50,5 +50,6 @@
   "expected_ledger_intact": true,
   "expected_ledger_sealed": true,
   "expected_block_code": "SCHEMA_VERSION",
+  "expected_ledger_head": "fb3ea44d9878138f19711fbfa4420151dc46aeff15959c5fd8cfbd8eac0e3992",
   "expect_failure_containing": "terminal: expected 'COMPLETED'"
 }

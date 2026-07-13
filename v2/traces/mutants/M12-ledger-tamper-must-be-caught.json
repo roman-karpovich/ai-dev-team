@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): claims the tampered-ledger run terminates COMPLETED. The runner must detect the broken chain -> FAILED.",
+  "notes": "MUTANT (must be rejected): A stored ledger record is tampered (test-only fault injection). On the next journal_resume, verify_chain() recomputes the hash chain, finds the broken link, and emits corruption_detected -> FAILED. A corrupt journal is never silently repaired or rewritten. The ledger is intentionally NOT intact here \u2014 that is the detected fault.",
   "input_events": [
     {
       "event_id": "e1",
@@ -149,7 +149,6 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
-  "expected_ledger_length": 7,
   "expected_ledger_intact": true,
   "expected_ledger_sealed": true,
   "expect_failure_containing": "terminal: expected 'COMPLETED'"

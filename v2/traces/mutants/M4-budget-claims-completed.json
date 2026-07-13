@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): budget exhaustion claiming COMPLETED/PROCEED",
+  "notes": "MUTANT (must be rejected): Wall-clock budget exhausts AT the 60-min wall while a finder dispatched at 45 is legitimately in flight (15 < 20-min deadline). Durable cutoff forbids new scheduling/dispatch; the in-flight attempt is cancelled; the unstarted adjudicator is SKIPPED via journaled N9 (asserted in expected_attempt_transitions). INCOMPLETE + HOLD; no path to COMPLETED.",
   "input_events": [
     {
       "event_id": "e1",
@@ -201,7 +201,7 @@
     "adjudicator-b:no_adjudication"
   ],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": null,
+  "expected_ledger_head": "f3ebd725f4517b6758c47512b8506241d4c94c063972ea6cfb5726fbcbf9e90e",
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -271,5 +271,8 @@
       "to": "SKIPPED"
     }
   ],
+  "expected_ledger_length": 14,
+  "expected_ledger_intact": true,
+  "expected_ledger_sealed": true,
   "expect_failure_containing": "terminal: expected 'COMPLETED'"
 }
