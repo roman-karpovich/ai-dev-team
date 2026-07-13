@@ -209,5 +209,67 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_attempt_transitions": [
+    {
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "on": "node_result",
+      "to": "COMPLETED"
+    },
+    {
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "on": "node_result",
+      "to": "COMPLETED"
+    },
+    {
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "on": "node_cancelled",
+      "to": "CANCELLED"
+    },
+    {
+      "node_id": "adjudicator-b",
+      "attempt": 0,
+      "on": "node_skipped",
+      "to": "SKIPPED"
+    }
+  ],
   "expect_failure_containing": "terminal: expected 'COMPLETED'"
 }

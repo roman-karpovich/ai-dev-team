@@ -1,9 +1,9 @@
 {
-  "trace_id": "M9-rejected-without-exclusivity",
+  "trace_id": "M10-rejected-wrong-subject",
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): REJECTED citing a supporting same-value claim is coerced to UNRESOLVED",
+  "notes": "MUTANT (must be rejected): REJECTED citing a contradicts-claim with a different value but the WRONG SUBJECT fails the exclusivity predicate and is coerced to UNRESOLVED",
   "input_events": [
     {
       "event_id": "e1",
@@ -92,7 +92,26 @@
     {
       "event_id": "e7",
       "event_kind": "node_scheduled",
-      "payload": {},
+      "payload": {
+        "claims": [
+          {
+            "claim_id": "cp-obs-1",
+            "claim_class": "artifact_observation",
+            "subject": "src/mod.py:42",
+            "asserted_value": "literal-A",
+            "snapshot_id": "snap-t02",
+            "relationship": "supports"
+          },
+          {
+            "claim_id": "cp-other",
+            "claim_class": "artifact_observation",
+            "subject": "other.py:1",
+            "asserted_value": "literal-B",
+            "snapshot_id": "snap-t02",
+            "relationship": "contradicts"
+          }
+        ]
+      },
       "node_id": "finder-claude",
       "attempt": 1,
       "at_min": 3
@@ -230,7 +249,7 @@
             "observation_claim_ids": [
               "cp-obs-1"
             ],
-            "contradiction_claim_id": "cp-obs-1"
+            "contradiction_claim_id": "cp-other"
           }
         ],
         "b_binding": {
