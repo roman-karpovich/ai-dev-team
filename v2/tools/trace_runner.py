@@ -274,8 +274,10 @@ class Machine:
                     "spec_version": self.spec["spec_version"], "pre_seal_head": pre_seal_head}
             self.ledger_append("terminal_seal", "seal", sha(canonical(body)))
             seal_rec = self.ledger[-1]
+            # Sidecar persists the projection fields (not just the digest) so an
+            # archive confirms the run's OUTCOME from the seal alone (ADR-5 §1.2).
             self.ledger_seal = {"run_id": self.run_id, "terminal_seq": seal_rec["seq"],
-                                "head_hash": seal_rec["record_hash"]}
+                                "head_hash": seal_rec["record_hash"], **body}
 
     def audit_append(self, kind, payload):
         # Separate hash-chained post-terminal/recovery audit trail (ADR-5): it
@@ -780,6 +782,10 @@ def run_trace(trace, spec):
         check("block_code", trace["expected_block_code"], machine.block_code)
     if "expected_audit_length" in trace:
         check("audit_length", trace["expected_audit_length"], len(machine.audit_chain))
+    if "expected_claim_shared_deps" in trace:
+        for cid, deps in trace["expected_claim_shared_deps"].items():
+            actual = machine.claims.get(cid, {}).get("trust_domain", {}).get("shared_dependencies")
+            check(f"claim_shared_deps[{cid}]", deps, actual)
     return failures
 
 

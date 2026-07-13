@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "Wall-clock budget exhausts AT the 60-min wall while a finder dispatched at 45 is legitimately in flight (15 < 20-min deadline). Durable cutoff forbids new scheduling/dispatch; the in-flight attempt is cancelled; the unstarted adjudicator is SKIPPED via journaled N9 (asserted in expected_attempt_transitions). INCOMPLETE + HOLD; no path to COMPLETED.",
+  "notes": "Wall-clock budget exhausts AT the 60-min wall while a finder dispatched at 45 is legitimately in flight (15 < 20-min deadline). Durable cutoff forbids new scheduling/dispatch; the in-flight attempt is cancelled; the unstarted adjudicator is SKIPPED via N9 (a machine-derived transition recorded in the attempt-transition log, not a separate ledger record) (asserted in expected_attempt_transitions). INCOMPLETE + HOLD; no path to COMPLETED.",
   "input_events": [
     {
       "event_id": "e1",
@@ -273,5 +273,5 @@
   "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
   "expected_ledger_length": 14,
-  "expected_ledger_head": "572d4c3323c9b4f7aaba7bbe4115ea039198410f8066ee88d7e2356a8adb9d72"
+  "expected_ledger_head": "2791cbb635b10c53deb7ca024fcac7e45bc040a6acadccd454046b401bbb96ae"
 }

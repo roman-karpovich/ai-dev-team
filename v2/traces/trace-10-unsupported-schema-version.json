@@ -49,5 +49,6 @@
   "expected_block_code": "SCHEMA_VERSION",
   "expected_audit_length": 1,
   "expected_ledger_sealed": false,
-  "expected_ledger_intact": true
+  "expected_ledger_intact": true,
+  "expected_ledger_length": 1
 }

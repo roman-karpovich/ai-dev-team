@@ -122,7 +122,13 @@
               }
             ]
           }
-        ]
+        ],
+        "receipt": {
+          "shared_dependencies": [
+            "tokenizer:cl100k",
+            "runtime:sandbox-exec"
+          ]
+        }
       },
       "node_id": "finder-claude",
       "attempt": 1,
@@ -142,7 +148,12 @@
             "relationship": "supports",
             "reread_of": "obs-1"
           }
-        ]
+        ],
+        "receipt": {
+          "shared_dependencies": [
+            "control-plane:reread-lib"
+          ]
+        }
       },
       "at_min": 13
     },
@@ -311,8 +322,17 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_claim_shared_deps": {
+    "obs-1": [
+      "tokenizer:cl100k",
+      "runtime:sandbox-exec"
+    ],
+    "cp-obs-1": [
+      "control-plane:reread-lib"
+    ]
+  },
   "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
   "expected_ledger_length": 20,
-  "expected_ledger_head": "7a93b4d0f1cd61a33f6394babcaeb290003efdbc10a9ad914b804967f297c6cf"
+  "expected_ledger_head": "6bba3adabebec1b51dff9d99ede415a38bb6d1203ed6c1801011e094aec09293"
 }
