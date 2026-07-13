@@ -1,0 +1,54 @@
+{
+  "trace_id": "T10-unsupported-schema-version",
+  "profile": null,
+  "initial_state": "CREATED",
+  "policy_version": null,
+  "notes": "Resume reads a journal written by a newer, unsupported format_version. The reader does NOT rewrite or seal it in place; it BLOCKS(SCHEMA_VERSION) and records the outcome on the separate audit chain. Terminal before any plan -> no profile -> HOLD. The source records read so far stay intact and UNSEALED.",
+  "input_events": [
+    {
+      "event_id": "e1",
+      "event_kind": "snapshot_sealed",
+      "payload": {
+        "snapshot_id": "snap-t10"
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e2",
+      "event_kind": "journal_resume",
+      "payload": {
+        "format_version": "v2-verify-99"
+      },
+      "at_min": 1
+    }
+  ],
+  "expected_transitions": [
+    {
+      "on": "e1",
+      "from": "CREATED",
+      "to": "SNAPSHOT_BOUND"
+    },
+    {
+      "on": "e2",
+      "from": "SNAPSHOT_BOUND",
+      "to": "BLOCKED"
+    }
+  ],
+  "expected_node_states": {},
+  "expected_terminal": "BLOCKED",
+  "expected_release_recommendation": "HOLD",
+  "expected_degradations": [],
+  "expected_coverage_gaps": [],
+  "expected_canonical_finding_ids": [],
+  "forbidden_side_effects": [
+    "network",
+    "package_install",
+    "write_outside_scratch",
+    "external_state_mutation"
+  ],
+  "expected_block_code": "SCHEMA_VERSION",
+  "expected_audit_length": 1,
+  "expected_ledger_sealed": false,
+  "expected_ledger_intact": true,
+  "expected_ledger_length": 1
+}

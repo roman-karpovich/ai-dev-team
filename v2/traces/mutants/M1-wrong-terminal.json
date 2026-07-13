@@ -3,7 +3,7 @@
   "profile": "LIGHT",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): wrong expected_terminal must be caught",
+  "notes": "MUTANT (must be rejected): Happy path LIGHT with an exact duplicate of e9 (idempotent replay = total no-op incl. virtual clock; ADR-1 I3). B binding computed by the control plane over machine claims.",
   "input_events": [
     {
       "event_id": "e1",
@@ -202,7 +202,6 @@
   "expected_degradations": [],
   "expected_coverage_gaps": [],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": null,
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -210,5 +209,7 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_ledger_sealed": true,
+  "expected_ledger_intact": true,
   "expect_failure_containing": "terminal: expected 'INCOMPLETE'"
 }

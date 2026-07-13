@@ -3,13 +3,13 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): retry after non-retryable policy_refusal while claude still in flight (N7)",
+  "notes": "MUTANT (must be rejected): retry after non-retryable policy_refusal while sibling in flight -> N7 guard.",
   "input_events": [
     {
       "event_id": "e1",
       "event_kind": "snapshot_sealed",
       "payload": {
-        "snapshot_id": "snap-t03"
+        "snapshot_id": "snap-m3"
       },
       "at_min": 0
     },
@@ -83,7 +83,7 @@
       "event_id": "e6",
       "event_kind": "node_result",
       "payload": {
-        "envelope_hash": "h-probe-t03"
+        "envelope_hash": "h"
       },
       "node_id": "probe-parity",
       "attempt": 1,
@@ -106,8 +106,16 @@
       "at_min": 4
     },
     {
-      "event_id": "e10",
+      "event_id": "e9",
       "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "at_min": 4
+    },
+    {
+      "event_id": "e10",
+      "event_kind": "node_dispatched",
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
@@ -115,29 +123,21 @@
     },
     {
       "event_id": "e11",
-      "event_kind": "node_dispatched",
-      "payload": {},
-      "node_id": "finder-codex",
-      "attempt": 1,
-      "at_min": 6
-    },
-    {
-      "event_id": "e12",
       "event_kind": "node_failed",
       "payload": {
         "failure_class": "policy_refusal"
       },
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 8
+      "at_min": 7
     },
     {
-      "event_id": "eX",
+      "event_id": "e12",
       "event_kind": "node_scheduled",
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 2,
-      "at_min": 9
+      "at_min": 8
     }
   ],
   "expected_transitions": [
@@ -155,50 +155,26 @@
       "on": "e3",
       "from": "PLAN_BOUND",
       "to": "EXECUTING"
-    },
-    {
-      "on": "derived:all_required_nodes_settled",
-      "from": "EXECUTING",
-      "to": "CONSOLIDATING"
-    },
-    {
-      "on": "derived:consolidation_complete",
-      "from": "CONSOLIDATING",
-      "to": "ADJUDICATING"
-    },
-    {
-      "on": "derived:adjudication_settled",
-      "from": "ADJUDICATING",
-      "to": "INCOMPLETE"
     }
   ],
   "expected_node_states": {
     "probe-parity": "COMPLETED",
-    "finder-claude": "COMPLETED",
+    "finder-claude": "DISPATCHED",
     "finder-codex": "FAILED",
-    "adjudicator-b": "COMPLETED"
+    "adjudicator-b": "PENDING"
   },
-  "expected_terminal": "INCOMPLETE",
-  "expected_release_recommendation": "HOLD",
+  "expected_terminal": null,
+  "expected_release_recommendation": null,
   "expected_degradations": [
     "node_failed:finder-codex:policy_refusal"
   ],
-  "expected_coverage_gaps": [
-    "finder-codex:no_envelope"
-  ],
+  "expected_coverage_gaps": [],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": null,
   "forbidden_side_effects": [
     "network",
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ],
-  "expected_candidate_dispositions": [
-    {
-      "finding_id": "F1",
-      "adjudication": "UNRESOLVED"
-    }
   ],
   "expect_failure_containing": "retry not permitted"
 }

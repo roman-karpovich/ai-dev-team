@@ -1,0 +1,155 @@
+{
+  "trace_id": "T09-ledger-corruption",
+  "profile": "HEAVY",
+  "initial_state": "CREATED",
+  "policy_version": "v2-policy-1",
+  "notes": "A stored ledger record is tampered (test-only fault injection). On the next journal_resume, verify_chain() recomputes the hash chain, finds the broken link, and emits corruption_detected -> FAILED. A corrupt journal is never silently repaired or rewritten. The ledger is intentionally NOT intact here \u2014 that is the detected fault.",
+  "input_events": [
+    {
+      "event_id": "e1",
+      "event_kind": "snapshot_sealed",
+      "payload": {
+        "snapshot_id": "snap-t09"
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e2",
+      "event_kind": "plan_resolved",
+      "payload": {
+        "profile": "HEAVY",
+        "policy_version": "v2-policy-1",
+        "budget": {
+          "retry_reserve": 2,
+          "wall_clock_min": 60,
+          "deadlines": {
+            "probe": 10,
+            "finder": 20,
+            "adjudicator": 15
+          }
+        },
+        "nodes": [
+          {
+            "node_id": "probe-parity",
+            "kind": "probe",
+            "required": true,
+            "max_attempts": 1
+          },
+          {
+            "node_id": "finder-claude",
+            "kind": "finder",
+            "required": true,
+            "max_attempts": 2
+          },
+          {
+            "node_id": "finder-codex",
+            "kind": "finder",
+            "required": true,
+            "max_attempts": 2
+          },
+          {
+            "node_id": "adjudicator-b",
+            "kind": "adjudicator",
+            "required": true,
+            "max_attempts": 2
+          }
+        ]
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e3",
+      "event_kind": "execution_started",
+      "payload": {},
+      "at_min": 0
+    },
+    {
+      "event_id": "e4",
+      "event_kind": "node_scheduled",
+      "payload": {},
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "at_min": 0
+    },
+    {
+      "event_id": "e5",
+      "event_kind": "node_dispatched",
+      "payload": {},
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "at_min": 1
+    },
+    {
+      "event_id": "e6",
+      "event_kind": "node_result",
+      "payload": {
+        "envelope_hash": "h-probe"
+      },
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "at_min": 3
+    },
+    {
+      "event_id": "__t",
+      "event_kind": "__tamper_ledger__",
+      "payload": {
+        "seq": 2
+      }
+    },
+    {
+      "event_id": "e7",
+      "event_kind": "journal_resume",
+      "payload": {
+        "format_version": "v2-verify-1"
+      },
+      "at_min": 4
+    }
+  ],
+  "expected_transitions": [
+    {
+      "on": "e1",
+      "from": "CREATED",
+      "to": "SNAPSHOT_BOUND"
+    },
+    {
+      "on": "e2",
+      "from": "SNAPSHOT_BOUND",
+      "to": "PLAN_BOUND"
+    },
+    {
+      "on": "e3",
+      "from": "PLAN_BOUND",
+      "to": "EXECUTING"
+    },
+    {
+      "on": "corruption_detected",
+      "from": "EXECUTING",
+      "to": "FAILED"
+    }
+  ],
+  "expected_node_states": {
+    "probe-parity": "COMPLETED",
+    "finder-claude": "PENDING",
+    "finder-codex": "PENDING",
+    "adjudicator-b": "PENDING"
+  },
+  "expected_terminal": "FAILED",
+  "expected_release_recommendation": "HOLD",
+  "expected_degradations": [],
+  "expected_coverage_gaps": [
+    "finder-claude:no_envelope",
+    "finder-codex:no_envelope",
+    "adjudicator-b:no_adjudication"
+  ],
+  "expected_canonical_finding_ids": [],
+  "forbidden_side_effects": [
+    "network",
+    "package_install",
+    "write_outside_scratch",
+    "external_state_mutation"
+  ],
+  "expected_candidate_dispositions": [],
+  "expected_audit_length": 1,
+  "expected_ledger_sealed": false,
+  "expected_ledger_intact": false
+}

@@ -1,5 +1,5 @@
 {
-  "spec_version": "adr1-v4",
+  "spec_version": "adr1-v7",
   "source_adr": "v2 VERIFY ADR-1 (state machine and snapshot); this JSON is the pinned encoding \u2014 on divergence the ADR wins",
   "phases": [
     "CREATED",
@@ -120,6 +120,25 @@
       "event": "corruption_detected",
       "to": "FAILED",
       "guards": []
+    },
+    {
+      "id": "R12",
+      "from": "@any_nonterminal",
+      "event": "journal_resume",
+      "to": "@resume_check",
+      "guards": [
+        "G_LEDGER_VERSION_SUPPORTED",
+        "G_LEDGER_INTACT"
+      ],
+      "note": "supported version + intact chain -> stay (no-op); unsupported version -> BLOCKED(SCHEMA_VERSION); broken chain -> corruption_detected -> FAILED (ADR-5 1.3/1.4)"
+    },
+    {
+      "id": "R13",
+      "from": "@terminal",
+      "event": "late_result_rejected",
+      "to": "@same",
+      "guards": [],
+      "note": "post-terminal late output for a settled attempt: journaled inadmissible, never accepted (ADR-1 1.6)"
     }
   ],
   "attempt_states": [
@@ -178,8 +197,10 @@
       "event": "node_result",
       "to": "COMPLETED",
       "guards": [
-        "G_WITHIN_DEADLINE"
-      ]
+        "G_WITHIN_DEADLINE",
+        "G_ENVELOPE_VALID"
+      ],
+      "note": "validation-dependent: a node_result COMPLETES only if machine validation of the (journaled) envelope passes; if validation DERIVES an integrity failure the attempt takes N4 node_failed{stale_binding|malformed_output} instead (ADR-2 1.4). The derived N4 is a deterministic consequence of the journaled result, recorded in the transition log."
     },
     {
       "id": "N4",
@@ -256,6 +277,7 @@
     "G_ATTEMPT_MONOTONIC": "attempt number = latest attempt + 1",
     "G_RETRY_PERMITTED": "prior attempt FAILED with retryable/corrective class AND attempts < max_attempts AND retry reserve > 0 AND remaining wall budget >= own deadline + sum of base deadlines of other pending required nodes",
     "G_WITHIN_DEADLINE": "dispatch-to-result duration <= per-kind node deadline (results only; failures/timeouts are journaled as node_failed)",
+    "G_ENVELOPE_VALID": "machine validation of the result envelope passes (b_binding matches the control-plane claim set, severity level is ladder-derived, etc.); on failure the attempt takes N4 node_failed{stale_binding|malformed_output} not N3 (ADR-2 1.4)",
     "G_PROVEN_NON_ACCEPTANCE": "provider reconciliation proves the in-doubt request was never accepted; lands as FAILED(transport_5xx), N7-eligible; unproven in-doubt attempts use N6 node_abandoned instead",
     "G_CUTOFF_ACTIVE": "machine-generated only while the budget cutoff flag is set; applies to nodes with zero attempts whose scheduling phase is still open (an optional node whose phase already closed legitimately remains PENDING per R6)",
     "G_CONSOLIDATION_READY": "every model-proposed artifact observation has a matching control-plane re-read receipt, OR the cutoff flag releases the hold (the run terminates INCOMPLETE regardless)"
@@ -305,6 +327,26 @@
   "evidence_events": {
     "claims_reread": "control-plane re-read receipt (ADR-2 1.4); allowed in EXECUTING/CONSOLIDATING, phase unchanged; cp- claim-id prefix, snapshot-bound; R7 holds until every model proposal is re-read (cutoff releases the hold)"
   },
+  "ledger": {
+    "owner_adr": "ADR-5",
+    "format_version": "v2-verify-1",
+    "supported_versions": ["v2-verify-1"],
+    "genesis": "GENESIS/v2-verify",
+    "domain": "the MAIN ledger journals EXTERNAL events (snapshot/plan/exec/node-lifecycle/resume/cancel/budget) + the terminal seal; machine-DERIVED transitions (phase advances, N9 skips, derived N4/terminal) are deterministic consequences reconstructible by replay, recorded in the transition logs, NOT separate ledger records — this keeps an independent head-hash oracle valid",
+    "record": "{format_version, seq, prev_hash, kind, event_id, body_digest, artifact_refs[], record_hash}",
+    "artifact_ref": "{sha256, size, media_type}; referenced bytes verified against sha256 on read",
+    "record_hash": "sha256(canonical({format_version, seq, prev_hash, kind, event_id, body_digest, artifact_refs}))  # artifact_refs INSIDE the hash",
+    "seal": "real appended record whose body BINDS the reported projection {run_id, terminal, release_recommendation, spec_version, pre_seal_head}; sidecar persists {run_id, terminal_seq, head_hash} + those projection fields so an archive confirms the outcome from the seal alone; created immediately at terminal; a corrupt/unsupported SOURCE journal is NEVER sealed or rewritten",
+    "audit_chain": "separate hash-chained post-terminal/recovery trail {seq, prev_hash, kind, digest, record_hash}; holds late_result_rejected + recovery_blocked/recovery_corruption outcomes; NOT the sealed run ledger",
+    "guards": {
+      "G_LEDGER_VERSION_SUPPORTED": "journal format_version in supported_versions, else BLOCKED(SCHEMA_VERSION); source not rewritten",
+      "G_LEDGER_INTACT": "verify_chain() recomputes every record_hash (incl. artifact_refs) + prev_hash links + per-record version, else corruption_detected -> FAILED; source not rewritten"
+    },
+    "test_only_events": {
+      "__tamper_ledger__": "fault injection for tests ONLY (flip a stored record hash); NOT part of the production vocabulary"
+    }
+  },
+  "block_codes": ["SCHEMA_VERSION", "SNAPSHOT_RACE", "SECRET_IN_SNAPSHOT", "EXTERNAL_SYMLINK", "PATH_COLLISION", "SUBMODULE_UNSUPPORTED", "MISSING_INTENT"],
   "release_rules": {
     "LIGHT": "REPORT_ONLY",
     "HEAVY": "PROCEED iff terminal=COMPLETED and no adjudicated finding with candidate_severity.level >= HIGH and adjudication in {CONFIRMED,UNRESOLVED,UNVERIFIABLE}; else HOLD",

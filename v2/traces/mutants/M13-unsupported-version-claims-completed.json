@@ -1,0 +1,53 @@
+{
+  "trace_id": "M13-unsupported-version-claims-completed",
+  "profile": null,
+  "initial_state": "CREATED",
+  "policy_version": null,
+  "notes": "MUTANT (must be rejected): Resume reads a journal written by a newer, unsupported format_version. The reader does NOT rewrite it in place; it BLOCKS(SCHEMA_VERSION). Terminal before any plan -> no profile -> HOLD. The records read so far stay chained and sealed.",
+  "input_events": [
+    {
+      "event_id": "e1",
+      "event_kind": "snapshot_sealed",
+      "payload": {
+        "snapshot_id": "snap-t10"
+      },
+      "at_min": 0
+    },
+    {
+      "event_id": "e2",
+      "event_kind": "journal_resume",
+      "payload": {
+        "format_version": "v2-verify-99"
+      },
+      "at_min": 1
+    }
+  ],
+  "expected_transitions": [
+    {
+      "on": "e1",
+      "from": "CREATED",
+      "to": "SNAPSHOT_BOUND"
+    },
+    {
+      "on": "e2",
+      "from": "SNAPSHOT_BOUND",
+      "to": "BLOCKED"
+    }
+  ],
+  "expected_node_states": {},
+  "expected_terminal": "COMPLETED",
+  "expected_release_recommendation": "HOLD",
+  "expected_degradations": [],
+  "expected_coverage_gaps": [],
+  "expected_canonical_finding_ids": [],
+  "forbidden_side_effects": [
+    "network",
+    "package_install",
+    "write_outside_scratch",
+    "external_state_mutation"
+  ],
+  "expected_block_code": "SCHEMA_VERSION",
+  "expected_ledger_sealed": false,
+  "expected_ledger_intact": true,
+  "expect_failure_containing": "terminal: expected 'COMPLETED'"
+}

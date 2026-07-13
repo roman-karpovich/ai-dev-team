@@ -26,6 +26,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_SPEC = REPO_ROOT / "v2" / "spec" / "transitions.json"
 
 GATING = ("CONFIRMED", "UNRESOLVED", "UNVERIFIABLE")
+LEDGER_FORMAT_VERSION = "v2-verify-1"
+SUPPORTED_LEDGER_VERSIONS = {"v2-verify-1"}
+LEDGER_GENESIS = "GENESIS/v2-verify"
 
 
 def canonical(obj):
@@ -86,6 +89,7 @@ class Machine:
         self.clock = 0
         self.nodes = {}
         self.snapshot_id = None
+        self.run_id = None
         self.claims = {}  # claim_id -> claim record (registry, ADR-2)
         self.proposals = set()  # model-proposed observations awaiting re-read
         self.adjudications = []
@@ -98,6 +102,11 @@ class Machine:
         self.seen = {}
         self.dispatch_effects = set()
         self.dispatch_at = {}
+        self.ledger = []      # ADR-5 hash-chained records
+        self.ledger_seal = None
+        self.no_seal = False  # set when the source journal is corrupt/unsupported
+        self.audit_chain = []  # post-terminal / recovery audit records
+        self.block_code = None
         self.run_rows = spec["run_transitions"]
         self.attempt_rows = spec["attempt_transitions"]
         self.settled_states = set(spec["attempt_settled_states"])
@@ -184,7 +193,7 @@ class Machine:
 
     # -- ADR-2 evidence layer (control-plane side) --------------------------
 
-    def register_claims(self, claim_list, producer):
+    def register_claims(self, claim_list, producer, receipt_deps=None):
         for c in claim_list:
             for field in ("claim_id", "claim_class", "subject", "asserted_value"):
                 if field not in c:
@@ -192,43 +201,168 @@ class Machine:
             cid = c["claim_id"]
             if cid in self.claims:
                 raise TraceError(f"duplicate claim_id {cid}")
-            if producer == "CONTROL_PLANE" and cid.startswith("cp-"):
-                if c.get("snapshot_id") != self.snapshot_id:
-                    raise TraceError(f"re-read claim {cid} not bound to run snapshot")
+            # ADR-5 §1.6 claim-field lift (enforced for EVERY claim, not only cp-):
+            # run-snapshot equality — a claim may NEVER carry a foreign snapshot_id
+            # (no model-supplied binding is trusted); it is pinned to the run's.
+            if c.get("snapshot_id") not in (None, self.snapshot_id):
+                raise TraceError(f"claim {cid} carries a foreign snapshot_id")
+            created_at_seq = len(self.ledger) - 1
+            record_refs = self.ledger[-1]["artifact_refs"] if self.ledger else []
+            if any(r not in record_refs for r in c.get("artifact_refs", [])):
+                raise TraceError(f"claim {cid} refs bytes its record did not commit")
             self.claims[cid] = {
-                "relationship": "supports", **c, "producer": producer
+                "relationship": "supports", **c, "producer": producer,
+                "created_at_seq": created_at_seq,
+                "snapshot_id": self.snapshot_id,          # pinned, never model-supplied
+                "execution_manifest_id": "em:" + (self.run_id or "?"),
+                "trust_domain": {"name": producer,
+                                 "instance": f"{producer}:{self.run_id}",
+                                 # receipt-owned, from the producing adapter/probe
+                                 # receipt — never asserted by the claim itself.
+                                 # MISSING (None) stays distinguishable from an
+                                 # explicit empty list: it is recorded as UNKNOWN.
+                                 "shared_dependencies": (list(receipt_deps)
+                                                         if receipt_deps is not None
+                                                         else "UNKNOWN")},
             }
+
+    # B adjudicates on the SEMANTIC claim content, not bookkeeping metadata
+    # (created_at_seq, trust_domain, manifest ids). The binding pins that
+    # content set; lift metadata is enforced separately at registration.
+    B_PROJECTION = ("claim_id", "claim_class", "subject", "asserted_value",
+                    "relationship", "producer")
 
     def b_input(self):
         supplied = sorted(self.claims)
-        payload = canonical([self.claims[c] for c in supplied])
-        return supplied, sha(payload)
+        proj = [{k: self.claims[c][k] for k in self.B_PROJECTION} for c in supplied]
+        return supplied, sha(canonical(proj))
+
+    # -- ADR-5 ledger (append-only, corruption-evident) --------------------
+
+    CORE_FIELDS = ("format_version", "seq", "prev_hash", "kind", "event_id",
+                   "body_digest", "artifact_refs")
+
+    def ledger_append(self, kind, event_id, body_digest, artifact_refs=None):
+        seq = len(self.ledger)
+        prev = self.ledger[-1]["record_hash"] if self.ledger else LEDGER_GENESIS
+        rec = {"format_version": LEDGER_FORMAT_VERSION, "seq": seq, "prev_hash": prev,
+               "kind": kind, "event_id": event_id, "body_digest": body_digest,
+               "artifact_refs": artifact_refs or []}
+        rec["record_hash"] = sha(canonical({k: rec[k] for k in self.CORE_FIELDS}))
+        self.ledger.append(rec)
+
+    def verify_chain(self):
+        prev = LEDGER_GENESIS
+        for i, rec in enumerate(self.ledger):
+            if rec["seq"] != i or rec["prev_hash"] != prev:
+                return False
+            if rec["format_version"] not in SUPPORTED_LEDGER_VERSIONS:
+                return False
+            core = {k: rec[k] for k in self.CORE_FIELDS}
+            if rec["record_hash"] != sha(canonical(core)):
+                return False
+            prev = rec["record_hash"]
+        return True
+
+    def seal(self):
+        # ADR-5 §1.2: the seal is a real appended record + a persisted sidecar,
+        # created immediately at terminal (idempotent). Its body BINDS the reported
+        # projection (terminal status, release recommendation, spec version) to the
+        # pre-seal head, so the sidecar/oracle can verify the run's outcome without
+        # re-simulating derive(). A corrupt/unsupported SOURCE is never sealed.
+        if (self.ledger_seal is None and self.terminal is not None
+                and self.ledger and not self.no_seal):
+            pre_seal_head = self.ledger[-1]["record_hash"]
+            body = {"run_id": self.run_id, "terminal": self.terminal,
+                    "release_recommendation": self.release_recommendation,
+                    "spec_version": self.spec["spec_version"], "pre_seal_head": pre_seal_head}
+            self.ledger_append("terminal_seal", "seal", sha(canonical(body)))
+            seal_rec = self.ledger[-1]
+            # Sidecar persists the projection fields (not just the digest) so an
+            # archive confirms the run's OUTCOME from the seal alone (ADR-5 §1.2).
+            self.ledger_seal = {"run_id": self.run_id, "terminal_seq": seal_rec["seq"],
+                                "head_hash": seal_rec["record_hash"], **body}
+
+    def audit_append(self, kind, payload):
+        # Separate hash-chained post-terminal/recovery audit trail (ADR-5): it
+        # is NOT the sealed run ledger, but it is corruption-evident on its own.
+        seq = len(self.audit_chain)
+        prev = self.audit_chain[-1]["record_hash"] if self.audit_chain else "AUDIT-GENESIS/v2-verify"
+        rec = {"seq": seq, "prev_hash": prev, "kind": kind,
+               "digest": sha(canonical(payload))}
+        rec["record_hash"] = sha(canonical(rec))
+        self.audit_chain.append(rec)
+
+    def audit_head(self):
+        return self.audit_chain[-1]["record_hash"] if self.audit_chain else None
 
     # -- event application -----------------------------------------------
 
     def apply(self, event):
-        if self.terminal:
-            raise TraceError(f"event {event['event_id']} after terminal state")
         eid, kind = event["event_id"], event["event_kind"]
         payload = event.get("payload", {})
-        # Identity/idempotency FIRST: an exact duplicate is a total no-op —
-        # it must not advance even the virtual clock (ADR-1 I3).
+        # Identity/idempotency FIRST for EVERY event (pre- and post-terminal) —
+        # an exact duplicate is a total no-op, including in the audit chain (I3).
         h = body_hash(kind, event.get("node_id"), event.get("attempt"), payload)
         ident = (kind, eid)
         if ident in self.seen:
             if self.seen[ident] == h:
                 return
+            if self.terminal:
+                raise TraceError(f"conflicting duplicate {eid} after terminal state")
             self.corrupted = True
             self.record("corruption_detected", self.phase, "FAILED")
             self.terminal = "FAILED"
             self.finalize_release()
             return
         self.seen[ident] = h
+        if self.terminal:
+            # Post-terminal: only a late result for a settled attempt is allowed;
+            # journaled to the SEPARATE audit chain, inadmissible (ADR-1 1.6).
+            if kind == "late_result_rejected":
+                self.audit_append(kind, {"node_id": event["node_id"], "attempt": event["attempt"]})
+                self.degradations.append(
+                    f"late_result_rejected:{event['node_id']}:{event['attempt']}"
+                )
+                return
+            raise TraceError(f"event {eid} after terminal state")
         at = event.get("at_min")
         if at is not None:
             if at < self.clock:
                 raise TraceError(f"non-monotonic at_min on {eid}")
             self.clock = at
+
+        if kind == "__tamper_ledger__":
+            # TEST-ONLY fault injection (NOT a production event, ADR-5 §3):
+            # flip a stored record's hash so verify_chain() must catch it.
+            self.ledger[payload["seq"]]["record_hash"] = "TAMPERED"
+            return
+        if kind == "journal_resume":
+            # ADR-5 §1.4 / §1.3: verify the SOURCE journal BEFORE trusting or
+            # appending anything. A corrupt/unsupported source is NEVER modified —
+            # not even sealed; the recovery outcome goes to the audit chain.
+            if payload["format_version"] not in SUPPORTED_LEDGER_VERSIONS:
+                self.no_seal = True  # never rewrite/seal an unsupported source
+                self.audit_append("recovery_blocked", {"reason": "SCHEMA_VERSION",
+                                                       "found_version": payload["format_version"]})
+                self.record(eid, self.phase, "BLOCKED")
+                self.terminal = "BLOCKED"
+                self.block_code = "SCHEMA_VERSION"
+                self.finalize_release()
+                return
+            if not self.verify_chain():
+                self.no_seal = True  # never rewrite/seal a corrupt source
+                self.audit_append("recovery_corruption", {"reason": "CHAIN_BROKEN"})
+                self.corrupted = True
+                self.record("corruption_detected", self.phase, "FAILED")
+                self.terminal = "FAILED"
+                self.finalize_release()
+                return
+            self.ledger_append(kind, eid, h, payload.get("artifact_refs"))
+            return
+        # Every real event is journaled (ADR-5 §1.1). The ledger is the
+        # transport-of-record; downstream reads it, never the raw stream.
+        self.ledger_append(kind, eid, h, payload.get("artifact_refs"))
 
         if kind == "corruption_detected":
             self.corrupted = True
@@ -260,7 +394,8 @@ class Machine:
                             f"reread subject mismatch: {c['claim_id']} vs proposal {ref}"
                         )
                     self.proposals.discard(ref)
-            self.register_claims(payload["claims"], "CONTROL_PLANE")
+            self.register_claims(payload["claims"], "CONTROL_PLANE",
+                                 payload.get("receipt", {}).get("shared_dependencies"))
         elif kind == "budget_exhausted":
             if (
                 payload["dimension"] == "wall_clock"
@@ -294,17 +429,18 @@ class Machine:
             raise TraceError(f"invalid event {kind} in phase {self.phase}")
         if kind == "snapshot_sealed":
             self.snapshot_id = payload["snapshot_id"]
+            self.run_id = "run:" + payload["snapshot_id"]
             self.register_claims(
                 [{"claim_id": "mc-snapshot", "claim_class": "snapshot_binding",
                   "subject": "run", "asserted_value": payload["snapshot_id"]}],
-                "CONTROL_PLANE",
+                "CONTROL_PLANE", [],  # control-plane internal: genuinely no shared deps
             )
         if kind == "plan_resolved":
             self.load_plan(payload)
             self.register_claims(
                 [{"claim_id": "mc-policy", "claim_class": "policy_resolution",
                   "subject": "run", "asserted_value": payload["policy_version"]}],
-                "CONTROL_PLANE",
+                "CONTROL_PLANE", [],  # control-plane internal: genuinely no shared deps
             )
         dst = row["to"]
         self.record(eid, self.phase, dst)
@@ -375,10 +511,22 @@ class Machine:
             )
         if kind == "node_abandoned":
             self.degradations.append(f"node_abandoned:{node.node_id}")
+        to_state = row["to"]
+        on = kind
         if kind == "node_result":
-            self.consume_result(node, payload)
-        node.attempts[attempt] = row["to"]
-        self.record_node(node, attempt, kind, row["to"])
+            derived_fail = self.consume_result(node, payload)
+            if derived_fail is not None:
+                # Machine validation, replaying the JOURNALED node_result envelope,
+                # DERIVES an integrity failure (ADR-2 §1.4). The attempt is an
+                # explicit N4 node_failed (not a silent N3->FAILED), recorded in the
+                # transition log as a deterministic consequence of the journaled
+                # result — reconstructible on replay, so it needs no separate record.
+                node.last_failure_class = derived_fail
+                self.degradations.append(f"node_failed:{node.node_id}:{derived_fail}")
+                to_state = "FAILED"
+                on = "node_failed"  # N4, machine-derived from the journaled result
+        node.attempts[attempt] = to_state
+        self.record_node(node, attempt, on, to_state)
 
     def check_guards(self, guards, node, attempt, kind, payload):
         for g in guards:
@@ -404,8 +552,9 @@ class Machine:
         if node.kind == "probe":
             return
         if node.kind == "finder":
+            deps = payload.get("receipt", {}).get("shared_dependencies")
             for cand in payload.get("candidates", []):
-                self.register_claims(cand.get("claims", []), "MODEL_CONTEXT")
+                self.register_claims(cand.get("claims", []), "MODEL_CONTEXT", deps)
                 for c in cand.get("claims", []):
                     if c["claim_class"] == "artifact_observation":
                         self.proposals.add(c["claim_id"])
@@ -415,10 +564,13 @@ class Machine:
         if binding is None:
             raise TraceError(f"adjudicator {node.node_id} result without b_binding")
         supplied, input_hash = self.b_input()
+        # A binding that references a stale/wrong claim set is an envelope-level
+        # integrity failure DERIVED by machine validation (ADR-2 §1.4) -> the
+        # attempt FAILS with stale_binding. Not a trusted supplied label.
         if sorted(binding["supplied_claim_ids"]) != supplied:
-            raise TraceError("b_binding supplied_claim_ids != control-plane claim set")
+            return "stale_binding"
         if binding["input_claim_set_hash"] != input_hash:
-            raise TraceError("b_binding input_claim_set_hash mismatch")
+            return "stale_binding"
         if sorted(binding["considered_claim_ids"]) != supplied:
             raise TraceError("b_binding considered != supplied (envelope failure)")
         for adj in payload.get("adjudications", []):
@@ -536,6 +688,7 @@ class Machine:
             self.release_recommendation = "PROCEED" if ok else "HOLD"
         else:
             self.release_recommendation = "HOLD"
+        self.seal()  # ADR-5 §1.2: seal immediately at terminal (idempotent)
 
     def coverage_gaps(self):
         gaps = []
@@ -555,6 +708,7 @@ def run_trace(trace, spec):
         raise TraceError("initial_state mismatch")
     for event in trace["input_events"]:
         machine.apply(event)
+    machine.seal()
 
     failures = []
 
@@ -614,8 +768,36 @@ def run_trace(trace, spec):
     }
     if machine.dispatch_effects != dispatched:
         failures.append("dispatch side-effect keying mismatch (duplicate dispatch?)")
-    if trace.get("expected_ledger_head") is not None:
-        failures.append("expected_ledger_head set but ledger hashing lands with ADR-5")
+    # ADR-5 ledger integrity: a standing check on every trace (structural, not
+    # an opaque hardcoded hash — verify_chain recomputes the chain).
+    if "expected_ledger_length" in trace:
+        check("ledger_length", trace["expected_ledger_length"], len(machine.ledger))
+    if "expected_ledger_intact" in trace:
+        # A run that ended FAILED on corruption legitimately has a broken chain.
+        check("ledger_intact", trace["expected_ledger_intact"], machine.verify_chain())
+    if "expected_ledger_sealed" in trace:
+        check("ledger_sealed", trace["expected_ledger_sealed"], machine.ledger_seal is not None)
+        # Standing check: a sealed run's sidecar carries the outcome projection
+        # (ADR-5 §1.2), verifiable from the seal alone.
+        if machine.ledger_seal is not None:
+            check("seal_terminal", machine.terminal, machine.ledger_seal.get("terminal"))
+            check("seal_release", machine.release_recommendation,
+                  machine.ledger_seal.get("release_recommendation"))
+            check("seal_spec_version", spec["spec_version"],
+                  machine.ledger_seal.get("spec_version"))
+    if "expected_ledger_head" in trace:
+        # Independently computed known-answer (the fixture generator recomputes
+        # the chain from the ADR-5 spec, not from this runner's code path).
+        head = machine.ledger_seal["head_hash"] if machine.ledger_seal else None
+        check("ledger_head", trace["expected_ledger_head"], head)
+    if "expected_block_code" in trace:
+        check("block_code", trace["expected_block_code"], machine.block_code)
+    if "expected_audit_length" in trace:
+        check("audit_length", trace["expected_audit_length"], len(machine.audit_chain))
+    if "expected_claim_shared_deps" in trace:
+        for cid, deps in trace["expected_claim_shared_deps"].items():
+            actual = machine.claims.get(cid, {}).get("trust_domain", {}).get("shared_dependencies")
+            check(f"claim_shared_deps[{cid}]", deps, actual)
     return failures
 
 

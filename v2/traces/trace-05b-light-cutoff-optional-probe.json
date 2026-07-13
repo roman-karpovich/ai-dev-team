@@ -143,11 +143,14 @@
   ],
   "expected_canonical_finding_ids": [],
   "expected_candidate_dispositions": [],
-  "expected_ledger_head": null,
   "forbidden_side_effects": [
     "network",
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ]
+  ],
+  "expected_ledger_sealed": true,
+  "expected_ledger_intact": true,
+  "expected_ledger_length": 8,
+  "expected_ledger_head": "421f80b362d6caf592c0c5cd3f3e9ed3d2df802cfd3dfd78adc1248b19042f0c"
 }

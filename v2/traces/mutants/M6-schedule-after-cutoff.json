@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): scheduling a new attempt after budget cutoff while another is in flight -> G_NO_CUTOFF (I8)",
+  "notes": "MUTANT (must be rejected): Wall-clock budget exhausts AT the 60-min wall while a finder dispatched at 45 is legitimately in flight (15 < 20-min deadline). Durable cutoff forbids new scheduling/dispatch; the in-flight attempt is cancelled; the unstarted adjudicator is SKIPPED via journaled N9 (asserted in expected_attempt_transitions). INCOMPLETE + HOLD; no path to COMPLETED.",
   "input_events": [
     {
       "event_id": "e1",
@@ -215,7 +215,6 @@
     "adjudicator-b:no_adjudication"
   ],
   "expected_canonical_finding_ids": [],
-  "expected_ledger_head": null,
   "forbidden_side_effects": [
     "network",
     "package_install",
@@ -223,5 +222,69 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
+  "expected_attempt_transitions": [
+    {
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "on": "node_result",
+      "to": "COMPLETED"
+    },
+    {
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "on": "node_result",
+      "to": "COMPLETED"
+    },
+    {
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "on": "node_cancelled",
+      "to": "CANCELLED"
+    },
+    {
+      "node_id": "adjudicator-b",
+      "attempt": 0,
+      "on": "node_skipped",
+      "to": "SKIPPED"
+    }
+  ],
+  "expected_ledger_sealed": true,
+  "expected_ledger_intact": true,
   "expect_failure_containing": "after cutoff/cancel"
 }
