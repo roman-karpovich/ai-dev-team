@@ -218,8 +218,12 @@ class Machine:
                 "trust_domain": {"name": producer,
                                  "instance": f"{producer}:{self.run_id}",
                                  # receipt-owned, from the producing adapter/probe
-                                 # receipt — never asserted by the claim itself:
-                                 "shared_dependencies": list(receipt_deps or [])},
+                                 # receipt — never asserted by the claim itself.
+                                 # MISSING (None) stays distinguishable from an
+                                 # explicit empty list: it is recorded as UNKNOWN.
+                                 "shared_dependencies": (list(receipt_deps)
+                                                         if receipt_deps is not None
+                                                         else "UNKNOWN")},
             }
 
     # B adjudicates on the SEMANTIC claim content, not bookkeeping metadata
@@ -429,14 +433,14 @@ class Machine:
             self.register_claims(
                 [{"claim_id": "mc-snapshot", "claim_class": "snapshot_binding",
                   "subject": "run", "asserted_value": payload["snapshot_id"]}],
-                "CONTROL_PLANE",
+                "CONTROL_PLANE", [],  # control-plane internal: genuinely no shared deps
             )
         if kind == "plan_resolved":
             self.load_plan(payload)
             self.register_claims(
                 [{"claim_id": "mc-policy", "claim_class": "policy_resolution",
                   "subject": "run", "asserted_value": payload["policy_version"]}],
-                "CONTROL_PLANE",
+                "CONTROL_PLANE", [],  # control-plane internal: genuinely no shared deps
             )
         dst = row["to"]
         self.record(eid, self.phase, dst)
@@ -773,6 +777,14 @@ def run_trace(trace, spec):
         check("ledger_intact", trace["expected_ledger_intact"], machine.verify_chain())
     if "expected_ledger_sealed" in trace:
         check("ledger_sealed", trace["expected_ledger_sealed"], machine.ledger_seal is not None)
+        # Standing check: a sealed run's sidecar carries the outcome projection
+        # (ADR-5 §1.2), verifiable from the seal alone.
+        if machine.ledger_seal is not None:
+            check("seal_terminal", machine.terminal, machine.ledger_seal.get("terminal"))
+            check("seal_release", machine.release_recommendation,
+                  machine.ledger_seal.get("release_recommendation"))
+            check("seal_spec_version", spec["spec_version"],
+                  machine.ledger_seal.get("spec_version"))
     if "expected_ledger_head" in trace:
         # Independently computed known-answer (the fixture generator recomputes
         # the chain from the ADR-5 spec, not from this runner's code path).
