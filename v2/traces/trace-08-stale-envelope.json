@@ -236,8 +236,82 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
-  "expected_ledger_length": 16,
   "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expected_ledger_head": "f9af14dd778fdea4a999a3bad92be6398a39f97944aa7377cd6897e8ccf64a9c"
+  "expected_ledger_length": 16,
+  "expected_ledger_head": "42d4e18253c256b623f1aa3bd6bafd7bde9c45ed5bae942f4c551119823a2314",
+  "expected_attempt_transitions": [
+    {
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "probe-parity",
+      "attempt": 1,
+      "on": "node_result",
+      "to": "COMPLETED"
+    },
+    {
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "finder-claude",
+      "attempt": 1,
+      "on": "node_result",
+      "to": "COMPLETED"
+    },
+    {
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "finder-codex",
+      "attempt": 1,
+      "on": "node_result",
+      "to": "COMPLETED"
+    },
+    {
+      "node_id": "adjudicator-b",
+      "attempt": 1,
+      "on": "node_scheduled",
+      "to": "SCHEDULED"
+    },
+    {
+      "node_id": "adjudicator-b",
+      "attempt": 1,
+      "on": "node_dispatched",
+      "to": "DISPATCHED"
+    },
+    {
+      "node_id": "adjudicator-b",
+      "attempt": 1,
+      "on": "node_failed",
+      "to": "FAILED"
+    }
+  ]
 }

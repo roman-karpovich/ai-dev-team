@@ -197,8 +197,10 @@
       "event": "node_result",
       "to": "COMPLETED",
       "guards": [
-        "G_WITHIN_DEADLINE"
-      ]
+        "G_WITHIN_DEADLINE",
+        "G_ENVELOPE_VALID"
+      ],
+      "note": "validation-dependent: a node_result COMPLETES only if machine validation of the (journaled) envelope passes; if validation DERIVES an integrity failure the attempt takes N4 node_failed{stale_binding|malformed_output} instead (ADR-2 1.4). The derived N4 is a deterministic consequence of the journaled result, recorded in the transition log."
     },
     {
       "id": "N4",
@@ -275,6 +277,7 @@
     "G_ATTEMPT_MONOTONIC": "attempt number = latest attempt + 1",
     "G_RETRY_PERMITTED": "prior attempt FAILED with retryable/corrective class AND attempts < max_attempts AND retry reserve > 0 AND remaining wall budget >= own deadline + sum of base deadlines of other pending required nodes",
     "G_WITHIN_DEADLINE": "dispatch-to-result duration <= per-kind node deadline (results only; failures/timeouts are journaled as node_failed)",
+    "G_ENVELOPE_VALID": "machine validation of the result envelope passes (b_binding matches the control-plane claim set, severity level is ladder-derived, etc.); on failure the attempt takes N4 node_failed{stale_binding|malformed_output} not N3 (ADR-2 1.4)",
     "G_PROVEN_NON_ACCEPTANCE": "provider reconciliation proves the in-doubt request was never accepted; lands as FAILED(transport_5xx), N7-eligible; unproven in-doubt attempts use N6 node_abandoned instead",
     "G_CUTOFF_ACTIVE": "machine-generated only while the budget cutoff flag is set; applies to nodes with zero attempts whose scheduling phase is still open (an optional node whose phase already closed legitimately remains PENDING per R6)",
     "G_CONSOLIDATION_READY": "every model-proposed artifact observation has a matching control-plane re-read receipt, OR the cutoff flag releases the hold (the run terminates INCOMPLETE regardless)"

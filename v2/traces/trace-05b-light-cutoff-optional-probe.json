@@ -149,8 +149,8 @@
     "write_outside_scratch",
     "external_state_mutation"
   ],
-  "expected_ledger_length": 8,
   "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expected_ledger_head": "a0da8ae4984157a3a7dc69ce62ed9c2cfa64d9434cf6223e793a4fef67ac1edd"
+  "expected_ledger_length": 8,
+  "expected_ledger_head": "9e4ec3b572f4d091459137e8c08b449d91126449cd7ee37c81c3e3438f3ae693"
 }

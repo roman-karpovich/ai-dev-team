@@ -270,8 +270,8 @@
       "to": "SKIPPED"
     }
   ],
-  "expected_ledger_length": 14,
   "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expected_ledger_head": "f3ebd725f4517b6758c47512b8506241d4c94c063972ea6cfb5726fbcbf9e90e"
+  "expected_ledger_length": 14,
+  "expected_ledger_head": "572d4c3323c9b4f7aaba7bbe4115ea039198410f8066ee88d7e2356a8adb9d72"
 }
