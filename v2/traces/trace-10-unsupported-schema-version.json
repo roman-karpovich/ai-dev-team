@@ -3,7 +3,7 @@
   "profile": null,
   "initial_state": "CREATED",
   "policy_version": null,
-  "notes": "Resume reads a journal written by a newer, unsupported format_version. The reader does NOT rewrite it in place; it BLOCKS(SCHEMA_VERSION). Terminal before any plan -> no profile -> HOLD. The records read so far stay chained and sealed.",
+  "notes": "Resume reads a journal written by a newer, unsupported format_version. The reader does NOT rewrite or seal it in place; it BLOCKS(SCHEMA_VERSION) and records the outcome on the separate audit chain. Terminal before any plan -> no profile -> HOLD. The source records read so far stay intact and UNSEALED.",
   "input_events": [
     {
       "event_id": "e1",
@@ -47,8 +47,7 @@
     "external_state_mutation"
   ],
   "expected_block_code": "SCHEMA_VERSION",
-  "expected_ledger_length": 1,
+  "expected_audit_length": 1,
   "expected_ledger_sealed": false,
-  "expected_ledger_intact": true,
-  "expected_audit_length": 1
+  "expected_ledger_intact": true
 }

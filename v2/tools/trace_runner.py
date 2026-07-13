@@ -193,7 +193,7 @@ class Machine:
 
     # -- ADR-2 evidence layer (control-plane side) --------------------------
 
-    def register_claims(self, claim_list, producer):
+    def register_claims(self, claim_list, producer, receipt_deps=None):
         for c in claim_list:
             for field in ("claim_id", "claim_class", "subject", "asserted_value"):
                 if field not in c:
@@ -201,11 +201,11 @@ class Machine:
             cid = c["claim_id"]
             if cid in self.claims:
                 raise TraceError(f"duplicate claim_id {cid}")
-            if producer == "CONTROL_PLANE" and cid.startswith("cp-"):
-                if c.get("snapshot_id") != self.snapshot_id:
-                    raise TraceError(f"re-read claim {cid} not bound to run snapshot")
             # ADR-5 §1.6 claim-field lift (enforced for EVERY claim, not only cp-):
-            # bind to the containing ledger record + run inputs + trust domain.
+            # run-snapshot equality — a claim may NEVER carry a foreign snapshot_id
+            # (no model-supplied binding is trusted); it is pinned to the run's.
+            if c.get("snapshot_id") not in (None, self.snapshot_id):
+                raise TraceError(f"claim {cid} carries a foreign snapshot_id")
             created_at_seq = len(self.ledger) - 1
             record_refs = self.ledger[-1]["artifact_refs"] if self.ledger else []
             if any(r not in record_refs for r in c.get("artifact_refs", [])):
@@ -213,11 +213,13 @@ class Machine:
             self.claims[cid] = {
                 "relationship": "supports", **c, "producer": producer,
                 "created_at_seq": created_at_seq,
-                "snapshot_id": c.get("snapshot_id", self.snapshot_id),
+                "snapshot_id": self.snapshot_id,          # pinned, never model-supplied
                 "execution_manifest_id": "em:" + (self.run_id or "?"),
                 "trust_domain": {"name": producer,
                                  "instance": f"{producer}:{self.run_id}",
-                                 "shared_dependencies": []},
+                                 # receipt-owned, from the producing adapter/probe
+                                 # receipt — never asserted by the claim itself:
+                                 "shared_dependencies": list(receipt_deps or [])},
             }
 
     # B adjudicates on the SEMANTIC claim content, not bookkeeping metadata
@@ -260,13 +262,17 @@ class Machine:
 
     def seal(self):
         # ADR-5 §1.2: the seal is a real appended record + a persisted sidecar,
-        # created immediately at terminal (idempotent). run_id binds it to the run.
-        # A corrupt/unsupported SOURCE journal is never sealed (self.no_seal).
+        # created immediately at terminal (idempotent). Its body BINDS the reported
+        # projection (terminal status, release recommendation, spec version) to the
+        # pre-seal head, so the sidecar/oracle can verify the run's outcome without
+        # re-simulating derive(). A corrupt/unsupported SOURCE is never sealed.
         if (self.ledger_seal is None and self.terminal is not None
                 and self.ledger and not self.no_seal):
-            head_hash = self.ledger[-1]["record_hash"]
-            self.ledger_append("terminal_seal", "seal",
-                               sha(canonical({"run_id": self.run_id, "head_hash": head_hash})))
+            pre_seal_head = self.ledger[-1]["record_hash"]
+            body = {"run_id": self.run_id, "terminal": self.terminal,
+                    "release_recommendation": self.release_recommendation,
+                    "spec_version": self.spec["spec_version"], "pre_seal_head": pre_seal_head}
+            self.ledger_append("terminal_seal", "seal", sha(canonical(body)))
             seal_rec = self.ledger[-1]
             self.ledger_seal = {"run_id": self.run_id, "terminal_seq": seal_rec["seq"],
                                 "head_hash": seal_rec["record_hash"]}
@@ -289,31 +295,31 @@ class Machine:
     def apply(self, event):
         eid, kind = event["event_id"], event["event_kind"]
         payload = event.get("payload", {})
-        if self.terminal:
-            # Post-terminal: only a late result for a settled attempt is allowed;
-            # it is journaled as inadmissible, never accepted (ADR-1 1.6).
-            if kind == "late_result_rejected":
-                # ADR-1 §1.6 / ADR-5: journaled to a SEPARATE post-terminal audit
-                # chain (the main ledger is sealed); inadmissible, never accepted.
-                self.audit_append(kind, {"node_id": event["node_id"], "attempt": event["attempt"]})
-                self.degradations.append(
-                    f"late_result_rejected:{event['node_id']}:{event['attempt']}"
-                )
-                return
-            raise TraceError(f"event {eid} after terminal state")
-        # Identity/idempotency FIRST: an exact duplicate is a total no-op —
-        # it must not advance even the virtual clock (ADR-1 I3).
+        # Identity/idempotency FIRST for EVERY event (pre- and post-terminal) —
+        # an exact duplicate is a total no-op, including in the audit chain (I3).
         h = body_hash(kind, event.get("node_id"), event.get("attempt"), payload)
         ident = (kind, eid)
         if ident in self.seen:
             if self.seen[ident] == h:
                 return
+            if self.terminal:
+                raise TraceError(f"conflicting duplicate {eid} after terminal state")
             self.corrupted = True
             self.record("corruption_detected", self.phase, "FAILED")
             self.terminal = "FAILED"
             self.finalize_release()
             return
         self.seen[ident] = h
+        if self.terminal:
+            # Post-terminal: only a late result for a settled attempt is allowed;
+            # journaled to the SEPARATE audit chain, inadmissible (ADR-1 1.6).
+            if kind == "late_result_rejected":
+                self.audit_append(kind, {"node_id": event["node_id"], "attempt": event["attempt"]})
+                self.degradations.append(
+                    f"late_result_rejected:{event['node_id']}:{event['attempt']}"
+                )
+                return
+            raise TraceError(f"event {eid} after terminal state")
         at = event.get("at_min")
         if at is not None:
             if at < self.clock:
@@ -382,7 +388,8 @@ class Machine:
                             f"reread subject mismatch: {c['claim_id']} vs proposal {ref}"
                         )
                     self.proposals.discard(ref)
-            self.register_claims(payload["claims"], "CONTROL_PLANE")
+            self.register_claims(payload["claims"], "CONTROL_PLANE",
+                                 payload.get("receipt", {}).get("shared_dependencies"))
         elif kind == "budget_exhausted":
             if (
                 payload["dimension"] == "wall_clock"
@@ -539,8 +546,9 @@ class Machine:
         if node.kind == "probe":
             return
         if node.kind == "finder":
+            deps = payload.get("receipt", {}).get("shared_dependencies")
             for cand in payload.get("candidates", []):
-                self.register_claims(cand.get("claims", []), "MODEL_CONTEXT")
+                self.register_claims(cand.get("claims", []), "MODEL_CONTEXT", deps)
                 for c in cand.get("claims", []):
                     if c["claim_class"] == "artifact_observation":
                         self.proposals.add(c["claim_id"])

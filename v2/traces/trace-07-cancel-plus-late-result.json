@@ -152,9 +152,9 @@
     "external_state_mutation"
   ],
   "expected_candidate_dispositions": [],
-  "expected_ledger_length": 9,
+  "expected_audit_length": 1,
   "expected_ledger_sealed": true,
   "expected_ledger_intact": true,
-  "expected_ledger_head": "94ce282d11a53be0babb964fd5ea3e1490971eccfaef06bc2270a1f5f211ef6f",
-  "expected_audit_length": 1
+  "expected_ledger_length": 9,
+  "expected_ledger_head": "8950ea82bee55177e6985df456e3ffc880843a58a250bd50ac7273531cfb27b0"
 }
