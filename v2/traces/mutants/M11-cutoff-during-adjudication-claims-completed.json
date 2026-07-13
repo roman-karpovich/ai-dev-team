@@ -1,9 +1,9 @@
 {
-  "trace_id": "T02-heavy-completed",
+  "trace_id": "M11-cutoff-during-adjudication-claims-completed",
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "Happy path HEAVY: retryable finder failure (N7 under wall-budget guard); finder PROPOSES obs-1, the control-plane re-read receipt (claims_reread) produces cp-obs-1, CONFIRMED cites the machine observation (E3); hash recomputed by control plane; level ladder-derived (MEDIUM) so release=PROCEED.",
+  "notes": "MUTANT (must be rejected): budget cutoff fires while B is in flight; B then settles successfully \u2014 the run must still terminate INCOMPLETE (cutoff terminal rule), so claiming COMPLETED/PROCEED is caught",
   "input_events": [
     {
       "event_id": "e1",
@@ -216,6 +216,14 @@
       "at_min": 27
     },
     {
+      "event_id": "eB",
+      "event_kind": "budget_exhausted",
+      "payload": {
+        "dimension": "output_tokens"
+      },
+      "at_min": 28
+    },
+    {
       "event_id": "e18",
       "event_kind": "node_result",
       "payload": {
@@ -311,5 +319,6 @@
     "write_outside_scratch",
     "external_state_mutation"
   ],
-  "expected_candidate_dispositions": []
+  "expected_candidate_dispositions": [],
+  "expect_failure_containing": "terminal: expected 'COMPLETED'"
 }

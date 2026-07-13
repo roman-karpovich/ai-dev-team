@@ -87,6 +87,7 @@ class Machine:
         self.nodes = {}
         self.snapshot_id = None
         self.claims = {}  # claim_id -> claim record (registry, ADR-2)
+        self.proposals = set()  # model-proposed observations awaiting re-read
         self.adjudications = []
         self.candidate_dispositions = []
         self.canonical_finding_ids = []
@@ -246,6 +247,11 @@ class Machine:
             for c in payload["claims"]:
                 if not c["claim_id"].startswith("cp-"):
                     raise TraceError("control-plane claim without cp- prefix")
+                ref = c.get("reread_of")
+                if ref is not None:
+                    if ref not in self.proposals:
+                        raise TraceError(f"reread_of {ref} is not a pending proposal")
+                    self.proposals.discard(ref)
             self.register_claims(payload["claims"], "CONTROL_PLANE")
         elif kind == "budget_exhausted":
             if (
@@ -392,6 +398,9 @@ class Machine:
         if node.kind == "finder":
             for cand in payload.get("candidates", []):
                 self.register_claims(cand.get("claims", []), "MODEL_CONTEXT")
+                for c in cand.get("claims", []):
+                    if c["claim_class"] == "artifact_observation":
+                        self.proposals.add(c["claim_id"])
             return
         # adjudicator: verify B binding against control-plane-computed input.
         binding = payload.get("b_binding")
@@ -408,7 +417,9 @@ class Machine:
             sev = adj["candidate_severity"]
             if "level" in sev:
                 raise TraceError("model-supplied severity level (E7)")
-            for cid in adj.get("observation_claim_ids", []):
+            for cid in adj.get("observation_claim_ids", []) + adj.get(
+                "rationale_claim_ids", []
+            ):
                 if cid not in self.claims:
                     raise TraceError(f"adjudication cites unknown claim {cid}")
             verdict = adj["adjudication"]
@@ -432,9 +443,17 @@ class Machine:
             if verdict == "CONFIRMED":
                 self.canonical_finding_ids.append(adj["finding_id"])
             else:
-                self.candidate_dispositions.append(
-                    {"finding_id": adj["finding_id"], "adjudication": verdict}
-                )
+                coerced = verdict != adj["adjudication"]
+                self.candidate_dispositions.append({
+                    "finding_id": adj["finding_id"],
+                    "adjudication": verdict,
+                    "reason_code": (
+                        "rejected_without_mechanical_contradiction"
+                        if coerced
+                        else adj.get("reason_code", "insufficient_evidence")
+                    ),
+                    "rationale_claim_ids": adj.get("rationale_claim_ids", []),
+                })
 
     def check_rejection(self, adj):
         """ADR-2 1.5: REJECTED needs a machine-verified exclusive contradiction;
@@ -468,6 +487,10 @@ class Machine:
         if self.phase == "EXECUTING" and self.nodes and self.advance_ok_nonadj():
             self.record("derived:all_required_nodes_settled", "EXECUTING", "CONSOLIDATING")
             self.phase = "CONSOLIDATING"
+        if self.phase == "CONSOLIDATING" and (not self.proposals or self.cutoff):
+            # Consolidation holds until every model proposal has a control-plane
+            # re-read (arrival-order independence); cutoff releases the hold —
+            # the run terminates INCOMPLETE anyway.
             self.record("derived:consolidation_complete", "CONSOLIDATING", "ADJUDICATING")
             self.phase = "ADJUDICATING"
         if self.phase == "ADJUDICATING" and self.adj_settled():
@@ -483,6 +506,9 @@ class Machine:
             return "CANCELLED"
         if any(n.required and n.status != "COMPLETED" for n in self.nodes.values()):
             return "INCOMPLETE"
+        if self.cutoff:
+            return "INCOMPLETE"  # budget exhaustion NEVER -> COMPLETED, even if
+            # every in-flight required node settles successfully afterwards
         if self.profile == "HEAVY" and any(
             a["adjudication"] == "UNVERIFIABLE" and a["level"] in ("HIGH", "CRITICAL")
             for a in self.adjudications
@@ -552,7 +578,8 @@ def run_trace(trace, spec):
             sorted(machine.canonical_finding_ids),
         )
     if "expected_candidate_dispositions" in trace:
-        keyfn = lambda d: (d["finding_id"], d["adjudication"])
+        def keyfn(d):
+            return (d["finding_id"], d["adjudication"])
         check(
             "candidate_dispositions",
             sorted(trace["expected_candidate_dispositions"], key=keyfn),

@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): REJECTED citing a contradicts-claim with a different value but the WRONG SUBJECT fails the exclusivity predicate and is coerced to UNRESOLVED",
+  "notes": "MUTANT (must be rejected): REJECTED citing a REGISTERED contradicts-claim with a different value but the WRONG SUBJECT fails the exclusivity predicate and is coerced to UNRESOLVED",
   "input_events": [
     {
       "event_id": "e1",
@@ -92,26 +92,7 @@
     {
       "event_id": "e7",
       "event_kind": "node_scheduled",
-      "payload": {
-        "claims": [
-          {
-            "claim_id": "cp-obs-1",
-            "claim_class": "artifact_observation",
-            "subject": "src/mod.py:42",
-            "asserted_value": "literal-A",
-            "snapshot_id": "snap-t02",
-            "relationship": "supports"
-          },
-          {
-            "claim_id": "cp-other",
-            "claim_class": "artifact_observation",
-            "subject": "other.py:1",
-            "asserted_value": "literal-B",
-            "snapshot_id": "snap-t02",
-            "relationship": "contradicts"
-          }
-        ]
-      },
+      "payload": {},
       "node_id": "finder-claude",
       "attempt": 1,
       "at_min": 3
@@ -158,7 +139,16 @@
             "subject": "src/mod.py:42",
             "asserted_value": "literal-A",
             "snapshot_id": "snap-t02",
-            "relationship": "supports"
+            "relationship": "supports",
+            "reread_of": "obs-1"
+          },
+          {
+            "claim_id": "cp-other",
+            "claim_class": "artifact_observation",
+            "subject": "other.py:1",
+            "asserted_value": "literal-B",
+            "snapshot_id": "snap-t02",
+            "relationship": "contradicts"
           }
         ]
       },
@@ -249,19 +239,24 @@
             "observation_claim_ids": [
               "cp-obs-1"
             ],
+            "rationale_claim_ids": [
+              "cp-obs-1"
+            ],
             "contradiction_claim_id": "cp-other"
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "8902811fe7b22ad1ff01ad110aae085bd41914d38cda8ede78fe0dbf91a66b20",
+          "input_claim_set_hash": "e96f8a138dc96f275f807d9539583d639e1e8e96527f719b6827a0b85a4e31cf",
           "supplied_claim_ids": [
             "cp-obs-1",
+            "cp-other",
             "mc-policy",
             "mc-snapshot",
             "obs-1"
           ],
           "considered_claim_ids": [
             "cp-obs-1",
+            "cp-other",
             "mc-policy",
             "mc-snapshot",
             "obs-1"

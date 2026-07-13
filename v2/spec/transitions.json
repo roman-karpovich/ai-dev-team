@@ -295,9 +295,13 @@
     "cancelling -> CANCELLED",
     "pre-execution block -> BLOCKED (via R0/R2/R4)",
     "any required node not COMPLETED -> INCOMPLETE",
+    "cutoff flag set -> INCOMPLETE (budget exhaustion never COMPLETED, even if in-flight nodes settle successfully)",
     "HEAVY and any adjudicated finding UNVERIFIABLE with candidate_severity.level in {HIGH,CRITICAL} -> INCOMPLETE (V2-SM-08)",
     "else COMPLETED"
   ],
+  "evidence_events": {
+    "claims_reread": "control-plane re-read receipt (ADR-2 1.4); allowed in EXECUTING/CONSOLIDATING, phase unchanged; cp- claim-id prefix, snapshot-bound; R7 holds until every model proposal is re-read (cutoff releases the hold)"
+  },
   "release_rules": {
     "LIGHT": "REPORT_ONLY",
     "HEAVY": "PROCEED iff terminal=COMPLETED and no adjudicated finding with candidate_severity.level >= HIGH and adjudication in {CONFIRMED,UNRESOLVED,UNVERIFIABLE}; else HOLD",
