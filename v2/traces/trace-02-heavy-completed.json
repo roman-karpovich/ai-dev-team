@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "Happy path HEAVY: retryable finder failure (N7 under wall-budget guard); finder PROPOSES obs-1, the control-plane re-read receipt (claims_reread) produces cp-obs-1, CONFIRMED cites the machine observation (E3); hash recomputed by control plane; level ladder-derived (MEDIUM) so release=PROCEED.",
+  "notes": "Happy path HEAVY: retryable finder failure (N7 under wall-budget guard); finder PROPOSES obs-1, the control-plane re-read receipt (claims_reread) produces cp-obs-1, CONFIRMED cites the machine observation (E3); hash recomputed by control plane; level ladder-derived (MEDIUM) so release=PROCEED. Batch-1 limitation (declared): claim records enforce {claim_id, claim_class, subject, asserted_value} + snapshot/relationship/reread_of for cp- claims; trust-domain instances, created_at_seq and content-addressed artifact_refs become enforceable with the ledger (ADR-5, batch 2).",
   "input_events": [
     {
       "event_id": "e1",
