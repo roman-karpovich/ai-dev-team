@@ -1,5 +1,5 @@
 {
-  "spec_version": "adr1-v3",
+  "spec_version": "adr1-v4",
   "source_adr": "v2 VERIFY ADR-1 (state machine and snapshot); this JSON is the pinned encoding \u2014 on divergence the ADR wins",
   "phases": [
     "CREATED",
@@ -78,7 +78,9 @@
       "from": "CONSOLIDATING",
       "event": "derived:consolidation_complete",
       "to": "ADJUDICATING",
-      "guards": []
+      "guards": [
+        "G_CONSOLIDATION_READY"
+      ]
     },
     {
       "id": "R8",
@@ -255,7 +257,8 @@
     "G_RETRY_PERMITTED": "prior attempt FAILED with retryable/corrective class AND attempts < max_attempts AND retry reserve > 0 AND remaining wall budget >= own deadline + sum of base deadlines of other pending required nodes",
     "G_WITHIN_DEADLINE": "dispatch-to-result duration <= per-kind node deadline (results only; failures/timeouts are journaled as node_failed)",
     "G_PROVEN_NON_ACCEPTANCE": "provider reconciliation proves the in-doubt request was never accepted; lands as FAILED(transport_5xx), N7-eligible; unproven in-doubt attempts use N6 node_abandoned instead",
-    "G_CUTOFF_ACTIVE": "machine-generated only while the budget cutoff flag is set; applies to nodes with zero attempts"
+    "G_CUTOFF_ACTIVE": "machine-generated only while the budget cutoff flag is set; applies to nodes with zero attempts whose scheduling phase is still open (an optional node whose phase already closed legitimately remains PENDING per R6)",
+    "G_CONSOLIDATION_READY": "every model-proposed artifact observation has a matching control-plane re-read receipt, OR the cutoff flag releases the hold (the run terminates INCOMPLETE regardless)"
   },
   "failure_classes": {
     "retryable": [

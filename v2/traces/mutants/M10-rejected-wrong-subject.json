@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): REJECTED citing a REGISTERED contradicts-claim with a different value but the WRONG SUBJECT fails the exclusivity predicate and is coerced to UNRESOLVED",
+  "notes": "MUTANT (must be rejected): REJECTED cites a properly-anchored contradicts-claim (own proposal obs-other, subject match, different value) whose subject is WRONG relative to F1's cited observation -> exclusivity predicate fails -> coerced to UNRESOLVED",
   "input_events": [
     {
       "event_id": "e1",
@@ -121,6 +121,17 @@
                 "asserted_value": "literal-A"
               }
             ]
+          },
+          {
+            "candidate_id": "c-other",
+            "claims": [
+              {
+                "claim_id": "obs-other",
+                "claim_class": "artifact_observation",
+                "subject": "other.py:1",
+                "asserted_value": "literal-A0"
+              }
+            ]
           }
         ]
       },
@@ -148,7 +159,8 @@
             "subject": "other.py:1",
             "asserted_value": "literal-B",
             "snapshot_id": "snap-t02",
-            "relationship": "contradicts"
+            "relationship": "contradicts",
+            "reread_of": "obs-other"
           }
         ]
       },
@@ -246,20 +258,22 @@
           }
         ],
         "b_binding": {
-          "input_claim_set_hash": "e96f8a138dc96f275f807d9539583d639e1e8e96527f719b6827a0b85a4e31cf",
+          "input_claim_set_hash": "8171e36156127cbd38bc9a3291f3a6c2f8c7fe04a21c2aa8bb789120a53319a1",
           "supplied_claim_ids": [
             "cp-obs-1",
             "cp-other",
             "mc-policy",
             "mc-snapshot",
-            "obs-1"
+            "obs-1",
+            "obs-other"
           ],
           "considered_claim_ids": [
             "cp-obs-1",
             "cp-other",
             "mc-policy",
             "mc-snapshot",
-            "obs-1"
+            "obs-1",
+            "obs-other"
           ]
         }
       },
