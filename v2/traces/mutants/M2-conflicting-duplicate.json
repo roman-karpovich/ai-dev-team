@@ -3,7 +3,7 @@
   "profile": "LIGHT",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): same (kind,event_id) with different body -> corruption -> FAILED",
+  "notes": "MUTANT (must be rejected): same (kind,event_id), different body -> corruption -> FAILED",
   "input_events": [
     {
       "event_id": "e1",
@@ -131,38 +131,6 @@
       "node_id": "finder-claude",
       "attempt": 1,
       "at_min": 10
-    },
-    {
-      "event_id": "e10",
-      "event_kind": "node_scheduled",
-      "payload": {},
-      "node_id": "adjudicator-b",
-      "attempt": 1,
-      "at_min": 10
-    },
-    {
-      "event_id": "e11",
-      "event_kind": "node_dispatched",
-      "payload": {},
-      "node_id": "adjudicator-b",
-      "attempt": 1,
-      "at_min": 11
-    },
-    {
-      "event_id": "e12",
-      "event_kind": "node_result",
-      "payload": {
-        "envelope_hash": "h-adj-t01",
-        "adjudications": [],
-        "b_binding": {
-          "input_claim_set_hash": "h-b-t01",
-          "supplied_claim_ids": [],
-          "considered_claim_ids": []
-        }
-      },
-      "node_id": "adjudicator-b",
-      "attempt": 1,
-      "at_min": 15
     }
   ],
   "expected_transitions": [
@@ -213,5 +181,7 @@
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ]
+  ],
+  "expected_candidate_dispositions": [],
+  "expect_failure_containing": "got 'FAILED'"
 }

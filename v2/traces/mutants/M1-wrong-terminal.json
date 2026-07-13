@@ -3,7 +3,7 @@
   "profile": "LIGHT",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): runner must catch a wrong expected_terminal",
+  "notes": "MUTANT (must be rejected): wrong expected_terminal must be caught",
   "input_events": [
     {
       "event_id": "e1",
@@ -144,9 +144,15 @@
         "envelope_hash": "h-adj-t01",
         "adjudications": [],
         "b_binding": {
-          "input_claim_set_hash": "h-b-t01",
-          "supplied_claim_ids": [],
-          "considered_claim_ids": []
+          "input_claim_set_hash": "a30eea98aa401c1eb5e025dc3d4f949709a853dcea74d1e9409065755f378501",
+          "supplied_claim_ids": [
+            "mc-policy",
+            "mc-snapshot"
+          ],
+          "considered_claim_ids": [
+            "mc-policy",
+            "mc-snapshot"
+          ]
         }
       },
       "node_id": "adjudicator-b",
@@ -202,5 +208,7 @@
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ]
+  ],
+  "expected_candidate_dispositions": [],
+  "expect_failure_containing": "terminal: expected 'INCOMPLETE'"
 }

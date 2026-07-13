@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "MUTANT (must be rejected): scheduling the adjudicator after budget cutoff -> G_NO_CUTOFF (I8)",
+  "notes": "MUTANT (must be rejected): scheduling a new attempt after budget cutoff, in the window while another attempt is still in flight -> G_NO_CUTOFF (I8)",
   "input_events": [
     {
       "event_id": "e1",
@@ -52,6 +52,12 @@
             "kind": "adjudicator",
             "required": true,
             "max_attempts": 2
+          },
+          {
+            "node_id": "probe-extra",
+            "kind": "probe",
+            "required": false,
+            "max_attempts": 1
           }
         ]
       },
@@ -122,7 +128,7 @@
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 12
+      "at_min": 42
     },
     {
       "event_id": "e11",
@@ -130,7 +136,7 @@
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 13
+      "at_min": 45
     },
     {
       "event_id": "e12",
@@ -138,7 +144,15 @@
       "payload": {
         "dimension": "wall_clock"
       },
-      "at_min": 55
+      "at_min": 60
+    },
+    {
+      "event_id": "eZ",
+      "event_kind": "node_scheduled",
+      "node_id": "probe-extra",
+      "attempt": 1,
+      "payload": {},
+      "at_min": 60
     },
     {
       "event_id": "e13",
@@ -148,15 +162,7 @@
       },
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 55
-    },
-    {
-      "event_id": "eZ",
-      "event_kind": "node_scheduled",
-      "node_id": "adjudicator-b",
-      "attempt": 1,
-      "payload": {},
-      "at_min": 56
+      "at_min": 60
     }
   ],
   "expected_transitions": [
@@ -215,5 +221,7 @@
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ]
+  ],
+  "expected_candidate_dispositions": [],
+  "expect_failure_containing": "after cutoff/cancel"
 }

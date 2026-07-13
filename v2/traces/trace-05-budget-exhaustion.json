@@ -3,7 +3,7 @@
   "profile": "HEAVY",
   "initial_state": "CREATED",
   "policy_version": "v2-policy-1",
-  "notes": "Wall-clock budget exhausts mid-run: durable cutoff (ADR-1 section 1.5a) forbids new scheduling/dispatch, the in-flight attempt is cancelled, the unstarted adjudicator is SKIPPED (no new B attempt spent); INCOMPLETE + HOLD. Budget exhaustion has NO path to COMPLETED.",
+  "notes": "Wall-clock budget exhausts AT the 60-min wall while a finder dispatched at 45 is legitimately in flight (15 < 20-min deadline). Durable cutoff forbids new scheduling/dispatch; the in-flight attempt is cancelled; the unstarted adjudicator is SKIPPED via N9 (no new B attempt spent). INCOMPLETE + HOLD; no path to COMPLETED.",
   "input_events": [
     {
       "event_id": "e1",
@@ -122,7 +122,7 @@
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 12
+      "at_min": 42
     },
     {
       "event_id": "e11",
@@ -130,7 +130,7 @@
       "payload": {},
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 13
+      "at_min": 45
     },
     {
       "event_id": "e12",
@@ -138,7 +138,7 @@
       "payload": {
         "dimension": "wall_clock"
       },
-      "at_min": 55
+      "at_min": 60
     },
     {
       "event_id": "e13",
@@ -148,7 +148,7 @@
       },
       "node_id": "finder-codex",
       "attempt": 1,
-      "at_min": 55
+      "at_min": 60
     }
   ],
   "expected_transitions": [
@@ -207,5 +207,6 @@
     "package_install",
     "write_outside_scratch",
     "external_state_mutation"
-  ]
+  ],
+  "expected_candidate_dispositions": []
 }
