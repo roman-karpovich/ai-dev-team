@@ -1,341 +1,215 @@
-# AI Dev Team for Claude Code
+# AI Dev Team
 
-Structured AI development workflow for Claude Code. Specs, audit findings, and research live in a Knowledge Base (Obsidian vault). Code lives in source repos. Context never gets lost between sessions.
+**A spec-first Claude Code plugin with cross-provider review: Claude builds, Codex audits, and every claim carries evidence.**
+
+[![version](https://img.shields.io/github/v/tag/roman-karpovich/ai-dev-team?label=version&style=flat-square)](https://github.com/roman-karpovich/ai-dev-team/tags)
+![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=flat-square)
+![Codex](https://img.shields.io/badge/Codex-cross--review-412991?style=flat-square)
+![status](https://img.shields.io/badge/status-retired-lightgrey?style=flat-square)
+
+> **Status: retired.** v1 is frozen at v1.43.0 and no longer maintained. Its ideas continue in
+> [ai-dev-team-v2](https://github.com/roman-karpovich/ai-dev-team-v2). The repository stays public
+> as a working reference.
 
 ---
 
-## Requirements
+## Why
 
-- **Claude Code** ≥ 2.1.32
-- **Codex CLI** with `mcp-server` support — required for `cross-audit`, `investigate`, and `developer-codex`
-- A Knowledge Base directory (any Markdown folder; Obsidian recommended)
+A model reviewing its own work shares its own blind spots. AI Dev Team puts a second model
+from a different provider into the loop, and refuses to trust either of them without evidence:
+
+- **Nothing is built before you approve a spec.** A hard gate stops all code until the plan is explicitly accepted.
+- **Every step proves itself.** A failing test is captured before the change and a passing one after it; a step without a matching green capture is not done.
+- **Two providers review the code independently.** Claude and Codex audit the same diff in parallel, and their findings are merged, scored and verified against the code.
+- **Agreement is not evidence.** Two models agreeing can be a correlated hallucination, so an independent scorer rates findings and no high-severity claim ships without a verified `file:line`.
+- **Context survives sessions.** Specs, execution logs, findings and research live in a Markdown knowledge base, so work resumes exactly where it stopped.
+
+## How it works
+
+```
+/feature new <idea>
+   │
+   ├─ research the codebase and the knowledge base
+   ├─ write spec + execution workdoc (planned evidence per step)
+   ├─ ── HARD GATE ── you approve the spec ──────────────────────────
+   ├─ spec review: self-review, then Claude × Codex audit of the spec
+   ├─ baseline: the test suite must be green before any change
+   │
+   ├─ for each step:
+   │     red capture → implement → green capture → lint → commit
+   │     └─ compliance checker: scope, semantics, captures (can block)
+   │
+   ├─ full test suite
+   ├─ code audit: Claude × Codex, iterate until no CRITICAL/HIGH is open
+   └─ hand-off: merge locally · push + PR · keep · discard
+```
+
+Merging is not the finish line: a shipped spec becomes *verified* only after `/feature verify`
+confirms it in reality.
+
+## Cross-provider review
+
+`/cross-audit` is the core of the plugin.
+
+1. **Deterministic probes run first**, before any model: diff-scope leaks, cardinality blindness,
+   dependency freshness and typosquatting. Each probe can be off, shadow, warn or block.
+2. **Codex audits in the background** through `codex exec` in a read-only sandbox, so long
+   high-effort runs are not cut off by the host's watchdog.
+3. **Claude audits the same scope independently**, tracing data flows across boundaries and
+   recording why any trace was skipped.
+4. **Findings are consolidated:**
+   - found by both models → high confidence; found by one → needs review;
+   - severity disagreement → the higher severity wins; contradictions → the auditor reads the code;
+   - fingerprint deduplication, with partial overlaps linked rather than merged.
+5. **An independent scorer** (a third, smaller model) rates every model-only finding from 0 to 100.
+   Model agreement alone does not raise the score; findings under 80 are reported as advisory.
+6. **No CRITICAL or HIGH finding is emitted** unless its `file:line` claim was verified empirically.
+
+Findings are append-only and follow a lifecycle:
+
+```
+OPEN → FIXED → VERIFIED
+          └──→ REOPENED
+OPEN → ACCEPTED | DEFERRED | INVALID
+```
+
+A re-audit checks each fix at its location. The loop ends when no CRITICAL or HIGH finding is
+open, usually after two to four rounds, with a hard cap of five. A reopened finding, or the same
+defect class two rounds in a row, forces a full sweep with fresh context.
+
+If Codex is unavailable, the report says so (`single_model`) instead of pretending to be a dual review.
+
+Other modes cover security, logic, spec and **decision** audits; the last one checks the premises
+behind recorded decisions against the actual code, to catch rubber-stamping.
+
+## Skills
+
+| Skill | Command | What it does |
+|---|---|---|
+| `feature` | `/feature new <desc>` | Full lifecycle: research → spec → implement → verify → hand-off |
+| | `/feature continue [spec]` | Resume from the last checkpoint |
+| | `/feature status` · `checklist` · `verify` · `grill` | In-flight work, progress, post-merge verification, a pre-spec interview |
+| `cross-audit` | `/cross-audit <scope> [--mode]` | Background Claude × Codex audit |
+| | `/cross-audit <findings>` | Re-audit: verify fixes, look for regressions |
+| `investigate` | `/investigate <question>` | Structured Claude vs Codex debate, up to five rounds; each side must concede the other's stronger arguments. Returns a convergence report |
+| `research` | natural language | Research notes: incident investigations, math models, competitive analysis |
+| `kb-audit` | `/kb-audit` | Report-only scan for knowledge-base drift: broken links, dangling references, stale statuses |
+| `caveman` | always on | Compressed output that keeps parser anchors and uncertainty markers intact |
+| `lore` | `/lore` | Retells the session as a short Warhammer 40K vignette. Pure flavour |
+
+Skills trigger from plain conversation. A session-start hook teaches Claude when to use each one,
+so slash commands are optional.
+
+## Agents
+
+| Agent | Model | Role |
+|---|---|---|
+| `developer-codex` | Sonnet + Codex | Default developer. Codex works in a fail-closed sandbox: it can change the repo and write test captures, but not the spec or the execution log it is judged against |
+| `developer-senior` | Opus | Ambiguous scope, new abstractions, security-sensitive code |
+| `spec-compliance-checker` | Sonnet | After every step: does what happened match what was planned? Blocks on FAIL or DRIFT |
+| `verifier` | Haiku | Runs tests and builds; never writes source code |
+| `cross-auditor` | Opus + Codex | The dual-provider audit described above |
+| `haiku-finding-scorer` | Haiku | Independent 0–100 confidence for each finding |
+| `investigator` | Opus + Codex | Multi-round adversarial debate on design questions |
+| `librarian` | Sonnet | Optional helper for the knowledge base and its indexes |
+
+The plugin never hardcodes a Codex model: it reads `~/.codex/config.toml`, so a model upgrade is a
+one-line change.
+
+## How the plugin tests itself
+
+- **~650 smoke checks** in `tests/smoke.sh` over 674 fixtures, each classified as behavioural,
+  schema or prompt-text. Shell and Python only, no network, no model calls.
+- **Mutation-protected meta-checks** that fail if the checks they guard stop detecting a defect.
+- **`v2/`**: a reference state machine for the next-generation verification design, with 13
+  scenario traces and 17 adversarial mutants that the runner must reject.
+- **`docs/agent-claims-vs-runtime.md`** separates what is enforced by code from what is only a
+  convention the agents are asked to follow.
+- 61 releases, from v1.0.2 to v1.43.0.
 
 ---
 
 ## Install
+
+Requirements:
+
+- Claude Code ≥ 2.1.32
+- Codex CLI with `mcp-server` support (for `cross-audit`, `investigate` and `developer-codex`)
+- A knowledge-base directory: any Markdown folder; Obsidian works well
 
 ```bash
 claude plugin marketplace add roman-karpovich/ai-dev-team
 claude plugin install ai-dev-team
 ```
 
-Two one-time manual steps after install:
+Enable agent teams in `~/.claude/settings.json`:
 
-**1. Enable agent teams** — add to `~/.claude/settings.json`:
 ```json
-{
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  }
-}
+{ "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" } }
 ```
 
-**2. Register Codex MCP** (required for `cross-audit`, `investigate`, `developer-codex`):
+Register Codex:
+
 ```bash
 claude mcp add codex -s user -- codex mcp-server
 ```
 
-Model and reasoning effort come from `~/.codex/config.toml` — the single global model config; the plugin never hardcodes a Codex model, so future model upgrades are a one-line change here (or a per-project override via `.ai-dev-team.yml` `codex.model`):
+Set the Codex model and effort in `~/.codex/config.toml`, for example:
+
 ```toml
 model = "gpt-5.6-sol"
 model_reasoning_effort = "xhigh"
 ```
 
-Restart Claude Code after install.
+Restart Claude Code.
 
-## Project Config File (`.ai-dev-team.yml`)
+### Project config
 
-The plugin reads an optional config file from the root of the project being worked on.
-
-**Precedence:** `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → memory → sibling heuristic → ask
-
-### Plugin-repo dogfood
-
-Plugin developers working on `ai-dev-team` itself use a personal `.ai-dev-team.local.yml` (already in this repo's `.gitignore`). Do not commit `.ai-dev-team.yml` to the plugin repo; each developer has their own KB.
-
-To set your local path, create `.ai-dev-team.local.yml` in the plugin root:
-
-```yaml
-kb_path: /your/personal/kb/path
-```
-
-### Consumer-repo adoption
-
-For projects using this plugin via the marketplace:
-
-**To adopt team-shared config:** create `.ai-dev-team.yml` in your project root and commit it:
+Create `.ai-dev-team.yml` in the root of the project you work on:
 
 ```yaml
 kb_path: /absolute/path/to/knowledge-base
-project: my-project-name
-# Optional: project_type gates the security R-rule cluster at /feature code-audit time.
-# Allowlist: smart_contract | backend | frontend | data_pipeline.
-# Resolution chain: spec frontmatter → .ai-dev-team.local.yml → .ai-dev-team.yml → None.
-# project_type: backend
+project: my-project
+# project_type: backend   # smart_contract | backend | frontend | data_pipeline
 ```
 
-Committing `.ai-dev-team.yml` makes the KB path team-shared across all developers.
+A personal `.ai-dev-team.local.yml` (add it to `.gitignore`) overrides the shared file.
+Resolution order: `.ai-dev-team.local.yml` → `.ai-dev-team.yml` → memory → sibling directory → ask.
+See `.ai-dev-team.yml.example` for all options, including Codex overrides and probe modes.
 
-**To add a local override:** create `.ai-dev-team.local.yml` and add `.ai-dev-team.local.yml` to your project's `.gitignore`. The local file takes priority over the committed `.ai-dev-team.yml`. Without the `.gitignore` entry, your private KB path could accidentally be committed.
-
-An example file is included with the plugin at `.ai-dev-team.yml.example`.
-
----
-
-## Ambient workflow
-
-After install, Claude knows when to use which skill automatically — no slash commands required. Core triggers: `/feature new` (add/implement/build), `/feature continue` (resume/where-were-we), `/cross-audit` (review/audit/check-for-bugs), `/investigate` (compare/tradeoffs/which-is-better), `/kb-audit` (check KB drift / kb hygiene).
-
-The full trigger map — including Russian variants, scope-addition handling, `/feature status`, `/feature verify`, and `/feature checklist` — lives in two places. The authoritative copy is [`hooks/session-start`](hooks/session-start), injected into every session at runtime. The portable paste-ready copy for your project's `CLAUDE.md` is in [`docs/claude-md-snippet.md`](docs/claude-md-snippet.md).
-
-At session start, Claude proactively checks for in-progress specs and reports status before asking what to do next. Slash commands still work if you prefer explicit control.
-
----
-
-## How to use
-
-### Starting a feature
+### Knowledge-base layout
 
 ```
-/feature new add webhook delivery retries
+<kb-root>/repos/<project>/
+├── design/
+│   ├── YYYY-MM-DD-<slug>.md     ← feature spec
+│   └── workdocs/<slug>/
+│       ├── exec.md              ← planned vs observed evidence per step
+│       └── captures/            ← red / green / probe output
+├── security/                    ← audit findings, one file per iteration
+├── research/                    ← investigations, models, exploration
+└── postmortems/
 ```
-
-What happens:
-1. Claude reads the codebase and searches KB for relevant context
-2. Writes a **spec** + **execution workdoc** (`design/workdocs/<slug>/exec.md`) with per-step planned evidence schema
-3. **HARD GATE** — shows you the spec, waits for explicit approval before writing any code
-4. Two-pass spec review: self-review (completeness check) + dual-model cross-audit of spec and workdoc
-5. Baseline test — verifies the test suite is green before any new code
-6. Developer implements step-by-step: failing test → implement → passing test → save captures → compliance check per step
-7. Verifier runs the full test suite
-8. Hand-off: choose from 4 options (merge locally / push+PR / keep / discard)
-
-You always see the spec before a single line of code is written.
-
-### Resuming in a new session
-
-```
-/feature continue
-```
-
-Without arguments: shows all in-progress specs and lets you pick one.
-
-```
-/feature continue kb/repos/my-project/design/2026-04-14-webhooks.md
-```
-
-With a path: jumps straight to that spec, reports current status, continues from the last unchecked step. No context recovery needed — everything lives in KB.
-
-### Checking what's in flight
-
-```
-/feature status
-```
-
-Shows a table of all specs across all projects: name, status, progress (N/M steps), branch.
-
-### Running an audit
-
-```
-/cross-audit src/
-```
-
-Runs in the **background** — you can keep working. When done, presents findings by severity.
-
-For each finding you decide:
-- `fix X1 X3` — apply those fixes
-- `accept X2` — known issue, intentional
-- `defer X4` — address later
-- `fix all` — fix everything
-
-Re-audit after fixes (pass the findings file path):
-
-```
-/cross-audit kb/repos/my-project/security/2026-04-14-src-findings.md
-```
-
-Repeat until no CRITICAL or HIGH findings remain open. Typically 2–3 iterations.
-
-Audit flags:
-```
-/cross-audit src/                         # full audit (logic + security)
-/cross-audit src/ --mode logic            # logic only: correctness, edge cases, performance
-/cross-audit src/ --mode security --diff  # security audit of recent changes only
-```
-
-Auditing a pull request (including fork PRs):
-```
-/cross-audit pr 472                       # audit PR #472 in the current repo
-/cross-audit pr owner/repo#472            # audit a PR in a different repo
-```
-
-In PR mode, the skill materializes the PR head (including fork contents) into an
-isolated worktree, classifies changed files, and audits them. After reviewing the
-consolidated findings, you decide per finding ID:
-
-- `publish X1 X3` — post those findings as a GitHub PR review comment
-- `fix H2` — apply the fix locally (same flow as non-PR audits)
-- `accept L4` / `defer M1` — mark as intentional / deferred
-
-`publish <ids>` opens a scoped PR review on the target PR via the GitHub API.
-Rate-limit and permission errors are classified via response headers — see
-`skills/cross-audit/references/publish.md` for the full recipe.
-
-Confidence levels in findings:
-- **HIGH** — both Claude and Codex flagged it → fix
-- **REVIEW** — only one flagged it → verify manually, possible false positive
-
-### Investigating an architecture question
-
-```
-/investigate should we use optimistic locking or a queue for concurrent order updates?
-```
-
-Runs in the **background**. Claude (Opus) and Codex (GPT, model from `~/.codex/config.toml`) debate through up to 3 rounds, challenging each other's positions. Returns a convergence report with key agreements, unresolved tensions, and a synthesized recommendation.
-
-Use this before committing to a non-obvious design decision.
-
-### Iterating on a feature mid-flight
-
-You never need to start over. Everything lives in the spec and execution workdoc.
-
-**Change the design before implementation starts:**
-Edit the spec in Obsidian (or tell Claude what to change) → re-approve → Developer continues.
-
-**Redo a specific step:**
-```
-/feature continue kb/repos/my-project/design/2026-04-14-webhooks.md
-```
-Then tell Claude: "rework step 3 — use exponential backoff instead of fixed intervals"
-
-**Expand scope after partial implementation:**
-Add steps to the spec checklist → approve → Developer picks up where the checklist left off.
-
-### Research and investigations (without a spec)
-
-For work that doesn't fit a feature — incident investigations, math modeling, competitive analysis:
-
-```
-create a research note in the KB for the auth performance regression we saw on 2026-04-13
-```
-
-Research notes live at `<kb>/repos/<project>/research/YYYY-MM-DD-<slug>.md`. Subtypes: `incident-investigation`, `math-model`, `competitive-analysis`, `exploration`. Statuses: `ACTIVE / CONCLUDED / ARCHIVED`.
-
----
-
-## What's included
-
-### Agents (`agents/`)
-
-| Agent | Model | Role |
-|-------|-------|------|
-| `librarian` | Sonnet | KB management — search, create documents, update MOC indexes |
-| `developer-codex` | Sonnet + Codex | **Default developer.** Delegates to Codex via MCP. Saves Claude tokens. |
-| `developer-senior` | Opus | Complex tasks: ambiguous scope, new abstractions, security-sensitive code |
-| `spec-compliance-checker` | Sonnet | Runs after each implementation step. Verifies observed matches planned intent. Blocks on FAIL/DRIFT. |
-| `verifier` | Haiku | Runs test suite and build checks. Never writes source code. |
-| `cross-auditor` | Opus + Codex | Parallel Claude + Codex audit. Consolidates findings into KB. |
-| `investigator` | Opus + Codex | Adversarial multi-round debate for architecture decisions. |
-
-**Choosing a developer:**
-```
-Codex            ← default; spec has explicit file paths and clear requirements
-developer-senior ← wide codebase exploration needed, or genuinely ambiguous scope
-```
-
-### Skills (`skills/`)
-
-| Skill | Command | What it does |
-|-------|---------|--------------|
-| `feature` | `/feature new <desc>` | Full feature lifecycle: research → spec → implement → verify → hand-off |
-| `feature` | `/feature continue [spec-path]` | Resume from last checkpoint in an existing spec |
-| `feature` | `/feature status` | Show all in-progress specs across all projects |
-| `cross-audit` | `/cross-audit <scope> [--mode] [--diff]` | Background dual-model audit, findings saved to KB |
-| `cross-audit` | `/cross-audit <findings-path>` | Re-audit iteration: verify fixes, look for new issues |
-| `investigate` | `/investigate <question>` | Background Claude vs Codex debate, returns convergence report |
-| `kb-audit` | `/kb-audit [--project <name>]` | Report KB-vault drift (broken wikilinks, dangling §-pointers, status-enum/drift); reports only, never auto-edits |
-
----
-
-## KB structure
-
-```
-<kb-root>/
-└── repos/
-    └── <project>/
-        ├── design/
-        │   ├── YYYY-MM-DD-<slug>.md      ← feature spec
-        │   └── workdocs/
-        │       └── <slug>/
-        │           ├── exec.md           ← per-step planned/observed evidence
-        │           └── captures/         ← test output files (red/green/probe)
-        ├── security/                     ← audit findings + workdocs per iteration
-        ├── research/                     ← investigations, models, exploratory work
-        └── postmortems/                  ← completed incident reviews
-```
-
-The execution workdoc (`exec.md`) is created alongside every spec. It tracks:
-- `planned`: goal, allowed_scope, test commands, expected output patterns, optional integration probe
-- `observed`: actual files touched, commit SHAs, paths to capture files (filled during implementation)
-
-A step is not done until `green_capture` exists and matches `expected_pass_pattern`.
-
----
-
-## Updating
-
-```bash
-claude plugin update ai-dev-team
-```
-
----
 
 ## Troubleshooting
 
-**`/cross-audit` or `/investigate` fails with "mcp not found" / "codex unavailable".**
-Codex MCP isn't registered. Diagnose with `claude mcp list` — `codex` must appear. Fix:
-```bash
-claude mcp add codex -s user -- codex mcp-server
-```
-Restart Claude Code after registering.
+**`codex unavailable` from `/cross-audit` or `/investigate`.** Codex MCP is not registered.
+`claude mcp list` must show `codex`; if not, run the `claude mcp add` command above and restart.
 
-**Team-based agents (`cross-auditor`, `investigator`) are silently skipped or "agent not found".**
-The experimental agent-teams flag is missing. Check `~/.claude/settings.json` for:
-```json
-{ "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" } }
-```
-Restart Claude Code after adding.
+**`cross-auditor` or `investigator` is skipped or "agent not found".** The agent-teams flag is
+missing from `~/.claude/settings.json`.
 
-**No ambient workflow context at the start of a session (no "AI Dev Team" block appears).**
-The SessionStart hook isn't running. Diagnose:
-```bash
-claude plugin list              # ai-dev-team should be enabled
-bash <plugin-root>/hooks/session-start | python3 -m json.tool   # should print JSON with trigger map
-```
-If the hook emits JSON correctly but Claude Code doesn't inject it, re-install the plugin (`claude plugin uninstall ai-dev-team && claude plugin install ai-dev-team`). If the hook errors, report the error in the plugin repo.
+**No "AI Dev Team" block at session start.** Check that the plugin is enabled (`claude plugin list`)
+and that `bash <plugin-root>/hooks/session-start | python3 -m json.tool` prints JSON. If it does,
+reinstall the plugin.
 
-**Baseline test fails immediately — the repo uses `develop` / `trunk` / something other than `master` or `main`.**
-The feature skill auto-detects `master` or `main`. For a non-standard base branch, set the `branch:` field in the spec frontmatter and reference the real base explicitly, e.g.:
-```yaml
-branch: feat/2026-04-17-my-feature  # cut from develop, not master — `feat/` here is one of the seven conventional prefixes (`feat / fix / refactor / ci / docs / test / chore`) and depends on the spec's `change_type`
-```
-Then check out the non-standard base before running `/feature`. A permanent fix is tracked in BACKLOG.
+**Baseline fails on a repo whose base branch is not `main` or `master`.** Set `branch:` in the
+spec frontmatter and check out the real base branch before running `/feature`.
 
-**`/feature new` fails on `mkdir` — KB root exists but `repos/<project>/` doesn't.**
-The skill creates `<kb>/repos/<project>/design/` on first use, but a stricter filesystem (read-only mount, permission denied) can fail the `mkdir`. Fix manually:
-```bash
-mkdir -p <kb>/repos/<project>/design/workdocs
-```
-Then re-run `/feature new`.
-
----
-
-## Maintainers
-
-Before releasing a new version, run the smoke test locally:
+## Development
 
 ```bash
 bash tests/smoke.sh
 ```
 
-It validates manifest integrity, agent frontmatter, skill structure, the SessionStart hook across env variants, post-edit-lint graceful-exit behaviour + shell-injection regression, the shared developer-workflow reference, and internal markdown links. No network, no Claude — just shell + python3.
+Run it before every release; a version bump in `.claude-plugin/plugin.json` tags the release automatically.
